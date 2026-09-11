@@ -85,3 +85,46 @@ export function todayRows(doc, today) {
   const rows = [...rowsForDay(doc, today).filter((r) => r.item.status === 'active'), ...quotas].sort(byOrder);
   return [...suggestions, ...rows.filter((r) => !r.done), ...rows.filter((r) => r.done)];
 }
+
+// ---- Streaks --------------------------------------------------------------------------------
+
+function runs(outcomes) {
+  let best = 0;
+  let current = 0;
+  for (const ok of outcomes) {
+    current = ok ? current + 1 : 0;
+    best = Math.max(best, current);
+  }
+  return { current, best };
+}
+
+function occurrenceStreak(doc, item, today) {
+  const ticked = doneDays(doc, item.id);
+  const outcomes = [];
+  for (let day = item.created; day <= today; day = addDays(day, 1)) {
+    if (!isHabitDue(doc, item, day)) continue;
+    const ok = ticked.has(day);
+    if (day === today && !ok) continue; // today isn't over yet
+    outcomes.push(ok);
+  }
+  return runs(outcomes);
+}
+
+function weeklyStreak(doc, item, today) {
+  const thisWeek = weekStart(today);
+  const outcomes = [];
+  for (let week = weekStart(item.created); week <= thisWeek; week = addDays(week, 7)) {
+    const ok = item.type === 'quota'
+      ? weekTotal(doc, item.id, week) >= item.target
+      : doneBetween(doc, item.id, week, addDays(week, 7)) >= item.repeat.n;
+    if (week === thisWeek && !ok) continue; // this week isn't over yet
+    outcomes.push(ok);
+  }
+  return runs(outcomes);
+}
+
+export function streak(doc, item, today) {
+  if (item.type === 'quota' || item.repeat?.kind === 'perWeek') return weeklyStreak(doc, item, today);
+  if (item.type === 'habit') return occurrenceStreak(doc, item, today);
+  return { current: 0, best: 0 };
+}
