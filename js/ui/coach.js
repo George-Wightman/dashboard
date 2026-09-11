@@ -21,6 +21,17 @@ function blocker(ctx) {
   return '';
 }
 
+// Give a sync up to `ms` a chance to land before asking Gemini — a stuck, slow or failing sync
+// must never hold up the request. ctx.coach.syncWaitMs overrides the default (tests inject a short
+// cap there rather than waiting out the real one).
+function syncFirst(ctx, ms = ctx.coach.syncWaitMs ?? 5000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    const done = () => { clearTimeout(timer); resolve(); };
+    Promise.resolve(ctx.syncNow?.()).then(done, done);
+  });
+}
+
 // Ask Gemini, then check the reply. Resolves { reply, model }. Rejects with an Error whose message
 // is the line to show: Gemini's own plain-English message, or the catch-all — never another
 // error's raw text.
@@ -60,7 +71,7 @@ export async function startCheckin(ctx) {
   c.error = '';
   c.busy = 'questions';
   ctx.render();
-  try { await ctx.syncNow?.(); } catch { /* best effort */ }
+  await syncFirst(ctx);
   try {
     const { reply, model } = await consult(ctx, questionsPrompt(store.doc(), today), parseQuestions);
     await ctx.whenIdle();
@@ -100,7 +111,7 @@ export async function sendCheckin(ctx) {
   c.error = '';
   c.busy = 'feedback';
   ctx.render();
-  try { await ctx.syncNow?.(); } catch { /* best effort */ }
+  await syncFirst(ctx);
   try {
     const { reply, model } = await consult(ctx, feedbackPrompt(store.doc(), today, questions, answers), parseFeedback);
     await ctx.whenIdle();

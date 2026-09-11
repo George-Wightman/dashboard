@@ -138,6 +138,23 @@ test('sendCheckin: syncNow is called before ctx.coach.ask', async () => {
   assert.deepEqual(order, ['sync', 'ask']);
 });
 
+// ---- D3: don't wait more than 5 seconds for sync before asking ---------------------------------
+
+test('startCheckin: a sync that never resolves does not stop the request being asked (ctx.coach.syncWaitMs shortens the cap)', async () => {
+  const store = makeStore();
+  const today = day(store);
+  const ctx = makeCtx({
+    store,
+    ask: async () => ({ data: { questions: ['Q1?', 'Q2?'] }, model: 'gemini-flash-lite-latest' }),
+    syncNow: () => new Promise(() => {}), // never resolves
+  });
+  ctx.coach.syncWaitMs = 15;
+
+  await startCheckin(ctx);
+
+  assert.deepEqual(checkinOf(store.doc(), today)?.questions, ['Q1?', 'Q2?']);
+});
+
 // ---- C2: land coach replies only when nothing is being typed -----------------------------------
 
 // Lets pending microtasks (the fake ask() resolving, consult()'s own await) drain before we
