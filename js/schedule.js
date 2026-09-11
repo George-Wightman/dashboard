@@ -128,3 +128,55 @@ export function streak(doc, item, today) {
   if (item.type === 'habit') return occurrenceStreak(doc, item, today);
   return { current: 0, best: 0 };
 }
+
+// ---- Completion, history, goals --------------------------------------------------------------
+
+export function dayCompletion(doc, day) {
+  const rows = rowsForDay(doc, day);
+  return { done: rows.filter((r) => r.done).length, total: rows.length };
+}
+
+// The current week and the two before it, Monday first: 21 cells.
+export function history(doc, today) {
+  const start = addDays(weekStart(today), -14);
+  return Array.from({ length: 21 }, (_, i) => {
+    const day = addDays(start, i);
+    if (day > today) return { day, future: true, done: 0, total: 0 };
+    return { day, future: false, ...dayCompletion(doc, day) };
+  });
+}
+
+// What a history cell opens up to.
+export function dayDetail(doc, day) {
+  const amounts = activeLogs(doc, (l) => l.kind === 'amount' && l.day === day)
+    .map((log) => ({ log, item: doc.items[log.itemId] ?? null, goal: doc.goals[log.goalId] ?? null }))
+    .sort((a, b) => ((a.log.at ?? '') < (b.log.at ?? '') ? -1 : 1));
+  return { rows: rowsForDay(doc, day), amounts };
+}
+
+export function goalTotal(doc, goalId) {
+  return activeLogs(doc, (l) => l.kind === 'amount' && l.goalId === goalId)
+    .reduce((sum, l) => sum + l.amount, 0);
+}
+
+export function milestonesOf(doc, goalId) {
+  return values(doc.milestones)
+    .filter((m) => m.goalId === goalId && (m.status === 'active' || m.status === 'suggested'))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+export function goalItems(doc, goalId) {
+  return values(doc.items)
+    .filter((i) => i.goalId === goalId && i.status === 'active')
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+export function goalProgress(doc, goal) {
+  if (goal.target > 0) {
+    const total = goalTotal(doc, goal.id);
+    return { numeric: true, done: total, total: goal.target, pct: Math.min(100, Math.round((total / goal.target) * 100)) };
+  }
+  const live = milestonesOf(doc, goal.id).filter((m) => m.status === 'active');
+  const ticked = live.filter((m) => m.done).length;
+  return { numeric: false, done: ticked, total: live.length, pct: live.length ? Math.round((ticked / live.length) * 100) : 0 };
+}
