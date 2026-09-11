@@ -148,8 +148,9 @@ function renderHeader() {
   document.title = total ? `Today · ${done}/${total}` : 'Today';
 
   const warning = document.getElementById('save-warning');
-  warning.hidden = !store.saveError();
-  warning.textContent = store.saveError() ? "Couldn't save on this device. Export a backup from settings." : '';
+  const problem = store.saveError() ? "Couldn't save on this device. Export a backup from settings." : store.loadError();
+  warning.hidden = !problem;
+  warning.textContent = problem ?? '';
 
   const status = document.getElementById('sync-status');
   const [text, title] = syncLabel();

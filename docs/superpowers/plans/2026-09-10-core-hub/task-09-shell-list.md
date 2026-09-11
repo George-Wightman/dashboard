@@ -418,8 +418,9 @@ function renderHeader() {
   document.getElementById('count').textContent = total ? `${done} of ${total} done` : '';
   document.title = total ? `Today · ${done}/${total}` : 'Today';
   const warning = document.getElementById('save-warning');
-  warning.hidden = !store.saveError();
-  warning.textContent = store.saveError() ? "Couldn't save on this device — export a backup from settings" : '';
+  const problem = store.saveError() ? "Couldn't save on this device — export a backup from settings" : store.loadError();
+  warning.hidden = !problem;
+  warning.textContent = problem ?? '';
   document.getElementById('sync-status').textContent = 'on this device';
 }
 
