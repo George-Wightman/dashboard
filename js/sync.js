@@ -119,5 +119,10 @@ export function createSyncScheduler({ run, canRun = () => true, debounceMs = 500
     }
   }
 
-  return { now, changed: schedule };
+  function flush() {
+    if (!timer) return;
+    return now();
+  }
+
+  return { now, changed: schedule, flush };
 }

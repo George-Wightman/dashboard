@@ -236,6 +236,19 @@ test('now() during a run queues exactly one more', async () => {
   assert.equal(runs, 2);
 });
 
+test('flush() runs a pending debounce immediately, and does nothing when idle', async () => {
+  const timers = fakeTimers();
+  let runs = 0;
+  const s = createSyncScheduler({ run: async () => { runs++; }, timers });
+  s.changed();
+  assert.equal(timers.count, 1);
+  await s.flush();
+  assert.equal(runs, 1);
+  assert.equal(timers.count, 0);
+  await s.flush();
+  assert.equal(runs, 1);
+});
+
 test('canRun false defers until it is true', async () => {
   const timers = fakeTimers();
   let runs = 0;

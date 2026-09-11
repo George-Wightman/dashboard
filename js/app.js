@@ -108,7 +108,11 @@ document.getElementById('settings-button').addEventListener('click', () => ctx.o
 document.getElementById('sync-status').addEventListener('click', () => scheduler.now());
 window.addEventListener('focus', wake);
 window.addEventListener('online', () => scheduler.now());
-document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) scheduler.flush();
+  else wake();
+});
+window.addEventListener('pagehide', () => scheduler.flush());
 setInterval(checkRollover, 60000);
 
 render();
