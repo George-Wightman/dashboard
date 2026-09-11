@@ -64,6 +64,9 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 @media (max-width: 759px) {
   .layout { grid-template-columns: 1fr; }
   .top { flex-wrap: wrap; }
+  .row { flex-wrap: wrap; row-gap: .25rem; }
+  .row .title { flex: 1 1 0; }
+  .row .meta { flex-basis: 100%; justify-content: flex-start; padding-left: 1.85rem; }
 }
 
 /* The list */
