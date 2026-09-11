@@ -18,6 +18,10 @@ test('logicalDay: crosses month and year', () => {
   assert.equal(logicalDay(new Date(2027, 0, 1, 2, 0)), '2026-12-31');
 });
 
+test('logicalDay: counted in wall-clock time, so a DST boundary cannot shift the day (F10)', () => {
+  assert.equal(logicalDay(new Date(2026, 2, 29, 4, 30)), '2026-03-29'); // UK spring-forward Sunday
+});
+
 test('addDays and daysBetween', () => {
   assert.equal(addDays('2026-09-30', 1), '2026-10-01');
   assert.equal(addDays('2026-01-01', -1), '2025-12-31');

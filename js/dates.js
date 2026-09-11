@@ -10,10 +10,20 @@ const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
   'September', 'October', 'November', 'December'];
 
-// The day a moment belongs to, when the day starts at dayStartHour local time.
+// The day a moment belongs to, when the day starts at dayStartHour local time. Counted in
+// wall-clock time (not by subtracting milliseconds), so a daylight-saving clock change on the
+// boundary can never shift which calendar day it lands on.
 export function logicalDay(date, dayStartHour = 4) {
-  const shifted = new Date(date.getTime() - dayStartHour * 3600000);
-  return `${shifted.getFullYear()}-${pad(shifted.getMonth() + 1)}-${pad(shifted.getDate())}`;
+  let y = date.getFullYear();
+  let m = date.getMonth();
+  let d = date.getDate();
+  if (date.getHours() < dayStartHour) {
+    const prev = new Date(y, m, d - 1);
+    y = prev.getFullYear();
+    m = prev.getMonth();
+    d = prev.getDate();
+  }
+  return `${y}-${pad(m + 1)}-${pad(d)}`;
 }
 
 function toUTC(day) {
