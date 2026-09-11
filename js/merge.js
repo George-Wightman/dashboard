@@ -5,7 +5,12 @@
 import { MAPS, stableStringify } from './doc.js';
 
 export function pickWinner(a, b) {
-  if (a.updated !== b.updated) return (a.updated ?? '') > (b.updated ?? '') ? a : b;
+  // A non-string `updated` (a malformed sync, a stray number) isn't a comparable timestamp —
+  // treat it as unset rather than letting Number()/string coercion produce an order-dependent
+  // comparison (e.g. a number vs an ISO string compares false both ways via >).
+  const ua = typeof a.updated === 'string' ? a.updated : '';
+  const ub = typeof b.updated === 'string' ? b.updated : '';
+  if (ua !== ub) return ua > ub ? a : b;
   return stableStringify(a) >= stableStringify(b) ? a : b;
 }
 

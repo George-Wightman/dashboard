@@ -38,6 +38,36 @@ test('pickWinner: later updated wins, ties are order-independent', () => {
   assert.equal(pickWinner(x, y), pickWinner(y, x));
 });
 
+test('pickWinner treats a non-string updated as unset, not as a comparable value (H3)', () => {
+  const numeric = { id: 'a', title: 'numeric', updated: 12345 };
+  const stamped = { id: 'a', title: 'stamped', updated: '2026-09-10T09:00:00.000Z' };
+  assert.equal(pickWinner(numeric, stamped), stamped);
+  assert.equal(pickWinner(stamped, numeric), stamped);
+});
+
+test('pickWinner is commutative and associative across numeric, null, missing and string updated (H3)', () => {
+  const recs = [
+    { id: 'a', title: 'numeric', updated: 42 },
+    { id: 'a', title: 'null', updated: null },
+    { id: 'a', title: 'missing' },
+    { id: 'a', title: 'stamped', updated: '2026-09-10T09:00:00.000Z' },
+  ];
+  for (const x of recs) {
+    for (const y of recs) {
+      assert.equal(pickWinner(x, y), pickWinner(y, x), `${x.title}/${y.title}`);
+    }
+  }
+  for (const x of recs) {
+    for (const y of recs) {
+      for (const z of recs) {
+        const left = pickWinner(pickWinner(x, y), z);
+        const right = pickWinner(x, pickWinner(y, z));
+        assert.equal(S(left), S(right), `${x.title}/${y.title}/${z.title}`);
+      }
+    }
+  }
+});
+
 test('mergeDocs is commutative', () => {
   for (let seed = 1; seed <= 50; seed++) {
     const a = makeDoc(seed);
