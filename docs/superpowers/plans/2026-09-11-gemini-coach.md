@@ -109,14 +109,14 @@ Binding values from the design (copied verbatim; do not change them):
 
 Each task lives in its own file under [`2026-09-11-gemini-coach/`](2026-09-11-gemini-coach/). Tick here when a task is committed.
 
-- [ ] [Task 1: Journal map, settings and store methods](2026-09-11-gemini-coach/task-01-journal-store.md) — the `journal` map, `geminiKey` `''` and `checkinHour` 18 in settings, and the store methods `saveJournal(record)`, `addPlan(plan)`, `acceptGoalPlan(goalId)`, `dismissGoalPlan(goalId)`
-- [ ] [Task 2: Gemini client](2026-09-11-gemini-coach/task-02-gemini-client.md) — `js/gemini.js`: `askGemini(...)`, following every rule in the design, plus key lookup
-- [ ] [Task 3: Coach context and week stats](2026-09-11-gemini-coach/task-03-coach-context.md) — `js/coach.js`: `coachContext(doc, today)`, `weekStats(doc, monday)` and the panel readers
-- [ ] [Task 4: Prompts and reply parsers](2026-09-11-gemini-coach/task-04-prompts-parsers.md) — the prompt builders for jobs A–D and the four reply parsers, in `js/coach.js`
-- [ ] [Task 5: Coach panel and evening check-in](2026-09-11-gemini-coach/task-05-coach-panel.md) — the Coach panel's check-in states, `dev/fake-gemini.js`, and the wiring in `app.js` and `side.js`
-- [ ] [Task 6: Shape a goal](2026-09-11-gemini-coach/task-06-shape-goal.md) — the "Shape with AI" box, the suggested-goal preview, plan accept and dismiss, and the "for Sat" marker
-- [ ] [Task 7: Weekly digest](2026-09-11-gemini-coach/task-07-weekly-digest.md) — the digest trigger and how the digest is shown
-- [ ] [Task 8: Settings, offline shell, README](2026-09-11-gemini-coach/task-08-settings-sw-readme.md) — the ⚙ key field (with Hebrew-app key detection), the check-in hour, the privacy note, the `sw.js` SHELL update, and the README section
+- [x] [Task 1: Journal map, settings and store methods](2026-09-11-gemini-coach/task-01-journal-store.md) — the `journal` map, `geminiKey` `''` and `checkinHour` 18 in settings, and the store methods `saveJournal(record)`, `addPlan(plan)`, `acceptGoalPlan(goalId)`, `dismissGoalPlan(goalId)`
+- [x] [Task 2: Gemini client](2026-09-11-gemini-coach/task-02-gemini-client.md) — `js/gemini.js`: `askGemini(...)`, following every rule in the design, plus key lookup
+- [x] [Task 3: Coach context and week stats](2026-09-11-gemini-coach/task-03-coach-context.md) — `js/coach.js`: `coachContext(doc, today)`, `weekStats(doc, monday)` and the panel readers
+- [x] [Task 4: Prompts and reply parsers](2026-09-11-gemini-coach/task-04-prompts-parsers.md) — the prompt builders for jobs A–D and the four reply parsers, in `js/coach.js`
+- [x] [Task 5: Coach panel and evening check-in](2026-09-11-gemini-coach/task-05-coach-panel.md) — the Coach panel's check-in states, `dev/fake-gemini.js`, and the wiring in `app.js` and `side.js`
+- [x] [Task 6: Shape a goal](2026-09-11-gemini-coach/task-06-shape-goal.md) — the "Shape with AI" box, the suggested-goal preview, plan accept and dismiss, and the "for Sat" marker
+- [x] [Task 7: Weekly digest](2026-09-11-gemini-coach/task-07-weekly-digest.md) — the digest trigger and how the digest is shown
+- [x] [Task 8: Settings, offline shell, README](2026-09-11-gemini-coach/task-08-settings-sw-readme.md) — the ⚙ key field (with Hebrew-app key detection), the check-in hour, the privacy note, the `sw.js` SHELL update, and the README section
 
 Tasks 1–4 are pure and run in order (4 builds on 3, 3 on 1). Tasks 5–8 are browser work. After each of them the controller checks it in the Browser pane: serve with `python -m http.server 8080`, open `http://localhost:8080/dev/seed.html?replace`, then `http://localhost:8080/?fakegemini` (and the other fake modes).
 
