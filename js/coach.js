@@ -7,6 +7,7 @@ import {
 } from './schedule.js';
 import { formatAmount } from './parse.js';
 import { journalId } from './doc.js';
+import { GeminiError } from './gemini.js';
 
 export const CONTEXT_CAP = 4000;
 const ROW_CAP = 25;
@@ -208,4 +209,179 @@ export function digestDue(doc, today) {
   const monday = addDays(weekStart(today), -7);
   if (digestOf(doc, monday)) return null;
   return weekStats(doc, monday).empty ? null : monday;
+}
+
+// ---- Prompts -----------------------------------------------------------------------------------
+// Each builder returns { system, prompt } for askGemini. The job texts are the design's, word for
+// word; dev/fake-gemini.js recognises a job by finding its text in the prompt.
+
+export const SYSTEM = "You are George's coach inside his personal daily dashboard. Be direct, warm and specific, in British English. Refer to the actual items, numbers and words in the data you are given; never give generic advice or motivational filler. No emojis. Stay within the length limits. Reply with JSON only, in exactly the shape asked for.";
+
+export const JOBS = {
+  questions: `Ask George 2 or 3 short questions about today, each answerable in a sentence or two. At least one must name something specific from today — a miss, a win, or a number. The last question is about tomorrow. Shape: {"questions": ["…", "…"]}`,
+  feedback: `Reply with feedback of at most 90 words. First one specific thing that went well, if anything did; then the single most useful change for tomorrow, grounded in his answers and the numbers. Don't moralise and don't repeat his answers back to him. Then suggest at most 2 concrete tasks for tomorrow, only if they follow from what he said. Shape: {"feedback": "…", "tomorrow": [{"title": "…"}]}`,
+  shape: `Turn this into a plan George can start this week. Don't duplicate anything he already tracks. Prefer small weekly targets he can actually hit. Shape: {"title": "short goal name", "targetDate": "YYYY-MM-DD" or null (only if he gave or implied a deadline), "milestones": ["3 to 6 concrete, checkable steps, in order"], "habits": [0 to 2 of {"title": "…", "repeat": {"kind": "daily"} or {"kind": "weekdays", "days": [1-7…]} or {"kind": "perWeek", "n": 1-7}}], "targets": [0 to 2 of {"title": "…", "target": number, "unit": "count" or "minutes", "unitLabel": "…"}], "why": "one sentence"}`,
+  digest: `Write last week's digest, for George and for Claude, who reads it later to help him. Shape: {"summary": "at most 120 words", "wins": [0 to 3 short phrases], "slipped": [0 to 3 short phrases], "focus": "one sentence for this week"}`,
+};
+
+const TYPED_CAP = 1000;
+const TRACKED_CAP = 80;
+
+// Job A — the check-in questions.
+export function questionsPrompt(doc, today) {
+  return { system: SYSTEM, prompt: `${coachContext(doc, today)}\n\n${JOBS.questions}` };
+}
+
+// Job B — feedback on his answers. A blank answer is sent as "(no answer)".
+export function feedbackPrompt(doc, today, questions, answers) {
+  const qa = questions.flatMap((q, i) => [`Q: ${clip(q, ANSWER_CAP)}`, `A: ${clip(answers?.[i], TYPED_CAP) || '(no answer)'}`]);
+  return {
+    system: SYSTEM,
+    prompt: `${coachContext(doc, today)}\n\nToday's check-in:\n${qa.join('\n')}\n\n${JOBS.feedback}`,
+  };
+}
+
+// Every goal and item he tracks or has been offered, so a new plan doesn't repeat them.
+function trackedTitles(doc) {
+  const live = (r) => r.status === 'active' || r.status === 'suggested';
+  return [...values(doc.goals).filter(live).sort(byOrder), ...values(doc.items).filter(live).sort(byOrder)]
+    .map((r) => clip(r.title, 80))
+    .filter(Boolean);
+}
+
+// Job C — shape a goal from what he typed.
+export function shapePrompt(doc, today, text) {
+  const titles = trackedTitles(doc);
+  return {
+    system: SYSTEM,
+    prompt: [
+      coachContext(doc, today),
+      '',
+      `Today's date: ${today}`,
+      `Already tracked: ${titles.length ? titles.slice(0, TRACKED_CAP).join('; ') : 'nothing yet'}`,
+      'Days of the week are numbered 1 (Monday) to 7 (Sunday). Time targets are in minutes.',
+      `George wrote: ${clip(text, TYPED_CAP)}`,
+      '',
+      JOBS.shape,
+    ].join('\n'),
+  };
+}
+
+function goalWeekLine(g) {
+  const detail = g.numeric
+    ? `${formatAmount(g.done, g.unit)} of ${formatAmount(g.total, g.unit)}, ${formatAmount(g.week, g.unit)} this week`
+    : `${g.done} of ${g.total} milestones`;
+  return `${clip(g.title, 80)} — ${g.pct}% (${detail})`;
+}
+
+// Job D — the digest of the week starting `monday`: its numbers, then its check-ins.
+export function digestPrompt(doc, monday) {
+  const s = weekStats(doc, monday);
+  const checkins = values(doc.journal)
+    .filter((c) => c.kind === 'checkin' && c.status === 'active' && c.day >= s.monday && c.day <= s.sunday)
+    .sort((a, b) => (a.day < b.day ? -1 : 1))
+    .map((c) => {
+      const answers = answersOf(c).map((a) => clip(a, ANSWER_CAP)).join(' / ') || '(none)';
+      return `${shortWeekday(c.day)}: answers: ${answers} — feedback: ${clip(c.feedback, 400) || '(none)'}`;
+    });
+  const lines = [
+    `Week: ${longDate(s.monday)} to ${longDate(s.sunday)} ${s.sunday.slice(0, 4)}`,
+    `Days: ${s.days.map((d) => `${shortWeekday(d.day)} ${d.done}/${d.total}`).join(' · ')}`,
+    ...section('Habits:', s.habits.slice(0, ROW_CAP).map((h) => `${clip(h.title, 80)}: ${h.done} of ${h.scheduled}`), s.habits.length, 'none'),
+    ...section('Weekly targets:', s.targets.slice(0, TARGET_CAP).map((t) => targetLine(t, t.total)), s.targets.length, 'none'),
+    `Tasks: ${s.tasks.done} of ${s.tasks.total} done`,
+    ...section('Goals:', s.goals.slice(0, GOAL_CAP).map(goalWeekLine), s.goals.length, 'none'),
+    ...section('Check-ins:', checkins, checkins.length, 'none'),
+  ];
+  return { system: SYSTEM, prompt: `${lines.join('\n')}\n\n${JOBS.digest}` };
+}
+
+// ---- Reply parsers -----------------------------------------------------------------------------
+// Each takes the JSON askGemini returned and gives back a clean object, or throws the "didn't make
+// sense" GeminiError. Strings are trimmed and capped, lists cut to the counts the prompts ask
+// for, and any field not asked for is dropped. Nothing is written until a parser has passed.
+
+const nonsense = () => new GeminiError('nonsense');
+const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const oneLine = (v, n) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n).trim() : '');
+const block = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n).trim() : '');
+const lineList = (v, max, n) => (Array.isArray(v) ? v.map((x) => oneLine(x, n)).filter(Boolean).slice(0, max) : []);
+const isRealDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && addDays(d, 0) === d;
+
+// → { questions: string[] }  1–3 questions, each at most 300 characters.
+export function parseQuestions(data) {
+  if (!isObject(data)) throw nonsense();
+  const questions = lineList(data.questions, 3, 300);
+  if (!questions.length) throw nonsense();
+  return { questions };
+}
+
+// → { feedback: string, tomorrow: { title }[] }  feedback at most 900 characters; 0–2 tasks.
+export function parseFeedback(data) {
+  if (!isObject(data)) throw nonsense();
+  const feedback = block(data.feedback, 900);
+  if (!feedback) throw nonsense();
+  const tomorrow = (Array.isArray(data.tomorrow) ? data.tomorrow : [])
+    .map((t) => ({ title: oneLine(isObject(t) ? t.title : t, 80) }))
+    .filter((t) => t.title)
+    .slice(0, 2);
+  return { feedback, tomorrow };
+}
+
+// Only the three repeats the prompt offers; anything else becomes daily.
+function cleanRepeat(r) {
+  if (isObject(r) && r.kind === 'weekdays' && Array.isArray(r.days)) {
+    const days = [...new Set(r.days.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))].sort((a, b) => a - b);
+    if (days.length) return { kind: 'weekdays', days };
+  }
+  if (isObject(r) && r.kind === 'perWeek' && typeof r.n === 'number' && Number.isFinite(r.n)) {
+    return { kind: 'perWeek', n: Math.min(7, Math.max(1, Math.round(r.n))) };
+  }
+  return { kind: 'daily' };
+}
+
+// A weekly target, or null when it can't be one: a positive number, in minutes for time.
+function cleanTarget(t) {
+  if (!isObject(t)) return null;
+  const unit = t.unit === undefined ? 'count' : t.unit;
+  if (unit !== 'count' && unit !== 'minutes') return null;
+  const title = oneLine(t.title, 80);
+  let target = typeof t.target === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(t.target) ? Number(t.target) : t.target;
+  if (typeof target !== 'number' || !Number.isFinite(target)) return null;
+  if (unit === 'minutes') target = Math.round(target);
+  if (!title || !(target > 0)) return null;
+  return { title, target, unit, unitLabel: unit === 'count' ? oneLine(t.unitLabel, 40) : '' };
+}
+
+// → { title, targetDate, milestones, habits, targets, why }  targetDate only if it's a real day
+// on or after today; up to 6 milestones, 2 habits and 2 targets.
+export function parseShape(data, today) {
+  if (!isObject(data)) throw nonsense();
+  const title = oneLine(data.title, 80);
+  if (!title) throw nonsense();
+  return {
+    title,
+    targetDate: isRealDay(data.targetDate) && data.targetDate >= today ? data.targetDate : null,
+    milestones: lineList(data.milestones, 6, 80),
+    habits: (Array.isArray(data.habits) ? data.habits : [])
+      .filter(isObject)
+      .map((h) => ({ title: oneLine(h.title, 80), repeat: cleanRepeat(h.repeat) }))
+      .filter((h) => h.title)
+      .slice(0, 2),
+    targets: (Array.isArray(data.targets) ? data.targets : []).map(cleanTarget).filter(Boolean).slice(0, 2),
+    why: oneLine(data.why, 300),
+  };
+}
+
+// → { summary, wins, slipped, focus }  summary at most 1200 characters; 0–3 wins and slips.
+export function parseDigest(data) {
+  if (!isObject(data)) throw nonsense();
+  const summary = block(data.summary, 1200);
+  if (!summary) throw nonsense();
+  return {
+    summary,
+    wins: lineList(data.wins, 3, 80),
+    slipped: lineList(data.slipped, 3, 80),
+    focus: oneLine(data.focus, 300),
+  };
 }
