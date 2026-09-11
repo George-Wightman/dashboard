@@ -144,13 +144,16 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     });
   }
 
-  function reorder(idList) {
-    const t = stamp();
-    idList.forEach((id, i) => {
-      const rec = doc.items[id];
-      if (rec && rec.order !== i + 1) doc.items[id] = { ...rec, order: i + 1, updated: t };
-    });
-    commit('local');
+  // Move `id` to just before `targetId` in `displayIds` (the current on-screen order). Patches
+  // only the moved record, so it can never clobber a concurrent edit to another visible row.
+  function moveBefore(id, targetId, displayIds) {
+    if (id === targetId) return;
+    const ids = displayIds.filter((x) => x !== id);
+    const targetIdx = ids.indexOf(targetId);
+    const prevId = targetIdx > 0 ? ids[targetIdx - 1] : null;
+    const orderOf = (rid) => doc.items[rid]?.order ?? 0;
+    const order = prevId ? (orderOf(prevId) + orderOf(targetId)) / 2 : orderOf(targetId) - 1;
+    patch('items', id, { order });
   }
 
   function replaceDoc(next, reason = 'sync') {
@@ -192,7 +195,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     addItem,
     updateItem: (id, changes) => patch('items', id, changes),
     archiveItem: (id) => patch('items', id, { status: 'archived', archivedOn: today() }),
-    reorder,
+    moveBefore,
     acceptSuggestion: (map, id) => patch(map, id, { status: 'active', created: today() }),
     dismissSuggestion: (map, id) => patch(map, id, { status: 'dismissed' }),
 

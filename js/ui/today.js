@@ -156,11 +156,8 @@ function enableDrag(li, row, ctx) {
     li.classList.remove('drop-before');
     const dragged = e.dataTransfer.getData('text/plain');
     if (!dragged || dragged === row.item.id) return;
-    const ids = [...document.querySelectorAll('#list li.row[draggable="true"]')]
-      .map((el) => el.dataset.id)
-      .filter((id) => id !== dragged);
-    ids.splice(ids.indexOf(row.item.id), 0, dragged);
-    ctx.store.reorder(ids);
+    const ids = [...document.querySelectorAll('#list li.row[draggable="true"]')].map((el) => el.dataset.id);
+    ctx.store.moveBefore(dragged, row.item.id, ids);
   });
 }
 

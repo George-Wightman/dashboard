@@ -95,6 +95,28 @@ test('sameDoc ignores key order', () => {
   assert.equal(sameDoc(a, emptyDoc()), false);
 });
 
+test('moveBefore only touches the dragged row, so it cannot undo a concurrent archive (F4)', () => {
+  const now = clock();
+  const laptop = makeStore({ prefix: 'L', now });
+  const x = laptop.addItem({ type: 'task', title: 'X' });
+  const y = laptop.addItem({ type: 'task', title: 'Y' });
+  const z = laptop.addItem({ type: 'task', title: 'Z' });
+  const snapshot = JSON.parse(JSON.stringify(laptop.doc()));
+
+  now.advance(60000);
+  // Phone archives Y concurrently, with a later `updated` stamp than laptop currently has for Y.
+  const phoneDoc = JSON.parse(JSON.stringify(snapshot));
+  phoneDoc.items[y.id] = { ...phoneDoc.items[y.id], status: 'archived', archivedOn: '2026-09-10', updated: now().toISOString() };
+
+  now.advance(60000);
+  // Laptop drags X before Z; only X's record should change.
+  laptop.moveBefore(x.id, z.id, [x.id, y.id, z.id]);
+  assert.equal(laptop.doc().items[y.id].updated, snapshot.items[y.id].updated);
+
+  const merged = mergeDocs(laptop.doc(), phoneDoc);
+  assert.equal(merged.items[y.id].status, 'archived');
+});
+
 test('importJson merges a backup and cannot roll back newer work', () => {
   const now = clock();
   const store = makeStore({ now });

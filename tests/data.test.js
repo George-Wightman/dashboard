@@ -175,17 +175,32 @@ test('updates stamp a later updated time', () => {
   assert.throws(() => store.updateItem('missing', { title: 'x' }));
 });
 
-test('reorder rewrites order and only touches moved rows', () => {
+test('moveBefore patches only the moved row', () => {
   const now = clock();
   const store = makeStore({ now });
-  const a = store.addItem({ type: 'task', title: 'A' });
-  const b = store.addItem({ type: 'task', title: 'B' });
-  const c = store.addItem({ type: 'task', title: 'C' });
+  const a = store.addItem({ type: 'task', title: 'A' }); // order 1
+  const b = store.addItem({ type: 'task', title: 'B' }); // order 2
+  const c = store.addItem({ type: 'task', title: 'C' }); // order 3
   now.advance(1000);
-  store.reorder([c.id, a.id, b.id]);
-  const items = store.doc().items;
-  assert.deepEqual([items[c.id].order, items[a.id].order, items[b.id].order], [1, 2, 3]);
+  store.moveBefore(c.id, a.id, [a.id, b.id, c.id]);
+  let items = store.doc().items;
+  assert.equal(items[c.id].order, 0);
   assert.equal(items[c.id].updated > c.updated, true);
+  assert.equal(items[a.id].updated, a.updated);
+  assert.equal(items[b.id].updated, b.updated);
+
+  now.advance(1000);
+  store.moveBefore(c.id, b.id, [a.id, b.id, c.id]);
+  items = store.doc().items;
+  assert.equal(items[c.id].order, 1.5);
+});
+
+test('moveBefore is a no-op when the dragged row is dropped on itself', () => {
+  const store = makeStore();
+  const a = store.addItem({ type: 'task', title: 'A' });
+  const before = store.doc().items[a.id];
+  store.moveBefore(a.id, a.id, [a.id]);
+  assert.equal(store.doc().items[a.id], before);
 });
 
 test('listeners get a reason; identical replaceDoc is silent', () => {
