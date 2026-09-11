@@ -195,6 +195,49 @@ test('moveBefore patches only the moved row', () => {
   assert.equal(items[c.id].order, 1.5);
 });
 
+test('moveBefore reorders within the dragged row\'s own group (G1)', () => {
+  const now = clock();
+  const store = makeStore({ now });
+  const a = store.addItem({ type: 'task', title: 'A', order: 1 });
+  const b = store.addItem({ type: 'task', title: 'B', order: 2 });
+  const c = store.addItem({ type: 'task', title: 'C', order: 3 });
+  const d = store.addItem({ type: 'task', title: 'D', order: 4 });
+
+  now.advance(1000);
+  store.moveBefore(d.id, c.id, [c.id, d.id]);
+  const items = store.doc().items;
+  assert.equal(items[d.id].order, 2);
+  assert.ok(items[d.id].order < items[c.id].order); // D then C
+  assert.equal(items[a.id].updated, a.updated);
+  assert.equal(items[b.id].updated, b.updated);
+});
+
+test('moveBefore moves to the end of its own group when dropped on a row from the other group (G1)', () => {
+  const store = makeStore();
+  const a = store.addItem({ type: 'task', title: 'A', order: 1 });
+  store.addItem({ type: 'task', title: 'B', order: 2 });
+  const c = store.addItem({ type: 'task', title: 'C', order: 3 });
+  const d = store.addItem({ type: 'task', title: 'D', order: 4 });
+  store.moveBefore(c.id, a.id, [c.id, d.id]);
+  assert.equal(store.doc().items[c.id].order, 5); // after D
+});
+
+test('moveBefore renumbers a tied group when dropped mid-tie (G1)', () => {
+  const now = clock();
+  const store = makeStore({ now });
+  const a = store.addItem({ type: 'task', title: 'A', order: 5 });
+  const b = store.addItem({ type: 'task', title: 'B', order: 5 });
+  const c = store.addItem({ type: 'task', title: 'C', order: 5 });
+  const aUpdated = a.updated;
+
+  now.advance(1000);
+  store.moveBefore(c.id, b.id, [a.id, b.id, c.id]);
+  const items = store.doc().items;
+  const sorted = [a.id, b.id, c.id].sort((x, y) => items[x].order - items[y].order);
+  assert.deepEqual(sorted, [a.id, c.id, b.id]);
+  assert.equal(items[a.id].updated, aUpdated);
+});
+
 test('moveBefore is a no-op when the dragged row is dropped on itself', () => {
   const store = makeStore();
   const a = store.addItem({ type: 'task', title: 'A' });

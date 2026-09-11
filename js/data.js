@@ -144,16 +144,39 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     });
   }
 
-  // Move `id` to just before `targetId` in `displayIds` (the current on-screen order). Patches
-  // only the moved record, so it can never clobber a concurrent edit to another visible row.
-  function moveBefore(id, targetId, displayIds) {
+  // Move `id` to just before `targetId` within `groupIds` (the on-screen order of the draggable
+  // rows in the dragged row's own done/undone group, including `id`). The on-screen list is
+  // shown as undone-then-done, so it isn't globally sorted by `order` — reordering has to stay
+  // within the dragged row's own group, or a neighbour's midpoint can come from the wrong group.
+  // Patches only the moved record (or, on a tie, every record whose order actually changes with
+  // one shared stamp), so it can never clobber a concurrent edit to another visible row.
+  function moveBefore(id, targetId, groupIds) {
     if (id === targetId) return;
-    const ids = displayIds.filter((x) => x !== id);
-    const targetIdx = ids.indexOf(targetId);
-    const prevId = targetIdx > 0 ? ids[targetIdx - 1] : null;
+    const list = groupIds.filter((x) => x !== id);
     const orderOf = (rid) => doc.items[rid]?.order ?? 0;
-    const order = prevId ? (orderOf(prevId) + orderOf(targetId)) / 2 : orderOf(targetId) - 1;
-    patch('items', id, { order });
+    const t = list.indexOf(targetId);
+    if (t === -1) {
+      // Dropped on a row of the other group: move to the end of this row's own group.
+      const order = list.length ? Math.max(...list.map(orderOf)) + 1 : orderOf(id);
+      patch('items', id, { order });
+      return;
+    }
+    const hi = orderOf(targetId);
+    const lo = t > 0 ? orderOf(list[t - 1]) : hi - 2;
+    if (lo < hi) {
+      patch('items', id, { order: (lo + hi) / 2 });
+      return;
+    }
+    // A tie: the midpoint can't separate `id` from `targetId`, so renumber the whole group.
+    const base = Math.min(...groupIds.map(orderOf));
+    const renumbered = [...list.slice(0, t), id, ...list.slice(t)];
+    const t2 = stamp();
+    for (let i = 0; i < renumbered.length; i++) {
+      const rid = renumbered[i];
+      const order = base + i;
+      if (orderOf(rid) !== order) doc.items[rid] = { ...doc.items[rid], order, updated: t2 };
+    }
+    commit('local');
   }
 
   function replaceDoc(next, reason = 'sync') {
