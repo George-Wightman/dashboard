@@ -163,11 +163,13 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     }
     const hi = orderOf(targetId);
     const lo = t > 0 ? orderOf(list[t - 1]) : hi - 2;
-    if (lo < hi) {
-      patch('items', id, { order: (lo + hi) / 2 });
+    const mid = (lo + hi) / 2;
+    if (lo < mid && mid < hi) {
+      patch('items', id, { order: mid });
       return;
     }
-    // A tie: the midpoint can't separate `id` from `targetId`, so renumber the whole group.
+    // A tie, or adjacent orders so close that double-precision arithmetic can't represent a
+    // midpoint strictly between them: either way, renumber the whole group.
     const base = Math.min(...groupIds.map(orderOf));
     const renumbered = [...list.slice(0, t), id, ...list.slice(t)];
     const t2 = stamp();

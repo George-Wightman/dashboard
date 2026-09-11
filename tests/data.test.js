@@ -238,6 +238,19 @@ test('moveBefore renumbers a tied group when dropped mid-tie (G1)', () => {
   assert.equal(items[a.id].updated, aUpdated);
 });
 
+test('moveBefore renumbers when the midpoint gap is exhausted by float precision (H6)', () => {
+  const store = makeStore();
+  // Adjacent orders this close have no double-precision value strictly between them: the naive
+  // midpoint rounds to one of the two ends, so the drop must renumber instead of colliding.
+  const a = store.addItem({ type: 'task', title: 'A', order: 1 });
+  const c = store.addItem({ type: 'task', title: 'C', order: 5 });
+  const b = store.addItem({ type: 'task', title: 'B', order: 1 + Number.EPSILON });
+  store.moveBefore(c.id, b.id, [a.id, c.id, b.id]);
+  const items = store.doc().items;
+  assert.ok(items[a.id].order < items[c.id].order);
+  assert.ok(items[c.id].order < items[b.id].order);
+});
+
 test('moveBefore is a no-op when the dragged row is dropped on itself', () => {
   const store = makeStore();
   const a = store.addItem({ type: 'task', title: 'A' });
