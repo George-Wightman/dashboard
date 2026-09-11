@@ -5,6 +5,7 @@ import { longDate } from './dates.js';
 import { dayCompletion } from './schedule.js';
 import { renderToday, initAddBox } from './ui/today.js';
 import { renderSide } from './ui/side.js';
+import { openEditor } from './ui/edit.js';
 
 const store = createStore({ storage: localStorage });
 const ui = { entriesFor: null, amountFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false };
@@ -12,7 +13,7 @@ const ctx = {
   store,
   ui,
   render,
-  openEditor: () => {},   // Task 12
+  openEditor: (opts) => openEditor(ctx, opts),
   openSettings: () => {}, // Task 13
 };
 
