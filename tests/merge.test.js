@@ -6,14 +6,17 @@ import { makeStore, clock } from './helpers.js';
 
 const S = stableStringify;
 
+// An unknown top-level map, alongside the four known ones, to prove merging generalises.
+const ALL_MAPS = [...MAPS, 'events'];
+
 // Deterministic pseudo-random documents with overlapping ids and frequent timestamp ties.
 function makeDoc(seed, n = 14) {
   let s = seed;
   const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647; // Park–Miller: exact in doubles
-  const doc = emptyDoc();
+  const doc = { ...emptyDoc(), events: {} };
   for (let i = 0; i < n; i++) {
     const id = `r${Math.floor(rnd() * 20)}`;
-    const map = MAPS[Math.floor(rnd() * 4)];
+    const map = ALL_MAPS[Math.floor(rnd() * ALL_MAPS.length)];
     doc[map][id] = {
       id,
       title: `t${Math.floor(rnd() * 3)}`,
@@ -59,12 +62,12 @@ test('three devices converge whatever the order', () => {
   }
 });
 
-test('mergeDocs never drops a record', () => {
+test('mergeDocs never drops a record, known map or unknown', () => {
   for (let seed = 1; seed <= 50; seed++) {
     const a = makeDoc(seed);
     const b = makeDoc(seed + 1000);
     const m = mergeDocs(a, b);
-    for (const map of MAPS) {
+    for (const map of ALL_MAPS) {
       for (const id of [...Object.keys(a[map]), ...Object.keys(b[map])]) assert.ok(m[map][id], `${map}/${id}`);
     }
   }
@@ -78,6 +81,38 @@ test('a later tombstone beats an earlier tick, and vice versa', () => {
   assert.equal(mergeDocs(a, b).logs.l.status, 'archived');
   const retick = { ...tick, status: 'active', updated: '2026-09-10T09:02:00.000Z' };
   assert.equal(mergeDocs({ ...emptyDoc(), logs: { l: retick } }, b).logs.l.status, 'active');
+});
+
+test('an unknown top-level map merges per id, like the known maps (F5)', () => {
+  const a = { ...emptyDoc(), events: { e1: { id: 'e1', title: 'A', updated: '2026-09-10T09:00:00.000Z' } } };
+  const b = {
+    ...emptyDoc(),
+    events: {
+      e1: { id: 'e1', title: 'B', updated: '2026-09-10T09:05:00.000Z' },
+      e2: { id: 'e2', title: 'Only in b', updated: '2026-09-10T09:00:00.000Z' },
+    },
+  };
+  const m = mergeDocs(a, b);
+  assert.equal(m.events.e1.title, 'B'); // later updated wins, same as a known map
+  assert.equal(m.events.e2.title, 'Only in b');
+  assert.equal(mergeDocs(a, null).events.e1.title, 'A'); // present on one side only
+  assert.equal(mergeDocs(null, b).events.e2.title, 'Only in b');
+});
+
+test('an unknown scalar top-level key passes through (F5)', () => {
+  const a = { ...emptyDoc(), deviceName: 'laptop' };
+  const b = { ...emptyDoc(), deviceName: 'phone' };
+  assert.equal(mergeDocs(a, null).deviceName, 'laptop');
+  assert.equal(mergeDocs(null, b).deviceName, 'phone');
+  const merged = mergeDocs(a, b);
+  assert.equal(merged.deviceName, S(a.deviceName) >= S(b.deviceName) ? 'laptop' : 'phone');
+});
+
+test('top-level keys come out sorted, after schema (F5)', () => {
+  const a = { ...emptyDoc(), zeta: 1, alpha: 2 };
+  const keys = Object.keys(mergeDocs(a, null));
+  assert.equal(keys[0], 'schema');
+  assert.deepEqual(keys.slice(1), [...keys.slice(1)].sort());
 });
 
 test('null sides, schema and unknown record fields', () => {
