@@ -147,15 +147,32 @@ function whenIdle() {
   });
 }
 
+// Never synced: which Monday's digest this device last tried in the background, so re-opening
+// the page on the same phone the same week doesn't spend quota on it again. Storage access is
+// wrapped in try/catch — private browsing or a full localStorage must not break the check.
+const DIGEST_TRIED_KEY = 'dash_digest_tried';
+
+function digestTriedMonday() {
+  try { return localStorage.getItem(DIGEST_TRIED_KEY); } catch { return null; }
+}
+
+function setDigestTriedMonday(monday) {
+  try { localStorage.setItem(DIGEST_TRIED_KEY, monday); } catch { /* best effort */ }
+}
+
 // Last week's digest, written in the background once a new week has started and last week had
-// anything in it (digestDue). At most one attempt per week while the page is open; a failure is
-// silent and leaves the panel's "Write last week's digest" link.
+// anything in it (digestDue). At most one attempt per device per week, whether that's this page
+// sitting open all week or a fresh open on the same phone; a failure is silent and leaves the
+// panel's "Write last week's digest" link (which ignores this marker) in place.
 function maybeWriteDigest() {
   if (ui.coach.digestTried) return;
   if (!ctx.coach.keys().length) return;
   if (navigator.onLine === false) return;
-  if (!digestDue(store.doc(), store.today())) return;
+  const monday = digestDue(store.doc(), store.today());
+  if (!monday) return;
+  if (digestTriedMonday() === monday) return;
   ui.coach.digestTried = true;
+  setDigestTriedMonday(monday);
   writeDigest(ctx, { quiet: true });
 }
 
