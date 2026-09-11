@@ -115,9 +115,14 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   }
 
   function toggleDone(itemId, day = today()) {
-    const existing = Object.values(doc.logs).find((l) =>
+    const existing = Object.values(doc.logs).filter((l) =>
       l.itemId === itemId && l.kind === 'done' && l.day === day && l.status === 'active');
-    if (existing) return patch('logs', existing.id, { status: 'archived' });
+    if (existing.length) {
+      const t = stamp();
+      for (const rec of existing) doc.logs[rec.id] = { ...rec, status: 'archived', updated: t };
+      commit('local');
+      return;
+    }
     return create('logs', { itemId, goalId: null, kind: 'done', day, at: stamp(), note: '' });
   }
 

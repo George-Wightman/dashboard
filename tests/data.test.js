@@ -95,6 +95,25 @@ test('toggleDone ticks, tombstones, and ticks again', () => {
   assert.equal(logs.filter((l) => l.status === 'active').length, 1);
 });
 
+test('toggleDone unticks every active tick for the day, not just one', () => {
+  const store = makeStore();
+  const item = store.addItem({ type: 'habit', title: 'Gym' });
+  const day = store.today();
+  const doc = JSON.parse(JSON.stringify(store.doc()));
+  const dup = (id) => ({
+    id, itemId: item.id, goalId: null, kind: 'done', day, note: '', at: '2026-09-10T09:00:00.000Z',
+    source: 'me', status: 'active', created: day, archivedOn: null, updated: '2026-09-10T09:00:00.000Z',
+  });
+  doc.logs.dup1 = dup('dup1');
+  doc.logs.dup2 = dup('dup2');
+  store.replaceDoc(doc);
+  const activeFor = () => Object.values(store.doc().logs)
+    .filter((l) => l.itemId === item.id && l.kind === 'done' && l.status === 'active');
+  assert.equal(activeFor().length, 2);
+  store.toggleDone(item.id, day);
+  assert.equal(activeFor().length, 0);
+});
+
 test('logAmount and removeLog', () => {
   const store = makeStore();
   const quota = store.addItem({ type: 'quota', title: 'Job search', target: 360, unit: 'minutes' });
