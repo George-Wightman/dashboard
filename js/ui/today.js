@@ -156,7 +156,7 @@ function enableDrag(li, row, ctx) {
     li.classList.remove('drop-before');
     const dragged = e.dataTransfer.getData('text/plain');
     if (!dragged || dragged === row.item.id) return;
-    const draggedEl = document.querySelector(`#list li.row[data-id="${dragged}"]`);
+    const draggedEl = [...document.querySelectorAll('#list li.row')].find((el) => el.dataset.id === dragged);
     if (!draggedEl) return;
     const done = draggedEl.classList.contains('done');
     const groupIds = [...document.querySelectorAll('#list li.row[draggable="true"]')]
