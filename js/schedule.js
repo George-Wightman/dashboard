@@ -130,6 +130,9 @@ function occurrenceStreak(doc, item, today) {
 function weekTotals(doc, id) {
   const totals = new Map();
   for (const l of activeLogs(doc, (l) => l.kind === 'amount' && (l.itemId === id || l.goalId === id))) {
+    // A log whose day isn't a real YYYY-MM-DD string can't be placed in a week — skip it, matching
+    // weekTotal's old behaviour of silently ignoring what it can't place, instead of throwing.
+    if (typeof l.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(l.day)) continue;
     const w = weekStart(l.day);
     totals.set(w, (totals.get(w) ?? 0) + l.amount);
   }

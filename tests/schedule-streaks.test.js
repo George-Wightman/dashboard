@@ -60,6 +60,20 @@ test('quota: consecutive weeks meeting the target', () => {
   assert.deepEqual(streak(doc, doc.items.q, TODAY), { current: 1, best: 1 });
 });
 
+test('quota: a log with a malformed day is skipped, not thrown on (H2)', () => {
+  const q = { id: 'q', type: 'quota', target: 3, unit: 'count', created: '2026-08-24' };
+  const doc = fixture({
+    items: [q],
+    logs: [
+      amount('bad1', 'q', null, 5),
+      amount('bad2', 'q', 12345, 5),
+      amount('good', 'q', '2026-09-08', 3),
+    ],
+  });
+  assert.doesNotThrow(() => streak(doc, doc.items.q, TODAY));
+  assert.deepEqual(streak(doc, doc.items.q, TODAY), { current: 1, best: 1 });
+});
+
 test('tasks have no streak', () => {
   const t = { id: 't', type: 'task', date: TODAY, created: TODAY };
   const doc = fixture({ items: [t] });
