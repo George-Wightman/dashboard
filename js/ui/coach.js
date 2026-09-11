@@ -49,7 +49,9 @@ export function checkinNow(ctx) {
 // ---- The check-in -----------------------------------------------------------------------------
 
 // Job A: Gemini's questions about today, saved as soon as they arrive (so they survive a reload
-// or a switch of device).
+// or a switch of device). A best-effort sync first pulls in anything another device already
+// wrote; if that turns out to be a finished check-in, the reply that comes back is discarded —
+// the existing record is what the panel will show, never overwritten by a stale write.
 export async function startCheckin(ctx) {
   const { store, ui } = ctx;
   const c = ui.coach;
@@ -58,11 +60,15 @@ export async function startCheckin(ctx) {
   c.error = '';
   c.busy = 'questions';
   ctx.render();
+  try { await ctx.syncNow?.(); } catch { /* best effort */ }
   try {
     const { reply, model } = await consult(ctx, questionsPrompt(store.doc(), today), parseQuestions);
-    c.answers = [];
-    c.notNow = '';
-    store.saveJournal({ kind: 'checkin', day: today, questions: reply.questions, answers: [], feedback: '', tomorrowIds: [], model });
+    const existing = checkinOf(store.doc(), today);
+    if (!existing?.questions?.length && !existing?.feedback) {
+      c.answers = [];
+      c.notNow = '';
+      store.saveJournal({ kind: 'checkin', day: today, questions: reply.questions, answers: [], feedback: '', tomorrowIds: [], model });
+    }
   } catch (e) {
     c.error = e.message;
   } finally {
@@ -72,7 +78,9 @@ export async function startCheckin(ctx) {
 }
 
 // Job B: his answers go to Gemini; its feedback and at most two tasks for tomorrow come back.
-// The tasks land as suggestions dated tomorrow, then the check-in is saved with the answers.
+// The tasks land as suggestions dated tomorrow, then the check-in is saved with the answers. The
+// questions are captured before the request goes out; if the record has moved on by the time the
+// reply lands — another device finished it — nothing is overwritten and no tomorrow tasks land.
 export async function sendCheckin(ctx) {
   const { store, ui } = ctx;
   const c = ui.coach;
@@ -80,7 +88,8 @@ export async function sendCheckin(ctx) {
   const today = store.today();
   const rec = checkinOf(store.doc(), today);
   if (!rec?.questions?.length) return;
-  const answers = rec.questions.map((_, i) => String(c.answers[i] ?? '').trim());
+  const { questions } = rec;
+  const answers = questions.map((_, i) => String(c.answers[i] ?? '').trim());
   if (!answers.some(Boolean)) {
     c.error = 'Answer at least one question first.';
     ctx.render();
@@ -90,11 +99,17 @@ export async function sendCheckin(ctx) {
   c.busy = 'feedback';
   ctx.render();
   try {
-    const { reply, model } = await consult(ctx, feedbackPrompt(store.doc(), today, rec.questions, answers), parseFeedback);
-    const { items } = store.addPlan({ tasks: reply.tomorrow.map((t) => ({ title: t.title, date: addDays(today, 1) })) });
-    store.saveJournal({ kind: 'checkin', day: today, answers, feedback: reply.feedback, tomorrowIds: items.map((i) => i.id), model });
-    c.answers = [];
-    c.feedbackOpen = true;
+    const { reply, model } = await consult(ctx, feedbackPrompt(store.doc(), today, questions, answers), parseFeedback);
+    const current = checkinOf(store.doc(), today);
+    const sameQuestions = JSON.stringify(current?.questions) === JSON.stringify(questions);
+    if (current?.feedback || !sameQuestions) {
+      c.error = 'This check-in was changed on another device — here\'s what it says now.';
+    } else {
+      const { items } = store.addPlan({ tasks: reply.tomorrow.map((t) => ({ title: t.title, date: addDays(today, 1) })) });
+      store.saveJournal({ kind: 'checkin', day: today, questions, answers, feedback: reply.feedback, tomorrowIds: items.map((i) => i.id), model });
+      c.answers = [];
+      c.feedbackOpen = true;
+    }
   } catch (e) {
     c.error = e.message;
   } finally {
