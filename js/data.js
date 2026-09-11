@@ -6,6 +6,7 @@ import { MAPS, emptyDoc, stableStringify } from './doc.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
+export const CORRUPT_KEY = 'dash_data_corrupt';
 export const DEFAULT_SETTINGS = { token: '', repo: '', dayStartHour: 4 };
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
@@ -25,6 +26,28 @@ function withMaps(doc) {
   return doc;
 }
 
+// Unreadable saved data is set aside under CORRUPT_KEY, never silently overwritten.
+function loadDoc(storage) {
+  let raw = null;
+  try {
+    raw = storage.getItem(DATA_KEY);
+  } catch {
+    return { doc: emptyDoc(), error: null };
+  }
+  if (!raw) return { doc: emptyDoc(), error: null };
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { doc: withMaps(parsed), error: null };
+  } catch {
+    // fall through to setting it aside
+  }
+  try { storage.setItem(CORRUPT_KEY, raw); } catch { /* nothing more can be done */ }
+  return {
+    doc: emptyDoc(),
+    error: `Saved data couldn't be read, so this device started empty. The unreadable copy was kept under ${CORRUPT_KEY}.`,
+  };
+}
+
 function requireTitle(title, what) {
   const t = String(title ?? '').trim();
   if (!t) throw new Error(`${what} needs a title`);
@@ -32,9 +55,10 @@ function requireTitle(title, what) {
 }
 
 export function createStore({ storage, now = () => new Date(), newId = () => crypto.randomUUID() }) {
-  let doc = withMaps(readJson(storage, DATA_KEY) ?? emptyDoc());
+  const loaded = loadDoc(storage);
+  let doc = loaded.doc;
   let settings = { ...DEFAULT_SETTINGS, ...(readJson(storage, SETTINGS_KEY) ?? {}) };
-  let saveError = null;
+  let saveError = loaded.error;
   const listeners = new Set();
 
   const stamp = () => now().toISOString();

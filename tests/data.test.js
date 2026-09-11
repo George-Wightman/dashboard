@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, DATA_KEY, SETTINGS_KEY } from '../js/data.js';
+import { createStore, DATA_KEY, SETTINGS_KEY, CORRUPT_KEY } from '../js/data.js';
 import { stableStringify } from '../js/doc.js';
 import { MemoryStorage, FullStorage, clock, ids, makeStore } from './helpers.js';
 
@@ -48,6 +48,14 @@ test('a store reloads what it saved', () => {
   const item = first.addItem({ type: 'task', title: 'Persist me' });
   const second = createStore({ storage, now: clock(), newId: ids('x') });
   assert.equal(second.doc().items[item.id].title, 'Persist me');
+});
+
+test('unreadable saved data is kept aside and reported, not silently lost', () => {
+  const storage = new MemoryStorage({ dash_data: '{not json' });
+  const store = makeStore({ storage });
+  assert.deepEqual(store.doc().items, {});
+  assert.equal(storage.getItem(CORRUPT_KEY), '{not json');
+  assert.match(store.saveError(), /couldn't be read/);
 });
 
 test('toggleDone ticks, tombstones, and ticks again', () => {
