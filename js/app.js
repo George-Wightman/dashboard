@@ -19,6 +19,7 @@ const ctx = {
   openEditor: (opts) => openEditor(ctx, opts),
   openSettings: () => openSettings(ctx),
   syncNow: () => scheduler.now(),
+  syncProblem: () => (sync.state === 'failing' ? sync.error : ''),
 };
 
 let shownDay = store.today();
@@ -28,7 +29,7 @@ function syncLabel() {
     case 'off': return ['on this device', 'Sync is off. Add a repo and an access key in settings.'];
     case 'syncing': return ['syncing…', ''];
     case 'offline': return ['offline', "Can't reach GitHub. Working on this device."];
-    case 'failing': return ['sync failing', sync.error ?? ''];
+    case 'failing': return ['sync failing', `${sync.error ?? ''} — click for details`];
     default: return [`synced ${sync.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 'Click to sync now'];
   }
 }
@@ -125,7 +126,7 @@ store.subscribe((reason) => {
 
 initAddBox(ctx);
 document.getElementById('settings-button').addEventListener('click', () => ctx.openSettings());
-document.getElementById('sync-status').addEventListener('click', () => scheduler.now());
+document.getElementById('sync-status').addEventListener('click', () => (sync.state === 'failing' ? ctx.openSettings() : scheduler.now()));
 window.addEventListener('focus', wake);
 window.addEventListener('online', () => scheduler.now());
 // The page may never come back (backgrounded tab killed, tab closed): a held other-window save

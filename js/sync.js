@@ -35,16 +35,29 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
     return new Error(`GitHub ${res.status}${message ? `: ${message}` : ''}`);
   }
 
+  // Plain-English cause for the two ways a bad or under-scoped key shows up: 401/403 on any
+  // request, or a 404 on PUT (GitHub answers 404 rather than 403 when a fine-grained key can't
+  // see the repo at all). Everything else keeps GitHub's own message.
+  async function explain(res, repo, where) {
+    if (res.status === 401 || res.status === 403) {
+      return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}`);
+    }
+    if (res.status === 404 && where === 'put') {
+      return new Error(`GitHub can't see ${repo} with this key — check the repo name, and that the key was given access to that repo`);
+    }
+    return failure(res);
+  }
+
   return {
     async get() {
       const res = await fetch(url, { headers, cache: 'no-store' });
       if (res.status === 404) return null;
-      if (!res.ok) throw await failure(res);
+      if (!res.ok) throw await explain(res, repo, 'get');
       const body = await res.json();
       // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead.
       if (!body.content || body.encoding === 'none') {
         const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store' });
-        if (!blobRes.ok) throw await failure(blobRes);
+        if (!blobRes.ok) throw await explain(blobRes, repo, 'get');
         const blob = await blobRes.json();
         return { doc: JSON.parse(decodeBase64(blob.content)), sha: body.sha };
       }
@@ -63,7 +76,7 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
         if (/sha/i.test(err.message)) throw new ConflictError(err.message);
         throw err;
       }
-      if (!res.ok) throw await failure(res);
+      if (!res.ok) throw await explain(res, repo, 'put');
       return (await res.json()).content.sha;
     },
   };

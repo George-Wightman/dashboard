@@ -81,8 +81,23 @@ test('client.get falls back to the blobs API for files over 1MB (F7)', async () 
 test('client.get: 404 means no file yet; other errors throw', async () => {
   const missing = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(404, { message: 'Not Found' }) });
   assert.equal(await missing.get(), null);
-  const broken = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(401, { message: 'Bad credentials' }) });
-  await assert.rejects(broken.get(), /GitHub 401: Bad credentials/);
+  const broken = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(500, { message: 'oops' }) });
+  await assert.rejects(broken.get(), /GitHub 500: oops/);
+});
+
+test('client.get: 401 or 403 explain the access key, naming the repo', async () => {
+  const unauthorized = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(401, { message: 'Bad credentials' }) });
+  await assert.rejects(unauthorized.get(), /refused the access key/);
+  await assert.rejects(unauthorized.get(), /o\/r/);
+  const forbidden = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(403, { message: 'Forbidden' }) });
+  await assert.rejects(forbidden.get(), /refused the access key/);
+});
+
+test('client.put: 401 or 403 explain the access key; 404 explains the repo is not visible', async () => {
+  const forbidden = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(403, { message: 'Forbidden' }) });
+  await assert.rejects(forbidden.put({}, 'x'), /refused the access key/);
+  const notFound = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(404, { message: 'Not Found' }) });
+  await assert.rejects(notFound.put({}, 'x'), /can't see o\/r with this key/);
 });
 
 test('client.put sends content and sha; 409 is a ConflictError', async () => {

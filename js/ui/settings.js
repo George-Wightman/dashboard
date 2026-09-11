@@ -12,6 +12,8 @@ export function openSettings(ctx) {
   const dayStart = h('input', { type: 'number', name: 'dayStartHour', min: 0, max: 12, step: 1, value: s.dayStartHour });
   const status = h('div', { class: 'error', role: 'status' });
   const file = h('input', { type: 'file', accept: 'application/json,.json', hidden: true });
+  const problem = ctx.syncProblem();
+  const syncStatus = problem ? h('p', { class: 'error' }, `Last sync failed: ${problem}`) : null;
 
   file.addEventListener('change', async () => {
     const chosen = file.files[0];
@@ -52,6 +54,7 @@ export function openSettings(ctx) {
 
   dialog.replaceChildren(h('form', { onsubmit: save },
     h('h2', {}, 'Settings'),
+    syncStatus,
     h('label', { class: 'field' }, h('span', {}, 'Sync repo'), repo),
     h('label', { class: 'field' }, h('span', {}, 'GitHub access key'), token),
     h('p', { class: 'note' }, 'A fine-grained token with Contents read and write on the sync repo only. It stays on this device and is never synced.'),
