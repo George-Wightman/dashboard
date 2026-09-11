@@ -52,13 +52,9 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
       });
       if (res.status === 409) throw new ConflictError(`GitHub 409`);
       if (res.status === 422) {
-        let message = '';
-        try { message = (await res.json())?.message ?? ''; } catch { /* no body */ }
-        if (/sha/i.test(message)) {
-          throw new ConflictError(`GitHub 422: ${message}`);
-        } else {
-          throw new Error(`GitHub 422${message ? `: ${message}` : ''}`);
-        }
+        const err = await failure(res);
+        if (/sha/i.test(err.message)) throw new ConflictError(err.message);
+        throw err;
       }
       if (!res.ok) throw await failure(res);
       return (await res.json()).content.sha;

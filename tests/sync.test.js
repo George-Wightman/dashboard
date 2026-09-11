@@ -167,6 +167,22 @@ test('gives up quietly after three conflicts', async () => {
   assert.equal(gets, 3);
 });
 
+test('a non-conflict error is reported at once, without retrying', async () => {
+  let gets = 0;
+  const client = createGitHubClient({
+    token: 't', repo: 'o/r',
+    fetch: async (url, init) => {
+      if (!init.method) { gets++; return jsonResponse(404, { message: 'Not Found' }); }
+      return jsonResponse(422, { message: 'content is not valid Base64' });
+    },
+  });
+  const store = makeStore();
+  store.addItem({ type: 'task', title: 'A' });
+  const result = await syncOnce({ store, client });
+  assert.deepEqual(result, { ok: false, error: 'GitHub 422: content is not valid Base64' });
+  assert.equal(gets, 1);
+});
+
 test('a failed read leaves local data alone', async () => {
   const store = makeStore();
   store.addItem({ type: 'task', title: 'A' });
