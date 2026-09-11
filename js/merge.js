@@ -41,7 +41,12 @@ function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
     // differently-grouped merges (a∪b)∪c vs a∪(b∪c) could disagree on the winner.
     const x = normalise && lm[id] ? normaliseRecord(lm[id], repairArchivedOn) : lm[id];
     const y = normalise && rm[id] ? normaliseRecord(rm[id], repairArchivedOn) : rm[id];
-    map[id] = x != null && y != null ? pickWinner(x, y) : (x ?? y);
+    // null and absent are both "nothing there", but not the same nothing: `x ?? y` alone picks
+    // whichever side happens to be undefined, which is order-dependent when one side is null and
+    // the other absent. Prefer null over absent, in both orders, when neither side has a record.
+    if (x != null && y != null) map[id] = pickWinner(x, y);
+    else if (x == null && y == null) map[id] = x === undefined ? y : x;
+    else map[id] = x ?? y;
   }
   return map;
 }

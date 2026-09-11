@@ -120,6 +120,12 @@ test('unknown maps with falsy values merge symmetrically (G3)', () => {
   assert.equal(S(mergeDocs(a, b)), S(mergeDocs(b, a)));
 });
 
+test('null beats absent in an unknown map, in both merge orders (H4)', () => {
+  const a = { ...emptyDoc(), prefs: { showDone: null } };
+  const b = { ...emptyDoc(), prefs: {} };
+  assert.equal(S(mergeDocs(a, b)), S(mergeDocs(b, a)));
+});
+
 test('an unknown top-level map merges per id, like the known maps (F5)', () => {
   const a = { ...emptyDoc(), events: { e1: { id: 'e1', title: 'A', updated: '2026-09-10T09:00:00.000Z' } } };
   const b = {
