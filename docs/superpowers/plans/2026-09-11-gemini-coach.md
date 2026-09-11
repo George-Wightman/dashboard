@@ -67,9 +67,15 @@ Binding values from the design (copied verbatim; do not change them):
 - Caps the design doesn't give: questions 300 characters, `why` and `focus` 300, `unitLabel` 40. A `weekdays` repeat keeps only days 1–7 (none left → daily). A `perWeek` `n` is clamped to 1–7. A target whose unit isn't `count` or `minutes` is dropped; a missing unit means `count`.
 - The shaping prompt adds three lines before the verbatim job text: today's ISO date, the titles already tracked, and "Days of the week are numbered 1 (Monday) to 7 (Sunday). Time targets are in minutes."
 - Hours before the day starts count as late evening: at 01:00 the check-in is still due for the logical day.
-- **Digest trigger.** The design's test ("the current week's Monday is after the Monday of the most recent digest") would stay true once last week's digest exists. The plan reads it as "no digest yet for last week's Monday, and last week wasn't empty" (`digestDue`). The trigger runs after each sync pass (on open and on focus), so a digest another device already wrote is pulled first. It runs at most once per session.
-- Fake modes: `?fakegemini=<mode>` picks a failure to show. In fake mode the real keys are never used.
+- **Digest trigger.** The design's test ("the current week's Monday is after the Monday of the most recent digest") would stay true once last week's digest exists. The plan reads it as "no digest yet for last week's Monday, and last week wasn't empty" (`digestDue`). The trigger runs after each sync pass (on open and on focus), so a digest another device already wrote is pulled first. It runs at most once per session. A page left open across Monday counts as a new session for this: `digestTried` is cleared when the logical day rolls into a new week, because the laptop keeps the page open for days.
+- Fake modes: `?fakegemini=<mode>` picks a failure to show. In fake mode the real keys are never used. Any unknown mode behaves like `ok`. The panel heading shows `fake · <mode>`, so a fake page can't be mistaken for the real thing.
 - `dismissGoalPlan` leaves any item already accepted from the plan alone (it keeps its `goalId`).
+- ✓ / ✕ on *every* suggested goal card use `acceptGoalPlan` / `dismissGoalPlan`, not only on Gemini's. On a goal with no plan behind it they do exactly what `acceptSuggestion` / `dismissSuggestion` did.
+- Re-renders while typing: the render loop replaces `#side` wholesale. Typed text lives in `ui.coach`, and `renderSide` puts focus and the caret back into the box marked `data-focus` it was in. The existing `canRun()` / `typing()` hold-back already covers the new textareas, since they are in `#side`.
+- A new logical day clears the check-in's page state (`answers`, `notNow`, `error`, and `feedbackOpen` back to true), so yesterday's typing can't prefill today's questions.
+- The ⚙ Gemini key field gets its value through the input's `value` property, never an attribute, so the key is never in the page's markup. The note says only whether a Hebrew-app key exists.
+- Check-in hour: the number field's `min`/`max`/`step` stop 11, 24 and 12.5 with the browser's own bubble first (as for the day start); the plan's message covers what gets past that (an empty box).
+- The Browser pane refuses service-worker registration ("An unknown error occurred when fetching the script"), so browser checks treat that console error as expected. Task 8 checks `sw.js`'s list with a Node one-liner as well.
 
 ## File map
 
@@ -85,11 +91,13 @@ Binding values from the design (copied verbatim; do not change them):
 | `js/coach.js`, `tests/coach-context.test.js` | Context block, week stats, panel readers | 3 |
 | `js/coach.js`, `tests/coach-prompts.test.js` | Prompt builders and reply parsers | 4 |
 | `js/ui/coach.js` | The Coach panel, check-in flow | 5 |
-| `dev/fake-gemini.js` | Canned Gemini for localhost `?fakegemini` | 5 |
-| `js/app.js` | `ui.coach`, `ctx.coach`, the fake switch, the check-in-hour repaint | 5 |
-| `js/ui/side.js` | Coach panel first in the right column | 5 |
+| `dev/fake-gemini.js`, `tests/fake-gemini.test.js` | Canned Gemini for localhost `?fakegemini`; a Node test that every canned reply passes its parser | 5 |
+| `js/app.js` | `ui.coach`, `ctx.coach`, the fake switch, the check-in-hour repaint, the rollover reset | 5 |
+| `js/ui/side.js` | Coach panel first in the right column; focus kept across re-renders | 5 |
 | `js/dates.js`, `tests/dates.test.js` | `hourLabel` (Task 5), `forLabel` (Task 6) | 5, 6 |
-| `styles.css`, `index.html` | Coach panel and shaping box styles; side column label | 5, 6 |
+| `styles.css` | Coach panel, shaping box, plan card and digest styles | 5, 6, 7 |
+| `index.html` | The side column's label | 5 |
+| `js/coach.js`, `tests/coach-proposals.test.js` | `proposalLine` for the suggested-goal card | 6 |
 | `js/ui/coach.js`, `js/ui/side.js` | "Shape with AI" box; suggested-goal preview; plan accept and dismiss | 6 |
 | `js/ui/today.js` | "for Sat" on suggestions dated after today | 6 |
 | `js/ui/coach.js`, `js/app.js` | Digest display, "Write last week's digest", background trigger | 7 |
@@ -223,6 +231,10 @@ parseShape(data, today): { title, targetDate: day|null, milestones: string[], ha
 parseDigest(data): { summary, wins: string[], slipped: string[], focus }
 // every parser throws GeminiError('nonsense') for anything unusable
 
+// ---- js/coach.js (Task 6) ----------------------------------------------------------------------
+proposalLine(item): string               // 'Habit: Stretch · Mon, Wed, Fri' · 'Habit: Walk · 3 times a week' ·
+                                         // 'Habit: Read · every day' · 'Weekly target: Running · 1.5h' · 'Weekly target: Parkruns · 2 runs'
+
 // ---- js/dates.js (Tasks 5 and 6) ---------------------------------------------------------------
 hourLabel(hour: 0..23): string           // Task 5: 18 → '6pm', 12 → '12pm', 23 → '11pm', 0 → '12am', 9 → '9am'
 forLabel(day, today): string             // Task 6: 'for Sat' when day is 1–6 days after today, else 'for 3 Oct'
@@ -248,11 +260,20 @@ ui.coach = {        // page-only state; Task 5 adds the whole object to the `ui`
   shapeOpen: false, shapeText: '', shapeBusy: false, shapeError: '',                             // (Task 6)
   digestOpen: false, digestBusy: false, digestError: '', digestTried: false,                     // (Task 7)
 }
-// Once a minute (the existing interval), after checkRollover(): if checkinState(...) differs from the
+// Once a minute (the existing interval), after checkRollover(): if checkinNow(ctx) differs from the
 // last one rendered and typing() is false, render() — so the button appears at the check-in hour.
+// checkRollover() on a new day also resets ui.coach's answers, notNow, error and feedbackOpen (Task 5),
+// and on a new week digestTried, digestError and digestOpen (Task 7).
+
+// ---- js/ui/side.js (Task 5) --------------------------------------------------------------------
+// renderSide: [renderCoach, renderWeek, renderGoals, renderHistory]. Before replacing #side it notes
+// the focused element's data-focus key and caret; afterwards it focuses the new element with that key
+// and restores the caret. The check-in answers ('coach-answer-<i>') and the shaping box ('coach-shape')
+// carry data-focus.
 
 // ---- js/ui/coach.js (Tasks 5–7) ----------------------------------------------------------------
 renderCoach(ctx): HTMLElement            // <section class="panel coach"><h2>Coach</h2>…; first child of #side (Task 5)
+checkinNow(ctx): string                  // Task 5: checkinState(...) for now, from store settings and ctx.coach.keys()
 startCheckin(ctx): Promise<void>         // Task 5
 sendCheckin(ctx): Promise<void>          // Task 5
 renderShapeBox(ctx): HTMLElement | null  // Task 6; null unless ui.coach.shapeOpen
@@ -265,7 +286,8 @@ writeDigest(ctx, { quiet = false } = {}): Promise<void>   // Task 7
 // ---- dev/fake-gemini.js (Task 5) ---------------------------------------------------------------
 FAKE_MODES = ['ok', 'slow', 'nokey', 'quota', 'down', 'offline', 'badkey', 'nonsense']
 fakeGeminiFetch(mode = 'ok', { delayMs = mode === 'slow' ? 5000 : 800 } = {}): (url, init) => Promise<{ status, ok, text() }>
-  // Waits delayMs (a real setTimeout — dev only), then, by mode:
+  // Waits delayMs (a real setTimeout — dev only; delayMs 0 means no timer at all, which the Node test
+  // uses), then, by mode (an unknown mode behaves like ok):
   //   ok, slow → 200 { candidates: [{ content: { parts: [{ text: JSON }] } }] } with a canned reply
   //              for the job whose JOBS text appears in the request's contents text; each reply passes
   //              its parser (questions: 3; feedback + 1 task for tomorrow; shape: a title from
@@ -275,7 +297,7 @@ fakeGeminiFetch(mode = 'ok', { delayMs = mode === 'slow' ? 5000 : 800 } = {}): (
   //   down     → 503 'The model is overloaded.'
   //   offline  → rejects TypeError('Failed to fetch')
   //   badkey   → 400 'API key not valid. Please pass a valid API key.'
-  //   nonsense → 200 whose text is 'Happy to help!' (not JSON)
+  //   nonsense → 200 whose candidate text is 'Happy to help!' (not JSON)
   //   nokey    → never called (ctx.coach.keys() is empty)
 ```
 
@@ -283,22 +305,22 @@ The flows Tasks 5–7 implement (each captures `today = store.today()` once at t
 
 - **Check-in questions** (`startCheckin`): `ui.coach.busy = 'questions'` → `ask(questionsPrompt(doc, today))` → `parseQuestions(data)` → `store.saveJournal({ kind: 'checkin', day: today, questions, answers: [], feedback: '', tomorrowIds: [], model })` → clear `answers`, `notNow` and `error`. Finally `busy = ''` and `render()`.
 - **Feedback** (`sendCheckin`): answers = `checkinOf(doc, today).questions.map((_, i) => (ui.coach.answers[i] ?? '').trim())`. If none is filled in, show "Answer at least one question first." Otherwise: `busy = 'feedback'` → `ask(feedbackPrompt(doc, today, questions, answers))` → `parseFeedback(data)` → `const { items } = store.addPlan({ tasks: tomorrow.map((t) => ({ title: t.title, date: addDays(today, 1) })) })` → `store.saveJournal({ kind: 'checkin', day: today, answers, feedback, tomorrowIds: items.map((i) => i.id), model })` → `answers = []`, `feedbackOpen = true`.
-- **Shape** (`shapeGoal`): text must not be blank. `shapeBusy = true` → `ask(shapePrompt(doc, today, text))` → `plan = parseShape(data, today)` → `store.addPlan({ goal: { title: plan.title, targetDate: plan.targetDate, why: plan.why }, milestones: plan.milestones, habits: plan.habits, targets: plan.targets })` → close the box and clear `shapeText`.
+- **Shape** (`shapeGoal`): text must not be blank ("Say what you want to achieve first."). `shapeBusy = true` → `ask(shapePrompt(doc, today, text))` → `plan = parseShape(data, today)` → `store.addPlan({ goal: { title: plan.title, targetDate: plan.targetDate, why: plan.why }, milestones: plan.milestones, habits: plan.habits, targets: plan.targets })` → close the box and clear `shapeText`.
 - **Digest** (`writeDigest`): `monday = addDays(weekStart(today), -7)` → `digestBusy = true` → `ask(digestPrompt(doc, monday))` → `parseDigest(data)` → `store.saveJournal({ kind: 'digest', day: monday, ...digest, model })`. With `quiet`, a missing key or being offline returns without a word, and a failure is swallowed (the "Write last week's digest" link stays).
-- **Digest trigger** (`app.js`): `maybeWriteDigest()` — return if `ui.coach.digestTried`, if `ctx.coach.keys()` is empty, if `navigator.onLine === false`, or if `digestDue(store.doc(), store.today())` is null. Otherwise set `digestTried = true` and call `writeDigest(ctx, { quiet: true })`. The sync scheduler's `run` becomes `async () => { await runSync(); maybeWriteDigest(); }`, so it fires on open and on focus, after the pull.
+- **Digest trigger** (`app.js`): `maybeWriteDigest()` — return if `ui.coach.digestTried`, if `ctx.coach.keys()` is empty, if `navigator.onLine === false`, or if `digestDue(store.doc(), store.today())` is null. Otherwise set `digestTried = true` and call `writeDigest(ctx, { quiet: true })`. The sync scheduler's `run` becomes `async () => { await runSync(); maybeWriteDigest(); }`, so it fires on open and on focus, after the pull. `checkRollover()` clears `digestTried` when the logical day moves into a new week.
 - **Panel states** (`renderCoach`): while `busy` → "Thinking…". Otherwise by `checkinState({ doc, today, now: new Date(), dayStartHour, checkinHour, hasKey: ctx.coach.keys().length > 0 })`:
   - `nokey` → the no-key line.
   - `early` → "Evening check-in from {hourLabel(checkinHour)} · " plus a *check in now* link.
   - `due` → a primary button, "Start today's check-in".
   - `questions` → each question with a two-row textarea, then **Send** and *Not now*. When `notNow === today`, this folds to "Today's check-in is waiting · answer now".
-  - `done` → `<details>` "Today's check-in", open unless `feedbackOpen` is false, holding the feedback.
+  - `done` → `<details>` "Today's check-in", open unless `feedbackOpen` is false, holding the feedback, and "A task for tomorrow waits at the top of the list." (or "2 tasks …") while any of `tomorrowIds` is still a suggestion.
   - Under any state: `error`. Then (Task 7) the "Last week" `<details>` if `digestOf(doc, lastMonday)` exists; otherwise, when there are keys and `digestDue` is set, the *Write last week's digest* link ("Writing last week's digest…" while busy) and `digestError`.
   - The "Last week" body (Task 7): the summary; "Went well: " + wins joined by " · "; "Slipped: " + slipped joined by " · " (each line only if the list isn't empty); "This week: " + focus. `digestOpen` remembers whether it is open.
 - **Goals heading and shape box** (Task 6, `side.js` + `js/ui/coach.js`): a *Shape with AI* link sits before *+ goal* and toggles `ui.coach.shapeOpen`. `renderShapeBox(ctx)` goes straight under the heading: a textarea (placeholder "What do you want to achieve?", value `ui.coach.shapeText`, updated on input), a **Shape** button ("Shaping…" and disabled while `shapeBusy`), a *Cancel* link (closes the box and keeps the text), and the `shapeError` line.
-- **Suggested-goal card** (Task 6, `side.js`, the `goal.status === 'suggested'` branch of `renderGoal`): the title, then ✓ → `store.acceptGoalPlan(goal.id)` and ✕ → `store.dismissGoalPlan(goal.id)`. Below that, "suggested by Gemini", the `why` sentence, and "Target: 10 Nov" when there's a target date. Then the proposed milestones (`milestonesOf(doc, goal.id)` still `'suggested'`) as a list, and `proposedItems(doc, goal.id)` as "Habit: Stretch · Mon, Wed, Fri" / "Habit: Walk · 3 times a week" / "Habit: Read · every day" / "Weekly target: Running · 1.5h" (`formatAmount(target, unit)`, plus ` ${unitLabel}` for count). If there are any, add the note "Habits and targets also wait at the top of Today."
+- **Suggested-goal card** (Task 6, `side.js`, `renderSuggestedGoal`, called from the `goal.status === 'suggested'` branch of `renderGoal`): the title, then ✓ → `store.acceptGoalPlan(goal.id)` and ✕ → `store.dismissGoalPlan(goal.id)`. Below that, "suggested by Gemini", the `why` sentence, and "Target: 10 Nov" when there's a target date. Then the proposed milestones (`milestonesOf(doc, goal.id)` still `'suggested'`) as a numbered list, and `proposedItems(doc, goal.id)` through `proposalLine`: "Habit: Stretch · Mon, Wed, Fri" / "Habit: Walk · 3 times a week" / "Habit: Read · every day" / "Weekly target: Running · 1.5h" (`formatAmount(target, unit)`, plus ` ${unitLabel}` for count). If there are any, add the note "Habits and targets also wait at the top of Today."
 - **"for Sat"** (Task 6, `today.js`): `renderSuggestion` adds `h('span', { class: 'for' }, forLabel(item.date, today))` to its meta when `item.type === 'task' && item.date > today`.
 - **Settings** (Task 8, `settings.js`). After the day-start note come:
-  - a "Gemini API key (optional)" password input (`name: 'geminiKey'`, value `s.geminiKey`, `autocomplete: 'off'`, `spellcheck: 'false'`);
+  - a "Gemini API key (optional)" password input (`name: 'geminiKey'`, `autocomplete: 'off'`, `spellcheck: 'false'`), whose `value` *property* is set to `s.geminiKey` (never an attribute, so the key is not in the markup);
   - the note "Leave blank to use the Hebrew app's key on this device.", followed by " One was found here." when `hebrewKeys(localStorage).length` and " None was found here." otherwise — never the key itself;
   - an "Evening check-in from (hour, 12–23)" number input (`name: 'checkinHour'`, min 12, max 23, step 1);
   - the privacy line, verbatim.
