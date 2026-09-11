@@ -237,7 +237,9 @@ export async function shapeGoal(ctx, text) {
 export function renderShapeBox(ctx) {
   const c = ctx.ui.coach;
   if (!c.shapeOpen) return null;
-  const shape = () => shapeGoal(ctx, c.shapeText);
+  // Blur before asking: otherwise the busy render's restoreFocus (js/ui/side.js) puts the caret
+  // straight back in this box, typing() stays true, and whenIdle() never resolves.
+  const shape = () => { box.blur(); shapeGoal(ctx, c.shapeText); };
   const box = h('textarea', {
     rows: 3, placeholder: 'What do you want to achieve?', 'aria-label': 'What do you want to achieve?',
     'data-focus': 'coach-shape',
