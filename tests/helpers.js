@@ -31,13 +31,13 @@ export function makeStore({ storage = new MemoryStorage(), now = clock(), prefix
 }
 
 // Build a document by hand for the pure schedule tests.
-export function fixture({ items = [], logs = [], goals = [], milestones = [] } = {}) {
+export function fixture({ items = [], logs = [], goals = [], milestones = [], journal = [] } = {}) {
   const doc = emptyDoc();
   const base = {
     source: 'me', status: 'active', created: '2026-09-01', archivedOn: null,
     updated: '2026-09-01T09:00:00.000Z',
   };
-  for (const [map, list] of Object.entries({ items, logs, goals, milestones })) {
+  for (const [map, list] of Object.entries({ items, logs, goals, milestones, journal })) {
     for (const r of list) doc[map][r.id] = { ...base, ...r };
   }
   return doc;

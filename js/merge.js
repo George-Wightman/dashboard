@@ -60,7 +60,7 @@ export function mergeDocs(a, b) {
     const right = b?.[key];
     const hasLeft = left !== undefined;
     const hasRight = right !== undefined;
-    // The four known maps are always record maps; any other key is one too if the side(s) that
+    // The known maps (MAPS) are always record maps; any other key is one too if the side(s) that
     // have it are plain objects — otherwise it's a scalar/array that passes straight through.
     const asMap = MAPS.includes(key)
       || (isPlainObject(left) && isPlainObject(right))

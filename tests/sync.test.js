@@ -307,3 +307,25 @@ test('canRun false defers until it is true', async () => {
   await timers.flush();
   assert.equal(runs, 1);
 });
+
+// ---- the journal (Gemini coach) ---------------------------------------------------------------
+
+test('a sync file written before the journal existed is not rewritten just to add it', async () => {
+  const gh = new FakeGitHub();
+  gh.file = { doc: { schema: 1, items: {}, goals: {}, milestones: {}, logs: {} }, sha: 'old' };
+  const store = makeStore();
+  assert.deepEqual(await syncOnce({ store, client: gh }), { ok: true, pushed: false });
+  assert.deepEqual(store.doc().journal, {});
+  assert.equal(gh.puts, 0);
+});
+
+test('a check-in saved on one device reaches the other', async () => {
+  const gh = new FakeGitHub();
+  const now = clock(new Date(2026, 8, 10, 19, 0));
+  const laptop = makeStore({ prefix: 'L', now });
+  const phone = makeStore({ prefix: 'P', now });
+  laptop.saveJournal({ kind: 'checkin', day: '2026-09-10', questions: ['How did the CV go?'], model: 'gemini-flash-lite-latest' });
+  await syncOnce({ store: laptop, client: gh });
+  await syncOnce({ store: phone, client: gh });
+  assert.deepEqual(phone.doc().journal['checkin:2026-09-10'].questions, ['How did the CV go?']);
+});

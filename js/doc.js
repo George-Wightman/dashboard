@@ -1,20 +1,28 @@
 // The shape of the synced document, shared by the store and the merge.
 
-export const MAPS = ['items', 'goals', 'milestones', 'logs'];
+export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal'];
 
 export function emptyDoc() {
-  return { schema: 1, items: {}, goals: {}, milestones: {}, logs: {} };
+  return { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {} };
+}
+
+// One check-in per logical day and one digest per week (filed under that week's Monday), on
+// every device: the id is the kind and the day, so two devices writing the same one merge into
+// one record.
+export function journalId(kind, day) {
+  return `${kind}:${day}`;
 }
 
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // A real dashboard document: a plain object with a numeric schema, an items map, and any of the
-// other known maps either absent or themselves plain objects (never arrays).
+// other known maps either absent or themselves plain objects (never arrays). A document saved
+// before the journal existed has no `journal` and is still a real document.
 export function isDoc(value) {
   if (!isPlainObject(value)) return false;
   if (typeof value.schema !== 'number') return false;
   if (!isPlainObject(value.items)) return false;
-  return ['goals', 'milestones', 'logs'].every((k) => value[k] === undefined || isPlainObject(value[k]));
+  return MAPS.filter((k) => k !== 'items').every((k) => value[k] === undefined || isPlainObject(value[k]));
 }
 
 // JSON with object keys sorted at every depth, so two equal documents always serialise the same.

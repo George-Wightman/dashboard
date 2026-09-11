@@ -1,16 +1,22 @@
 // The store: the whole state is one document in localStorage. Every change goes through here,
 // stamps `updated`, saves, and tells listeners why it changed.
 
-import { logicalDay } from './dates.js';
-import { MAPS, emptyDoc, stableStringify, isDoc } from './doc.js';
+import { logicalDay, addDays, weekStart } from './dates.js';
+import { MAPS, emptyDoc, stableStringify, isDoc, journalId } from './doc.js';
 import { mergeDocs } from './merge.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
 export const CORRUPT_KEY = 'dash_data_corrupt';
-export const DEFAULT_SETTINGS = { token: '', repo: '', dayStartHour: 4 };
+export const DEFAULT_SETTINGS = { token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18 };
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
+
+// The content each kind of journal record carries, with its empty values.
+const JOURNAL_FIELDS = {
+  checkin: { questions: [], answers: [], feedback: '', tomorrowIds: [], model: '' },
+  digest: { summary: '', wins: [], slipped: [], focus: '', model: '' },
+};
 
 function readJson(storage, key) {
   try {
@@ -81,7 +87,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     notify(reason);
   }
 
-  function create(map, fields) {
+  // Writes a record into the document without saving, for callers that write several records
+  // and then commit once.
+  function build(map, fields) {
     const rec = {
       source: 'me', status: 'active', created: today(), archivedOn: null,
       ...fields,
@@ -89,6 +97,11 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       updated: stamp(),
     };
     doc[map][rec.id] = rec;
+    return rec;
+  }
+
+  function create(map, fields) {
+    const rec = build(map, fields);
     commit('local');
     return rec;
   }
@@ -103,7 +116,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
 
   const nextOrder = (map) => Math.max(0, ...Object.values(doc[map]).map((r) => r.order ?? 0)) + 1;
 
-  function addItem(fields) {
+  // An item's fields, checked and with the defaults filled in. Nothing is written.
+  function itemFields(fields) {
     if (!ITEM_TYPES.includes(fields.type)) throw new Error(`Unknown item type ${fields.type}`);
     const title = requireTitle(fields.title, 'An item');
     if (fields.type === 'quota' && !(fields.target > 0)) throw new Error('A quota needs a target above 0');
@@ -111,7 +125,11 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     if (fields.type === 'task') defaults.date = today();
     if (fields.type === 'habit') defaults.repeat = { kind: 'daily' };
     if (fields.type === 'quota') Object.assign(defaults, { unit: 'count', unitLabel: '' });
-    return create('items', { ...defaults, ...fields, title });
+    return { ...defaults, ...fields, title };
+  }
+
+  function addItem(fields) {
+    return create('items', itemFields(fields));
   }
 
   function toggleDone(itemId, day = today()) {
@@ -132,16 +150,110 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return create('logs', { itemId, goalId, kind: 'amount', amount, day, at: stamp(), note });
   }
 
-  function addGoal(fields) {
+  // A goal's fields, checked and with the defaults filled in. Nothing is written.
+  function goalFields(fields) {
     const title = requireTitle(fields.title, 'A goal');
     const defaults = { targetDate: null, target: null, unit: 'count', unitLabel: '', order: nextOrder('goals') };
-    return create('goals', { ...defaults, ...fields, title });
+    return { ...defaults, ...fields, title };
+  }
+
+  function addGoal(fields) {
+    return create('goals', goalFields(fields));
   }
 
   function addMilestone(goalId, title) {
     return create('milestones', {
       goalId, title: requireTitle(title, 'A milestone'), done: false, order: nextOrder('milestones'),
     });
+  }
+
+  // A check-in or a digest. The id comes from the kind and the day, so there is only ever one
+  // check-in per day and one digest per week, whichever device writes it. Creates the record, or
+  // overwrites just the content fields given on the existing one (so saving the answers keeps
+  // the questions). Content is copied in, never shared with the caller.
+  function saveJournal(record) {
+    const kind = record?.kind;
+    const fields = JOURNAL_FIELDS[kind];
+    if (!fields) throw new Error(`Unknown journal kind ${kind}`);
+    const day = record.day;
+    if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || addDays(day, 0) !== day) {
+      throw new Error(`A journal record needs a real day, not ${day}`);
+    }
+    if (kind === 'digest' && weekStart(day) !== day) throw new Error("A digest is filed under its week's Monday");
+    const id = journalId(kind, day);
+    if (record.id != null && record.id !== id) throw new Error(`A ${kind} for ${day} has the id ${id}`);
+    const content = {};
+    for (const key of Object.keys(fields)) {
+      if (record[key] !== undefined) content[key] = structuredClone(record[key]);
+    }
+    const existing = doc.journal[id];
+    if (!existing) return create('journal', { source: 'gemini', ...structuredClone(fields), ...content, id, kind, day });
+    doc.journal[id] = { ...existing, ...content, id, kind, day, updated: stamp() };
+    commit('local');
+    return doc.journal[id];
+  }
+
+  // Everything one Gemini reply proposes, written as suggestions in one commit: a goal with its
+  // milestones and the habits and weekly targets linked to it, and tasks for a given day. Every
+  // record is checked before any is written, so one bad record leaves the document untouched.
+  function addPlan({ goal = null, milestones = [], habits = [], targets = [], tasks = [] } = {}) {
+    if (milestones.length && !goal) throw new Error('Milestones need a goal');
+    const suggested = { status: 'suggested', source: 'gemini' };
+    const goalRec = goal
+      ? goalFields({ title: goal.title, targetDate: goal.targetDate ?? null, why: goal.why ?? '', ...suggested })
+      : null;
+    const goalId = goalRec ? newId() : null;
+    const firstMilestone = nextOrder('milestones');
+    const milestoneRecs = milestones.map((title, i) => ({
+      goalId, title: requireTitle(title, 'A milestone'), done: false, order: firstMilestone + i, ...suggested,
+    }));
+    const firstItem = nextOrder('items');
+    const itemRecs = [
+      ...habits.map((h) => itemFields({
+        type: 'habit', title: h.title, repeat: h.repeat ?? { kind: 'daily' }, goalId, ...suggested,
+      })),
+      ...targets.map((t) => itemFields({
+        type: 'quota', title: t.title, target: t.target, unit: t.unit ?? 'count', unitLabel: t.unitLabel ?? '', goalId, ...suggested,
+      })),
+      ...tasks.map((t) => itemFields({ type: 'task', title: t.title, date: t.date ?? today(), goalId: null, ...suggested })),
+    ].map((fields, i) => ({ ...fields, order: firstItem + i }));
+    if (!goalRec && !itemRecs.length) return { goal: null, milestones: [], items: [] };
+    const out = {
+      goal: goalRec ? build('goals', { ...goalRec, id: goalId }) : null,
+      milestones: milestoneRecs.map((fields) => build('milestones', fields)),
+      items: itemRecs.map((fields) => build('items', fields)),
+    };
+    commit('local');
+    return out;
+  }
+
+  // ✓ on a suggested goal: the goal and its still-suggested milestones go live from today. Its
+  // proposed habits and targets stay suggestions on Today, to be accepted one by one.
+  function acceptGoalPlan(goalId) {
+    const goal = doc.goals[goalId];
+    if (!goal) throw new Error(`No goals record ${goalId}`);
+    const live = { status: 'active', created: today(), updated: stamp() };
+    if (goal.status === 'suggested') doc.goals[goalId] = { ...goal, ...live };
+    for (const [id, m] of Object.entries(doc.milestones)) {
+      if (m.goalId === goalId && m.status === 'suggested') doc.milestones[id] = { ...m, ...live };
+    }
+    commit('local');
+    return doc.goals[goalId];
+  }
+
+  // ✕ on a suggested goal: the goal, its still-suggested milestones and any still-suggested items
+  // linked to it are dismissed. Anything already accepted is left alone.
+  function dismissGoalPlan(goalId) {
+    const goal = doc.goals[goalId];
+    if (!goal) throw new Error(`No goals record ${goalId}`);
+    const gone = { status: 'dismissed', updated: stamp() };
+    if (goal.status === 'suggested') doc.goals[goalId] = { ...goal, ...gone };
+    for (const map of ['milestones', 'items']) {
+      for (const [id, rec] of Object.entries(doc[map])) {
+        if (rec.goalId === goalId && rec.status === 'suggested') doc[map][id] = { ...rec, ...gone };
+      }
+    }
+    commit('local');
   }
 
   // Move `id` to just before `targetId` within `groupIds` (the on-screen order of the draggable
@@ -248,6 +360,11 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     updateMilestone: (id, changes) => patch('milestones', id, changes),
     toggleMilestone: (id) => patch('milestones', id, { done: !doc.milestones[id]?.done }),
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
+
+    saveJournal,
+    addPlan,
+    acceptGoalPlan,
+    dismissGoalPlan,
 
     replaceDoc,
     absorbStored,

@@ -256,3 +256,29 @@ test('importJson merges a backup and cannot roll back newer work', () => {
   assert.throws(() => store.importJson('not json'), /valid JSON/);
   assert.throws(() => store.importJson('{"hello": 1}'), /backup/);
 });
+
+// ---- the journal (Gemini coach) ---------------------------------------------------------------
+
+const checkin = (fields) => ({
+  id: 'checkin:2026-09-10', kind: 'checkin', day: '2026-09-10', questions: ['How did it go?'], answers: [],
+  feedback: '', tomorrowIds: [], model: 'gemini-flash-lite-latest', source: 'gemini', status: 'active',
+  created: '2026-09-10', archivedOn: null, updated: '2026-09-10T18:00:00.000Z', ...fields,
+});
+
+test('journal records merge like any other record: one per id, later updated wins', () => {
+  const asked = checkin();
+  const answered = checkin({ answers: ['Well'], feedback: 'Good.', updated: '2026-09-10T18:05:00.000Z' });
+  const a = { ...emptyDoc(), journal: { [asked.id]: asked } };
+  const b = { ...emptyDoc(), journal: { [answered.id]: answered } };
+  assert.equal(mergeDocs(a, b).journal[asked.id].feedback, 'Good.');
+  assert.equal(S(mergeDocs(a, b)), S(mergeDocs(b, a)));
+  assert.deepEqual(Object.keys(mergeDocs(a, b).journal), [asked.id]);
+});
+
+test('a document from before the journal merges cleanly with one that has it', () => {
+  const old = { schema: 1, items: {}, goals: {}, milestones: {}, logs: {} };
+  const rec = checkin({ feedback: 'Kept.' });
+  assert.deepEqual(mergeDocs(old, null).journal, {});
+  assert.equal(mergeDocs(old, { ...emptyDoc(), journal: { [rec.id]: rec } }).journal[rec.id].feedback, 'Kept.');
+  assert.equal(sameDoc(old, emptyDoc()), true);
+});
