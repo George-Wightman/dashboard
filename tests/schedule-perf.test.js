@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
-import { history, todayRows, dayCompletion } from '../js/schedule.js';
+import { history, todayRows, dayCompletion, streak } from '../js/schedule.js';
 import { addDays } from '../js/dates.js';
 import { fixture, done, amount } from './helpers.js';
 
@@ -46,6 +46,8 @@ test('history + todayRows + dayCompletion stay fast on a year of data', () => {
   history(doc, TODAY);
   todayRows(doc, TODAY);
   dayCompletion(doc, TODAY);
+  streak(doc, doc.items.quota0, TODAY);
+  streak(doc, doc.items.quota1, TODAY);
   const elapsed = performance.now() - t0;
   assert.ok(elapsed < 250, `expected under 250ms, took ${elapsed.toFixed(1)}ms`);
 });

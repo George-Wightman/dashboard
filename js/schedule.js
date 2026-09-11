@@ -126,13 +126,24 @@ function occurrenceStreak(doc, item, today) {
   return runs(outcomes);
 }
 
+// One pass over an item/goal's active amount logs, totalled by the Monday it falls in.
+function weekTotals(doc, id) {
+  const totals = new Map();
+  for (const l of activeLogs(doc, (l) => l.kind === 'amount' && (l.itemId === id || l.goalId === id))) {
+    const w = weekStart(l.day);
+    totals.set(w, (totals.get(w) ?? 0) + l.amount);
+  }
+  return totals;
+}
+
 function weeklyStreak(doc, item, today) {
   const idx = doneIndex(doc);
   const thisWeek = weekStart(today);
+  const totals = item.type === 'quota' ? weekTotals(doc, item.id) : null;
   const outcomes = [];
   for (let week = weekStart(item.created); week <= thisWeek; week = addDays(week, 7)) {
     const ok = item.type === 'quota'
-      ? weekTotal(doc, item.id, week) >= item.target
+      ? (totals.get(week) ?? 0) >= item.target
       : doneBetween(doc, item.id, week, addDays(week, 7), idx) >= item.repeat.n;
     if (week === thisWeek && !ok) continue; // this week isn't over yet
     outcomes.push(ok);
