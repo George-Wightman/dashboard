@@ -84,6 +84,12 @@ test('a later tombstone beats an earlier tick, and vice versa', () => {
   assert.equal(mergeDocs({ ...emptyDoc(), logs: { l: retick } }, b).logs.l.status, 'active');
 });
 
+test('unknown maps with falsy values merge symmetrically (G3)', () => {
+  const a = { ...emptyDoc(), prefs: { showDone: false } };
+  const b = { ...emptyDoc(), prefs: { showDone: true } };
+  assert.equal(S(mergeDocs(a, b)), S(mergeDocs(b, a)));
+});
+
 test('an unknown top-level map merges per id, like the known maps (F5)', () => {
   const a = { ...emptyDoc(), events: { e1: { id: 'e1', title: 'A', updated: '2026-09-10T09:00:00.000Z' } } };
   const b = {

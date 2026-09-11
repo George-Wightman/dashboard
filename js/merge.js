@@ -32,7 +32,7 @@ function mergeMap(left, right, normalise = false) {
     // differently-grouped merges (a∪b)∪c vs a∪(b∪c) could disagree on the winner.
     const x = normalise && lm[id] ? normaliseRecord(lm[id]) : lm[id];
     const y = normalise && rm[id] ? normaliseRecord(rm[id]) : rm[id];
-    map[id] = x && y ? pickWinner(x, y) : (x ?? y);
+    map[id] = x != null && y != null ? pickWinner(x, y) : (x ?? y);
   }
   return map;
 }
