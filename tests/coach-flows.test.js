@@ -119,3 +119,48 @@ test('the normal path still saves questions, then answers + feedback + tomorrowI
   assert.equal(rec.tomorrowIds.length, 1);
   assert.equal(ctx.ui.coach.error, '');
 });
+
+// ---- C2: land coach replies only when nothing is being typed -----------------------------------
+
+// Lets pending microtasks (the fake ask() resolving, consult()'s own await) drain before we
+// inspect state, without resolving whatever the test itself is holding back.
+const tick = () => new Promise((r) => { setTimeout(r, 0); });
+
+test('startCheckin: the store write waits for ctx.whenIdle before landing', async () => {
+  const store = makeStore();
+  const today = day(store);
+  const gate = deferred();
+  const ctx = makeCtx({
+    store,
+    ask: async () => ({ data: { questions: ['Q1?', 'Q2?'] }, model: 'gemini-flash-lite-latest' }),
+    whenIdle: () => gate.promise,
+  });
+
+  const p = startCheckin(ctx);
+  await tick();
+  assert.equal(checkinOf(store.doc(), today), null);
+
+  gate.resolve();
+  await p;
+  assert.deepEqual(checkinOf(store.doc(), today)?.questions, ['Q1?', 'Q2?']);
+});
+
+test("writeDigest: a quiet failure still re-renders once, to clear 'Writing…', but only after ctx.whenIdle resolves", async () => {
+  const store = makeStore();
+  const gate = deferred();
+  const ctx = makeCtx({
+    store,
+    ask: async () => { throw new GeminiError('failed'); },
+    whenIdle: () => gate.promise,
+  });
+
+  const p = writeDigest(ctx, { quiet: true });
+  await tick();
+  const rendersBeforeIdle = ctx.renders.length;
+
+  gate.resolve();
+  await p;
+  assert.ok(ctx.renders.length > rendersBeforeIdle);
+  assert.equal(ctx.ui.coach.digestError, ''); // quiet: still no error line
+  assert.equal(ctx.ui.coach.digestBusy, false);
+});

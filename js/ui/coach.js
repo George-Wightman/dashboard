@@ -63,6 +63,7 @@ export async function startCheckin(ctx) {
   try { await ctx.syncNow?.(); } catch { /* best effort */ }
   try {
     const { reply, model } = await consult(ctx, questionsPrompt(store.doc(), today), parseQuestions);
+    await ctx.whenIdle();
     const existing = checkinOf(store.doc(), today);
     if (!existing?.questions?.length && !existing?.feedback) {
       c.answers = [];
@@ -70,6 +71,7 @@ export async function startCheckin(ctx) {
       store.saveJournal({ kind: 'checkin', day: today, questions: reply.questions, answers: [], feedback: '', tomorrowIds: [], model });
     }
   } catch (e) {
+    await ctx.whenIdle();
     c.error = e.message;
   } finally {
     c.busy = '';
@@ -100,6 +102,7 @@ export async function sendCheckin(ctx) {
   ctx.render();
   try {
     const { reply, model } = await consult(ctx, feedbackPrompt(store.doc(), today, questions, answers), parseFeedback);
+    await ctx.whenIdle();
     const current = checkinOf(store.doc(), today);
     const sameQuestions = JSON.stringify(current?.questions) === JSON.stringify(questions);
     if (current?.feedback || !sameQuestions) {
@@ -111,6 +114,7 @@ export async function sendCheckin(ctx) {
       c.feedbackOpen = true;
     }
   } catch (e) {
+    await ctx.whenIdle();
     c.error = e.message;
   } finally {
     c.busy = '';
@@ -207,6 +211,7 @@ export async function shapeGoal(ctx, text) {
   ctx.render();
   try {
     const { reply: plan } = await consult(ctx, shapePrompt(store.doc(), today, text), (data) => parseShape(data, today));
+    await ctx.whenIdle();
     store.addPlan({
       goal: { title: plan.title, targetDate: plan.targetDate, why: plan.why },
       milestones: plan.milestones,
@@ -216,6 +221,7 @@ export async function shapeGoal(ctx, text) {
     c.shapeOpen = false;
     c.shapeText = '';
   } catch (e) {
+    await ctx.whenIdle();
     c.shapeError = e.message;
   } finally {
     c.shapeBusy = false;
@@ -261,8 +267,10 @@ export async function writeDigest(ctx, { quiet = false } = {}) {
   ctx.render();
   try {
     const { reply, model } = await consult(ctx, digestPrompt(store.doc(), monday), parseDigest);
+    await ctx.whenIdle();
     store.saveJournal({ kind: 'digest', day: monday, ...reply, model });
   } catch (e) {
+    await ctx.whenIdle();
     if (!quiet) c.digestError = e.message;
   } finally {
     c.digestBusy = false;

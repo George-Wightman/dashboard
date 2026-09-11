@@ -39,6 +39,7 @@ const ctx = {
   openSettings: () => openSettings(ctx),
   syncNow: () => scheduler.now(),
   syncProblem: () => (sync.state === 'failing' ? sync.error : ''),
+  whenIdle,
   coach: {
     fake: FAKE,
     // Every key to try, in order: the one in ⚙, then the Hebrew app's on this device.
@@ -129,6 +130,19 @@ function typing() {
 
 function canRun() {
   return !ui.editorDirty && !ui.amountFor && !typing();
+}
+
+// A promise that resolves once nothing is being typed or edited — immediately if canRun() is
+// already true, otherwise re-checked every 400ms. Coach replies land only after this, so a
+// background Gemini reply can never wipe a half-typed goal amount, milestone or Today input.
+function whenIdle() {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (canRun()) resolve();
+      else setTimeout(check, 400);
+    };
+    check();
+  });
 }
 
 // Last week's digest, written in the background once a new week has started and last week had
