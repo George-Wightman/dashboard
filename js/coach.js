@@ -385,3 +385,29 @@ export function parseDigest(data) {
     focus: oneLine(data.focus, 300),
   };
 }
+
+// ---- The suggested-goal card -------------------------------------------------------------------
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function repeatText(repeat) {
+  switch (repeat?.kind) {
+    case 'weekdays': return (repeat.days ?? []).map((d) => DAY_NAMES[d - 1]).filter(Boolean).join(', ');
+    case 'perWeek': return repeat.n === 1 ? 'once a week' : `${repeat.n} times a week`;
+    case 'weekly': return `every ${DAY_NAMES[repeat.day - 1] ?? 'week'}`;
+    case 'monthly': return `on day ${repeat.date} of the month`;
+    default: return 'every day';
+  }
+}
+
+// One line for a habit or weekly target a plan proposes, as the suggested-goal card lists it:
+// 'Habit: Stretch · Mon, Wed, Fri' · 'Weekly target: Running · 1.5h' · 'Weekly target: Parkruns · 2 runs'.
+export function proposalLine(item) {
+  if (item.type === 'habit') return `Habit: ${item.title} · ${repeatText(item.repeat)}`;
+  if (item.type === 'quota') {
+    const unit = item.unit ?? 'count';
+    const label = unit === 'count' && item.unitLabel ? ` ${item.unitLabel}` : '';
+    return `Weekly target: ${item.title} · ${formatAmount(Number(item.target) || 0, unit)}${label}`;
+  }
+  return item.title;
+}

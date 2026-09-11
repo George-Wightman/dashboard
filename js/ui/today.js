@@ -2,7 +2,7 @@
 
 import { h } from './dom.js';
 import { todayRows, streak, doneBetween } from '../schedule.js';
-import { carryLabel, addDays, weekStart, shortWeekday } from '../dates.js';
+import { carryLabel, addDays, weekStart, shortWeekday, forLabel } from '../dates.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 
 export const SOURCE_NAMES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion' };
@@ -115,14 +115,19 @@ function renderMeta(row, ctx) {
   return meta;
 }
 
+// Every suggestion shows at the top of Today, whatever its date; one for a later day (tomorrow's
+// tasks from the check-in) says which day it's for.
 function renderSuggestion(row, ctx) {
   const { store } = ctx;
   const { item } = row;
+  const today = store.today();
   return h('li', { class: 'row suggested', 'data-id': item.id },
     h('button', { class: 'accept', type: 'button', title: 'Add it', 'aria-label': `Accept ${item.title}`,
       onclick: () => store.acceptSuggestion('items', item.id) }, '✓'),
     h('span', { class: 'title' }, item.title),
-    h('span', { class: 'meta' }, h('span', { class: 'by' }, `suggested by ${SOURCE_NAMES[item.source] ?? item.source}`)),
+    h('span', { class: 'meta' },
+      item.type === 'task' && item.date > today ? h('span', { class: 'for' }, forLabel(item.date, today)) : null,
+      h('span', { class: 'by' }, `suggested by ${SOURCE_NAMES[item.source] ?? item.source}`)),
     h('button', { class: 'dismiss', type: 'button', title: 'Not for me', 'aria-label': `Dismiss ${item.title}`,
       onclick: () => store.dismissSuggestion('items', item.id) }, '✕'));
 }

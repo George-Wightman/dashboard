@@ -6,7 +6,9 @@
 
 import { h } from './dom.js';
 import { GeminiError, MESSAGES } from '../gemini.js';
-import { checkinOf, checkinState, questionsPrompt, feedbackPrompt, parseQuestions, parseFeedback } from '../coach.js';
+import {
+  checkinOf, checkinState, questionsPrompt, feedbackPrompt, parseQuestions, parseFeedback, shapePrompt, parseShape,
+} from '../coach.js';
 import { addDays, hourLabel } from '../dates.js';
 
 const link = (text, onclick) => h('button', { class: 'link', type: 'button', onclick }, text);
@@ -167,4 +169,61 @@ export function renderCoach(ctx) {
     h('h2', {}, 'Coach', ctx.coach.fake ? h('span', { class: 'fake' }, `fake · ${ctx.coach.fake}`) : null),
     renderCheckin(ctx),
     c.error ? h('p', { class: 'error', role: 'status' }, c.error) : null);
+}
+
+// ---- Shape a goal -----------------------------------------------------------------------------
+
+// Job C: a big goal in plain words becomes a suggested goal with milestones, habits and weekly
+// targets — all suggestions, written in one commit, only once the reply has passed its parser.
+export async function shapeGoal(ctx, text) {
+  const { store, ui } = ctx;
+  const c = ui.coach;
+  if (c.shapeBusy) return;
+  if (!String(text ?? '').trim()) {
+    c.shapeError = 'Say what you want to achieve first.';
+    ctx.render();
+    return;
+  }
+  const today = store.today();
+  c.shapeError = '';
+  c.shapeBusy = true;
+  ctx.render();
+  try {
+    const { reply: plan } = await consult(ctx, shapePrompt(store.doc(), today, text), (data) => parseShape(data, today));
+    store.addPlan({
+      goal: { title: plan.title, targetDate: plan.targetDate, why: plan.why },
+      milestones: plan.milestones,
+      habits: plan.habits,
+      targets: plan.targets,
+    });
+    c.shapeOpen = false;
+    c.shapeText = '';
+  } catch (e) {
+    c.shapeError = e.message;
+  } finally {
+    c.shapeBusy = false;
+    ctx.render();
+  }
+}
+
+// The inline box under the Goals heading, or null while it's closed.
+export function renderShapeBox(ctx) {
+  const c = ctx.ui.coach;
+  if (!c.shapeOpen) return null;
+  const shape = () => shapeGoal(ctx, c.shapeText);
+  const box = h('textarea', {
+    rows: 3, placeholder: 'What do you want to achieve?', 'aria-label': 'What do you want to achieve?',
+    'data-focus': 'coach-shape',
+  });
+  box.value = c.shapeText;
+  box.addEventListener('input', () => { c.shapeText = box.value; });
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); shape(); }
+  });
+  return h('form', { class: 'shape', onsubmit: (e) => { e.preventDefault(); shape(); } },
+    box,
+    h('div', { class: 'buttons' },
+      h('button', { class: 'btn primary', type: 'submit', disabled: c.shapeBusy }, c.shapeBusy ? 'Shaping…' : 'Shape'),
+      link('Cancel', () => { c.shapeOpen = false; c.shapeError = ''; ctx.render(); })),
+    c.shapeError ? h('p', { class: 'error', role: 'status' }, c.shapeError) : null);
 }

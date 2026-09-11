@@ -187,3 +187,20 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .coach summary { cursor: pointer; font-weight: 500; }
 .coach details p { margin: .5rem 0 0; }
 .coach .feedback-text { white-space: pre-line; }
+
+/* Shape with AI, and the suggested goal it makes */
+.panel-links { display: flex; gap: .75rem; }
+.shape { margin-bottom: .75rem; }
+.shape textarea {
+  width: 100%; padding: .35rem .5rem; resize: vertical;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+}
+.shape textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.shape .buttons { align-items: center; margin-top: .4rem; }
+.shape .error { min-height: 0; margin: .4rem 0 0; }
+.goal.suggested.plan { opacity: .85; }
+.goal .why { margin: .35rem 0 0; font-size: .85rem; }
+.proposal { margin: .35rem 0 0; padding-left: 1.2rem; font-size: .85rem; }
+.proposal li { padding: .05rem 0; }
+.goal .plan-note { margin-top: .35rem; font-size: .8rem; }
+.row .for { color: var(--accent); font-weight: 500; }

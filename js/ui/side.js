@@ -5,7 +5,8 @@ import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail } 
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 import { shortDate, shortWeekday } from '../dates.js';
 import { SOURCE_NAMES } from './today.js';
-import { renderCoach } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
+import { renderCoach, renderShapeBox } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
+import { proposedItems, proposalLine } from '../coach.js';
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
@@ -80,18 +81,39 @@ function renderGoalBody(goal, progress, ctx) {
   return body;
 }
 
+// A suggested goal, previewing the plan behind it: why, target date, the proposed milestones, and
+// the habits and weekly targets that wait on Today. ✓ takes on the goal and its milestones; ✕
+// turns down the goal, its milestones and whatever of its habits and targets is still suggested.
+function renderSuggestedGoal(goal, ctx) {
+  const { store } = ctx;
+  const doc = store.doc();
+  const milestones = milestonesOf(doc, goal.id).filter((m) => m.status === 'suggested');
+  const proposed = proposedItems(doc, goal.id);
+  const preview = !!goal.why || !!goal.targetDate || milestones.length > 0 || proposed.length > 0;
+  return h('div', { class: preview ? 'goal suggested plan' : 'goal suggested' },
+    h('div', { class: 'goal-head' },
+      h('span', {}, goal.title),
+      h('span', {},
+        h('button', {
+          class: 'accept', type: 'button', title: 'Take on this goal and its milestones',
+          'aria-label': `Accept goal ${goal.title}`, onclick: () => store.acceptGoalPlan(goal.id),
+        }, '✓'),
+        ' ',
+        h('button', {
+          class: 'dismiss', type: 'button', title: 'Not for me',
+          'aria-label': `Dismiss goal ${goal.title}`, onclick: () => store.dismissGoalPlan(goal.id),
+        }, '✕'))),
+    h('div', { class: 'muted', style: 'font-size:.8rem' }, `suggested by ${SOURCE_NAMES[goal.source] ?? goal.source}`),
+    goal.why ? h('p', { class: 'why' }, goal.why) : null,
+    goal.targetDate ? h('div', { class: 'muted' }, `Target: ${shortDate(goal.targetDate)}`) : null,
+    milestones.length ? h('ol', { class: 'proposal' }, milestones.map((m) => h('li', {}, m.title))) : null,
+    proposed.length ? h('ul', { class: 'proposal' }, proposed.map((i) => h('li', {}, proposalLine(i)))) : null,
+    proposed.length ? h('div', { class: 'muted plan-note' }, 'Habits and targets also wait at the top of Today.') : null);
+}
+
 function renderGoal(goal, ctx) {
   const { store, ui } = ctx;
-  if (goal.status === 'suggested') {
-    return h('div', { class: 'goal suggested' },
-      h('div', { class: 'goal-head' },
-        h('span', {}, goal.title),
-        h('span', {},
-          h('button', { class: 'accept', type: 'button', 'aria-label': `Accept goal ${goal.title}`, onclick: () => store.acceptSuggestion('goals', goal.id) }, '✓'),
-          ' ',
-          h('button', { class: 'dismiss', type: 'button', 'aria-label': `Dismiss goal ${goal.title}`, onclick: () => store.dismissSuggestion('goals', goal.id) }, '✕'))),
-      h('div', { class: 'muted', style: 'font-size:.8rem' }, `suggested by ${SOURCE_NAMES[goal.source] ?? goal.source}`));
-  }
+  if (goal.status === 'suggested') return renderSuggestedGoal(goal, ctx);
   const progress = goalProgress(store.doc(), goal);
   const open = ui.expandedGoals.has(goal.id);
   const toggle = () => {
@@ -110,12 +132,21 @@ function renderGoal(goal, ctx) {
 }
 
 function renderGoals(ctx) {
-  const doc = ctx.store.doc();
+  const { store, ui } = ctx;
+  const doc = store.doc();
   const goals = values(doc.goals)
     .filter((g) => g.status === 'active' || g.status === 'suggested')
     .sort((a, b) => (a.status === b.status ? byOrder(a, b) : a.status === 'suggested' ? -1 : 1));
+  const toggleShape = () => {
+    ui.coach.shapeOpen = !ui.coach.shapeOpen;
+    ctx.render();
+    if (ui.coach.shapeOpen) document.querySelector('#side [data-focus="coach-shape"]')?.focus();
+  };
   return h('section', { class: 'panel' },
-    h('h2', {}, 'Goals', h('button', { class: 'link', type: 'button', onclick: () => ctx.openEditor({ map: 'goals' }) }, '+ goal')),
+    h('h2', {}, 'Goals', h('span', { class: 'panel-links' },
+      h('button', { class: 'link', type: 'button', 'aria-expanded': String(ui.coach.shapeOpen), onclick: toggleShape }, 'Shape with AI'),
+      h('button', { class: 'link', type: 'button', onclick: () => ctx.openEditor({ map: 'goals' }) }, '+ goal'))),
+    renderShapeBox(ctx),
     goals.length ? goals.map((g) => renderGoal(g, ctx)) : h('p', { class: 'muted' }, 'No goals yet.'));
 }
 

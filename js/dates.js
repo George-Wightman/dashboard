@@ -84,3 +84,9 @@ export function hourLabel(hour) {
   const twelve = hour % 12 === 0 ? 12 : hour % 12;
   return `${twelve}${hour < 12 ? 'am' : 'pm'}`;
 }
+
+// The marker on a suggestion for a later day: the weekday within six days, else the date.
+export function forLabel(day, today) {
+  const n = daysBetween(today, day);
+  return n >= 1 && n <= 6 ? `for ${shortWeekday(day)}` : `for ${shortDate(day)}`;
+}
