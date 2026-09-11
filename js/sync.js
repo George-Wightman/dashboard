@@ -3,7 +3,7 @@
 // blocks: every failure comes back as { ok: false, error } for the header to show.
 
 import { mergeDocs, sameDoc } from './merge.js';
-import { MAPS } from './doc.js';
+import { isDoc } from './doc.js';
 
 export class ConflictError extends Error {}
 
@@ -62,9 +62,6 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
   };
 }
 
-const looksLikeDoc = (d) => d && typeof d === 'object' && !Array.isArray(d)
-  && MAPS.every((m) => d[m] === undefined || (d[m] && typeof d[m] === 'object' && !Array.isArray(d[m])));
-
 export async function syncOnce({ store, client, maxAttempts = 3 }) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let remote;
@@ -73,7 +70,7 @@ export async function syncOnce({ store, client, maxAttempts = 3 }) {
     } catch (e) {
       return { ok: false, error: e.message };
     }
-    if (remote && !looksLikeDoc(remote.doc)) {
+    if (remote && !isDoc(remote.doc)) {
       return { ok: false, error: "The sync file isn't a dashboard document — nothing was changed" };
     }
 

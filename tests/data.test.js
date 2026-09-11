@@ -240,6 +240,11 @@ test('a failed save is reported, not thrown', () => {
   assert.equal(heard, 1);
 });
 
+test('importJson rejects a file whose record maps are not real maps (F6)', () => {
+  const store = makeStore();
+  assert.throws(() => store.importJson('{"schema":1,"items":{},"logs":[1]}'), /backup/);
+});
+
 test('stableStringify sorts keys at every depth', () => {
   assert.equal(stableStringify({ b: 1, a: { d: [2, { f: 1, e: 0 }], c: null } }),
     '{"a":{"c":null,"d":[2,{"e":0,"f":1}]},"b":1}');

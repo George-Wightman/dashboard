@@ -2,7 +2,7 @@
 // stamps `updated`, saves, and tells listeners why it changed.
 
 import { logicalDay } from './dates.js';
-import { MAPS, emptyDoc, stableStringify } from './doc.js';
+import { MAPS, emptyDoc, stableStringify, isDoc } from './doc.js';
 import { mergeDocs } from './merge.js';
 
 export const DATA_KEY = 'dash_data';
@@ -169,7 +169,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     } catch {
       throw new Error("That file isn't valid JSON");
     }
-    if (!incoming || typeof incoming !== 'object' || !incoming.items || typeof incoming.items !== 'object') {
+    if (!isDoc(incoming)) {
       throw new Error("That file isn't a dashboard backup");
     }
     replaceDoc(mergeDocs(doc, incoming), 'local');

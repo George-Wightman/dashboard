@@ -208,6 +208,22 @@ test('a remote file that is not a dashboard document is refused', async () => {
   assert.equal(puts, 0);
 });
 
+test('a remote file that is not a dashboard document is refused, whatever shape it is in (F6)', async () => {
+  const store = makeStore();
+  store.addItem({ type: 'task', title: 'A' });
+  const before = JSON.stringify(store.doc());
+  let puts = 0;
+  const client = {
+    async get() { return { doc: { days: {} }, sha: 's' }; },
+    async put() { puts++; return 's2'; },
+  };
+  const result = await syncOnce({ store, client });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /isn't a dashboard document/);
+  assert.equal(JSON.stringify(store.doc()), before);
+  assert.equal(puts, 0);
+});
+
 // ---- scheduler ---------------------------------------------------------------------------------
 
 test('changed() debounces into one run', async () => {
