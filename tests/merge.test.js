@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pickWinner, mergeDocs, sameDoc } from '../js/merge.js';
 import { emptyDoc, stableStringify, MAPS } from '../js/doc.js';
+import { streak, todayRows } from '../js/schedule.js';
 import { makeStore, clock } from './helpers.js';
 
 const S = stableStringify;
@@ -150,6 +151,32 @@ test('moveBefore only touches the dragged row, so it cannot undo a concurrent ar
 
   const merged = mergeDocs(laptop.doc(), phoneDoc);
   assert.equal(merged.items[y.id].status, 'archived');
+});
+
+test('merge repairs a record missing created, deriving it from updated (F8)', () => {
+  const rec = { id: 'q', type: 'quota', status: 'active', updated: '2026-09-10T09:00:00.000Z' };
+  const m = mergeDocs({ ...emptyDoc(), items: { q: rec } }, null);
+  assert.equal(m.items.q.created, '2026-09-10');
+});
+
+test('merge repairs an archived record missing archivedOn, using created (F8)', () => {
+  const rec = { id: 'i', status: 'archived', created: '2026-09-01', updated: '2026-09-05T09:00:00.000Z' };
+  const m = mergeDocs({ ...emptyDoc(), items: { i: rec } }, null);
+  assert.equal(m.items.i.archivedOn, '2026-09-01');
+});
+
+test('merge normalisation is idempotent (F8)', () => {
+  const rec = { id: 'i', status: 'archived', updated: '2026-09-05T09:00:00.000Z' };
+  const once = mergeDocs({ ...emptyDoc(), items: { i: rec } }, null);
+  const twice = mergeDocs(once, null);
+  assert.deepEqual(twice, once);
+});
+
+test('streak and todayRows no longer throw on a merged record missing created (F8)', () => {
+  const rec = { id: 'q', type: 'quota', status: 'active', target: 5, unit: 'count', updated: '2026-09-05T09:00:00.000Z' };
+  const merged = mergeDocs({ ...emptyDoc(), items: { q: rec } }, null);
+  assert.doesNotThrow(() => streak(merged, merged.items.q, '2026-09-10'));
+  assert.doesNotThrow(() => todayRows(merged, '2026-09-10'));
 });
 
 test('importJson merges a backup and cannot roll back newer work', () => {

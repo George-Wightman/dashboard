@@ -64,11 +64,16 @@ async function runSync() {
   if (!navigator.onLine) { sync.state = 'offline'; renderHeader(); return; }
   sync.state = 'syncing';
   renderHeader();
-  const result = await syncOnce({ store, client: createGitHubClient({ token, repo }) });
-  Object.assign(sync, result.ok
-    ? { state: 'ok', at: new Date(), error: null }
-    : { state: 'failing', error: result.error });
-  renderHeader();
+  try {
+    const result = await syncOnce({ store, client: createGitHubClient({ token, repo }) });
+    Object.assign(sync, result.ok
+      ? { state: 'ok', at: new Date(), error: null }
+      : { state: 'failing', error: result.error });
+  } catch (e) {
+    Object.assign(sync, { state: 'failing', error: e.message });
+  } finally {
+    renderHeader();
+  }
 }
 
 // Something half-typed must never be wiped by a sync landing and re-rendering.

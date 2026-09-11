@@ -11,14 +11,27 @@ export function pickWinner(a, b) {
 
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
-function mergeMap(left, right) {
+// Repairs the two things a malformed synced record is missing that would otherwise blank the
+// page: a `created` day (derived from `updated`) and, once archived, an `archivedOn` day.
+// Returns the same object when nothing needs fixing, so it's a no-op to run twice.
+function normaliseRecord(rec) {
+  const created = rec.created !== undefined ? rec.created : (rec.updated?.slice(0, 10) ?? '1970-01-01');
+  const archivedOn = rec.status === 'archived' && !rec.archivedOn ? created : rec.archivedOn;
+  if (created === rec.created && archivedOn === rec.archivedOn) return rec;
+  return { ...rec, created, archivedOn };
+}
+
+function mergeMap(left, right, normalise = false) {
   const lm = left ?? {};
   const rm = right ?? {};
   const ids = [...new Set([...Object.keys(lm), ...Object.keys(rm)])].sort();
   const map = {};
   for (const id of ids) {
-    const x = lm[id];
-    const y = rm[id];
+    // Normalise each candidate before picking, not the winner afterwards: normalising only the
+    // winner would let a repaired record's extra fields shift later tie-breaks, so repeated or
+    // differently-grouped merges (a∪b)∪c vs a∪(b∪c) could disagree on the winner.
+    const x = normalise && lm[id] ? normaliseRecord(lm[id]) : lm[id];
+    const y = normalise && rm[id] ? normaliseRecord(rm[id]) : rm[id];
     map[id] = x && y ? pickWinner(x, y) : (x ?? y);
   }
   return map;
@@ -40,7 +53,7 @@ export function mergeDocs(a, b) {
       || (isPlainObject(left) && !hasRight)
       || (isPlainObject(right) && !hasLeft);
     if (asMap) {
-      out[key] = mergeMap(left, right);
+      out[key] = mergeMap(left, right, MAPS.includes(key));
     } else if (hasLeft && hasRight) {
       out[key] = stableStringify(left) >= stableStringify(right) ? left : right;
     } else {
