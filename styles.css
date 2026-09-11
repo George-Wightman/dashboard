@@ -204,3 +204,8 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .proposal li { padding: .05rem 0; }
 .goal .plan-note { margin-top: .35rem; font-size: .8rem; }
 .row .for { color: var(--accent); font-weight: 500; }
+
+/* Last week's digest */
+.coach .digest-summary { white-space: pre-line; }
+.coach .digest strong { font-weight: 600; }
+.coach .digest-write { margin-top: .5rem; }

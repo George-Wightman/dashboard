@@ -2,14 +2,15 @@
 
 import { createStore, DATA_KEY } from './data.js';
 import { askGemini, geminiKeys } from './gemini.js';
-import { longDate } from './dates.js';
+import { longDate, weekStart } from './dates.js';
 import { dayCompletion } from './schedule.js';
+import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler } from './sync.js';
 import { renderToday, initAddBox } from './ui/today.js';
 import { renderSide } from './ui/side.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
-import { checkinNow } from './ui/coach.js';
+import { checkinNow, writeDigest } from './ui/coach.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -130,12 +131,33 @@ function canRun() {
   return !ui.editorDirty && !ui.amountFor && !typing();
 }
 
-const scheduler = createSyncScheduler({ run: runSync, canRun });
+// Last week's digest, written in the background once a new week has started and last week had
+// anything in it (digestDue). At most one attempt per week while the page is open; a failure is
+// silent and leaves the panel's "Write last week's digest" link.
+function maybeWriteDigest() {
+  if (ui.coach.digestTried) return;
+  if (!ctx.coach.keys().length) return;
+  if (navigator.onLine === false) return;
+  if (!digestDue(store.doc(), store.today())) return;
+  ui.coach.digestTried = true;
+  writeDigest(ctx, { quiet: true });
+}
+
+// Each sync pass (on open, on focus, after a change) is followed by the digest check, so a digest
+// another device already wrote has been pulled in before deciding to write one.
+const scheduler = createSyncScheduler({
+  run: async () => { await runSync(); maybeWriteDigest(); },
+  canRun,
+});
 
 // The app sits open all day: when the logical day changes, rebuild.
 function checkRollover() {
   const day = store.today();
   if (day !== shownDay) {
+    // A new week: last week's digest is now due, even if this page already tried one last week.
+    if (weekStart(day) !== weekStart(shownDay)) {
+      Object.assign(ui.coach, { digestTried: false, digestError: '', digestOpen: false });
+    }
     shownDay = day;
     ui.historyDay = null;
     // Yesterday's check-in is over: its typed answers, "Not now" and last error no longer apply.

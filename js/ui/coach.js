@@ -8,8 +8,9 @@ import { h } from './dom.js';
 import { GeminiError, MESSAGES } from '../gemini.js';
 import {
   checkinOf, checkinState, questionsPrompt, feedbackPrompt, parseQuestions, parseFeedback, shapePrompt, parseShape,
+  digestOf, digestDue, digestPrompt, parseDigest,
 } from '../coach.js';
-import { addDays, hourLabel } from '../dates.js';
+import { addDays, weekStart, hourLabel } from '../dates.js';
 
 const link = (text, onclick) => h('button', { class: 'link', type: 'button', onclick }, text);
 
@@ -168,7 +169,8 @@ export function renderCoach(ctx) {
   return h('section', { class: 'panel coach' },
     h('h2', {}, 'Coach', ctx.coach.fake ? h('span', { class: 'fake' }, `fake · ${ctx.coach.fake}`) : null),
     renderCheckin(ctx),
-    c.error ? h('p', { class: 'error', role: 'status' }, c.error) : null);
+    c.error ? h('p', { class: 'error', role: 'status' }, c.error) : null,
+    renderDigest(ctx));
 }
 
 // ---- Shape a goal -----------------------------------------------------------------------------
@@ -226,4 +228,56 @@ export function renderShapeBox(ctx) {
       h('button', { class: 'btn primary', type: 'submit', disabled: c.shapeBusy }, c.shapeBusy ? 'Shaping…' : 'Shape'),
       link('Cancel', () => { c.shapeOpen = false; c.shapeError = ''; ctx.render(); })),
     c.shapeError ? h('p', { class: 'error', role: 'status' }, c.shapeError) : null);
+}
+
+// ---- Last week's digest -----------------------------------------------------------------------
+
+// Job D: last week's digest, filed under last week's Monday. Quiet (the background trigger in
+// js/app.js) says nothing when there's no key or no network, and swallows a failure, leaving the
+// "Write last week's digest" link.
+export async function writeDigest(ctx, { quiet = false } = {}) {
+  const { store, ui } = ctx;
+  const c = ui.coach;
+  if (c.digestBusy) return;
+  if (quiet && blocker(ctx)) return;
+  const monday = addDays(weekStart(store.today()), -7);
+  c.digestError = '';
+  c.digestBusy = true;
+  ctx.render();
+  try {
+    const { reply, model } = await consult(ctx, digestPrompt(store.doc(), monday), parseDigest);
+    store.saveJournal({ kind: 'digest', day: monday, ...reply, model });
+  } catch (e) {
+    if (!quiet) c.digestError = e.message;
+  } finally {
+    c.digestBusy = false;
+    ctx.render();
+  }
+}
+
+// The collapsed "Last week" line once the digest exists; before that, the link to write it (only
+// with a key, and only for a week that had anything in it).
+function renderDigest(ctx) {
+  const { store, ui } = ctx;
+  const c = ui.coach;
+  const doc = store.doc();
+  const today = store.today();
+  const digest = digestOf(doc, addDays(weekStart(today), -7));
+  if (digest) {
+    const line = (label, text) => h('p', {}, h('strong', {}, label), text);
+    const details = h('details', { class: 'digest', open: c.digestOpen },
+      h('summary', {}, 'Last week'),
+      h('p', { class: 'digest-summary' }, digest.summary),
+      digest.wins?.length ? line('Went well: ', digest.wins.join(' · ')) : null,
+      digest.slipped?.length ? line('Slipped: ', digest.slipped.join(' · ')) : null,
+      digest.focus ? line('This week: ', digest.focus) : null);
+    details.addEventListener('toggle', () => { c.digestOpen = details.open; });
+    return details;
+  }
+  if (!ctx.coach.keys().length || !digestDue(doc, today)) return null;
+  return h('div', { class: 'digest-write' },
+    c.digestBusy
+      ? h('p', { class: 'muted', role: 'status' }, "Writing last week's digest…")
+      : h('p', {}, link("Write last week's digest", () => writeDigest(ctx))),
+    c.digestError ? h('p', { class: 'error', role: 'status' }, c.digestError) : null);
 }
