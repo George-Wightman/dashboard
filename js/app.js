@@ -1,6 +1,6 @@
 // Boot: one store, one render loop, the header, sync, and the day rollover.
 
-import { createStore } from './data.js';
+import { createStore, DATA_KEY } from './data.js';
 import { longDate } from './dates.js';
 import { dayCompletion } from './schedule.js';
 import { createGitHubClient, syncOnce, createSyncScheduler } from './sync.js';
@@ -118,6 +118,7 @@ document.addEventListener('visibilitychange', () => {
   else wake();
 });
 window.addEventListener('pagehide', () => scheduler.flush());
+window.addEventListener('storage', (e) => { if (e.key === DATA_KEY && e.newValue) store.absorbStored(e.newValue); });
 setInterval(checkRollover, 60000);
 
 render();

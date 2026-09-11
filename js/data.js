@@ -175,6 +175,19 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     replaceDoc(mergeDocs(doc, incoming), 'local');
   }
 
+  // A save from another window/tab on this device, arriving via the storage event. Merged in,
+  // never thrown on — anything unparseable or not a real document is silently ignored.
+  function absorbStored(raw) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!isDoc(parsed)) return;
+    replaceDoc(mergeDocs(doc, parsed), 'sync');
+  }
+
   function updateSettings(changes) {
     settings = { ...settings, ...changes };
     save(SETTINGS_KEY, settings);
@@ -212,6 +225,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
 
     replaceDoc,
+    absorbStored,
     updateSettings,
     exportJson: () => JSON.stringify(doc, null, 2),
     importJson,

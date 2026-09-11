@@ -240,6 +240,26 @@ test('a failed save is reported, not thrown', () => {
   assert.equal(heard, 1);
 });
 
+test('absorbStored merges in a save from another window sharing the same storage (F9)', () => {
+  const storage = new MemoryStorage();
+  const now = clock();
+  const a = makeStore({ storage, now, prefix: 'a' });
+  const b = makeStore({ storage, now, prefix: 'b' }); // both start from the same empty storage
+  a.addItem({ type: 'task', title: 'from A' });
+  now.advance(1000);
+  b.addItem({ type: 'task', title: 'from B' }); // b's in-memory doc never saw A's write, so this overwrites storage
+  assert.deepEqual(Object.values(JSON.parse(storage.getItem(DATA_KEY)).items).map((i) => i.title), ['from B']);
+
+  a.absorbStored(storage.getItem(DATA_KEY));
+  const titles = Object.values(a.doc().items).map((i) => i.title).sort();
+  assert.deepEqual(titles, ['from A', 'from B']);
+
+  const before = JSON.stringify(a.doc());
+  a.absorbStored('not json');
+  a.absorbStored('{"x":1}');
+  assert.equal(JSON.stringify(a.doc()), before);
+});
+
 test('importJson rejects a file whose record maps are not real maps (F6)', () => {
   const store = makeStore();
   assert.throws(() => store.importJson('{"schema":1,"items":{},"logs":[1]}'), /backup/);
