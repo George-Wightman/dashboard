@@ -102,6 +102,8 @@ async function runSync() {
     store.absorbStored(pendingStored);
     pendingStored = null;
   }
+  // Fake mode never contacts GitHub: it's local-only, testing the coach, not sync.
+  if (FAKE) { sync.state = 'off'; renderHeader(); return; }
   const { token, repo } = store.settings();
   if (!token || !repo) { sync.state = 'off'; renderHeader(); return; }
   if (!navigator.onLine) { sync.state = 'offline'; renderHeader(); return; }
