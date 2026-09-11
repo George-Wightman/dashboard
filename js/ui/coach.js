@@ -72,6 +72,12 @@ export async function startCheckin(ctx) {
   c.busy = 'questions';
   ctx.render();
   await syncFirst(ctx);
+  const synced = checkinOf(store.doc(), today);
+  if (synced?.questions?.length || synced?.feedback) {
+    c.busy = '';
+    ctx.render();
+    return;
+  }
   try {
     const { reply, model } = await consult(ctx, questionsPrompt(store.doc(), today), parseQuestions);
     await ctx.whenIdle();
