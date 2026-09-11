@@ -119,6 +119,25 @@ test('the normal path still saves questions, then answers + feedback + tomorrowI
   assert.equal(ctx.ui.coach.error, '');
 });
 
+// ---- D2: sync before sending a check-in ---------------------------------------------------------
+
+test('sendCheckin: syncNow is called before ctx.coach.ask', async () => {
+  const store = makeStore();
+  const today = day(store);
+  store.saveJournal({ kind: 'checkin', day: today, questions: ['How did today go?'], model: 'gemini-flash-lite-latest' });
+  const order = [];
+  const ctx = makeCtx({
+    store,
+    ask: async () => { order.push('ask'); return { data: { feedback: 'Solid day.', tomorrow: [] }, model: 'gemini-flash-lite-latest' }; },
+    syncNow: async () => { order.push('sync'); },
+  });
+  ctx.ui.coach.answers = ['Went fine'];
+
+  await sendCheckin(ctx);
+
+  assert.deepEqual(order, ['sync', 'ask']);
+});
+
 // ---- C2: land coach replies only when nothing is being typed -----------------------------------
 
 // Lets pending microtasks (the fake ask() resolving, consult()'s own await) drain before we

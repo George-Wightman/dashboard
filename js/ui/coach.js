@@ -100,6 +100,7 @@ export async function sendCheckin(ctx) {
   c.error = '';
   c.busy = 'feedback';
   ctx.render();
+  try { await ctx.syncNow?.(); } catch { /* best effort */ }
   try {
     const { reply, model } = await consult(ctx, feedbackPrompt(store.doc(), today, questions, answers), parseFeedback);
     await ctx.whenIdle();
