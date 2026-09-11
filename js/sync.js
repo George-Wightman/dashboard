@@ -50,7 +50,16 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'sync', content: encodeBase64(JSON.stringify(doc)), ...(sha ? { sha } : {}) }),
       });
-      if (res.status === 409 || res.status === 422) throw new ConflictError(`GitHub ${res.status}`);
+      if (res.status === 409) throw new ConflictError(`GitHub 409`);
+      if (res.status === 422) {
+        let message = '';
+        try { message = (await res.json())?.message ?? ''; } catch { /* no body */ }
+        if (/sha/i.test(message)) {
+          throw new ConflictError(`GitHub 422: ${message}`);
+        } else {
+          throw new Error(`GitHub 422${message ? `: ${message}` : ''}`);
+        }
+      }
       if (!res.ok) throw await failure(res);
       return (await res.json()).content.sha;
     },
@@ -110,7 +119,7 @@ export function createSyncScheduler({ run, canRun = () => true, debounceMs = 500
       await run();
     } finally {
       running = false;
-      if (again) { again = false; now(); }
+      if (again) { again = false; now().catch(() => {}); }
     }
   }
 

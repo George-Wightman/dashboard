@@ -91,6 +91,14 @@ test('client.put sends content and sha; 409 is a ConflictError', async () => {
   await assert.rejects(down.put(doc, 'x'), /GitHub 500: oops/);
 });
 
+test('client.put: a 422 about the sha is a conflict; any other 422 is a real error', async () => {
+  const doc = { schema: 1, items: {}, goals: {}, milestones: {}, logs: {} };
+  const shaMissing = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(422, { message: 'Invalid request.\n\n"sha" wasn\'t supplied.' }) });
+  await assert.rejects(shaMissing.put(doc), ConflictError);
+  const badContent = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(422, { message: 'content is not valid Base64' }) });
+  await assert.rejects(badContent.put(doc, 'x'), (e) => !(e instanceof ConflictError) && /GitHub 422: content is not valid Base64/.test(e.message));
+});
+
 // ---- syncOnce ----------------------------------------------------------------------------------
 
 test('first sync pushes local data to an empty repo', async () => {
