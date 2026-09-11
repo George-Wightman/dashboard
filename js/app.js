@@ -58,7 +58,15 @@ function render() {
   renderSide(ctx);
 }
 
+// A storage-event save held back while typing/editing (see below), absorbed as soon as a sync
+// is allowed to run rather than being lost.
+let pendingStored = null;
+
 async function runSync() {
+  if (pendingStored) {
+    store.absorbStored(pendingStored);
+    pendingStored = null;
+  }
   const { token, repo } = store.settings();
   if (!token || !repo) { sync.state = 'off'; renderHeader(); return; }
   if (!navigator.onLine) { sync.state = 'offline'; renderHeader(); return; }
@@ -85,10 +93,11 @@ function typing() {
     && !!el.closest('#list, #side');
 }
 
-const scheduler = createSyncScheduler({
-  run: runSync,
-  canRun: () => !ui.editorDirty && !ui.amountFor && !typing(),
-});
+function canRun() {
+  return !ui.editorDirty && !ui.amountFor && !typing();
+}
+
+const scheduler = createSyncScheduler({ run: runSync, canRun });
 
 // The app sits open all day: when the logical day changes, rebuild.
 function checkRollover() {
@@ -121,7 +130,13 @@ document.addEventListener('visibilitychange', () => {
   else wake();
 });
 window.addEventListener('pagehide', () => scheduler.flush());
-window.addEventListener('storage', (e) => { if (e.key === DATA_KEY && e.newValue) store.absorbStored(e.newValue); });
+window.addEventListener('storage', (e) => {
+  if (e.key !== DATA_KEY || !e.newValue) return;
+  // Same hold-back as the sync scheduler: absorbing another window's save must not wipe
+  // something half-typed either, so queue it and let it through once a sync is allowed to run.
+  if (!canRun()) { pendingStored = e.newValue; scheduler.changed(); return; }
+  store.absorbStored(e.newValue);
+});
 setInterval(checkRollover, 60000);
 
 render();
