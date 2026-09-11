@@ -41,6 +41,13 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
       if (res.status === 404) return null;
       if (!res.ok) throw await failure(res);
       const body = await res.json();
+      // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead.
+      if (!body.content || body.encoding === 'none') {
+        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store' });
+        if (!blobRes.ok) throw await failure(blobRes);
+        const blob = await blobRes.json();
+        return { doc: JSON.parse(decodeBase64(blob.content)), sha: body.sha };
+      }
       return { doc: JSON.parse(decodeBase64(body.content)), sha: body.sha };
     },
 

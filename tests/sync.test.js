@@ -63,6 +63,21 @@ test('client.get reads the file with auth and no caching', async () => {
   assert.equal(calls[0].init.cache, 'no-store');
 });
 
+test('client.get falls back to the blobs API for files over 1MB (F7)', async () => {
+  const doc = { schema: 1, items: {}, goals: {}, milestones: {}, logs: {} };
+  const fetch = async (url) => {
+    if (url === 'https://api.github.com/repos/o/r/contents/data.json') {
+      return jsonResponse(200, { content: '', encoding: 'none', sha: 's1' });
+    }
+    if (url === 'https://api.github.com/repos/o/r/git/blobs/s1') {
+      return jsonResponse(200, { content: encodeBase64(JSON.stringify(doc)), encoding: 'base64' });
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+  const client = createGitHubClient({ token: 't', repo: 'o/r', fetch });
+  assert.deepEqual(await client.get(), { doc, sha: 's1' });
+});
+
 test('client.get: 404 means no file yet; other errors throw', async () => {
   const missing = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(404, { message: 'Not Found' }) });
   assert.equal(await missing.get(), null);
