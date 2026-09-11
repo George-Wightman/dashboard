@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Seed sample data</title>
+<p id="msg">Seeding…</p>
+<script type="module">
+  import { logicalDay, addDays, weekday } from '../js/dates.js';
+  import { emptyDoc } from '../js/doc.js';
+
+  const msg = document.getElementById('msg');
+  const replace = new URLSearchParams(location.search).has('replace');
+
+  if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+    msg.textContent = 'Sample data is only for local testing. Nothing was changed.';
+  } else if (localStorage.getItem('dash_data') && !replace) {
+    msg.textContent = 'This browser already has data. Open seed.html?replace to overwrite it with sample data.';
+  } else {
+    const today = logicalDay(new Date());
+    const ago = (n) => addDays(today, -n);
+    const stamp = new Date().toISOString();
+    const doc = emptyDoc();
+    let n = 0;
+    const rec = (map, fields) => {
+      const id = fields.id ?? `seed${++n}`;
+      doc[map][id] = { source: 'me', status: 'active', created: ago(20), archivedOn: null, updated: stamp, ...fields, id };
+      return doc[map][id];
+    };
+    const tick = (itemId, day) => rec('logs', { itemId, goalId: null, kind: 'done', day, at: `${day}T10:00:00.000Z`, note: '' });
+    const log = (itemId, day, amount, note = '') => rec('logs', { itemId, goalId: null, kind: 'amount', amount, day, at: `${day}T11:00:00.000Z`, note });
+
+    const goal = rec('goals', { title: 'Land an analyst role', targetDate: addDays(today, 60), target: null, unit: 'count', unitLabel: '', order: 1 });
+    rec('goals', { title: 'Hold a 10-minute conversation in Hebrew', targetDate: null, target: null, unit: 'count', unitLabel: '', order: 2, status: 'suggested', source: 'gemini' });
+    ['Tailor CV for data roles', 'Five applications sent', 'First interview']
+      .forEach((title, i) => rec('milestones', { goalId: goal.id, title, done: i === 0, order: i + 1 }));
+
+    const hebrew = rec('items', { type: 'habit', title: 'Hebrew practice', area: 'Hebrew', repeat: { kind: 'daily' }, goalId: null, order: 1 });
+    const gym = rec('items', { type: 'habit', title: 'Gym', area: 'Health', repeat: { kind: 'perWeek', n: 3 }, goalId: null, order: 2 });
+    const review = rec('items', { type: 'habit', title: 'Weekly review', area: '', repeat: { kind: 'weekly', day: 7 }, goalId: null, order: 3 });
+    const jobs = rec('items', { type: 'quota', title: 'Job search', area: 'Job', target: 360, unit: 'minutes', unitLabel: '', goalId: goal.id, order: 4 });
+    const apps = rec('items', { type: 'quota', title: 'Applications', area: 'Job', target: 5, unit: 'count', unitLabel: 'applications', goalId: goal.id, order: 5 });
+    rec('items', { type: 'task', title: 'Email Sarah about the reference', area: 'Job', date: ago(2), created: ago(2), goalId: null, order: 6 });
+    rec('items', { type: 'task', title: 'Book dentist', area: '', date: today, created: today, goalId: null, order: 7 });
+    rec('items', { type: 'task', title: 'Finish NatCen supporting statement', area: 'Job', date: today, created: today, goalId: goal.id, source: 'claude', order: 8 });
+    rec('items', { type: 'task', title: 'Read one policy brief a day this week', area: '', date: today, created: today, goalId: null, status: 'suggested', source: 'gemini', order: 9 });
+
+    for (let i = 20; i >= 1; i--) if (i % 6 !== 0) tick(hebrew.id, ago(i));
+    for (let i = 20; i >= 1; i -= 2) tick(gym.id, ago(i));
+    for (let i = 20; i >= 1; i--) if (weekday(ago(i)) === 7) tick(review.id, ago(i));
+    for (const i of [1, 2, 3, 5, 8, 9, 12]) log(jobs.id, ago(i), 60, 'Applications');
+    log(apps.id, ago(1), 1, 'NatCen');
+    log(apps.id, ago(2), 2);
+    for (let i = 14; i >= 1; i -= 3) {
+      const t = rec('items', { type: 'task', title: `Past task ${i}`, area: '', date: ago(i), created: ago(i), goalId: null, order: 20 + i });
+      if (i % 2) tick(t.id, ago(i));
+    }
+
+    localStorage.setItem('dash_data', JSON.stringify(doc));
+    location.href = '../';
+  }
+</script>

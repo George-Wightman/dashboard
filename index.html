@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Today</title>
+  <meta name="theme-color" content="#f7f7f5">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-date">
+      <h1 id="date"></h1>
+      <span id="count" class="muted"></span>
+    </div>
+    <div class="top-actions">
+      <span id="save-warning" class="warning" hidden></span>
+      <button id="sync-status" class="link" type="button"></button>
+      <button id="settings-button" class="icon" type="button" aria-label="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="today" aria-label="Today">
+      <ul id="list" class="list"></ul>
+      <form id="add" class="add" autocomplete="off">
+        <input id="add-title" type="text" placeholder="Add a task…" aria-label="New task">
+        <select id="add-when" aria-label="When">
+          <option value="today">Today</option>
+          <option value="tomorrow">Tomorrow</option>
+          <option value="date">On a date…</option>
+        </select>
+        <input id="add-date" type="date" hidden aria-label="Date">
+        <button id="add-more" type="button" class="link">New habit, quota or goal…</button>
+      </form>
+    </section>
+    <aside id="side" class="side" aria-label="Week, goals and history"></aside>
+  </main>
+
+  <aside id="editor" class="editor" hidden aria-label="Edit"></aside>
+  <dialog id="settings" class="settings"></dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
