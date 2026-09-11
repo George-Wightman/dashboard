@@ -9,6 +9,7 @@ test('a new store is empty, with default settings', () => {
   assert.deepEqual(Object.keys(store.doc()).sort(), ['goals', 'items', 'logs', 'milestones', 'schema']);
   assert.equal(store.settings().dayStartHour, 4);
   assert.equal(store.today(), '2026-09-10');
+  assert.equal(store.loadError(), null);
 });
 
 test('addItem fills defaults and persists', () => {
@@ -55,7 +56,25 @@ test('unreadable saved data is kept aside and reported, not silently lost', () =
   const store = makeStore({ storage });
   assert.deepEqual(store.doc().items, {});
   assert.equal(storage.getItem(CORRUPT_KEY), '{not json');
-  assert.match(store.saveError(), /couldn't be read/);
+  assert.match(store.loadError(), /couldn't be read/);
+  store.addItem({ type: 'task', title: 'After' });
+  assert.match(store.loadError(), /couldn't be read/); // survives later saves
+  assert.equal(store.saveError(), null);
+  assert.equal(storage.getItem(CORRUPT_KEY), '{not json');
+});
+
+test('saved data of the wrong shape, or a failed read, is reported too', () => {
+  const arrayStorage = new MemoryStorage({ dash_data: '[1,2]' });
+  const a = makeStore({ storage: arrayStorage });
+  assert.match(a.loadError(), /couldn't be read/);
+  assert.equal(arrayStorage.getItem(CORRUPT_KEY), '[1,2]');
+
+  class DeniedRead extends MemoryStorage {
+    getItem(key) { if (key === 'dash_data') throw new Error('denied'); return super.getItem(key); }
+  }
+  const b = makeStore({ storage: new DeniedRead() });
+  assert.match(b.loadError(), /couldn't be read/);
+  assert.deepEqual(b.doc().items, {});
 });
 
 test('toggleDone ticks, tombstones, and ticks again', () => {

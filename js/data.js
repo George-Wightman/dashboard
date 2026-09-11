@@ -32,7 +32,7 @@ function loadDoc(storage) {
   try {
     raw = storage.getItem(DATA_KEY);
   } catch {
-    return { doc: emptyDoc(), error: null };
+    return { doc: emptyDoc(), error: "Saved data couldn't be read on this device, so it started empty." };
   }
   if (!raw) return { doc: emptyDoc(), error: null };
   try {
@@ -44,7 +44,7 @@ function loadDoc(storage) {
   try { storage.setItem(CORRUPT_KEY, raw); } catch { /* nothing more can be done */ }
   return {
     doc: emptyDoc(),
-    error: `Saved data couldn't be read, so this device started empty. The unreadable copy was kept under ${CORRUPT_KEY}.`,
+    error: "Saved data couldn't be read on this device, so it started empty.",
   };
 }
 
@@ -58,7 +58,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   const loaded = loadDoc(storage);
   let doc = loaded.doc;
   let settings = { ...DEFAULT_SETTINGS, ...(readJson(storage, SETTINGS_KEY) ?? {}) };
-  let saveError = loaded.error;
+  const loadError = loaded.error;
+  let saveError = null;
   const listeners = new Set();
 
   const stamp = () => now().toISOString();
@@ -163,6 +164,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     settings: () => settings,
     today,
     saveError: () => saveError,
+    loadError: () => loadError,
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
