@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startCheckin, sendCheckin, shapeGoal, writeDigest } from '../js/ui/coach.js';
-import { checkinOf, digestOf } from '../js/coach.js';
+import { checkinOf } from '../js/coach.js';
 import { GeminiError } from '../js/gemini.js';
 import { makeStore } from './helpers.js';
 
@@ -31,13 +31,12 @@ function makeCtx({ store, ask, keys = () => ['fake-key'], syncNow, whenIdle } = 
   return ctx;
 }
 
-// A promise this test controls: resolve/reject it whenever the scenario calls for the Gemini
-// reply (or another device's write) to land.
+// A promise this test controls: resolve it whenever the scenario calls for the Gemini reply (or
+// ctx.whenIdle) to land.
 function deferred() {
   let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
-  return { promise, resolve, reject };
+  const promise = new Promise((res) => { resolve = res; });
+  return { promise, resolve };
 }
 
 const day = (store) => store.today();
@@ -163,4 +162,37 @@ test("writeDigest: a quiet failure still re-renders once, to clear 'Writing…',
   assert.ok(ctx.renders.length > rendersBeforeIdle);
   assert.equal(ctx.ui.coach.digestError, ''); // quiet: still no error line
   assert.equal(ctx.ui.coach.digestBusy, false);
+});
+
+// ---- C5: keep text typed while a goal is being shaped -------------------------------------------
+
+test('shapeGoal: closes the box and clears the text when nothing was typed meanwhile', async () => {
+  const store = makeStore();
+  const ctx = makeCtx({ store, ask: async () => ({ data: { title: 'Run a 10k' }, model: 'gemini-flash-lite-latest' }) });
+  ctx.ui.coach.shapeOpen = true;
+  ctx.ui.coach.shapeText = 'Get fit for a 10k';
+
+  await shapeGoal(ctx, 'Get fit for a 10k');
+
+  assert.equal(ctx.ui.coach.shapeOpen, false);
+  assert.equal(ctx.ui.coach.shapeText, '');
+  assert.equal(Object.values(store.doc().goals).length, 1);
+});
+
+test('shapeGoal: keeps the box open with the new text if he kept typing while it was being shaped', async () => {
+  const store = makeStore();
+  const gate = deferred();
+  const ctx = makeCtx({ store, ask: () => gate.promise });
+  ctx.ui.coach.shapeOpen = true;
+  ctx.ui.coach.shapeText = 'Get fit for a 10k';
+
+  const p = shapeGoal(ctx, 'Get fit for a 10k');
+  await tick();
+  ctx.ui.coach.shapeText = 'Actually, learn Spanish';
+  gate.resolve({ data: { title: 'Run a 10k' }, model: 'gemini-flash-lite-latest' });
+  await p;
+
+  assert.equal(ctx.ui.coach.shapeOpen, true);
+  assert.equal(ctx.ui.coach.shapeText, 'Actually, learn Spanish');
+  assert.equal(Object.values(store.doc().goals).length, 1); // the goal is still added
 });

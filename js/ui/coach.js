@@ -218,8 +218,12 @@ export async function shapeGoal(ctx, text) {
       habits: plan.habits,
       targets: plan.targets,
     });
-    c.shapeOpen = false;
-    c.shapeText = '';
+    // Only clear and close the box if what's typed is still what was sent — if he's carried on
+    // typing a new idea while this one was being shaped, that text must survive.
+    if (c.shapeText === text) {
+      c.shapeOpen = false;
+      c.shapeText = '';
+    }
   } catch (e) {
     await ctx.whenIdle();
     c.shapeError = e.message;
