@@ -5,8 +5,9 @@ One screen: today's list (tasks, habits, weekly targets), this week's bars, goal
 three weeks. Works offline and syncs between the laptop and the phone through a private GitHub
 repo.
 
-Piece 1 of 6. The design is in [`docs/superpowers/specs/`](docs/superpowers/specs/), and the
-build plan is in [`docs/superpowers/plans/`](docs/superpowers/plans/).
+Pieces 1 and 5 of 6: the core hub and the Gemini coach. The designs are in
+[`docs/superpowers/specs/`](docs/superpowers/specs/), and the build plans are in
+[`docs/superpowers/plans/`](docs/superpowers/plans/).
 
 ## Using it
 
@@ -19,6 +20,47 @@ build plan is in [`docs/superpowers/plans/`](docs/superpowers/plans/).
 - **Unfinished tasks carry over** with an orange *from Tue* marker until they're done.
 - **The day starts at 4am**, so a late night still counts as the day before (change it in ⚙).
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
+
+## The coach (Gemini)
+
+The first panel on the right is a coach that runs on Google's Gemini.
+
+- **Shape a goal.** Click *Shape with AI* in the Goals panel, say what you want to achieve in plain
+  words, and press **Shape**. Gemini proposes a goal with milestones, plus up to two habits and two
+  weekly targets. It all arrives as a suggestion, and the goal card shows what's proposed. ✓ on the
+  card takes on the goal and its milestones. The habits and targets wait at the top of Today, to be
+  accepted one by one. ✕ turns the whole plan down.
+- **Evening check-in.** From 6pm (change the hour in ⚙), the panel offers *Start today's
+  check-in*. Gemini asks two or three questions about today, built from what actually happened.
+  Answer each in a line or two and press **Send** (or Ctrl+Enter). It replies with short feedback
+  and at most two suggested tasks for tomorrow. Those show at the top of the list, marked *for Sat*
+  and so on. The questions are saved as soon as they arrive, so they survive a reload or a switch of
+  device. Typed answers stay on the page until you send them.
+- **Weekly digest.** Once a new week starts, Gemini writes a short digest of last week: what went
+  well, what slipped, and one focus for this week. It shows as *Last week* in the panel. It's saved
+  in the synced document (`journal`), so Claude can read it later without the raw data. If it
+  can't be written in the background, the panel offers *Write last week's digest*.
+
+Nothing is ever a dialog. Problems show as one line in the panel: no key, offline, "Gemini's free
+limit is used up for today — try tomorrow", or "Gemini didn't answer — try again".
+
+**The key.** There's nothing to set up if the Hebrew app has a Gemini key saved on the same device.
+Both apps are served from `george-wightman.github.io`, so the dashboard can use that key as it is.
+Otherwise paste a key into ⚙ → *Gemini API key*. ⚙ also says whether a Hebrew-app key was found.
+Keys stay on the device and are never synced.
+
+**What it costs.** It asks `gemini-flash-lite-latest` first (about 500 free requests a day), and
+only falls back to `gemini-flash-latest` (about 20 a day). That leaves the scarce Flash allowance
+to the Hebrew app, which shares the key. A check-in is 2 requests, shaping a goal is 1, and the
+digest is 1 a week.
+
+**Privacy.** Check-ins and goal shaping send a summary of your list to Google. On Google's free tier
+they may use it to improve their products.
+
+**Trying it locally without a key.** On localhost, add `?fakegemini` to the address:
+http://localhost:8080/?fakegemini. Canned replies stand in for Google, no key is read, and the panel
+heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-second replies),
+`nokey`, `quota`, `down`, `offline`, `badkey` or `nonsense`.
 
 ## Morning steps (one-off setup, about 10 minutes)
 
@@ -60,7 +102,8 @@ Then open http://localhost:8080/. For sample data, open http://localhost:8080/de
 (this only works on localhost).
 
 After changing code, reload **twice** — the offline cache serves the old copy once while it
-fetches the new one.
+fetches the new one. After a push to the published site, one reload now brings the new version:
+the first load installs the new service worker, and the second runs it.
 
 ## Tests
 
@@ -70,7 +113,8 @@ npm test
 
 Node 24's built-in test runner. There are no dependencies to install. Every pure module (dates,
 parsing, scheduling, streaks, history, merge) and the sync flow is covered, including two
-simulated devices converging.
+simulated devices converging. So are the Gemini client and the coach's context, prompts and reply
+checks. They run against a fake `fetch`, so no test ever calls Google.
 
 ## How it's built
 
@@ -84,18 +128,21 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependen
 | `js/schedule.js` | What's on a day, carry-over, streaks, weekly totals, history, goal progress |
 | `js/merge.js` | Merging two copies — commutative, idempotent, never loses anything |
 | `js/sync.js` | GitHub read/merge/write with retry, and the sync timer |
+| `js/gemini.js` | The Gemini client: lite model first, fallbacks and retries, plain-English errors |
+| `js/coach.js` | What the coach tells Gemini, a week's numbers, the prompts, and the reply checks |
 | `js/ui/*.js`, `js/app.js` | The screen |
 | `sw.js`, `manifest.webmanifest` | Offline and install |
 
-Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`. Nothing is ever
-hard-deleted. Records are archived or tombstoned, so a sync can't bring back something removed on
-another device. Settings (repo, key, day start) stay on each device and are never synced.
+Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, and `journal` (the
+coach's check-ins and weekly digests). Nothing is ever hard-deleted. Records are archived or
+tombstoned, so a sync can't bring back something removed on another device. Settings (repo, access
+key, day start, Gemini key, check-in hour) stay on each device and are never synced.
 
 ## Roadmap
 
-1. **Core hub** — this
+1. **Core hub** — built
 2. Hebrew auto-tick — practice minutes from the Hebrew app's sync file
 3. Claude connector + skill — Claude can see the dashboard and add to it from any chat
 4. Job search + Notion — application counts and deadlines from the Job Tracker
-5. Gemini coach — goal shaping, evening check-in, weekly digest
+5. **Gemini coach** — goal shaping, evening check-in, weekly digest — built
 6. Google Calendar — today's events beside the list
