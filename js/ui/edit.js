@@ -27,6 +27,7 @@ function defaultDraft(map, type, today) {
 
 export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}) {
   const { store, ui } = ctx;
+  ui.closeEditor?.(); // only one editor at a time
   const panel = document.getElementById('editor');
   const today = store.today();
   const existing = id ? store.doc()[map][id] : null;
@@ -41,6 +42,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
     panel.replaceChildren();
     ui.editorDirty = false;
     document.removeEventListener('keydown', onKey);
+    if (ui.closeEditor === close) ui.closeEditor = null;
   }
   const fail = (message) => { errorEl.textContent = message; };
 
@@ -217,6 +219,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
 
   ui.editorDirty = false;
   document.addEventListener('keydown', onKey);
+  ui.closeEditor = close;
   paint();
   panel.hidden = false;
   panel.querySelector('input[name=title]')?.focus();

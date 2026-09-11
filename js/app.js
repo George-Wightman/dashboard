@@ -8,7 +8,7 @@ import { renderSide } from './ui/side.js';
 import { openEditor } from './ui/edit.js';
 
 const store = createStore({ storage: localStorage });
-const ui = { entriesFor: null, amountFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false };
+const ui = { entriesFor: null, amountFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null };
 const ctx = {
   store,
   ui,
