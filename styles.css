@@ -166,3 +166,5 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .settings h2 { margin: 0 0 1rem; font-size: 1.1rem; }
 .settings .note { margin: -.4rem 0 .9rem; font-size: .8rem; color: var(--muted); }
 .settings hr { margin: 1rem 0; border: 0; border-top: 1px solid var(--line); }
+
+.goal-body input.invalid { border-color: var(--danger); }

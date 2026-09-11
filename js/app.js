@@ -4,6 +4,7 @@ import { createStore } from './data.js';
 import { longDate } from './dates.js';
 import { dayCompletion } from './schedule.js';
 import { renderToday, initAddBox } from './ui/today.js';
+import { renderSide } from './ui/side.js';
 
 const store = createStore({ storage: localStorage });
 const ui = { entriesFor: null, amountFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false };
@@ -33,6 +34,7 @@ function renderHeader() {
 function render() {
   renderHeader();
   renderToday(ctx);
+  renderSide(ctx);
 }
 
 // The app sits open all day: when the logical day changes, rebuild.
