@@ -5,6 +5,7 @@ import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail } 
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 import { shortDate, shortWeekday } from '../dates.js';
 import { SOURCE_NAMES } from './today.js';
+import { renderCoach } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
@@ -155,7 +156,30 @@ function renderHistory(ctx) {
   return section;
 }
 
+// A re-render replaces the whole column. A text box marked data-focus gets its focus and caret
+// back afterwards (its text comes back from ctx.ui), so typing carries on uninterrupted.
+function keptFocus(root) {
+  const el = document.activeElement;
+  if (!el || !root.contains(el) || !el.dataset.focus) return null;
+  return { key: el.dataset.focus, start: el.selectionStart, end: el.selectionEnd };
+}
+
+function restoreFocus(root, kept) {
+  if (!kept) return;
+  const el = [...root.querySelectorAll('[data-focus]')].find((x) => x.dataset.focus === kept.key);
+  if (!el) return;
+  el.focus();
+  try {
+    el.setSelectionRange(kept.start, kept.end);
+  } catch {
+    // not a text box
+  }
+}
+
 export function renderSide(ctx) {
-  document.getElementById('side').replaceChildren(
-    ...[renderWeek(ctx), renderGoals(ctx), renderHistory(ctx)].filter(Boolean));
+  const side = document.getElementById('side');
+  const kept = keptFocus(side);
+  side.replaceChildren(
+    ...[renderCoach(ctx), renderWeek(ctx), renderGoals(ctx), renderHistory(ctx)].filter(Boolean));
+  restoreFocus(side, kept);
 }

@@ -78,3 +78,9 @@ export function longDate(day) {
 export function carryLabel(fromDay, today) {
   return daysBetween(fromDay, today) <= 6 ? `from ${shortWeekday(fromDay)}` : `from ${shortDate(fromDay)}`;
 }
+
+// A whole hour on the 12-hour clock: 18 → '6pm', 12 → '12pm', 0 → '12am'.
+export function hourLabel(hour) {
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+  return `${twelve}${hour < 12 ? 'am' : 'pm'}`;
+}

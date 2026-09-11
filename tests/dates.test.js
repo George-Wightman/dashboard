@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   logicalDay, addDays, daysBetween, weekday, weekStart, dayOfMonth, daysInMonth,
-  shortWeekday, shortDate, longDate, carryLabel,
+  shortWeekday, shortDate, longDate, carryLabel, hourLabel,
 } from '../js/dates.js';
 
 test('logicalDay: before 04:00 counts as the previous day', () => {
@@ -56,4 +56,12 @@ test('carryLabel: weekday within 6 days, date beyond', () => {
   assert.equal(carryLabel('2026-09-08', '2026-09-10'), 'from Tue');
   assert.equal(carryLabel('2026-09-04', '2026-09-10'), 'from Fri');
   assert.equal(carryLabel('2026-09-03', '2026-09-10'), 'from 3 Sep');
+});
+
+test('hourLabel: a whole hour on the 12-hour clock', () => {
+  assert.equal(hourLabel(18), '6pm');
+  assert.equal(hourLabel(12), '12pm');
+  assert.equal(hourLabel(23), '11pm');
+  assert.equal(hourLabel(0), '12am');
+  assert.equal(hourLabel(9), '9am');
 });
