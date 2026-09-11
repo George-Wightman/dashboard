@@ -3,6 +3,7 @@
 
 import { logicalDay } from './dates.js';
 import { MAPS, emptyDoc, stableStringify } from './doc.js';
+import { mergeDocs } from './merge.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -153,6 +154,19 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     commit(reason);
   }
 
+  function importJson(text) {
+    let incoming;
+    try {
+      incoming = JSON.parse(text);
+    } catch {
+      throw new Error("That file isn't valid JSON");
+    }
+    if (!incoming || typeof incoming !== 'object' || !incoming.items || typeof incoming.items !== 'object') {
+      throw new Error("That file isn't a dashboard backup");
+    }
+    replaceDoc(mergeDocs(doc, incoming), 'local');
+  }
+
   function updateSettings(changes) {
     settings = { ...settings, ...changes };
     save(SETTINGS_KEY, settings);
@@ -192,5 +206,6 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     replaceDoc,
     updateSettings,
     exportJson: () => JSON.stringify(doc, null, 2),
+    importJson,
   };
 }
