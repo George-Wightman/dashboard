@@ -76,10 +76,13 @@ async function runSync() {
   }
 }
 
-// Something half-typed must never be wiped by a sync landing and re-rendering.
+// Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the
+// re-rendered area (#list, #side): the add box lives outside it, so a sync there can't wipe it,
+// and a half-typed task title shouldn't hold up sync all day.
 function typing() {
   const el = document.activeElement;
-  return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== '';
+  return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
+    && !!el.closest('#list, #side');
 }
 
 const scheduler = createSyncScheduler({
