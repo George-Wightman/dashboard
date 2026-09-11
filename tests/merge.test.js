@@ -185,6 +185,24 @@ test('streak and todayRows no longer throw on a merged record missing created (F
   assert.doesNotThrow(() => todayRows(merged, '2026-09-10'));
 });
 
+test('merge repairs a record with a non-string updated, without throwing (G4)', () => {
+  const rec = { id: 'q', type: 'quota', status: 'active', updated: 12345 };
+  const m = mergeDocs({ ...emptyDoc(), items: { q: rec } }, null);
+  assert.equal(m.items.q.created, '1970-01-01');
+});
+
+test('merge repairs a record whose created is null, not just missing (G4)', () => {
+  const rec = { id: 'i', status: 'active', created: null, updated: '2026-09-05T09:00:00.000Z' };
+  const m = mergeDocs({ ...emptyDoc(), items: { i: rec } }, null);
+  assert.equal(m.items.i.created, '2026-09-05');
+});
+
+test('merge leaves an archived log\'s archivedOn: null as is (G4)', () => {
+  const rec = { id: 'l', kind: 'done', status: 'archived', archivedOn: null, updated: '2026-09-05T09:00:00.000Z' };
+  const m = mergeDocs({ ...emptyDoc(), logs: { l: rec } }, null);
+  assert.equal(m.logs.l.archivedOn, null);
+});
+
 test('importJson merges a backup and cannot roll back newer work', () => {
   const now = clock();
   const store = makeStore({ now });
