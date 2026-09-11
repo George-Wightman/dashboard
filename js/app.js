@@ -117,6 +117,9 @@ function wake() {
 store.subscribe((reason) => {
   render();
   if (reason === 'local') scheduler.changed();
+  // A local change has just re-rendered anyway (the edit panel is never re-rendered from here),
+  // so this is a safe moment to absorb a held other-window save rather than losing it.
+  if (reason === 'local' && pendingStored) { const p = pendingStored; pendingStored = null; store.absorbStored(p); }
   if (reason === 'settings') wake();
 });
 
@@ -125,11 +128,20 @@ document.getElementById('settings-button').addEventListener('click', () => ctx.o
 document.getElementById('sync-status').addEventListener('click', () => scheduler.now());
 window.addEventListener('focus', wake);
 window.addEventListener('online', () => scheduler.now());
+// The page may never come back (backgrounded tab killed, tab closed): a held other-window save
+// must be absorbed here unconditionally, not left for `now()` to reschedule and never run.
+function absorbPending() {
+  if (!pendingStored) return;
+  const p = pendingStored;
+  pendingStored = null;
+  store.absorbStored(p);
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) scheduler.flush();
+  if (document.hidden) { absorbPending(); scheduler.flush(); }
   else wake();
 });
-window.addEventListener('pagehide', () => scheduler.flush());
+window.addEventListener('pagehide', () => { absorbPending(); scheduler.flush(); });
 window.addEventListener('storage', (e) => {
   if (e.key !== DATA_KEY || !e.newValue) return;
   // Same hold-back as the sync scheduler: absorbing another window's save must not wipe
