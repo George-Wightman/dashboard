@@ -264,3 +264,20 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 @media (min-width: 1500px) {
   .add-widget { grid-column: 1 / -1; }
 }
+
+/* Flags (js/ui/flags.js): note something to change, carried to GitHub by the sync. Grey normally;
+   teal only while sync is set up and something hasn't reached GitHub yet — steady, never pulsing. */
+#flag-button.waiting { color: var(--accent); }
+.flags .about { margin: -.4rem 0 .9rem; font-size: .85rem; color: var(--muted); }
+.flags textarea {
+  width: 100%; padding: .35rem .5rem; resize: vertical;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.flags textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.flag-list { list-style: none; margin: 1rem 0 0; padding: 0; max-height: 40vh; overflow: auto; }
+.flag-item { margin-bottom: .6rem; padding: .5rem .75rem; font-size: .9rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.flag-item .flag-text { margin: 0 0 .25rem; }
+.flag-item .flag-meta { margin: 0 0 .25rem; font-size: .8rem; }
+.flag-item details { margin-top: .25rem; font-size: .85rem; }
+.flag-item pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.flag-sync { margin-top: .75rem; font-size: .85rem; color: var(--muted); }

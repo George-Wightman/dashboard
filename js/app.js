@@ -1,7 +1,7 @@
 // Boot: one store, one render loop, the header, sync, and the day rollover.
 
 import { createStore, DATA_KEY } from './data.js';
-import { askGemini, geminiKeys } from './gemini.js';
+import { askGemini, geminiKeys, hebrewKeys } from './gemini.js';
 import { longDate, weekStart } from './dates.js';
 import { dayCompletion } from './schedule.js';
 import { digestDue } from './coach.js';
@@ -13,6 +13,8 @@ import { openSettings } from './ui/settings.js';
 import { checkinNow, writeDigest } from './ui/coach.js';
 import { resolveLook, THEME_COLORS } from './look.js';
 import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
+import { readLastSynced, writeLastSynced, waitingFlags, APP_VERSION } from './flags.js';
+import { openFlagPanel } from './ui/flags.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -48,6 +50,33 @@ const ctx = {
   openSettings: () => openSettings(ctx),
   syncNow: () => scheduler.now(),
   syncProblem: () => (sync.state === 'failing' ? sync.error : ''),
+  // Whether sync is actually set up (never true in fake mode, which never syncs), and when it
+  // last succeeded (js/flags.js): together these decide the ⚑'s teal "waiting" state.
+  syncOn: () => !FAKE && !!store.settings().token && !!store.settings().repo,
+  lastSynced: () => readLastSynced(localStorage),
+  // What the app was doing right now, for the ⚑ panel (js/ui/flags.js) to capture the instant it
+  // opens (js/flags.js's flagContext reads exactly this shape).
+  flagState: () => ({
+    now: new Date(),
+    today: store.today(),
+    settings: store.settings(),
+    look: document.documentElement.dataset.theme,
+    window: { width: innerWidth, height: innerHeight },
+    columns: ctx.columnCount(),
+    layout: ctx.layout(),
+    arranging: ui.arranging,
+    day: dayCompletion(store.doc(), store.today()),
+    expandedGoals: ui.expandedGoals.size,
+    historyDay: ui.historyDay,
+    coach: {
+      checkin: checkinNow(ctx), busy: ui.coach.busy, shapeBusy: ui.coach.shapeBusy, digestBusy: ui.coach.digestBusy,
+      error: ui.coach.error, shapeError: ui.coach.shapeError, digestError: ui.coach.digestError,
+    },
+    sync: { state: sync.state, error: sync.error, lastSynced: readLastSynced(localStorage) },
+    hebrewKey: hebrewKeys(localStorage).length > 0,
+    version: APP_VERSION,
+    userAgent: navigator.userAgent,
+  }),
   whenIdle,
   // The widget arrangement, how many widget columns show, and every change to it: normalised,
   // saved on this device, drawn (js/ui/widgets.js).
@@ -100,6 +129,9 @@ function renderHeader() {
   status.title = title;
   status.classList.toggle('sync-failing', sync.state === 'failing');
 
+  document.getElementById('flag-button').classList.toggle(
+    'waiting', ctx.syncOn() && waitingFlags(store.doc(), ctx.lastSynced()).length > 0);
+
   const arrangeButton = document.getElementById('arrange-button');
   arrangeButton.textContent = ui.arranging ? 'Done' : 'Arrange';
   arrangeButton.setAttribute('aria-pressed', String(ui.arranging));
@@ -145,10 +177,14 @@ async function runSync() {
   sync.state = 'syncing';
   renderHeader();
   try {
+    // Recorded before the request, so a flag saved while this sync is still in flight still
+    // counts as "waiting" (js/flags.js's waitingFlags).
+    const started = new Date().toISOString();
     const result = await syncOnce({ store, client: createGitHubClient({ token, repo }) });
     Object.assign(sync, result.ok
       ? { state: 'ok', at: new Date(), error: null }
       : { state: 'failing', error: result.error });
+    if (result.ok) writeLastSynced(localStorage, started);
   } catch (e) {
     Object.assign(sync, { state: 'failing', error: e.message });
   } finally {
@@ -252,6 +288,7 @@ store.subscribe((reason) => {
 initAddBox(ctx);
 document.getElementById('settings-button').addEventListener('click', () => ctx.openSettings());
 document.getElementById('sync-status').addEventListener('click', () => (sync.state === 'failing' ? ctx.openSettings() : scheduler.now()));
+document.getElementById('flag-button').addEventListener('click', () => openFlagPanel(ctx));
 document.getElementById('arrange-button').addEventListener('click', () => setArranging(ctx, !ui.arranging));
 // Escape leaves Arrange mode, unless a dialog or the edit panel is using it for something else.
 document.addEventListener('keydown', (e) => {
