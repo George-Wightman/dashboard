@@ -11,7 +11,10 @@ export function openSettings(ctx) {
   const s = store.settings();
 
   const repo = h('input', { type: 'text', name: 'repo', value: s.repo, placeholder: 'George-Wightman/dashboard-sync', autocomplete: 'off', spellcheck: 'false' });
-  const token = h('input', { type: 'password', name: 'token', value: s.token, autocomplete: 'off', spellcheck: 'false' });
+  // The token goes in as the field's live value, never as an attribute, so it can't end up in the
+  // page's markup; as a password field it never shows on screen either.
+  const token = h('input', { type: 'password', name: 'token', autocomplete: 'off', spellcheck: 'false' });
+  token.value = s.token ?? '';
   const dayStart = h('input', { type: 'number', name: 'dayStartHour', min: 0, max: 12, step: 1, value: s.dayStartHour });
   // The Gemini key goes in as the field's live value, never as an attribute, so it can't end up in
   // the page's markup; as a password field it never shows on screen either.
