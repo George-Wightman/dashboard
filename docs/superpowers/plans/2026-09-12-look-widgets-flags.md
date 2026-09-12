@@ -141,16 +141,17 @@ Each task lives in its own file under [`2026-09-12-look-widgets-flags/`](2026-09
 - [ ] [Task 2: Palettes and type](2026-09-12-look-widgets-flags/task-02-palettes-type.md) — `styles.css` replaced: the design's tokens, Paper and Night, gold and amber, Georgia, `rem`, 15px/17px; the gold class names in `today.js` / `side.js`
 - [ ] [Task 3: The widget arrangement](2026-09-12-look-widgets-flags/task-03-layout-logic.md) — `js/layout.js`, pure and fully tested
 - [ ] [Task 4: Flags — the map, the store and the context](2026-09-12-look-widgets-flags/task-04-flags-data.md) — `flags` in `MAPS`, `addFlag` / `addressFlag`, `js/flags.js`
-- [ ] Task 5: Columns and widgets (`task-05-columns-widgets.md`) — page width and columns, the column structure in `index.html`, `js/ui/widgets.js` registry, `renderSide` from the layout, column count from `matchMedia('(min-width: 1500px)')`, focus restore and `typing()` intact
-- [ ] Task 6: Arrange mode (`task-06-arrange.md`) — the Arrange link, frames, grip and ↑ ↓, drag and drop, Hide, Add a widget, Done / Escape
-- [ ] Task 7: The ⚑ flag (`task-07-flags-ui.md`) — the button and its teal state, the dialog, `dash_last_synced`, sync on save
-- [ ] Task 8: Offline shell and README (`task-08-sw-readme.md`) — `sw.js` `dash-v3` and SHELL, `tests/sw.test.js`, README
+- [ ] [Task 5: Columns and widgets](2026-09-12-look-widgets-flags/task-05-columns-widgets.md) — page width and columns, the column structure in `index.html`, `js/ui/widgets.js` registry, `renderSide` from the layout, column count from `matchMedia('(min-width: 1500px)')`, focus restore and `typing()` intact
+- [ ] [Task 6: Arrange mode](2026-09-12-look-widgets-flags/task-06-arrange.md) — the Arrange link, frames, grip and ↑ ↓, drag and drop, Hide, Add a widget, Done / Escape
+- [ ] [Task 7: The ⚑ flag](2026-09-12-look-widgets-flags/task-07-flags-ui.md) — the button and its teal state, the dialog, `dash_last_synced`, sync on save
+- [ ] [Task 8: Offline shell and README](2026-09-12-look-widgets-flags/task-08-sw-readme.md) — `sw.js` `dash-v3` and SHELL, `tests/sw.test.js`, README
 
 Tasks 1–4 run in order (2 uses Task 1's `THEME_COLORS`; 4 comes after 3 only for the test counts).
 Tasks 5–8 are browser work, in order, each checked by the controller in the Browser pane: serve with
 `preview_start` `dashboard`, open `http://localhost:8080/dev/seed.html?replace`, then
 `http://localhost:8080/?fakegemini`, and reload twice (the offline cache). Test counts: 189 before;
-200 after Task 1, 208 after 2, 228 after 3, 250 after 4.
+200 after Task 1, 208 after 2, 228 after 3, 250 after 4, 254 after 5, 259 after 6, 263 after 7, 266
+after 8.
 
 ## Shared interfaces (the contract between tasks)
 
@@ -320,7 +321,6 @@ export function renderSide(ctx): void
 // js/app.js
 import { renderSide, WIDGET_IDS } from './ui/widgets.js';   // replaces the import from './ui/side.js'
 import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
-ui.arranging = false                                          // new field in the `ui` literal
 const WIDE = matchMedia('(min-width: 1500px)');
 let layout = loadLayout(localStorage, WIDGET_IDS);
 ctx.layout = () => layout;
@@ -344,6 +344,9 @@ column, list first. Typing in a check-in answer or the shaping box survives a sy
 //   <button id="arrange-button" class="link" type="button" aria-pressed="false">Arrange</button>
 // first child of <section class="today">:
 //   <p id="arrange-note" class="arrange-note" hidden>Today's list stays here</p>
+
+// js/app.js: ui.arranging = false, new field in the `ui` literal (nothing in Task 5 reads or
+// writes it, so it is added here, alongside the button and CSS class that use it).
 
 // js/ui/widgets.js gains
 export function setArranging(ctx, on: boolean): void     // ui.arranging = on; ctx.render()
