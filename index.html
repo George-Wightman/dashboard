@@ -30,12 +30,14 @@
     <div class="top-actions">
       <span id="save-warning" class="warning" hidden></span>
       <button id="sync-status" class="link" type="button"></button>
+      <button id="arrange-button" class="link" type="button" aria-pressed="false">Arrange</button>
       <button id="settings-button" class="icon" type="button" aria-label="Settings">⚙</button>
     </div>
   </header>
 
   <main class="layout">
     <section class="today" aria-label="Today">
+      <p id="arrange-note" class="arrange-note" hidden>Today's list stays here</p>
       <ul id="list" class="list"></ul>
       <form id="add" class="add" autocomplete="off">
         <input id="add-title" type="text" placeholder="Add a task…" aria-label="New task">

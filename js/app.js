@@ -7,7 +7,7 @@ import { dayCompletion } from './schedule.js';
 import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler } from './sync.js';
 import { renderToday, initAddBox } from './ui/today.js';
-import { renderSide, WIDGET_IDS } from './ui/widgets.js';
+import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
 import { checkinNow, writeDigest } from './ui/coach.js';
@@ -17,6 +17,8 @@ import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js
 const store = createStore({ storage: localStorage });
 const ui = {
   entriesFor: null, amountFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
+  // Arrange mode (js/ui/widgets.js): toggled by #arrange-button, Escape, or Done.
+  arranging: false,
   // The Coach panel's page-only state (js/ui/coach.js). Typed text lives here, not only in the
   // textareas, so a re-render never loses it.
   coach: {
@@ -97,6 +99,12 @@ function renderHeader() {
   status.textContent = text;
   status.title = title;
   status.classList.toggle('sync-failing', sync.state === 'failing');
+
+  const arrangeButton = document.getElementById('arrange-button');
+  arrangeButton.textContent = ui.arranging ? 'Done' : 'Arrange';
+  arrangeButton.setAttribute('aria-pressed', String(ui.arranging));
+  document.querySelector('.today').classList.toggle('arranging', ui.arranging);
+  document.getElementById('arrange-note').hidden = !ui.arranging;
 }
 
 // The look (js/look.js): data-theme on <html>, and the title bar's colour. index.html's inline
@@ -244,6 +252,14 @@ store.subscribe((reason) => {
 initAddBox(ctx);
 document.getElementById('settings-button').addEventListener('click', () => ctx.openSettings());
 document.getElementById('sync-status').addEventListener('click', () => (sync.state === 'failing' ? ctx.openSettings() : scheduler.now()));
+document.getElementById('arrange-button').addEventListener('click', () => setArranging(ctx, !ui.arranging));
+// Escape leaves Arrange mode, unless a dialog or the edit panel is using it for something else.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !ui.arranging) return;
+  if (document.querySelector('dialog[open]')) return;
+  if (!document.getElementById('editor').hidden) return;
+  setArranging(ctx, false);
+});
 window.addEventListener('focus', wake);
 window.addEventListener('online', () => scheduler.now());
 // Crossing 1500px changes the number of widget columns: redrawn once nothing is being typed

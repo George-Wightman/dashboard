@@ -236,3 +236,31 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .coach .digest-summary { white-space: pre-line; }
 .coach .digest strong { font-weight: 600; }
 .coach .digest-write { margin-top: .5rem; }
+
+/* Arrange mode (js/ui/widgets.js): today's list stays put and dims, each widget gets a dashed
+   frame with a grip (or ↑ ↓ on touch and in the one-column view), and hidden widgets wait below
+   as chips. */
+.arrange-note {
+  margin: 0 0 .75rem; padding: .5rem .75rem; font-size: .85rem; color: var(--muted);
+  background: var(--panel); border: 1px dashed var(--border); border-radius: var(--radius);
+}
+.today.arranging .list, .today.arranging .add { opacity: .5; pointer-events: none; }
+.widget-frame { padding: .5rem; border: 1px dashed var(--border); border-radius: var(--radius); }
+.widget-frame.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.widget-frame > :not(.widget-bar) { pointer-events: none; }
+.widget-bar { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; font-size: .8rem; color: var(--muted); }
+.widget-bar .widget-title { flex: 1; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; font-size: .75rem; }
+.grip { cursor: grab; letter-spacing: -.1em; }
+.nudge { width: 1.6rem; height: 1.6rem; line-height: 1; cursor: pointer; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.placeholder { padding: .25rem 0; }
+.drop-zone { padding: .6rem; font-size: .8rem; color: var(--muted); text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); }
+.drop-zone.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.column-break {
+  padding: .4rem 0; font-size: .75rem; color: var(--muted); text-align: center;
+  border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border);
+}
+.add-widget { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.chip { padding: .3rem .7rem; font-size: .8rem; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 999rem; cursor: pointer; }
+@media (min-width: 1500px) {
+  .add-widget { grid-column: 1 / -1; }
+}
