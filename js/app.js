@@ -7,11 +7,12 @@ import { dayCompletion } from './schedule.js';
 import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler } from './sync.js';
 import { renderToday, initAddBox } from './ui/today.js';
-import { renderSide } from './ui/side.js';
+import { renderSide, WIDGET_IDS } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
 import { checkinNow, writeDigest } from './ui/coach.js';
 import { resolveLook, THEME_COLORS } from './look.js';
+import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -25,6 +26,11 @@ const ui = {
   },
 };
 const sync = { state: 'off', at: null, error: null };
+
+// The widget arrangement (js/layout.js): kept on this device, never synced. A window at least
+// 1500px wide shows two widget columns (the same media query as styles.css), a smaller one one.
+const WIDE = matchMedia('(min-width: 1500px)');
+let layout = loadLayout(localStorage, WIDGET_IDS);
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
 // fake mode the real keys are never read, and dev/fake-gemini.js answers instead of Google.
@@ -41,6 +47,15 @@ const ctx = {
   syncNow: () => scheduler.now(),
   syncProblem: () => (sync.state === 'failing' ? sync.error : ''),
   whenIdle,
+  // The widget arrangement, how many widget columns show, and every change to it: normalised,
+  // saved on this device, drawn (js/ui/widgets.js).
+  layout: () => layout,
+  columnCount: () => (WIDE.matches ? 2 : 1),
+  setLayout(next) {
+    layout = normalizeLayout(next, WIDGET_IDS);
+    saveLayout(localStorage, layout);
+    render();
+  },
   coach: {
     fake: FAKE,
     // Every key to try, in order: the one in ⚙, then the Hebrew app's on this device.
@@ -231,6 +246,9 @@ document.getElementById('settings-button').addEventListener('click', () => ctx.o
 document.getElementById('sync-status').addEventListener('click', () => (sync.state === 'failing' ? ctx.openSettings() : scheduler.now()));
 window.addEventListener('focus', wake);
 window.addEventListener('online', () => scheduler.now());
+// Crossing 1500px changes the number of widget columns: redrawn once nothing is being typed
+// (until then the old columns stay on screen, every widget still showing, in the same order).
+WIDE.addEventListener('change', () => { whenIdle().then(render); });
 // The page may never come back (backgrounded tab killed, tab closed): a held other-window save
 // must be absorbed here unconditionally, not left for `now()` to reschedule and never run.
 function absorbPending() {
@@ -246,6 +264,12 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => { absorbPending(); scheduler.flush(); });
 window.addEventListener('storage', (e) => {
+  // Another window on this device rearranged the widgets: follow it, once nothing is being typed.
+  if (e.key === LAYOUT_KEY) {
+    layout = loadLayout(localStorage, WIDGET_IDS);
+    whenIdle().then(render);
+    return;
+  }
   if (e.key !== DATA_KEY || !e.newValue) return;
   // Same hold-back as the sync scheduler: absorbing another window's save must not wipe
   // something half-typed either, so queue it and let it through once a sync is allowed to run.

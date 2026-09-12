@@ -1,11 +1,12 @@
-// The right-hand column: this week's quotas, goals, and the last three weeks.
+// The widgets' panels: this week's quotas, goals, and the last three weeks. js/ui/widgets.js
+// arranges them (with the Coach, from js/ui/coach.js) and uses the focus helpers at the end.
 
 import { h } from './dom.js';
 import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail } from '../schedule.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 import { shortDate, shortWeekday } from '../dates.js';
 import { SOURCE_NAMES } from './today.js';
-import { renderCoach, renderShapeBox } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
+import { renderShapeBox } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 import { proposedItems, proposalLine } from '../coach.js';
 
 const values = (map) => Object.values(map ?? {});
@@ -18,7 +19,7 @@ function bar(pct, label, met = false) {
     h('span', { style: `width:${pct}%` }));
 }
 
-function renderWeek(ctx) {
+export function renderWeek(ctx) {
   const doc = ctx.store.doc();
   const today = ctx.store.today();
   const quotas = values(doc.items).filter((i) => i.type === 'quota' && i.status === 'active').sort(byOrder);
@@ -133,7 +134,7 @@ function renderGoal(goal, ctx) {
   return card;
 }
 
-function renderGoals(ctx) {
+export function renderGoals(ctx) {
   const { store, ui } = ctx;
   const doc = store.doc();
   const goals = values(doc.goals)
@@ -168,7 +169,7 @@ function renderDayDetail(ctx, day) {
   return box;
 }
 
-function renderHistory(ctx) {
+export function renderHistory(ctx) {
   const { store, ui } = ctx;
   const today = store.today();
   const cells = history(store.doc(), today);
@@ -189,15 +190,16 @@ function renderHistory(ctx) {
   return section;
 }
 
-// A re-render replaces the whole column. A text box marked data-focus gets its focus and caret
-// back afterwards (its text comes back from ctx.ui), so typing carries on uninterrupted.
-function keptFocus(root) {
+// A re-render replaces the whole widget area. A text box marked data-focus gets its focus and
+// caret back afterwards (its text comes back from ctx.ui), so typing carries on uninterrupted.
+// js/ui/widgets.js's renderSide calls these two around every redraw.
+export function keptFocus(root) {
   const el = document.activeElement;
   if (!el || !root.contains(el) || !el.dataset.focus) return null;
   return { key: el.dataset.focus, start: el.selectionStart, end: el.selectionEnd };
 }
 
-function restoreFocus(root, kept) {
+export function restoreFocus(root, kept) {
   if (!kept) return;
   const el = [...root.querySelectorAll('[data-focus]')].find((x) => x.dataset.focus === kept.key);
   if (!el) return;
@@ -207,12 +209,4 @@ function restoreFocus(root, kept) {
   } catch {
     // not a text box
   }
-}
-
-export function renderSide(ctx) {
-  const side = document.getElementById('side');
-  const kept = keptFocus(side);
-  side.replaceChildren(
-    ...[renderCoach(ctx), renderWeek(ctx), renderGoals(ctx), renderHistory(ctx)].filter(Boolean));
-  restoreFocus(side, kept);
 }

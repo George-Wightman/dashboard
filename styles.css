@@ -58,10 +58,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 .muted { color: var(--muted); }
 
-/* Header */
+/* Header: as wide as the columns under it, with room above */
 .top {
   display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
-  max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.5rem .75rem;
+  width: min(88vw, 1500px); margin: 0 auto; padding: 2.5rem 0 .75rem;
 }
 .top h1 { display: inline; font-family: var(--display); font-size: 1.65rem; font-weight: 400; margin: 0 .75rem 0 0; }
 .top-actions { display: flex; gap: .75rem; align-items: center; }
@@ -71,10 +71,12 @@ button.link:hover { color: var(--ink); text-decoration: underline; }
 button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; color: var(--muted); cursor: pointer; }
 .sync-failing { color: var(--bad) !important; }
 
-/* Layout: list on the left, a narrow column on the right; stacked below 760px */
+/* Layout: 88% of the window, at most 1500px, centred. Today's list, then the widget area (#side):
+   one 340px widget column from 760px, two from 1500px (below), and under 760px one column — the
+   list, then the widgets. */
 .layout {
-  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 2rem; align-items: start;
-  max-width: 1100px; margin: 0 auto; padding: 0 1.5rem 3rem;
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 2rem; align-items: start;
+  width: min(88vw, 1500px); margin: 0 auto; padding: 0 0 3rem;
 }
 @media (max-width: 759px) {
   .layout { grid-template-columns: 1fr; }
@@ -125,8 +127,15 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .add select, .add input[type=date] { padding: .5rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
 .add input:focus, .add select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
-/* Side column */
-.side { display: flex; flex-direction: column; gap: 1.5rem; }
+/* The widget area (js/ui/widgets.js): its columns of widgets. From 1500px (js/app.js asks the same
+   question) the page has three columns, 1.35fr 1fr 1fr: #side spans the second and third as a
+   subgrid, one widget column in each. */
+.side { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+.widget-col { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+@media (min-width: 1500px) {
+  .layout { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .side { grid-column: 2 / 4; display: grid; grid-template-columns: subgrid; gap: 1.5rem 2rem; align-items: start; }
+}
 .panel h2 {
   display: flex; justify-content: space-between; align-items: center; margin: 0 0 .5rem;
   font-size: .8rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
