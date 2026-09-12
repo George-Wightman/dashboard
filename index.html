@@ -4,7 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Today</title>
-  <meta name="theme-color" content="#f7f7f5">
+  <meta name="theme-color" content="#f5f0e7">
+  <script>
+    // The look before the page paints, so a Night evening never flashes Paper. The same rule as
+    // resolveLook in js/look.js; tests/look.test.js runs this script to keep the two in step.
+    (function () {
+      var s = { look: 'auto', checkinHour: 18, dayStartHour: 4 };
+      try { var saved = JSON.parse(localStorage.getItem('dash_settings')); for (var k in s) if (saved && k in saved) s[k] = saved[k]; } catch (e) {}
+      var h = new Date().getHours();
+      var look = s.look === 'paper' || s.look === 'night' ? s.look : (h >= s.checkinHour || h < s.dayStartHour ? 'night' : 'paper');
+      document.documentElement.dataset.theme = look;
+      document.querySelector('meta[name="theme-color"]').content = look === 'night' ? '#1c232b' : '#f5f0e7';
+    })();
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">

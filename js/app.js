@@ -11,6 +11,7 @@ import { renderSide } from './ui/side.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
 import { checkinNow, writeDigest } from './ui/coach.js';
+import { resolveLook, THEME_COLORS } from './look.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -81,6 +82,17 @@ function renderHeader() {
   status.textContent = text;
   status.title = title;
   status.classList.toggle('sync-failing', sync.state === 'failing');
+}
+
+// The look (js/look.js): data-theme on <html>, and the title bar's colour. index.html's inline
+// script has already set both before the first paint; this keeps them right as the hours pass,
+// on focus, and whenever ⚙ changes. Only touches the page when something actually changes.
+function applyLook() {
+  const look = resolveLook(new Date(), store.settings());
+  const root = document.documentElement;
+  if (root.dataset.theme !== look) root.dataset.theme = look;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && meta.getAttribute('content') !== THEME_COLORS[look]) meta.setAttribute('content', THEME_COLORS[look]);
 }
 
 // The check-in state the Coach panel last showed; the minute tick repaints when it changes.
@@ -200,6 +212,7 @@ function checkRollover() {
 }
 
 function wake() {
+  applyLook();
   checkRollover();
   scheduler.now();
 }
@@ -242,10 +255,12 @@ window.addEventListener('storage', (e) => {
 // Once a minute: roll over to a new day, and repaint when the check-in state has moved on (the
 // check-in hour arriving) — unless something is being typed in the column.
 setInterval(() => {
+  applyLook();
   checkRollover();
   if (checkinNow(ctx) !== shownCheckin && !typing()) render();
 }, 60000);
 
+applyLook();
 render();
 scheduler.now();
 

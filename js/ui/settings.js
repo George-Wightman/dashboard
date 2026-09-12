@@ -1,8 +1,9 @@
-// Settings: sync, the day boundary, the coach, and backups. Settings are device-local and never
-// synced.
+// Settings: sync, the day boundary, the coach, the look, and backups. Settings are device-local
+// and never synced.
 
 import { h } from './dom.js';
 import { hebrewKeys } from '../gemini.js';
+import { LOOK_CHOICES, LOOKS } from '../look.js';
 
 export function openSettings(ctx) {
   const { store } = ctx;
@@ -17,6 +18,8 @@ export function openSettings(ctx) {
   const geminiKey = h('input', { type: 'password', name: 'geminiKey', autocomplete: 'off', spellcheck: 'false' });
   geminiKey.value = s.geminiKey ?? '';
   const checkinHour = h('input', { type: 'number', name: 'checkinHour', min: 12, max: 23, step: 1, value: s.checkinHour });
+  const look = h('select', { name: 'look' },
+    LOOK_CHOICES.map(([value, label]) => h('option', { value, selected: s.look === value }, label)));
   // Whether the Hebrew app has saved a key on this device (same origin, same localStorage). Only
   // the fact is shown, never the key.
   const hebrewFound = hebrewKeys(localStorage).length > 0;
@@ -57,6 +60,7 @@ export function openSettings(ctx) {
     store.updateSettings({
       repo: repoValue, token: token.value.trim(), dayStartHour: hour,
       geminiKey: geminiKey.value.trim(), checkinHour: checkin,
+      look: LOOKS.includes(look.value) ? look.value : 'auto',
     });
     dialog.close();
   }
@@ -82,6 +86,7 @@ export function openSettings(ctx) {
     h('p', { class: 'note' }, `Leave blank to use the Hebrew app's key on this device.${hebrewFound ? ' One was found here.' : ' None was found here.'}`),
     h('label', { class: 'field' }, h('span', {}, 'Evening check-in from (hour, 12–23)'), checkinHour),
     h('p', { class: 'note' }, "Check-ins and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products."),
+    h('label', { class: 'field' }, h('span', {}, 'Look'), look),
     status,
     h('div', { class: 'buttons' },
       h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
