@@ -10,6 +10,10 @@ const when = (iso) => new Date(iso).toLocaleString('en-GB', {
   weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
 });
 
+// A half-typed sentence, kept here (not just in the textarea) so Escape/Close doesn't lose it: the
+// panel builds a fresh textarea every time it opens. Cleared once it's actually saved.
+let draftText = '';
+
 // One open flag: his sentence, when, its captured context behind "More details", and a way to
 // mark it addressed. Nothing is ever deleted — addressing just archives it (js/data.js).
 function flagItem(ctx, f, repaint) {
@@ -34,6 +38,8 @@ export function openFlagPanel(ctx) {
     rows: 4, maxlength: 1000, placeholder: 'What would you change about this?',
     'aria-label': 'What would you change about this?',
   });
+  textarea.value = draftText;
+  textarea.addEventListener('input', () => { draftText = textarea.value; });
   const status = h('p', { class: 'error', role: 'status' });
   const list = h('ul', { class: 'flag-list' });
   const addressedLine = h('p', { class: 'muted' }, '');
@@ -66,6 +72,7 @@ export function openFlagPanel(ctx) {
     const text = scrubText(raw, [token, geminiKey]);
     store.addFlag(text, captured);
     textarea.value = '';
+    draftText = '';
     textarea.focus();
     status.textContent = 'Saved.';
     repaint();
