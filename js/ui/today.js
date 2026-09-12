@@ -50,7 +50,7 @@ function quotaControls(row, ctx) {
   const { store, ui } = ctx;
   const { item } = row;
   const count = h('span', {
-    class: 'count', title: "Show this week's entries",
+    class: row.done ? 'count met' : 'count', title: "Show this week's entries",
     onclick: () => { ui.entriesFor = ui.entriesFor === item.id ? null : item.id; ctx.render(); },
   }, quotaLabel(row));
   if (ui.amountFor === item.id) return [count, amountInput(item, ctx)];
@@ -105,11 +105,11 @@ function renderMeta(row, ctx) {
   if (item.type !== 'task') {
     const s = streak(doc, item, today);
     const text = streakText(item, s);
-    if (text) meta.append(h('span', { title: `Best: ${s.best}` }, text));
+    if (text) meta.append(h('span', { class: 'streak', title: `Best: ${s.best}` }, text));
   }
   if (item.repeat?.kind === 'perWeek') {
     const ticks = doneBetween(doc, item.id, weekStart(today), addDays(today, 1));
-    meta.append(h('span', {}, `${ticks} of ${item.repeat.n} this week`));
+    meta.append(h('span', { class: ticks >= item.repeat.n ? 'met' : null }, `${ticks} of ${item.repeat.n} this week`));
   }
   if (row.kind === 'quota') meta.append(...quotaControls(row, ctx));
   return meta;

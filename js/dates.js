@@ -74,7 +74,7 @@ export function longDate(day) {
   return `${WEEKDAYS_LONG[weekday(day) - 1]} ${dayOfMonth(day)} ${MONTHS_LONG[Number(day.slice(5, 7)) - 1]}`;
 }
 
-// The orange marker on a carried-over task.
+// The amber marker on a carried-over task.
 export function carryLabel(fromDay, today) {
   return daysBetween(fromDay, today) <= 6 ? `from ${shortWeekday(fromDay)}` : `from ${shortDate(fromDay)}`;
 }

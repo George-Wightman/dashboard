@@ -12,8 +12,9 @@ const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
 const level = (done, total) => (total === 0 ? 0 : Math.min(4, Math.ceil((done / total) * 4)));
 
-function bar(pct, label) {
-  return h('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': label },
+// A progress bar; `met` fills it gold ("you did this") instead of teal.
+function bar(pct, label, met = false) {
+  return h('div', { class: met ? 'bar met' : 'bar', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': label },
     h('span', { style: `width:${pct}%` }));
 }
 
@@ -27,9 +28,10 @@ function renderWeek(ctx) {
     quotas.map((q) => {
       const total = weekTotal(doc, q.id, today);
       const pct = Math.min(100, Math.round((total / q.target) * 100));
+      const met = total >= q.target;
       return h('div', { class: 'bar-row' },
-        h('div', { class: 'bar-label' }, h('span', {}, q.title), h('span', { class: 'muted' }, formatProgress(total, q.target, q.unit))),
-        bar(pct, q.title));
+        h('div', { class: 'bar-label' }, h('span', {}, q.title), h('span', { class: met ? 'met' : 'muted' }, formatProgress(total, q.target, q.unit))),
+        bar(pct, q.title, met));
     }));
 }
 
