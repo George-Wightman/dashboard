@@ -17,9 +17,30 @@ Pieces 1 and 5 of 6: the core hub and the Gemini coach. The designs are in
   in the Goals panel. Click any row's title to edit it. Archive instead of deleting — history is kept.
 - **Weekly targets:** **+** adds 1 (shift-click to type an amount). For time targets, **+** asks
   for an amount: `45m`, `1.5h`, `1h30`. Click the count to see or remove this week's entries.
-- **Unfinished tasks carry over** with an orange *from Tue* marker until they're done.
+- **Unfinished tasks carry over** with an amber *from Tue* marker until they're done.
 - **The day starts at 4am**, so a late night still counts as the day before (change it in ⚙).
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
+
+## The look
+
+Paper & Ink by day, a darker Night version from the evening check-in hour until the day starts —
+the same palette as the Hebrew app. ⚙ → **Look** picks *Follow the day* (the default), *Paper*, or
+*Night*. The installed app's title bar changes to match, and it never flickers the wrong one on
+load — the theme is set before the page even paints.
+
+## Arranging the widgets
+
+Today's list always stays in the first column; the Coach, This week, Goals and Last 3 weeks are
+widgets you can move around the columns beside it — one column from 760px wide, two from 1500px.
+Click **Arrange** in the header:
+
+- **Drag** a widget's grip (⋮⋮) onto another to put it there, or onto a column's *Drop here* to
+  send it to the end. On a touch screen, or whenever the window only shows one widget column, ↑ ↓
+  buttons replace the grip.
+- **Hide** takes a widget out of the columns; it waits as a chip under *Add a widget* until you
+  bring it back.
+- **Done** (or Escape) leaves Arrange mode. The arrangement is saved as you go, kept separately on
+  each device (the laptop and the phone can have their own).
 
 ## The coach (Gemini)
 
@@ -61,6 +82,24 @@ they may use it to improve their products.
 http://localhost:8080/?fakegemini. Canned replies stand in for Google, no key is read, and the panel
 heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-second replies),
 `nokey`, `quota`, `down`, `offline`, `badkey` or `nonsense`.
+
+## Flags
+
+⚑ in the header notes something to change — a bug, a rough edge, an idea — from inside the app,
+along with what it was doing at that moment. It's grey most of the time, and turns teal only once
+sync is set up and something hasn't reached GitHub yet.
+
+- Click ⚑, check the **About** line (a one-line summary of the moment — the look, today's
+  progress, the coach, sync), write a sentence, and press **Save** (or Ctrl+Enter). It's saved at
+  once and a sync is asked for straight away.
+- The open flags list newest first, with **More details** (the captured context: window size, the
+  arrangement, the coach and sync state — never a key or token, only whether one is set) and
+  **Mark addressed**, which archives it — nothing is ever deleted.
+- The panel's foot line says whether every flag has reached GitHub yet, with **Sync now** when one
+  hasn't.
+
+Flags ride the same sync as everything else, into `dashboard-sync/data.json`, ready for Claude to
+read and act on later.
 
 ## Morning steps (one-off setup, about 10 minutes)
 
@@ -114,7 +153,10 @@ npm test
 Node 24's built-in test runner. There are no dependencies to install. Every pure module (dates,
 parsing, scheduling, streaks, history, merge) and the sync flow is covered, including two
 simulated devices converging. So are the Gemini client and the coach's context, prompts and reply
-checks. They run against a fake `fetch`, so no test ever calls Google.
+checks. They run against a fake `fetch`, so no test ever calls Google. The look's inline `<head>`
+script is checked against `resolveLook` for every hour and a spread of settings; the palette check
+keeps every colour name in one vocabulary; the widget arrangement (`js/layout.js`) and the flag
+context and cap (`js/flags.js`) are fully covered too.
 
 ## How it's built
 
@@ -130,13 +172,18 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependen
 | `js/sync.js` | GitHub read/merge/write with retry, and the sync timer |
 | `js/gemini.js` | The Gemini client: lite model first, fallbacks and retries, plain-English errors |
 | `js/coach.js` | What the coach tells Gemini, a week's numbers, the prompts, and the reply checks |
+| `js/look.js` | Which look (Paper or Night) applies at a given moment |
+| `js/layout.js` | The widget arrangement: normalise, move, nudge, hide, show |
+| `js/flags.js` | A flag's captured context, its 4 KB cap, and the panel's readers |
 | `js/ui/*.js`, `js/app.js` | The screen |
 | `sw.js`, `manifest.webmanifest` | Offline and install |
 
-Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, and `journal` (the
-coach's check-ins and weekly digests). Nothing is ever hard-deleted. Records are archived or
-tombstoned, so a sync can't bring back something removed on another device. Settings (repo, access
-key, day start, Gemini key, check-in hour) stay on each device and are never synced.
+Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, `journal` (the coach's
+check-ins and weekly digests) and `flags` (notes of something to change). Nothing is ever
+hard-deleted. Records are archived or tombstoned, so a sync can't bring back something removed on
+another device. Settings (repo, access key, day start, Gemini key, check-in hour, look) stay on
+each device and are never synced, and so do the widget arrangement (`dash_layout`) and the last
+successful sync time (`dash_last_synced`).
 
 ## Roadmap
 
