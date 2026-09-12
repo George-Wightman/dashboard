@@ -68,18 +68,26 @@ export function shortAgent(ua) {
   return parts.length ? parts.join(' · ') : clip(ua, 60);
 }
 
+// Every occurrence of a secret (and its trimmed form) in text, replaced by the same '[hidden]'
+// marker flagContext uses. A secret shorter than SECRET_MIN is ignored so an ordinary word can't
+// be blanked by mistake. Shared so anything that stores raw text — a captured context, a flag's
+// typed sentence — scrubs it the same way.
+export function scrubText(text, secrets) {
+  const list = (secrets ?? [])
+    .filter((v) => typeof v === 'string')
+    .flatMap((v) => [v, v.trim()])
+    .filter((v) => v.length >= SECRET_MIN)
+    .sort((a, b) => b.length - a.length);
+  return list.reduce((t, secret) => t.split(secret).join('[hidden]'), text);
+}
+
 // What the app was doing when the ⚑ panel opened, as plain data (the shape is in the plan's
 // Shared interfaces). Only the listed fields are read. The repo and the keys go in as booleans
 // only; every string is scrubbed of the token's and the Gemini key's values before it is used, so
 // they can't reach a flag even if passed in by mistake. Capped at FLAG_CTX_MAX bytes.
 export function flagContext(state = {}) {
   const settings = state.settings ?? {};
-  const secrets = [settings.token, settings.geminiKey]
-    .filter((v) => typeof v === 'string')
-    .flatMap((v) => [v, v.trim()])
-    .filter((v) => v.length >= SECRET_MIN)
-    .sort((a, b) => b.length - a.length);
-  const scrub = (text) => secrets.reduce((t, secret) => t.split(secret).join('[hidden]'), text);
+  const scrub = (text) => scrubText(text, [settings.token, settings.geminiKey]);
   const str = (v, n = 300) => (typeof v === 'string' ? clip(scrub(v), n) : null);
   const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const iso = (v) => {

@@ -4,7 +4,7 @@
 // the moment he pressed ⚑, not whatever the page has moved on to while he types.
 
 import { h } from './dom.js';
-import { flagContext, flagAbout, openFlags, addressedCount, waitingFlags, flagSyncLine } from '../flags.js';
+import { flagContext, flagAbout, openFlags, addressedCount, waitingFlags, flagSyncLine, scrubText } from '../flags.js';
 
 const when = (iso) => new Date(iso).toLocaleString('en-GB', {
   weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -58,8 +58,12 @@ export function openFlagPanel(ctx) {
 
   function save(e) {
     e.preventDefault();
-    const text = textarea.value.trim();
-    if (!text) { status.textContent = 'Write something first.'; return; }
+    const raw = textarea.value.trim();
+    if (!raw) { status.textContent = 'Write something first.'; return; }
+    // Scrubbed the same way as the captured context, so a pasted key can't reach a flag through
+    // the typed sentence either. The store itself stays unaware of settings.
+    const { token, geminiKey } = store.settings();
+    const text = scrubText(raw, [token, geminiKey]);
     store.addFlag(text, captured);
     textarea.value = '';
     textarea.focus();

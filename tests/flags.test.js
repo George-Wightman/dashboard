@@ -5,7 +5,7 @@ import { MAPS, emptyDoc, isDoc, stableStringify } from '../js/doc.js';
 import { mergeDocs, sameDoc } from '../js/merge.js';
 import {
   FLAG_TEXT_MAX, FLAG_CTX_MAX, LAST_SYNCED_KEY, APP_VERSION, capContext, flagContext, shortAgent, flagAbout,
-  openFlags, addressedCount, waitingFlags, flagSyncLine, readLastSynced, writeLastSynced,
+  openFlags, addressedCount, waitingFlags, flagSyncLine, readLastSynced, writeLastSynced, scrubText,
 } from '../js/flags.js';
 import { MemoryStorage, FullStorage, clock, makeStore, fixture } from './helpers.js';
 
@@ -299,6 +299,18 @@ test('the last successful sync is kept on the device, and failures never throw',
   assert.equal(writeLastSynced(new FullStorage(), '2026-09-12T17:04:00.000Z'), false);
   class DeniedRead extends MemoryStorage { getItem() { throw new Error('denied'); } }
   assert.equal(readLastSynced(new DeniedRead()), null);
+});
+
+test('scrubText replaces the token and Gemini key with the same [hidden] marker flagContext uses, before a flag is stored', () => {
+  const secrets = [SECRET_TOKEN, SECRET_GEMINI];
+  assert.equal(
+    scrubText(`Please remove ${SECRET_TOKEN} and ${SECRET_GEMINI} from the log`, secrets),
+    'Please remove [hidden] and [hidden] from the log');
+  assert.equal(scrubText('Nothing secret here', secrets), 'Nothing secret here');
+  assert.equal(scrubText('short', ['abc']), 'short'); // below SECRET_MIN, left alone
+  const store = makeStore();
+  const rec = store.addFlag(scrubText(`The key ${SECRET_GEMINI} leaked into a note`, secrets));
+  assert.equal(rec.text, 'The key [hidden] leaked into a note');
 });
 
 test('capContext copies plain data, refuses what is not an object, and never throws', () => {
