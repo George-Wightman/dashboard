@@ -137,6 +137,10 @@ function renderHeader() {
   arrangeButton.setAttribute('aria-pressed', String(ui.arranging));
   document.querySelector('.today').classList.toggle('arranging', ui.arranging);
   document.getElementById('arrange-note').hidden = !ui.arranging;
+  // pointer-events: none (styles.css) dims the list and add box to the mouse while arranging;
+  // inert keeps Tab off them too, and comes off again as soon as render() runs with Arrange off.
+  document.getElementById('list').inert = ui.arranging;
+  document.getElementById('add').inert = ui.arranging;
 }
 
 // The look (js/look.js): data-theme on <html>, and the title bar's colour. index.html's inline

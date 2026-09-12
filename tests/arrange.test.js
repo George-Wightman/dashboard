@@ -40,6 +40,7 @@ test('js/ui/widgets.js builds a frame with a grip or ↑ ↓, Hide, a placeholde
   assert.match(src, /\+ \$\{titleOf\(id\)\}/);
   assert.match(src, /pointer: coarse/);
   assert.match(src, /useNudge = \(ctx\) => ctx\.columnCount\(\) === 1 \|\| isCoarsePointer\(\)/);
+  assert.match(src, /content\.inert = true;/);
 });
 
 test('styles.css styles the frames, the drop targets and dims the list while arranging', () => {
@@ -63,6 +64,8 @@ test("js/app.js wires the Arrange button, the header's Arrange/Done label, and E
   assert.match(src, /arrangeButton\.setAttribute\('aria-pressed', String\(ui\.arranging\)\);/);
   assert.match(src, /classList\.toggle\('arranging', ui\.arranging\)/);
   assert.match(src, /getElementById\('arrange-note'\)\.hidden = !ui\.arranging;/);
+  assert.match(src, /getElementById\('list'\)\.inert = ui\.arranging;/);
+  assert.match(src, /getElementById\('add'\)\.inert = ui\.arranging;/);
   assert.match(src, /key !== 'Escape' \|\| !ui\.arranging/);
   assert.match(src, /querySelector\('dialog\[open\]'\)/);
   assert.match(src, /getElementById\('editor'\)\.hidden/);

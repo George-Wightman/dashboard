@@ -91,6 +91,9 @@ function widgetFrame(ctx, id, col) {
     h('span', { class: 'widget-title' }, title),
     h('button', { class: 'link', type: 'button', onclick: () => ctx.setLayout(hideWidget(ctx.layout(), id)) }, 'Hide'));
   const content = widgetEl(ctx, id) ?? h('p', { class: 'muted placeholder' }, 'Nothing to show yet');
+  // pointer-events: none (styles.css) keeps the mouse off a widget's own controls while it's just
+  // being moved; inert keeps Tab off them too. Only the content, never the bar (grip/Hide/arrows).
+  content.inert = true;
   const frame = h('div', { class: 'widget-frame', 'data-widget': id }, bar, content);
   enableDropBefore(frame, ctx, col, id);
   return frame;
