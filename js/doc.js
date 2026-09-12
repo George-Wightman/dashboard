@@ -1,9 +1,9 @@
 // The shape of the synced document, shared by the store and the merge.
 
-export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal'];
+export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags'];
 
 export function emptyDoc() {
-  return { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {} };
+  return { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {} };
 }
 
 // One check-in per logical day and one digest per week (filed under that week's Monday), on
@@ -17,7 +17,7 @@ const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // A real dashboard document: a plain object with a numeric schema, an items map, and any of the
 // other known maps either absent or themselves plain objects (never arrays). A document saved
-// before the journal existed has no `journal` and is still a real document.
+// before the journal or the flags existed has neither and is still a real document.
 export function isDoc(value) {
   if (!isPlainObject(value)) return false;
   if (typeof value.schema !== 'number') return false;

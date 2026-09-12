@@ -4,6 +4,7 @@
 import { logicalDay, addDays, weekStart } from './dates.js';
 import { MAPS, emptyDoc, stableStringify, isDoc, journalId } from './doc.js';
 import { mergeDocs } from './merge.js';
+import { FLAG_TEXT_MAX, capContext } from './flags.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -256,6 +257,24 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     commit('local');
   }
 
+  // ⚑: a note of something to change, with what the app was doing when the panel opened. The text
+  // is trimmed and capped at FLAG_TEXT_MAX characters; the context is copied and capped at 4 KB
+  // (js/flags.js), whoever built it.
+  function addFlag(text, ctx = null) {
+    const clean = Array.from(String(text ?? '').trim()).slice(0, FLAG_TEXT_MAX).join('').trim();
+    if (!clean) throw new Error('A flag needs some text');
+    return create('flags', { text: clean, ctx: capContext(ctx) });
+  }
+
+  // "Mark addressed": archived, never deleted, and there is no un-address — so the later write
+  // always wins a merge. Addressing one that is already addressed changes nothing.
+  function addressFlag(id) {
+    const rec = doc.flags[id];
+    if (!rec) throw new Error(`No flags record ${id}`);
+    if (rec.status === 'archived') return rec;
+    return patch('flags', id, { status: 'archived', archivedOn: today() });
+  }
+
   // Move `id` to just before `targetId` within `groupIds` (the on-screen order of the draggable
   // rows in the dragged row's own done/undone group, including `id`). The on-screen list is
   // shown as undone-then-done, so it isn't globally sorted by `order` — reordering has to stay
@@ -365,6 +384,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     addPlan,
     acceptGoalPlan,
     dismissGoalPlan,
+
+    addFlag,
+    addressFlag,
 
     replaceDoc,
     absorbStored,

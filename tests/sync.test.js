@@ -329,3 +329,32 @@ test('a check-in saved on one device reaches the other', async () => {
   await syncOnce({ store: phone, client: gh });
   assert.deepEqual(phone.doc().journal['checkin:2026-09-10'].questions, ['How did the CV go?']);
 });
+
+// ---- flags -------------------------------------------------------------------------------------
+
+test('a sync file written before flags existed is not rewritten just to add them', async () => {
+  const gh = new FakeGitHub();
+  gh.file = { doc: { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {} }, sha: 'old' };
+  const store = makeStore();
+  assert.deepEqual(await syncOnce({ store, client: gh }), { ok: true, pushed: false });
+  assert.deepEqual(store.doc().flags, {});
+  assert.equal(gh.puts, 0);
+});
+
+test('a flag written on one device and addressed on the other comes back addressed', async () => {
+  const gh = new FakeGitHub();
+  const now = clock(new Date(2026, 8, 12, 18, 4));
+  const laptop = makeStore({ prefix: 'L', now });
+  const phone = makeStore({ prefix: 'P', now });
+  const flag = laptop.addFlag('The coach button is too small', { look: 'night' });
+  await syncOnce({ store: laptop, client: gh });
+  await syncOnce({ store: phone, client: gh });
+  assert.equal(phone.doc().flags[flag.id].text, 'The coach button is too small');
+  assert.deepEqual(gh.file.doc.flags[flag.id].ctx, { look: 'night' });
+  now.advance(60000);
+  phone.addressFlag(flag.id);
+  await syncOnce({ store: phone, client: gh });
+  await syncOnce({ store: laptop, client: gh });
+  assert.equal(laptop.doc().flags[flag.id].status, 'archived');
+  assert.ok(sameDoc(laptop.doc(), phone.doc()));
+});

@@ -6,7 +6,7 @@ import { MemoryStorage, FullStorage, clock, ids, makeStore } from './helpers.js'
 
 test('a new store is empty, with default settings', () => {
   const store = makeStore();
-  assert.deepEqual(Object.keys(store.doc()).sort(), ['goals', 'items', 'journal', 'logs', 'milestones', 'schema']);
+  assert.deepEqual(Object.keys(store.doc()).sort(), ['flags', 'goals', 'items', 'journal', 'logs', 'milestones', 'schema']);
   assert.equal(store.settings().dayStartHour, 4);
   assert.equal(store.today(), '2026-09-10');
   assert.equal(store.loadError(), null);
