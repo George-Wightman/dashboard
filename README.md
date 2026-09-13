@@ -5,7 +5,7 @@ One screen: today's list (tasks, habits, weekly targets), this week's bars, goal
 three weeks. Works offline and syncs between the laptop and the phone through a private GitHub
 repo.
 
-Pieces 1 and 5 of 6: the core hub and the Gemini coach. The designs are in
+Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The designs are in
 [`docs/superpowers/specs/`](docs/superpowers/specs/), and the build plans are in
 [`docs/superpowers/plans/`](docs/superpowers/plans/).
 
@@ -20,8 +20,9 @@ Pieces 1 and 5 of 6: the core hub and the Gemini coach. The designs are in
 - **Unfinished tasks carry over** with an amber *from Tue* marker until they're done.
 - **The day starts at 4am**, so a late night still counts as the day before (change it in ⚙).
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
+  Things Claude added because you asked show *added by Claude*.
 - **⚙ settings** open with the version at the top. Everything else (GitHub sync, the day, the
-  coach, the look, backups) is folded away on one line each, showing what it's set to. Click a
+  coach, the look, Claude's changes, backups) is folded away on one line each, showing what it's set to. Click a
   line to change it.
 
 ## The look
@@ -104,6 +105,39 @@ sync is set up and something hasn't reached GitHub yet.
 Flags ride the same sync as everything else, into `dashboard-sync/data.json`, ready for Claude to
 read and act on later.
 
+## Claude
+
+Claude can read the dashboard and change anything in it from any claude.ai chat — on the web, in the
+desktop app or on the phone. Say `/dashboard`, or just "add that to the dashboard", "what's on
+today?", "log 45m of Hebrew", "tick off the CV task".
+
+- **What you ask for goes straight on**, marked *added by Claude*. **What Claude notices** — a to-do
+  that comes up in a chat — arrives as a suggestion for ✓ or ✕, and a bigger job (an application,
+  interview prep) as a suggested goal with its stages and first tasks.
+- **Every change Claude makes is listed** in ⚙ → **Claude's changes**, newest first, with *Details*
+  (what changed, field by field) and **Undo**. Undo never overwrites something you've changed since —
+  it says so instead. Details are kept for 30 days; the one-line summaries for good.
+- **Planning with the calendar.** Where the Google Calendar connector is on, Claude checks the
+  calendar before picking a day, and offers to book time for bigger tasks.
+
+**How it works.** The skill (`claude/skill/`) clones this public repo into Claude's sandbox and runs
+`claude/dash.mjs`, a small command-line tool built on the app's own modules: it reads `data.json`
+from `dashboard-sync`, makes the change through the same store and merge, logs it, and writes it
+back — to the laptop and the phone, Claude is just a third device. Changes appear at their next sync.
+
+**Setting it up (once).**
+
+1. Make Claude its own key on GitHub: a fine-grained token, *Only select repositories →
+   `dashboard-sync`*, *Contents → Read and write*. Keep it separate from the devices' key, so it can be
+   revoked on its own.
+2. Put it in `~/.dashboard-skill/config.json` (copy `claude/skill/config.example.json` there). It lives
+   outside this folder on purpose: this folder syncs to Google Drive, and the key shouldn't.
+3. `npm run build-skill` → `~/.dashboard-skill/dashboard-skill.zip`.
+4. Upload it at claude.ai → Settings → Capabilities → Skills, with code execution on.
+
+A new key (or a change to `SKILL.md` or `reference.md`) means building and uploading again. A change
+to the tool itself doesn't: the skill always runs the version on GitHub.
+
 ## Updates
 
 A push reaches every device on its own, with no version number to bump:
@@ -176,7 +210,9 @@ simulated devices converging. So are the Gemini client and the coach's context, 
 checks. They run against a fake `fetch`, so no test ever calls Google. The look's inline `<head>`
 script is checked against `resolveLook` for every hour and a spread of settings; the palette check
 keeps every colour name in one vocabulary; the widget arrangement (`js/layout.js`) and the flag
-context and cap (`js/flags.js`) are fully covered too.
+context and cap (`js/flags.js`) are fully covered too. The Claude tool is tested end to end against a
+fake GitHub: every read and op, all-or-nothing batches, London time on a UTC machine, Undo's rules,
+and the key never appearing in its output.
 
 ## How it's built
 
@@ -196,11 +232,14 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependen
 | `js/layout.js` | The widget arrangement: normalise, move, nudge, hide, show |
 | `js/flags.js` | A flag's captured context, its 4 KB cap, and the panel's readers |
 | `js/version.js` | Which build this is, whether a newer one is live, and taking the update |
+| `js/changes.js` | Claude's change log: what a change did, and the readers ⚙ uses |
+| `claude/` | The command-line tool and the skill Claude runs (`npm run build-skill` zips the skill) |
 | `js/ui/*.js`, `js/app.js` | The screen |
 | `sw.js`, `manifest.webmanifest` | Offline and install |
 
 Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, `journal` (the coach's
-check-ins and weekly digests) and `flags` (notes of something to change). Nothing is ever
+check-ins and weekly digests), `flags` (notes of something to change) and `changes` (what Claude
+has changed, for ⚙ and Undo). Nothing is ever
 hard-deleted. Records are archived or tombstoned, so a sync can't bring back something removed on
 another device. Settings (repo, access key, day start, Gemini key, check-in hour, look) stay on
 each device and are never synced, and so do the widget arrangement (`dash_layout`) and the last
@@ -210,7 +249,7 @@ successful sync time (`dash_last_synced`).
 
 1. **Core hub** — built
 2. Hebrew auto-tick — practice minutes from the Hebrew app's sync file
-3. Claude connector + skill — Claude can see the dashboard and add to it from any chat
+3. **Claude skill** — built
 4. Job search + Notion — application counts and deadlines from the Job Tracker
 5. **Gemini coach** — goal shaping, evening check-in, weekly digest — built
 6. Google Calendar — today's events beside the list

@@ -298,3 +298,11 @@ button.link.update-ready { color: var(--accent); }
 .flag-item details { margin-top: .25rem; font-size: .85rem; }
 .flag-item pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
 .flag-sync { margin-top: .75rem; font-size: .85rem; color: var(--muted); }
+
+/* ⚙ → Claude's changes */
+.change-list { list-style: none; margin: .25rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .75rem; }
+.change .change-line { line-height: 1.4; }
+.change.undone .change-summary { text-decoration: line-through; color: var(--muted); }
+.change details { margin-top: .2rem; }
+.change-edits { margin: .25rem 0 .25rem 1rem; padding: 0; font-size: .85rem; color: var(--muted); }
+.claude-changes .link { margin-right: .75rem; }

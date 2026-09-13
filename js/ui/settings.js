@@ -1,4 +1,5 @@
-// Settings: which version this is at the top, then sync, the day, the coach, the look and backups,
+// Settings: which version this is at the top, then sync, the day, the coach, the look, Claude's
+// changes and backups,
 // each folded away showing what it's set to (they're set once and rarely touched). Settings are
 // device-local and never synced.
 
@@ -7,6 +8,8 @@ import { hebrewKeys } from '../gemini.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
 import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
+import { changesPanel } from './changes.js';
+import { changeCountLine } from '../changes.js';
 
 // The Version section: filled in once the site and GitHub have answered. Asked fresh every time
 // ⚙ opens, so "up to date" is about now, not about when the page was opened.
@@ -148,6 +151,8 @@ export function openSettings(ctx) {
       h('p', { class: 'note' }, "Check-ins and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products.")),
     group('Look', lookName, false,
       h('label', { class: 'field' }, h('span', {}, 'Look'), look)),
+    group("Claude's changes", changeCountLine(store.doc(), new Date()), false,
+      changesPanel(ctx)),
     group('Backups', 'export, or merge one in', false,
       h('div', { class: 'buttons' },
         h('button', { class: 'btn', type: 'button', onclick: exportBackup }, 'Export backup'),
