@@ -1,0 +1,6 @@
+{
+  "token": "PASTE-THE-CLAUDE-SKILL-KEY-HERE",
+  "repo": "George-Wightman/dashboard-sync",
+  "dayStartHour": 4,
+  "timeZone": "Europe/London"
+}

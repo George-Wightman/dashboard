@@ -336,8 +336,8 @@ again.
 - **Bigger jobs → a plan.** For an application, interview prep, or anything with stages, use
   `"op": "plan"`: a goal, its stages as milestones, and the first few concrete tasks (a habit or
   weekly target only if it genuinely helps). All of it arrives as suggestions.
-- **Look before changing.** Read `today`, `list` or `find` first and act on ids — never on a guessed
-  title.
+- **Look before changing.** Read `today`, `list` or `find` first and act on ids —
+  never on a guessed title.
 - **Ask only when you genuinely can't tell** which item or which day George means (two tasks match
   "the CV one").
 - **Never claim a change that didn't land.** If the tool reports a failure, say so in one line, with
