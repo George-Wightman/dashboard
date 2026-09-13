@@ -1,5 +1,6 @@
 import { createStore } from '../js/data.js';
 import { emptyDoc } from '../js/doc.js';
+import { ConflictError } from '../js/sync.js';
 
 export class MemoryStorage {
   constructor(initial = {}) { this.map = new Map(Object.entries(initial)); }
@@ -28,6 +29,21 @@ export function ids(prefix = 'id') {
 
 export function makeStore({ storage = new MemoryStorage(), now = clock(), prefix = 'id' } = {}) {
   return createStore({ storage, now, newId: ids(prefix) });
+}
+
+// A sync file on GitHub, in memory: get/put with a sha, and a 409 when the sha is stale.
+export class FakeGitHub {
+  constructor() { this.file = null; this.n = 0; this.puts = 0; this.gets = 0; }
+  async get() {
+    this.gets++;
+    return this.file ? { doc: structuredClone(this.file.doc), sha: this.file.sha } : null;
+  }
+  async put(doc, sha) {
+    if ((this.file && sha !== this.file.sha) || (!this.file && sha)) throw new ConflictError('GitHub 409');
+    this.puts++;
+    this.file = { doc: structuredClone(doc), sha: `sha${++this.n}` };
+    return this.file.sha;
+  }
 }
 
 // Build a document by hand for the pure schedule tests.
