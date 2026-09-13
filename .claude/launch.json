@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8080"],
       "port": 8080
+    },
+    {
+      "name": "dashboard-8081",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8081"],
+      "port": 8081
     }
   ]
 }
