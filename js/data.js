@@ -133,7 +133,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return create('items', itemFields(fields));
   }
 
-  function toggleDone(itemId, day = today()) {
+  function toggleDone(itemId, day = today(), source = 'me') {
     const existing = Object.values(doc.logs).filter((l) =>
       l.itemId === itemId && l.kind === 'done' && l.day === day && l.status === 'active');
     if (existing.length) {
@@ -142,13 +142,13 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       commit('local');
       return;
     }
-    return create('logs', { itemId, goalId: null, kind: 'done', day, at: stamp(), note: '' });
+    return create('logs', { itemId, goalId: null, kind: 'done', day, at: stamp(), note: '', source });
   }
 
-  function logAmount({ itemId = null, goalId = null, amount, day = today(), note = '' }) {
+  function logAmount({ itemId = null, goalId = null, amount, day = today(), note = '', source = 'me' }) {
     if (!(amount > 0)) throw new Error('An amount must be above 0');
     if (!itemId && !goalId) throw new Error('logAmount needs an itemId or a goalId');
-    return create('logs', { itemId, goalId, kind: 'amount', amount, day, at: stamp(), note });
+    return create('logs', { itemId, goalId, kind: 'amount', amount, day, at: stamp(), note, source });
   }
 
   // A goal's fields, checked and with the defaults filled in. Nothing is written.
@@ -162,9 +162,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return create('goals', goalFields(fields));
   }
 
-  function addMilestone(goalId, title) {
+  function addMilestone(goalId, title, { source = 'me', status = 'active' } = {}) {
     return create('milestones', {
-      goalId, title: requireTitle(title, 'A milestone'), done: false, order: nextOrder('milestones'),
+      goalId, title: requireTitle(title, 'A milestone'), done: false, order: nextOrder('milestones'), source, status,
     });
   }
 
@@ -194,12 +194,13 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return doc.journal[id];
   }
 
-  // Everything one Gemini reply proposes, written as suggestions in one commit: a goal with its
-  // milestones and the habits and weekly targets linked to it, and tasks for a given day. Every
-  // record is checked before any is written, so one bad record leaves the document untouched.
-  function addPlan({ goal = null, milestones = [], habits = [], targets = [], tasks = [] } = {}) {
+  // Everything one Gemini reply (or a plan from Claude) proposes, written as suggestions in one
+  // commit: a goal with its milestones and the habits and weekly targets linked to it, and tasks
+  // for a given day. Every record is checked before any is written, so one bad record leaves the
+  // document untouched.
+  function addPlan({ goal = null, milestones = [], habits = [], targets = [], tasks = [], source = 'gemini' } = {}) {
     if (milestones.length && !goal) throw new Error('Milestones need a goal');
-    const suggested = { status: 'suggested', source: 'gemini' };
+    const suggested = { status: 'suggested', source };
     const goalRec = goal
       ? goalFields({ title: goal.title, targetDate: goal.targetDate ?? null, why: goal.why ?? '', ...suggested })
       : null;
@@ -260,10 +261,10 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // ⚑: a note of something to change, with what the app was doing when the panel opened. The text
   // is trimmed and capped at FLAG_TEXT_MAX characters; the context is copied and capped at 4 KB
   // (js/flags.js), whoever built it.
-  function addFlag(text, ctx = null) {
+  function addFlag(text, ctx = null, source = 'me') {
     const clean = Array.from(String(text ?? '').trim()).slice(0, FLAG_TEXT_MAX).join('').trim();
     if (!clean) throw new Error('A flag needs some text');
-    return create('flags', { text: clean, ctx: capContext(ctx) });
+    return create('flags', { text: clean, ctx: capContext(ctx), source });
   }
 
   // "Mark addressed": archived, never deleted, and there is no un-address — so the later write

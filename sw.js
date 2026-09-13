@@ -6,12 +6,12 @@
 // Bump CACHE whenever SHELL changes, so activate drops the old cache. dev/fake-gemini.js is left
 // out on purpose: it is only for local testing. CACHE doubles as the app version a flag records
 // (js/flags.js's APP_VERSION; tests/sw.test.js checks the two match).
-const CACHE = 'dash-v4';
+const CACHE = 'dash-v5';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/data.js', 'js/doc.js', 'js/dates.js', 'js/parse.js', 'js/schedule.js',
-  'js/merge.js', 'js/sync.js', 'js/gemini.js', 'js/coach.js', 'js/look.js', 'js/layout.js', 'js/flags.js',
+  'js/merge.js', 'js/sync.js', 'js/gemini.js', 'js/coach.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js',
   'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/coach.js',
   'js/ui/widgets.js', 'js/ui/flags.js',
 ];

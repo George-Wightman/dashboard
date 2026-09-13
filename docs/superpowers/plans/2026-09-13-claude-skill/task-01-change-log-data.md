@@ -203,11 +203,12 @@ const show = (value) => {
   return s.length > 60 ? `${s.slice(0, 59)}…` : s;
 };
 
-// What one edit did, for ⚙'s Details: a new record in one line, a changed one field by field.
-// A pruned edit (no snapshots) has nothing to show.
+// What one edit did, for ⚙'s Details: a new record in one line, a changed one field by field,
+// named as Claude found it (so a rename reads 'task "A": title "A" → "B"'). A pruned edit (no
+// snapshots) has nothing to show.
 export function editLines(edit) {
   if (!edit.before && !edit.after) return [];
-  const rec = edit.after ?? edit.before;
+  const rec = edit.before ?? edit.after;
   const name = `${noun(edit.map, rec)} "${recordTitle(rec)}"`;
   if (!edit.before) return [`New ${name}`];
   if (!edit.after) return [`Removed ${name}`];
@@ -313,6 +314,9 @@ Replace `addFlag`'s signature and `return` (lines 263–267) with:
   assert.deepEqual(MAPS, ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes']);
   assert.deepEqual(emptyDoc(), { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {} });
 ```
+
+In `tests/data.test.js` line 9 ("a new store is empty"), the sorted key list gains `'changes'` first:
+`['changes', 'flags', 'goals', 'items', 'journal', 'logs', 'milestones', 'schema']`.
 
 In `tests/helpers.js`, `fixture` gains `changes`:
 
