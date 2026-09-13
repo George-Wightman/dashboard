@@ -5,6 +5,7 @@ import { logicalDay, addDays, weekStart } from './dates.js';
 import { MAPS, emptyDoc, stableStringify, isDoc, journalId } from './doc.js';
 import { mergeDocs } from './merge.js';
 import { FLAG_TEXT_MAX, capContext } from './flags.js';
+import { CHANGE_KEEP_DAYS, canUndo } from './changes.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -276,6 +277,63 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return patch('flags', id, { status: 'archived', archivedOn: today() });
   }
 
+  // Claude's change log (js/changes.js): one record per command of Claude's that changed
+  // something, with a copy of every record it touched before and after. The tool writes these; the
+  // page only reads and undoes them.
+  function addChange({ summary, edits } = {}) {
+    const text = String(summary ?? '').trim();
+    if (!text) throw new Error('A change needs a summary');
+    if (!Array.isArray(edits) || !edits.length) throw new Error('A change needs at least one edit');
+    return create('changes', {
+      source: 'claude', at: stamp(), summary: text, edits: structuredClone(edits),
+      undoneAt: null, undoneBy: null, pruned: false,
+    });
+  }
+
+  // Undo one of Claude's changes, record by record. A record Claude created is dismissed (a log is
+  // archived, its tombstone); a record Claude changed gets its earlier state back with a fresh
+  // stamp, so it wins the merge everywhere. A record that no longer matches what Claude left has
+  // been changed since, and is left alone. The change is marked undone only if something was.
+  function undoChange(changeId, by = 'me') {
+    const change = doc.changes[changeId];
+    if (!change) throw new Error(`No changes record ${changeId}`);
+    if (!canUndo(change)) return { undone: [], skipped: [], already: true };
+    const t = stamp();
+    const undone = [];
+    const skipped = [];
+    for (const edit of change.edits) {
+      const current = doc[edit.map]?.[edit.id];
+      if (!current || stableStringify(current) !== stableStringify(edit.after)) {
+        skipped.push(edit);
+        continue;
+      }
+      doc[edit.map][edit.id] = edit.before
+        ? { ...structuredClone(edit.before), updated: t }
+        : { ...current, status: edit.map === 'logs' ? 'archived' : 'dismissed', updated: t };
+      undone.push(edit);
+    }
+    if (!undone.length) return { undone, skipped, already: false };
+    doc.changes[changeId] = { ...change, undoneAt: t, undoneBy: by, updated: t };
+    commit('local');
+    return { undone, skipped, already: false };
+  }
+
+  // Changes older than CHANGE_KEEP_DAYS lose their before/after snapshots (the summary stays, and
+  // they can no longer be undone), so the synced file doesn't grow for ever. Returns how many.
+  function pruneChanges() {
+    const cutoff = new Date(now().getTime() - CHANGE_KEEP_DAYS * 86400000).toISOString();
+    const t = stamp();
+    let n = 0;
+    for (const [id, c] of Object.entries(doc.changes)) {
+      if (c.pruned || !(c.at < cutoff)) continue;
+      const edits = (c.edits ?? []).map((e) => ({ map: e.map, id: e.id, before: null, after: null }));
+      doc.changes[id] = { ...c, edits, pruned: true, updated: t };
+      n++;
+    }
+    if (n) commit('local');
+    return n;
+  }
+
   // Move `id` to just before `targetId` within `groupIds` (the on-screen order of the draggable
   // rows in the dragged row's own done/undone group, including `id`). The on-screen list is
   // shown as undone-then-done, so it isn't globally sorted by `order` — reordering has to stay
@@ -388,6 +446,10 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
 
     addFlag,
     addressFlag,
+
+    addChange,
+    undoChange,
+    pruneChanges,
 
     replaceDoc,
     absorbStored,
