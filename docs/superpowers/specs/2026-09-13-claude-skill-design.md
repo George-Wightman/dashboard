@@ -45,10 +45,11 @@ Lives in the public repo and holds no secrets. Every run:
    with `syncOnce` (merge, PUT with the sha, retry on conflict). Reads never push.
 5. Prints compact plain text for Claude to read — a day's list in about 20 lines, not JSON.
 
-**GitHub access.** The tool uses the app's `createGitHubClient`. If Node's `fetch` can't get
-through the sandbox's proxy (Node ignores `HTTPS_PROXY` unless `NODE_USE_ENV_PROXY=1`), the runner
-sets that; failing that, the tool passes the client a `fetch` that shells out to `curl`. The spike
-(Testing) settles which is needed.
+**GitHub access.** The tool uses the app's `createGitHubClient`, behind one small module
+(`claude/github.js`) that is the only place knowing the route. Spike 1 (13 Sep) showed the sandbox runs
+Node 22, clones from github.com and reaches api.github.com, where key-less calls got 403; spike 2, with
+Claude's key, settles whether the API stands or that module switches to git over https, which the
+clone proves works.
 
 ### What Claude can do
 
@@ -78,10 +79,11 @@ dashboard", "put it on my list", "what's on today?", "how did last week go?", "l
 | `run.sh` | Clones the public repo into `/tmp/dashboard` (or fast-forwards it), checks Node, runs the tool with the skill's config. |
 | `config.json` | `token`, `repo`, `dayStartHour`, `timeZone`. Only in the uploaded skill. |
 
-The skill's source lives in `claude/skill/` in the repo; `config.json` there is gitignored. A build
-command zips the folder (with the local config) into `dist/dashboard-skill.zip`, also gitignored,
-for George to upload to claude.ai. The clone is Claude's job; George never sees it except as a step
-in Claude's working.
+The skill's source lives in `claude/skill/` in the repo. Its `config.json` lives in
+`~/.dashboard-skill/` on the laptop, outside the repo, because the repo sits in a Google Drive folder
+and the key shouldn't. A build command (`npm run build-skill`) zips the skill's files with that config
+into `~/.dashboard-skill/dashboard-skill.zip` for George to upload to claude.ai. The clone is
+Claude's job; George never sees it except as a step in Claude's working.
 
 ### Behaviour rules (in `SKILL.md`)
 
@@ -169,8 +171,9 @@ an undone row is marked *undone*).
 ## 6. The key
 
 A fine-grained GitHub token, named e.g. *Claude skill*: Contents read/write on `dashboard-sync`
-only. Separate from the laptop's and phone's key, so it can be revoked on its own. It exists in the
-gitignored `claude/skill/config.json` and in the uploaded skill, nowhere else.
+only. Separate from the laptop's and phone's key, so it can be revoked on its own. It exists in
+`~/.dashboard-skill/config.json` on the laptop (outside the repo and Google Drive) and in the uploaded
+skill, nowhere else.
 
 ## Testing
 
@@ -188,8 +191,8 @@ gitignored `claude/skill/config.json` and in the uploaded skill, nowhere else.
 ## George's one-off setup
 
 1. Make the token (section 6).
-2. Paste it into `claude/skill/config.json`.
-3. Run the build command → `dist/dashboard-skill.zip`.
+2. Paste it into `~/.dashboard-skill/config.json`.
+3. Run `npm run build-skill` → `~/.dashboard-skill/dashboard-skill.zip`.
 4. Upload it at claude.ai → Settings → Capabilities → Skills; check code execution is on.
 5. From the phone: "what's on today?"
 

@@ -4,7 +4,7 @@
 
 **Goal:** Let Claude, in any claude.ai chat (web, desktop app, phone), read George's dashboard and change anything in it — through a `dashboard` skill that runs a small command-line tool built on the app's own modules — with every change Claude makes logged in a synced change log that ⚙ shows with Undo.
 
-**Architecture:** The synced document gains a `changes` map (`js/changes.js` holds the pure diff and readers; the store gains `addChange`, `undoChange`, `pruneChanges`). A Node tool in `claude/` loads `data.json` from the sync repo into an in-memory store built by the app's own `createStore`, runs read commands or JSON "ops" through the store's methods, logs each op as a change, and pushes with the app's own `syncOnce`. The skill (`claude/skill/`: `SKILL.md`, `reference.md`, `run.sh`) clones the public repo into claude.ai's sandbox and runs the tool with a gitignored `config.json` holding Claude's own GitHub key; `npm run build-skill` zips it for upload. ⚙ gains a *Claude's changes* group.
+**Architecture:** The synced document gains a `changes` map (`js/changes.js` holds the pure diff and readers; the store gains `addChange`, `undoChange`, `pruneChanges`). A Node tool in `claude/` loads `data.json` from the sync repo into an in-memory store built by the app's own `createStore`, runs read commands or JSON "ops" through the store's methods, logs each op as a change, and pushes with the app's own `syncOnce`. The skill (`claude/skill/`: `SKILL.md`, `reference.md`, `run.sh`) clones the public repo into claude.ai's sandbox and runs the tool with a `config.json` (kept in `~/.dashboard-skill/`, outside the repo) holding Claude's own GitHub key; `npm run build-skill` zips it for upload. ⚙ gains a *Claude's changes* group.
 
 **Tech Stack:** HTML, CSS, JavaScript ES modules; Node's built-in `node:test`, `node:zlib`, `node:child_process`. No npm dependencies, no build step for the app. Bash for `run.sh`.
 
@@ -23,8 +23,9 @@ Standing project rules:
   blank line and then `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 - **Never** `git push`. Never create or modify GitHub repos or tokens.
 - Never read, print or log a real key: `dash_settings.token`, `dash_settings.geminiKey`,
-  `hvr_geminikey`, `hvr_geminikey2`, or the `token` in `claude/skill/config.json`. Tests use dummy
-  keys only. `claude/skill/config.json` and `dist/` are gitignored and never committed.
+  `hvr_geminikey`, `hvr_geminikey2`, or the `token` in `~/.dashboard-skill/config.json`. Tests use
+  dummy keys only. The key and the built zip live in `~/.dashboard-skill/`, outside the repo (which
+  sits in Google Drive); `claude/skill/config.json` is gitignored in case one is ever copied there.
 - Everything under `claude/` except `build-skill.mjs` and `zip.js` must run on **Node 18**: no
   `globalThis.crypto` (use `randomUUID` from `node:crypto`), no `zlib.crc32`, no `node:test` imports.
 - The tool prints short plain text, never raw JSON documents. Every line it prints goes through
@@ -35,7 +36,7 @@ Binding values from the design (copied verbatim; do not change them):
 
 - **Skill name:** "Named `dashboard`, so `/dashboard` invokes it; it also triggers on plain wording ("add … to the dashboard", "put it on my list", "what's on today?", "how did last week go?", "log …", "tick off …")."
 - **Skill files:** "`SKILL.md` — Triggers, how to run the tool, and the behaviour rules. Kept short." "`reference.md` — Every command and its options. Read only when Claude needs an unusual one." "`run.sh` — Clones the public repo into `/tmp/dashboard` (or fast-forwards it), checks Node, runs the tool with the skill's config." "`config.json` — `token`, `repo`, `dayStartHour`, `timeZone`. Only in the uploaded skill."
-- **Build:** "A build command zips the folder (with the local config) into `dist/dashboard-skill.zip`, also gitignored."
+- **Build:** "A build command (`npm run build-skill`) zips the skill's files with that config into `~/.dashboard-skill/dashboard-skill.zip` for George to upload to claude.ai."
 - **Time:** "sets `process.env.TZ` to the configured zone **before any date is made** (the sandbox runs on UTC …) and uses the configured day-start hour."
 - **Behaviour rules:** "**Asked for → active.** … written `active`, `source: 'claude'`, and shows the existing *added by Claude* marker." "**Noticed → suggested, liberally.** … For a bigger job (an application, interview prep), Claude suggests a plan: goal, stages as milestones, first tasks." "**Act, then report.** No "shall I?", including for edits and archiving. One line per change: *Added "Email Sarah" for Fri 18 Sep.*" "**Ask only when it genuinely can't tell** which item … or which day." "**Look before changing.** Read or `find` first, and act on ids — never on a guessed title." "**Never claim a change that didn't land.**" "**Calendar-aware planning.** When the Google Calendar connector is available and Claude is choosing a day for something, it checks the calendar first. When a task needs real time, Claude offers to book a block; an event booked for a dashboard task carries `dashboard:<itemId>` in its description."
 - **Change record:** "`id`, `source: 'claude'`, `status`, `created`, `updated` · `at` · `summary` · `edits` — `[{ map, id, before, after }]` … `before` is `null` for a new one · `undoneAt`, `undoneBy` — Set when undone (`'me'` or `'claude'`); `null` otherwise · `pruned` — `true` once the snapshots are dropped."
@@ -43,7 +44,7 @@ Binding values from the design (copied verbatim; do not change them):
 - **Undo:** "**Claude created it** (`before` is `null`) → set `status: 'dismissed'` … (A log is set `archived`, its existing tombstone.) **Claude changed it** → restore `before`, with a fresh `updated` … **Changed since** — the current record no longer serialises the same as `after` → leave it alone." "The result says which edits were undone and which were skipped (*changed since — not undone*). Undoing an undone or pruned change does nothing."
 - **⚙:** "A new folded group, **Claude's changes**, whose summary line reads *N in the last week* (or *none yet*). Open: newest first, 20 at a time with *Show more*. Each row: when, the summary, *Details* (per record, the fields that changed, before → after), and **Undo** (hidden once undone or pruned; an undone row is marked *undone*)."
 - **Failures:** "A bad date, unknown id or empty title stops the command before any write; the document is never half-changed." "**Sandbox can't reach GitHub, or no Node:** `run.sh` says so plainly; Claude tells George to check claude.ai → Settings → Capabilities (code execution and network access)."
-- **The key:** "A fine-grained GitHub token … Contents read/write on `dashboard-sync` only … It exists in the gitignored `claude/skill/config.json` and in the uploaded skill, nowhere else."
+- **The key:** "A fine-grained GitHub token … Contents read/write on `dashboard-sync` only … It exists in `~/.dashboard-skill/config.json` on the laptop (outside the repo and Google Drive) and in the uploaded skill, nowhere else."
 
 ## Decisions this plan makes (where the design was silent or ambiguous)
 
@@ -72,10 +73,11 @@ Binding values from the design (copied verbatim; do not change them):
   order`; milestones `title, done, goalId, order`. Status changes go through `archive`, `accept`,
   `dismiss`; a weekly target's unit can't change (archive it and add a new one). Anything else is
   refused by name.
-- **GitHub from the sandbox.** `run.sh` sets `NODE_USE_ENV_PROXY=1` (harmless where there is no proxy).
-  The tool's fetch tries Node's own `fetch`; on a network-level failure (`TypeError`) it switches, for
-  the rest of the run, to `curl` — which honours the sandbox's proxy — with the request (key included)
-  on curl's stdin as a config file, never on its command line.
+- **GitHub from the sandbox.** Spike 1 (13 Sep): claude.ai's sandbox runs Node 22, clones from
+  github.com, and reaches api.github.com, where key-less calls got 403 from curl and Node alike — so
+  no curl fallback. `claude/github.js` is the one place that knows the route (the app's own
+  Contents-API client); spike 2, with Claude's key, settles whether that stands or the file switches to
+  git over https. `run.sh` sets `NODE_USE_ENV_PROXY=1`, harmless where there is no proxy.
 - **Exit codes:** 0 done; 1 bad command, bad config or a refused op; 2 GitHub couldn't be read or
   written; 3 (from `run.sh`) no Node or no GitHub.
 - **The app version** becomes `dash-v5` (`sw.js` `CACHE` and `js/flags.js` `APP_VERSION`) in Task 1,
@@ -89,7 +91,7 @@ Binding values from the design (copied verbatim; do not change them):
 | `js/data.js`, `tests/changes-store.test.js` | `source` options (1); `addChange`, `undoChange`, `pruneChanges` (2) | 1, 2 |
 | `tests/flags.test.js` | Its `MAPS` / `emptyDoc` lines gain `changes` | 1 |
 | `sw.js`, `js/flags.js` | `dash-v5`; `js/changes.js` (1) and `js/ui/changes.js` (8) in SHELL | 1, 8 |
-| `claude/config.js`, `claude/fetch.js`, `claude/session.js`, `tests/helpers.js`, `tests/claude-core.test.js` | Config checks; fetch with the curl fallback; one run's pull → apply → push; `FakeGitHub` | 3 |
+| `claude/config.js`, `claude/session.js`, `claude/github.js`, `tests/helpers.js`, `tests/claude-core.test.js` | Config checks; one run's pull → apply → push; the route to GitHub; `FakeGitHub` | 3 |
 | `claude/ids.js`, `claude/text.js`, `claude/read.js`, `tests/claude-read.test.js` | Short ids and finding records; wording helpers; the read commands | 4 |
 | `claude/ops.js`, `tests/claude-ops.test.js` | Every op | 5 |
 | `claude/cli.js`, `claude/dash.mjs`, `tests/claude-cli.test.js` | Arguments in, text out; the time zone; all-or-nothing; the key scrubbed | 6 |
@@ -100,16 +102,17 @@ Binding values from the design (copied verbatim; do not change them):
 
 Each task lives in its own file under [`2026-09-13-claude-skill/`](2026-09-13-claude-skill/). Tick here when a task is committed.
 
-- [ ] [Task 1: The change log in the document](2026-09-13-claude-skill/task-01-change-log-data.md) — `changes` in `MAPS`, `js/changes.js`, `source` options on the store, `dash-v5`
-- [ ] [Task 2: Undo and pruning in the store](2026-09-13-claude-skill/task-02-undo-prune.md) — `addChange`, `undoChange`, `pruneChanges`
-- [ ] [Task 3: The tool's plumbing](2026-09-13-claude-skill/task-03-tool-core.md) — `claude/config.js`, `claude/fetch.js`, `claude/session.js`
-- [ ] [Task 4: Reading the dashboard](2026-09-13-claude-skill/task-04-reads.md) — `claude/ids.js`, `claude/text.js`, `claude/read.js`
-- [ ] [Task 5: Changing the dashboard](2026-09-13-claude-skill/task-05-ops.md) — `claude/ops.js`
+- [x] [Task 1: The change log in the document](2026-09-13-claude-skill/task-01-change-log-data.md) — `changes` in `MAPS`, `js/changes.js`, `source` options on the store, `dash-v5`
+- [x] [Task 2: Undo and pruning in the store](2026-09-13-claude-skill/task-02-undo-prune.md) — `addChange`, `undoChange`, `pruneChanges`
+- [ ] [Task 3: The tool's plumbing](2026-09-13-claude-skill/task-03-tool-core.md) — `claude/config.js`, `claude/session.js`, `claude/github.js`
+- [x] [Task 4: Reading the dashboard](2026-09-13-claude-skill/task-04-reads.md) — `claude/ids.js`, `claude/text.js`, `claude/read.js`
+- [x] [Task 5: Changing the dashboard](2026-09-13-claude-skill/task-05-ops.md) — `claude/ops.js`
 - [ ] [Task 6: The command line](2026-09-13-claude-skill/task-06-cli.md) — `claude/cli.js`, `claude/dash.mjs`
 - [ ] [Task 7: The skill and its build](2026-09-13-claude-skill/task-07-skill-build.md) — `SKILL.md`, `reference.md`, `run.sh`, the zip
-- [ ] [Task 8: Claude's changes in ⚙, and the README](2026-09-13-claude-skill/task-08-settings-readme.md)
+- [x] [Task 8: Claude's changes in ⚙, and the README](2026-09-13-claude-skill/task-08-settings-readme.md)
 
-Tasks run in order; each depends on the ones before it. Task 8 is browser work, checked by the
+Tasks 1, 2, 4, 5 and 8 don't touch GitHub and ran first, while spike 2 was pending; Task 3, then 6
+and 7, follow. Task 8 is browser work, checked by the
 controller in the Browser pane: serve with `preview_start` `dashboard`, open
 `http://localhost:8080/dev/seed.html?replace`, then `http://localhost:8080/?fakegemini`, reload twice
 (the offline cache).
@@ -153,9 +156,9 @@ store.pruneChanges(): number                               // Task 2; commits on
 DEFAULT_ZONE = 'Europe/London'
 readConfig(text: string): { token, repo, dayStartHour, timeZone }   // throws plain-English errors
 
-// ---- claude/fetch.js (Task 3) ------------------------------------------------------------------
-curlFetch(url, init = {}, { spawn = spawnSync } = {}): Promise<{ status, ok, json() }>
-resilientFetch({ native = globalThis.fetch, curl = curlFetch } = {}): (url, init) => Promise<Response-like>
+// ---- claude/github.js (Task 3) -----------------------------------------------------------------
+makeClient({ token, repo, fetch? }): { get(): Promise<{ doc, sha } | null>, put(doc, sha): Promise<sha> }
+  // the app's createGitHubClient today; the only file that changes if the sandbox needs git instead
 
 // ---- claude/session.js (Task 3) ----------------------------------------------------------------
 class MemoryStorage { getItem, setItem, removeItem }
