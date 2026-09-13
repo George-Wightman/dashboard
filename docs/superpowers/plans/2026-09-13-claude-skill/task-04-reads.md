@@ -64,7 +64,7 @@ test('shortId shortens random ids only; resolveId finds one record by id or pref
   assert.equal(shortId('a1b2c3d4-e5f6-4789-9abc-def012345678'), 'a1b2c3d4');
   assert.equal(shortId('checkin:2026-09-13'), 'checkin:2026-09-13');
   const d = fixture({ items: [{ id: 'abcd1234-0000-4000-8000-000000000000', type: 'task', title: 'A', date: TODAY },
-    { id: 'abce9999-0000-4000-8000-000000000000', type: 'task', title: 'B', date: TODAY }] });
+    { id: 'abcd9999-0000-4000-8000-000000000000', type: 'task', title: 'B', date: TODAY }] });
   assert.equal(resolveId(d, '#abcd12').rec.title, 'A');
   assert.equal(resolveId(d, 'abcd1234-0000-4000-8000-000000000000').map, 'items');
   assert.throws(() => resolveId(d, 'abc'), /too short/);
