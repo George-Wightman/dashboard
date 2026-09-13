@@ -15,6 +15,7 @@ import { resolveLook, THEME_COLORS } from './look.js';
 import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
 import { readLastSynced, writeLastSynced, waitingFlags, APP_VERSION } from './flags.js';
 import { openFlagPanel } from './ui/flags.js';
+import { createUpdater, runningBuild, IDLE_CHECK_GAP } from './version.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -42,10 +43,21 @@ const params = new URLSearchParams(location.search);
 const FAKE = (['localhost', '127.0.0.1'].includes(location.hostname) && params.has('fakegemini'))
   ? (params.get('fakegemini') || 'ok') : null;
 
+// Updates (js/version.js): the build this page was served, checked against the site on open, on
+// focus and every ten minutes. A newer one is cached whole, then offered in the header and in ⚙.
+// Read once, now: with no date on the page, document.lastModified is "the time you asked".
+const updater = createUpdater({
+  running: runningBuild(document.lastModified, performance.timeOrigin),
+  worker: navigator.serviceWorker ?? null,
+  onReady: () => renderHeader(),
+});
+
 const ctx = {
   store,
   ui,
   render,
+  updater,
+  applyUpdate: () => updater.apply(() => location.reload()),
   openEditor: (opts) => openEditor(ctx, opts),
   openSettings: () => openSettings(ctx),
   syncNow: () => scheduler.now(),
@@ -122,6 +134,7 @@ function renderHeader() {
   const problem = store.saveError() ? "Couldn't save on this device. Export a backup from settings." : store.loadError();
   warning.hidden = !problem;
   warning.textContent = problem ?? '';
+  document.getElementById('update-ready').hidden = !updater.state().ready;
 
   const status = document.getElementById('sync-status');
   const [text, title] = syncLabel();
@@ -278,6 +291,7 @@ function wake() {
   applyLook();
   checkRollover();
   scheduler.now();
+  updater.check();
 }
 
 store.subscribe((reason) => {
@@ -294,6 +308,7 @@ document.getElementById('settings-button').addEventListener('click', () => ctx.o
 document.getElementById('sync-status').addEventListener('click', () => (sync.state === 'failing' ? ctx.openSettings() : scheduler.now()));
 document.getElementById('flag-button').addEventListener('click', () => openFlagPanel(ctx));
 document.getElementById('arrange-button').addEventListener('click', () => setArranging(ctx, !ui.arranging));
+document.getElementById('update-ready').addEventListener('click', () => ctx.applyUpdate());
 // Escape leaves Arrange mode, unless a dialog or the edit panel is using it for something else.
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !ui.arranging) return;
@@ -334,11 +349,13 @@ window.addEventListener('storage', (e) => {
   store.absorbStored(e.newValue);
 });
 // Once a minute: roll over to a new day, and repaint when the check-in state has moved on (the
-// check-in hour arriving) — unless something is being typed in the column.
+// check-in hour arriving) — unless something is being typed in the column. The update check
+// only actually asks the site every ten minutes.
 setInterval(() => {
   applyLook();
   checkRollover();
   if (checkinNow(ctx) !== shownCheckin && !typing()) render();
+  if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });
 }, 60000);
 
 applyLook();
@@ -346,3 +363,4 @@ render();
 scheduler.now();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+updater.check();

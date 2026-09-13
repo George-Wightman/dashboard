@@ -193,6 +193,23 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .settings h2 { margin: 0 0 1rem; font-size: 1.1rem; }
 .settings .note { margin: -.4rem 0 .9rem; font-size: .8rem; color: var(--muted); }
 .settings hr { margin: 1rem 0; border: 0; border-top: 1px solid var(--border); }
+.settings h3 { margin: 0 0 .5rem; font-size: .8rem; font-weight: 500; color: var(--muted); }
+.settings summary { cursor: pointer; font-size: .9rem; }
+.settings .version { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+.group { margin-bottom: .5rem; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.group[open] > summary { margin-bottom: .75rem; }
+.group > .note:last-child { margin-bottom: .25rem; }
+.group > .buttons { margin: 0 0 .25rem; }
+.version-line { margin: 0; font-size: .85rem; }
+.version-line.update { color: var(--accent); }
+.version-line + .buttons { margin-top: .5rem; }
+.changes { margin-top: .75rem; font-size: .85rem; }
+.changes ul { margin: .5rem 0; padding: 0; list-style: none; }
+.changes li { display: flex; justify-content: space-between; gap: .75rem; padding: .15rem 0; }
+.changes li > span:last-child { flex: none; }
+.changes li.missing > span:first-child { color: var(--accent); }
+.changes a { color: var(--accent); }
+button.link.update-ready { color: var(--accent); }
 
 .goal-body input.invalid { border-color: var(--bad); }
 

@@ -20,6 +20,9 @@ Pieces 1 and 5 of 6: the core hub and the Gemini coach. The designs are in
 - **Unfinished tasks carry over** with an amber *from Tue* marker until they're done.
 - **The day starts at 4am**, so a late night still counts as the day before (change it in ⚙).
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
+- **⚙ settings** open with the version at the top. Everything else (GitHub sync, the day, the
+  coach, the look, backups) is folded away on one line each, showing what it's set to. Click a
+  line to change it.
 
 ## The look
 
@@ -101,6 +104,23 @@ sync is set up and something hasn't reached GitHub yet.
 Flags ride the same sync as everything else, into `dashboard-sync/data.json`, ready for Claude to
 read and act on later.
 
+## Updates
+
+A push reaches every device on its own, with no version number to bump:
+
+- **The header says so.** The app checks the site when it opens, whenever you come back to it,
+  and every ten minutes while it's on screen. When a newer version is published it downloads all
+  of it in the background, then shows **Update ready · reload** in the header. Nothing reloads by
+  itself, so nothing half-typed is ever lost. Click it when you're ready.
+- **⚙ → Version** says which build this device is running (by when it was published), and whether
+  it's the newest. If it isn't, **Reload to update** is there too. *Recent changes* lists the last
+  few commits, marking any that aren't on this device yet. For a minute or so after a push,
+  GitHub Pages is still publishing it, and ⚙ says so.
+
+It works from the date GitHub Pages stamps on every file when it publishes, compared with the
+date on the copy this device is running (`js/version.js`). The GitHub key is never used for this;
+the commit list comes from the public `dashboard` repo.
+
 ## Morning steps (one-off setup, about 10 minutes)
 
 1. **Publish the app.** The overnight build lives on the `core-hub` branch; merge it into `main`
@@ -119,8 +139,8 @@ read and act on later.
 3. **Make an access key.** *GitHub → Settings → Developer settings → Personal access tokens →
    Fine-grained tokens → Generate new token.* Repository access: *Only select repositories →
    `dashboard-sync`*. Permissions: *Contents → Read and write*. Copy the token.
-4. **Connect the laptop.** Open the site, then ⚙ → Sync repo `George-Wightman/dashboard-sync`,
-   and paste the key → Save. The header should change to *synced HH:MM*.
+4. **Connect the laptop.** Open the site, then ⚙ → *GitHub sync* → Sync repo
+   `George-Wightman/dashboard-sync`, and paste the key → Save. The header should change to *synced HH:MM*.
 5. **Install it and start it on sign-in.** In Chrome, use the install icon at the right of the
    address bar (or ⋮ → *Cast, save and share → Install page as app*). Then press Win+R and type
    `shell:startup`. In the Start menu, right-click *Today* → *Open file location*, and copy that
@@ -141,8 +161,8 @@ Then open http://localhost:8080/. For sample data, open http://localhost:8080/de
 (this only works on localhost).
 
 After changing code, reload **twice** — the offline cache serves the old copy once while it
-fetches the new one. After a push to the published site, one reload now brings the new version:
-the first load installs the new service worker, and the second runs it.
+fetches the new one. (The update offer only notices a change to `index.html` locally, because
+`python -m http.server` dates each file separately; on GitHub Pages every push redates them all.)
 
 ## Tests
 
@@ -175,6 +195,7 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependen
 | `js/look.js` | Which look (Paper or Night) applies at a given moment |
 | `js/layout.js` | The widget arrangement: normalise, move, nudge, hide, show |
 | `js/flags.js` | A flag's captured context, its 4 KB cap, and the panel's readers |
+| `js/version.js` | Which build this is, whether a newer one is live, and taking the update |
 | `js/ui/*.js`, `js/app.js` | The screen |
 | `sw.js`, `manifest.webmanifest` | Offline and install |
 

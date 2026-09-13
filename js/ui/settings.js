@@ -1,9 +1,46 @@
-// Settings: sync, the day boundary, the coach, the look, and backups. Settings are device-local
-// and never synced.
+// Settings: which version this is at the top, then sync, the day, the coach, the look and backups,
+// each folded away showing what it's set to (they're set once and rarely touched). Settings are
+// device-local and never synced.
 
 import { h } from './dom.js';
 import { hebrewKeys } from '../gemini.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
+import { hourLabel } from '../dates.js';
+import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
+
+// The Version section: filled in once the site and GitHub have answered. Asked fresh every time
+// ⚙ opens, so "up to date" is about now, not about when the page was opened.
+function versionSection(ctx) {
+  const line = h('p', { class: 'version-line' }, 'Checking for a newer version…');
+  const reload = h('div', { class: 'buttons', hidden: true },
+    h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.applyUpdate() }, 'Reload to update'));
+  const list = h('ul');
+  const changes = h('details', { class: 'changes', hidden: true }, h('summary', {}, 'Recent changes'), list,
+    h('a', { href: HISTORY_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Full history on GitHub ↗'));
+
+  Promise.all([ctx.updater.check({ gap: 0 }), recentChanges().catch(() => null)]).then(([state, commits]) => {
+    if (!line.isConnected) return;
+    const status = versionStatus({ ...state, newest: commits?.[0]?.date ?? null, online: navigator.onLine });
+    line.textContent = status.text;
+    line.className = `version-line ${status.kind}`;
+    reload.hidden = status.kind !== 'update';
+    if (!commits?.length) return;
+    // A change is on this device once a build at least as new as it is running here.
+    list.replaceChildren(...commits.map((c) => {
+      const missing = state.running && c.date > state.running;
+      return h('li', { class: missing ? 'missing' : null },
+        h('span', {}, c.title),
+        h('span', { class: 'muted' }, missing ? `${buildStamp(c.date)} · not here yet` : buildStamp(c.date)));
+    }));
+    changes.hidden = false;
+  });
+
+  return h('section', { class: 'version' }, h('h3', {}, 'Version'), line, reload, changes);
+}
+
+// One folded group: its name, what it's set to now, and its fields.
+const group = (name, now, open, ...body) => h('details', { class: 'group', open },
+  h('summary', {}, name, h('span', { class: 'muted' }, ` · ${now}`)), ...body);
 
 export function openSettings(ctx) {
   const { store } = ctx;
@@ -12,8 +49,9 @@ export function openSettings(ctx) {
 
   const repo = h('input', { type: 'text', name: 'repo', value: s.repo, placeholder: 'George-Wightman/dashboard-sync', autocomplete: 'off', spellcheck: 'false' });
   // The token goes in as the field's live value, never as an attribute, so it can't end up in the
-  // page's markup; as a password field it never shows on screen either.
-  const token = h('input', { type: 'password', name: 'token', autocomplete: 'off', spellcheck: 'false' });
+  // page's markup; as a password field it never shows on screen either. 'new-password' tells the
+  // browser this isn't a sign-in, so it stops offering saved logins on the repo field.
+  const token = h('input', { type: 'password', name: 'token', autocomplete: 'new-password', spellcheck: 'false' });
   token.value = s.token ?? '';
   const dayStart = h('input', { type: 'number', name: 'dayStartHour', min: 0, max: 12, step: 1, value: s.dayStartHour });
   // The Gemini key goes in as the field's live value, never as an attribute, so it can't end up in
@@ -30,6 +68,12 @@ export function openSettings(ctx) {
   const file = h('input', { type: 'file', accept: 'application/json,.json', hidden: true });
   const problem = ctx.syncProblem();
   const syncStatus = problem ? h('p', { class: 'error' }, `Last sync failed: ${problem}`) : null;
+  // Folded, nothing in the sync group takes the focus when ⚙ opens, which is what used to bring
+  // up the browser's saved-password list every time. It opens by itself when sync isn't set up
+  // yet or is failing.
+  const syncSet = !!(s.repo && s.token);
+  const coachKey = s.geminiKey ? 'own key' : hebrewFound ? "the Hebrew app's key" : 'no key';
+  const lookName = (LOOK_CHOICES.find(([value]) => value === s.look)?.[1] ?? '').split(' (')[0];
 
   file.addEventListener('change', async () => {
     const chosen = file.files[0];
@@ -43,21 +87,28 @@ export function openSettings(ctx) {
     file.value = '';
   });
 
+  // A refused save unfolds the group the field is in, so what it's about is on screen.
+  function refuse(field, message) {
+    field.closest('details').open = true;
+    field.focus();
+    status.textContent = message;
+  }
+
   function save(e) {
     e.preventDefault();
     const hour = Number(dayStart.value);
     if (!(Number.isInteger(hour) && hour >= 0 && hour <= 12)) {
-      status.textContent = 'The day start must be a whole hour from 0 to 12.';
+      refuse(dayStart, 'The day start must be a whole hour from 0 to 12.');
       return;
     }
     const checkin = Number(checkinHour.value); // an empty box is 0, so it fails too
     if (!(Number.isInteger(checkin) && checkin >= 12 && checkin <= 23)) {
-      status.textContent = 'The check-in hour must be a whole hour from 12 to 23.';
+      refuse(checkinHour, 'The check-in hour must be a whole hour from 12 to 23.');
       return;
     }
     const repoValue = repo.value.trim();
     if (repoValue && !/^[\w.-]+\/[\w.-]+$/.test(repoValue)) {
-      status.textContent = 'The repo should look like owner/name.';
+      refuse(repo, 'The repo should look like owner/name.');
       return;
     }
     store.updateSettings({
@@ -80,25 +131,31 @@ export function openSettings(ctx) {
   dialog.replaceChildren(h('form', { onsubmit: save },
     h('h2', {}, 'Settings'),
     syncStatus,
-    h('label', { class: 'field' }, h('span', {}, 'Sync repo'), repo),
-    h('label', { class: 'field' }, h('span', {}, 'GitHub access key'), token),
-    h('p', { class: 'note' }, 'A fine-grained token with Contents read and write on the sync repo only. It stays on this device and is never synced.'),
-    h('label', { class: 'field' }, h('span', {}, 'The day starts at (hour, 0–12)'), dayStart),
-    h('p', { class: 'note' }, 'Anything done before this hour counts as the day before.'),
-    h('label', { class: 'field' }, h('span', {}, 'Gemini API key (optional)'), geminiKey),
-    h('p', { class: 'note' }, `Leave blank to use the Hebrew app's key on this device.${hebrewFound ? ' One was found here.' : ' None was found here.'}`),
-    h('label', { class: 'field' }, h('span', {}, 'Evening check-in from (hour, 12–23)'), checkinHour),
-    h('p', { class: 'note' }, "Check-ins and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products."),
-    h('label', { class: 'field' }, h('span', {}, 'Look'), look),
+    versionSection(ctx),
+    group('GitHub sync', syncSet ? `${s.repo}, key saved` : 'not set up', !syncSet || !!problem,
+      h('label', { class: 'field' }, h('span', {}, 'Sync repo'), repo),
+      h('label', { class: 'field' }, h('span', {}, 'GitHub access key'), token),
+      h('p', { class: 'note' }, 'A fine-grained token with Contents read and write on the sync repo only. It stays on this device and is never synced.'),
+      h('div', { class: 'buttons' },
+        h('button', { class: 'btn', type: 'button', onclick: () => { ctx.syncNow(); dialog.close(); } }, 'Sync now'))),
+    group('The day', `starts at ${hourLabel(s.dayStartHour)}`, false,
+      h('label', { class: 'field' }, h('span', {}, 'The day starts at (hour, 0–12)'), dayStart),
+      h('p', { class: 'note' }, 'Anything done before this hour counts as the day before.')),
+    group('Coach', `${coachKey}, check-in from ${hourLabel(s.checkinHour)}`, false,
+      h('label', { class: 'field' }, h('span', {}, 'Gemini API key (optional)'), geminiKey),
+      h('p', { class: 'note' }, `Leave blank to use the Hebrew app's key on this device.${hebrewFound ? ' One was found here.' : ' None was found here.'}`),
+      h('label', { class: 'field' }, h('span', {}, 'Evening check-in from (hour, 12–23)'), checkinHour),
+      h('p', { class: 'note' }, "Check-ins and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products.")),
+    group('Look', lookName, false,
+      h('label', { class: 'field' }, h('span', {}, 'Look'), look)),
+    group('Backups', 'export, or merge one in', false,
+      h('div', { class: 'buttons' },
+        h('button', { class: 'btn', type: 'button', onclick: exportBackup }, 'Export backup'),
+        h('button', { class: 'btn', type: 'button', onclick: () => file.click() }, 'Import backup…'),
+        file)),
     status,
     h('div', { class: 'buttons' },
       h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
-      h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancel')),
-    h('hr'),
-    h('div', { class: 'buttons' },
-      h('button', { class: 'btn', type: 'button', onclick: () => { ctx.syncNow(); dialog.close(); } }, 'Sync now'),
-      h('button', { class: 'btn', type: 'button', onclick: exportBackup }, 'Export backup'),
-      h('button', { class: 'btn', type: 'button', onclick: () => file.click() }, 'Import backup…'),
-      file)));
+      h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancel'))));
   dialog.showModal();
 }
