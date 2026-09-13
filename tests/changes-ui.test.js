@@ -16,6 +16,8 @@ test("js/ui/changes.js lists Claude's changes with Details, Undo and Show more",
   assert.match(src, /'Show more'/);
   assert.match(src, /' · undone'/);
   assert.doesNotMatch(src, /ctx\.render\(\)/);
+  // replaceChildren prints a null as the text "null": the Show more slot is filtered out when empty.
+  assert.match(src, /box\.replaceChildren\(\.\.\.\[[^\]]*more\]\.filter\(Boolean\)\)/);
 });
 
 test("⚙ has a folded Claude's changes group with its count line, before Backups", () => {

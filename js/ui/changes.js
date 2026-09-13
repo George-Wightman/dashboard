@@ -42,11 +42,11 @@ export function changesPanel(ctx) {
       box.replaceChildren(h('p', { class: 'note' }, 'Nothing yet. Anything Claude changes from a chat shows here, with Undo.'));
       return;
     }
-    box.replaceChildren(
-      h('ul', { class: 'change-list' }, list.slice(0, shown).map(row)),
-      list.length > shown
-        ? h('button', { class: 'link', type: 'button', onclick: () => { shown += PAGE; paint(); } }, 'Show more')
-        : null);
+    const more = list.length > shown
+      ? h('button', { class: 'link', type: 'button', onclick: () => { shown += PAGE; paint(); } }, 'Show more')
+      : null;
+    // replaceChildren turns a null into the text "null", so only real nodes go in.
+    box.replaceChildren(...[h('ul', { class: 'change-list' }, list.slice(0, shown).map(row)), more].filter(Boolean));
   }
 
   paint();
