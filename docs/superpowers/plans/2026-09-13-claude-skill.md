@@ -104,11 +104,11 @@ Each task lives in its own file under [`2026-09-13-claude-skill/`](2026-09-13-cl
 
 - [x] [Task 1: The change log in the document](2026-09-13-claude-skill/task-01-change-log-data.md) — `changes` in `MAPS`, `js/changes.js`, `source` options on the store, `dash-v5`
 - [x] [Task 2: Undo and pruning in the store](2026-09-13-claude-skill/task-02-undo-prune.md) — `addChange`, `undoChange`, `pruneChanges`
-- [ ] [Task 3: The tool's plumbing](2026-09-13-claude-skill/task-03-tool-core.md) — `claude/config.js`, `claude/session.js`, `claude/github.js`
+- [x] [Task 3: The tool's plumbing](2026-09-13-claude-skill/task-03-tool-core.md) — `claude/config.js`, `claude/session.js`, `claude/github.js`
 - [x] [Task 4: Reading the dashboard](2026-09-13-claude-skill/task-04-reads.md) — `claude/ids.js`, `claude/text.js`, `claude/read.js`
 - [x] [Task 5: Changing the dashboard](2026-09-13-claude-skill/task-05-ops.md) — `claude/ops.js`
-- [ ] [Task 6: The command line](2026-09-13-claude-skill/task-06-cli.md) — `claude/cli.js`, `claude/dash.mjs`
-- [ ] [Task 7: The skill and its build](2026-09-13-claude-skill/task-07-skill-build.md) — `SKILL.md`, `reference.md`, `run.sh`, the zip
+- [x] [Task 6: The command line](2026-09-13-claude-skill/task-06-cli.md) — `claude/cli.js`, `claude/dash.mjs`
+- [x] [Task 7: The skill and its build](2026-09-13-claude-skill/task-07-skill-build.md) — `SKILL.md`, `reference.md`, `run.sh`, the zip
 - [x] [Task 8: Claude's changes in ⚙, and the README](2026-09-13-claude-skill/task-08-settings-readme.md)
 
 Tasks 1, 2, 4, 5 and 8 don't touch GitHub and ran first, while spike 2 was pending; Task 3, then 6
