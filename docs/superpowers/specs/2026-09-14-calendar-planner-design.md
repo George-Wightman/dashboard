@@ -168,9 +168,11 @@ Older copies of the app pass it through the merge untouched.
 | Record id | Holds |
 |---|---|
 | `config` | The planner's settings (below). Written by Claude or George; seeded by the planner if absent. |
-| `status` | `lastRun` (ISO), `lastError` (text or null), `version` (the planner's build) |
-| `slot:<itemId>:<day>` | `itemId`, `day`, `start`, `end` (ISO), `state` (`rough` · `exact` · `done` · `missed` · `skipped`), `calendar` (name), `eventId` |
-| `note:<ISO time>` | `day`, `text` — *Moved Job search to 15:30 (Signify)*. Archived after 7 days. |
+| `status` | `lastRun` (ISO), `lastError` (text or null), `version` (the planner's build), `paused` |
+| `day:1` … `day:7` | One per weekday, overwritten when that weekday comes round again: `day`, `blocks` (each `key`, `eventId`, `calendarId`, `calendar`, `title`, `start`, `end`, `state` — `rough` · `exact` · `fixed` · `done` · `partial` — and `items`), `skipped` (items George deleted the block for), `missed` (items whose block passed unticked, with their length), `notes` (*Moved Job search to 15:30 (Signify)*; today's record only) |
+
+So the map never holds more than nine records. The app reads a day record only when its `day` is the
+day it wants.
 
 `config`, with its defaults:
 
