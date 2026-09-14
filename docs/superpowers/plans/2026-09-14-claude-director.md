@@ -62,7 +62,7 @@ events.js: nearestColor(hex, eventColors): id
 
 ## Tasks
 
-- [ ] **Task 1: Data, time off, schedule and attention** — `js/calendar.js`, `js/attention.js`,
+- [x] **Task 1: Data, time off, schedule and attention** — `js/calendar.js`, `js/attention.js`,
   `js/schedule.js`, `js/data.js`; tests `tests/director-data.test.js`, `tests/calendar.test.js`.
   Tests: config checks for `priorityAreas` (names), `areaColors` (known names, no two areas alike),
   `dayHours` (real dates, ordered times); `mergeSetting` sets and deletes one key; `timeOff` /
@@ -72,7 +72,7 @@ events.js: nearestColor(hex, eventColors): id
   `dayCompletion` counts; a daily habit's streak unbroken across an excused day; `history` cell `off`;
   `attention` lines for no length, carried 3+ days, behind pace, planner problems and taken colours;
   store checks for `notes`/`priority`; `saveJournal` brief with source `claude`.
-- [ ] **Task 2: The planner** — `planner/demand.js`, `planner/plan.js`, `planner/events.js`,
+- [x] **Task 2: The planner** — `planner/demand.js`, `planner/plan.js`, `planner/events.js`,
   `planner/gas.js`, `planner/planner.js`; tests in `tests/planner-director.test.js`. Tests: whole-day
   time off for everything books nothing that day and a dated task lands the next day; area-limited time
   off books other areas; hours time off keeps covered areas' blocks out of the stretch; quota share
@@ -80,12 +80,12 @@ events.js: nearestColor(hex, eventColors): id
   rough ones; a taken colour ignored with a note and `takenColors` returned; removing a colour replaces
   the block; `dayHours` narrows a day; notes lead the description; idempotent re-run; gas status
   carries `takenColors`.
-- [ ] **Task 3: The page** — `js/ui/today.js`, `js/app.js`, `js/ui/side.js`, `js/ui/edit.js`,
+- [x] **Task 3: The page** — `js/ui/today.js`, `js/app.js`, `js/ui/side.js`, `js/ui/edit.js`,
   `js/ui/settings.js`, new `js/ui/claude.js`, `index.html`, `styles.css`, `sw.js`, `js/flags.js`,
   `dev/seed.html`; tests in `tests/today-list.test.js`, `tests/changes-ui.test.js`, `tests/sw.test.js`
   expectations. Checks: brief and time-off lines, ★, the notes mark and its row, *off* history cells,
   the Notes box, ⚙ → Claude with its sections; browser check with the seed.
-- [ ] **Task 4: Claude's tool, skill and README** — `claude/ops.js`, `claude/read.js`,
+- [x] **Task 4: Claude's tool, skill and README** — `claude/ops.js`, `claude/read.js`,
   `claude/cli.js`, `claude/skill/SKILL.md`, `claude/skill/reference.md`, `README.md`; tests in
   `tests/claude-ops.test.js`, `tests/claude-read.test.js`, `tests/claude-cli.test.js`. Tests: `notes`
   and `priority` on add and edit; `off` add, area check, hours form, cancel; `brief`; `planner` one-key

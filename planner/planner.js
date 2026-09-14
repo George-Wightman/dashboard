@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '5818603e';
+var PLANNER_BUILD = '33d6eee0';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1563,6 +1563,15 @@ function checkTimeOff({ start, end, areas = [], reason = '' } = {}) {
   return { start: s, end: e, areas: areas.map((a) => a.trim()), reason: why };
 }
 
+// 'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search' or '… · everything'.
+function offText(o) {
+  const dayText = (d) => `${shortWeekday(d)} ${shortDate(d)}`;
+  const range = o.start.length === 10
+    ? (o.start === o.end ? dayText(o.start) : `${dayText(o.start)} – ${dayText(o.end)}`)
+    : `${dayText(o.start.slice(0, 10))}, ${o.start.slice(11)}–${o.end.slice(11)}`;
+  return `${range} — ${o.reason || 'Time off'} · ${o.areas?.length ? o.areas.join(', ') : 'everything'}`;
+}
+
 function nextOffId(doc, start) {
   const day = String(start).slice(0, 10);
   let id = `off:${day}`;
@@ -1662,7 +1671,7 @@ function plannerSummary(doc, now) {
   lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
   return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
 }
-return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, nextOffId, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
+return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
 })();
 
 // ---- js/gemini.js

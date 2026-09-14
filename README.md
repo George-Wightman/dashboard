@@ -118,9 +118,16 @@ today?", "log 45m of Hebrew", "tick off the CV task".
 - **What you ask for goes straight on**, marked with Claude's logo. **What Claude notices** — a to-do
   that comes up in a chat — arrives as a suggestion for ✓ or ✕, and a bigger job (an application,
   interview prep) as a suggested goal with its stages and first tasks.
-- **Every change Claude makes is listed** in ⚙ → **Claude's changes**, newest first, with *Details*
-  (what changed, field by field) and **Undo**. Undo never overwrites something you've changed since —
-  it says so instead. Details are kept for 30 days; the one-line summaries for good.
+- **Claude directs.** You tick things off and rename them; Claude runs the rest, with controls you
+  don't need yourself: **time off** (days or hours, for everything or some areas — nothing gets booked,
+  streaks are safe, dated tasks move on), **notes** under a task's title (the ≡ mark opens them),
+  **a brief** at the top of your list, **priorities** (booked first, ★), **area colours** in your
+  calendar, and hours for particular days.
+- **⚙ → Claude** shows all of it: today's brief and earlier ones, time off, priorities and colours,
+  the calendar planner, what needs attention, what Claude can do, and **every change Claude makes**,
+  newest first, with *Details* (what changed, field by field) and **Undo**. Undo never overwrites
+  something you've changed since — it says so instead. Details are kept for 30 days; the one-line
+  summaries for good.
 - **Planning your week.** Say "plan my week" and Claude spreads the week's work over the days, with
   lengths and areas; the calendar planner (below) books it.
 

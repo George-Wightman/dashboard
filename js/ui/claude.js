@@ -5,7 +5,7 @@
 import { h } from './dom.js';
 import { changesPanel } from './changes.js';
 import { changeCountLine } from '../changes.js';
-import { readPlannerConfig, timeOff, plannerSummary, briefFor } from '../calendar.js';
+import { readPlannerConfig, timeOff, plannerSummary, briefFor, offText } from '../calendar.js';
 import { attention } from '../attention.js';
 import { shortWeekday, shortDate } from '../dates.js';
 
@@ -26,13 +26,7 @@ const lines = (list, empty) => (list.length
   ? h('ul', { class: 'claude-lines' }, list.map((l) => h('li', {}, l)))
   : h('p', { class: 'note' }, empty));
 
-// 'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search' or '… · everything'.
-export function offText(o) {
-  const range = o.start.length === 10
-    ? (o.start === o.end ? dayText(o.start) : `${dayText(o.start)} – ${dayText(o.end)}`)
-    : `${dayText(o.start.slice(0, 10))}, ${o.start.slice(11)}–${o.end.slice(11)}`;
-  return `${range} — ${o.reason || 'Time off'} · ${o.areas?.length ? o.areas.join(', ') : 'everything'}`;
-}
+export { offText };
 
 // The folded line: Claude's changes this week, and how much needs looking at.
 export function claudeSummary(doc, today, now) {

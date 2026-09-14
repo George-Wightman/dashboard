@@ -172,3 +172,27 @@ test("planner: its settings, when it last ran, its notes; week shows what it boo
   assert.ok(week.includes(`  today: ${span('2026-09-13T12:15:00.000Z', '2026-09-13T13:15:00.000Z')} Job search ×2`), week);
   assert.ok(week.includes(`  Tue 15 Sep: ~${span('2026-09-15T08:00:00.000Z', '2026-09-15T08:30:00.000Z')} Read the pack`), week);
 });
+
+test("directing in the reads: the brief, time off, ★ and notes on today; attention; the planner's new settings", () => {
+  const d = doc();
+  d.items.t1 = { ...d.items.t1, priority: true, notes: 'Say hi from George' };
+  d.journal[`brief:${TODAY}`] = { id: `brief:${TODAY}`, kind: 'brief', day: TODAY, text: 'Applications first.', status: 'active', source: 'claude' };
+  d.calendar = {
+    'off:2026-09-13': { id: 'off:2026-09-13', status: 'active', source: 'claude', start: TODAY, end: '2026-09-14', areas: ['Travel'], reason: 'Away' },
+    config: { id: 'config', status: 'active', priorityAreas: ['Travel'], areaColors: { Travel: 'Grape' } },
+  };
+  const today = READS.today(d, TODAY);
+  assert.match(today, /^Claude's brief: Applications first\.$/m);
+  assert.match(today, /^Time off — Away · Travel$/m);
+  assert.ok(today.includes('  [ ] ★ task "Email Sarah" #t1 · by Claude\n      note: Say hi from George'), today);
+  const week = READS.week(d, TODAY);
+  assert.match(week, /^Time off coming:\n {2}Sun 13 Sep – Mon 14 Sep — Away · Travel #off:2026-09-13$/m);
+  const list = READS.list(d, TODAY);
+  assert.match(list, /^ {2}task "Book flights" #t3 · Sun 20 Sep · Travel · ★$/m);
+  const planner = READS.planner(d, TODAY);
+  assert.match(planner, /^ {2}priorityAreas: Travel · areaColors: Travel → Grape$/m);
+  assert.match(planner, /^ {2}Colours George's calendars take \(not for areas\): not known until the planner runs$/m);
+  const attn = READS.attention(d, TODAY);
+  assert.match(attn, /^Needs attention:$/m);
+  assert.match(attn, /^ {2}"Update CV" has carried over since Thu 10 Sep$/m);
+});

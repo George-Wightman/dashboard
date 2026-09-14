@@ -37,7 +37,7 @@ test('styles.css styles the change list', () => {
 
 test('the README explains the skill, the change log and the key', () => {
   const readme = read('README.md');
-  for (const phrase of ['## Claude', "⚙ → **Claude's changes**", 'npm run build-skill', '~/.dashboard-skill',
+  for (const phrase of ['## Claude', '**⚙ → Claude**', 'every change Claude makes', 'npm run build-skill', '~/.dashboard-skill',
     '3. **Claude skill** — built', '`js/changes.js`', '`claude/`']) {
     assert.ok(readme.includes(phrase), phrase);
   }

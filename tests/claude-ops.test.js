@@ -12,9 +12,9 @@ test("runOp refuses what isn't an op", () => {
   const s = fresh();
   assert.throws(() => runOp(s, null), /Each op is an object/);
   assert.throws(() => runOp(s, { op: 'fly' }),
-    /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, undo, planner/);
+    /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, undo, planner, off, brief/);
   assert.throws(() => runOp(s, { op: 'toString' }), /Unknown op "toString"/);
-  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'undo', 'planner']);
+  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'undo', 'planner', 'off', 'brief']);
   assert.deepEqual([...UNLOGGED], ['undo']);
 });
 
@@ -115,7 +115,7 @@ test('edit changes the fields it knows, refuses the rest, and says what it chang
   assert.equal(s.doc().items[t.id].title, 'Update CV');
   assert.throws(() => runOp(s, { op: 'edit', id: t.id, set: { repeat: { kind: 'daily' } } }), /Only a habit repeats/);
   assert.throws(() => runOp(s, { op: 'edit', id: t.id, set: { status: 'archived' } }),
-    /Can't edit status on a task — editable: title, date, area, goalId, repeat, target, unitLabel, order, minutes, time/);
+    /Can't edit status on a task — editable: title, date, area, goalId, repeat, target, unitLabel, order, minutes, time, notes, priority/);
   assert.throws(() => runOp(s, { op: 'edit', id: t.id, set: {} }), /edit needs set/);
   const m = s.addMilestone(g.id, 'M');
   assert.equal(runOp(s, { op: 'edit', id: m.id, set: { done: true } }), 'Edited milestone "M": done → true');
@@ -171,4 +171,39 @@ test('lengths, times, and the planner settings', () => {
   assert.deepEqual([config.hours, config.gapMinutes, config.days, config.source], [['08:30', '18:00'], 10, 7, 'claude']);
   assert.throws(() => runOp(s, { op: 'planner' }), /planner needs a setting to change/);
   assert.throws(() => runOp(s, { op: 'planner', colour: 'red' }), /no setting "colour"/);
+});
+
+test('directing: notes and priority, time off, the brief, one-key planner settings and colour clashes', () => {
+  const s = fresh();
+  assert.equal(runOp(s, { op: 'task', title: 'Email York Careers', area: 'Job search', notes: ' Say the date is 5 Oct ', priority: true }),
+    'Added task "Email York Careers" for today ★ · #rec-1');
+  assert.deepEqual([s.doc().items['rec-1'].notes, s.doc().items['rec-1'].priority], ['Say the date is 5 Oct', true]);
+  assert.throws(() => runOp(s, { op: 'task', title: 'x', priority: 'yes' }), /priority is true or false/);
+  assert.equal(runOp(s, { op: 'edit', id: 'rec-1', set: { notes: 'Ask for the earliest slot', priority: false } }),
+    'Edited task "Email York Careers": notes → "Ask for the earliest slot", priority → false');
+  runOp(s, { op: 'target', title: 'AC prep', target: '5h', unit: 'minutes', area: 'Assessment centre' });
+
+  assert.equal(runOp(s, { op: 'off', start: '2026-09-16', end: '2026-09-17', areas: ['job search'], reason: 'Maya leaves for Austria' }),
+    'Time off: Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · job search · #off:2026-09-16');
+  assert.equal(runOp(s, { op: 'off', start: 'tomorrow', reason: 'Sick' }), 'Time off: Fri 11 Sep — Sick · everything · #off:2026-09-11');
+  assert.equal(runOp(s, { op: 'off', start: '2026-09-18T13:00', end: '2026-09-18T19:00', reason: 'Dentist' }),
+    'Time off: Fri 18 Sep, 13:00–19:00 — Dentist · everything · #off:2026-09-18');
+  assert.throws(() => runOp(s, { op: 'off', start: '2026-09-20', areas: ['Work'] }), /No item has the area "Work" — areas: Job search, Assessment centre/);
+  assert.equal(runOp(s, { op: 'off', cancel: 'off:2026-09-16' }), 'Cancelled time off: Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · job search');
+  assert.equal(s.doc().calendar['off:2026-09-16'].status, 'archived');
+  assert.match(runOp(s, { op: 'off', cancel: 'off:2026-09-16' }), /was already cancelled/);
+
+  assert.equal(runOp(s, { op: 'brief', text: 'AC prep first; the rest after lunch.' }), 'Brief for today: "AC prep first; the rest after lunch."');
+  assert.deepEqual([s.doc().journal['brief:2026-09-10'].text, s.doc().journal['brief:2026-09-10'].source], ['AC prep first; the rest after lunch.', 'claude']);
+  assert.throws(() => runOp(s, { op: 'brief', text: ' ' }), /A brief needs text/);
+
+  assert.equal(runOp(s, { op: 'planner', areaCalendars: { 'Assessment centre': 'Tasks' } }),
+    'Changed the planner\'s settings: areaCalendars → {"Assessment centre":"Tasks"}');
+  assert.deepEqual(s.doc().calendar.config.areaCalendars, { 'Job search': 'Application', Health: 'Gym', Challenger: 'Challenger', 'Assessment centre': 'Tasks' });
+  s.putCalendar('status', { lastRun: '2026-09-10T08:00:00.000Z', takenColors: ['Basil', 'Lavender', 'Tomato'] });
+  assert.throws(() => runOp(s, { op: 'planner', areaColors: { 'Job search': 'Tomato' } }),
+    /Tomato is already used by one of George's calendars — taken: Basil, Lavender, Tomato; free: Sage, Grape, Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry/);
+  assert.equal(runOp(s, { op: 'planner', areaColors: { 'Assessment centre': 'grape' }, priorityAreas: ['Assessment centre'] }),
+    'Changed the planner\'s settings: areaColors → {"Assessment centre":"grape"}, priorityAreas → Assessment centre');
+  assert.deepEqual(s.doc().calendar.config.areaColors, { 'Assessment centre': 'Grape' });
 });

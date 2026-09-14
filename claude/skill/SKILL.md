@@ -76,6 +76,28 @@ it) on its own line in the description; the planner then treats it as that task'
 settings — planning hours, which calendar an area goes on, linked habits — change with the `planner`
 op (reference.md). Its last run and notes are in the `planner` read.
 
+## Directing
+
+George ticks things off and renames them; you run the dashboard. Beyond adding and changing, you
+have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
+
+- **Time off** — `{"op": "off", "start": "2026-09-16", "end": "2026-09-17", "areas": ["Job search"],
+  "reason": "Maya leaves for Austria"}`. Whole days excuse what they cover: nothing booked, streaks
+  safe, dated tasks move to the next day. A stretch of hours (`"2026-09-18T13:00"` to `"…T19:00"`)
+  only keeps the planner out. Leave `areas` out for everything. Cancel: `{"op": "off", "cancel": "<id>"}`.
+- **Notes** — `notes` on any task, habit, weekly target or goal, for the detail that doesn't fit a
+  title. Keep titles to a few words: they are the calendar block's label.
+- **The brief** — `{"op": "brief", "text": "…"}`: one or two lines on what matters today and why,
+  shown at the top of his list. In *plan my week*, write each day's (`"day": "2026-09-17"`).
+- **Priority** — `"priority": true` on a task or habit, or `priorityAreas` for a whole area:
+  booked first, starred on his list.
+- **Area colours** — `{"op": "planner", "areaColors": {"Assessment centre": "Grape"}}` (Google's colour
+  names). The `planner` read lists the colours his calendars already take; don't reuse those.
+- **One setting at a time** — `areaCalendars`, `areaColors` and `dayHours` change one key per op
+  (`null` removes it); `dayHours` sets planning hours for a date.
+- **Attention** — read `attention` in *plan my week* and whenever George asks how things stand, then
+  fix what you can (lengths, stuck tasks, targets behind) and tell him the rest.
+
 ## If something goes wrong
 
 - "Can't reach GitHub from this sandbox" → George should check claude.ai → Settings → Capabilities:

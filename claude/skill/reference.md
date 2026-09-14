@@ -42,8 +42,13 @@ Your own last n changes (10 by default), with their ids for `undo`.
 
 ### `planner`
 The calendar planner: when it last ran (and any problem), its settings, anything it couldn't use, and
-its notes today (*Moved Job search ×2 on Wed to 15:15 (Signify)*). `week` also lists what it booked
-for the next seven days (`~` marks a rough time).
+its notes today (*Moved Job search ×2 on Wed to 15:15 (Signify)*), priority areas, area colours, day
+hours, and the colours George's calendars already take. `week` also lists coming time off and what the
+planner booked for the next seven days (`~` marks a rough time).
+
+### `attention`
+What needs you: tasks with no length, tasks carried over 3 days or more, weekly targets behind pace,
+and what the planner couldn't fit or use. Fix what you can; tell George the rest.
 
 ## Ops
 
@@ -54,22 +59,24 @@ Every op is an object with `"op"`. Add `"suggest": true` to `task`, `habit`, `ta
 `{"op": "task", "title": "…", "date": "2026-09-18", "area": "Job", "goal": "<goal id>"}` — only
 `title` is required; `date` defaults to today. For the calendar: `"minutes": "2h"` — its length, 5
 minutes to 12 hours (`"45m"`, `"1h30"`, or a number of minutes) — and `"time": "14:00"` for a fixed
-start, which makes it a fixed event in the calendar.
+start, which makes it a fixed event in the calendar. `"notes": "…"` — the detail behind a short title
+(up to 1000 characters; shown under it, and at the top of its calendar block); `"priority": true` —
+booked first, starred.
 
 ### `habit`
 `{"op": "habit", "title": "…", "repeat": {…}}` — `repeat` defaults to every day. Shapes:
 `{"kind": "daily"}` · `{"kind": "weekdays", "days": [1, 3, 5]}` (1 = Mon … 7 = Sun) ·
 `{"kind": "perWeek", "n": 3}` · `{"kind": "weekly", "day": 5}` · `{"kind": "monthly", "date": 1}`.
-Also `area`, `goal`, and `minutes` (its length, as for a task).
+Also `area`, `goal`, `minutes` (its length, as for a task), `notes` and `priority`.
 
 ### `target`
 A weekly target. `{"op": "target", "title": "Applications", "target": 5, "unitLabel": "applications"}`
 for a count, or `{"op": "target", "title": "Hebrew", "target": "5h", "unit": "minutes"}` for time
-(`"90m"`, `"1h30"`, `"1.5h"`). Also `area`, `goal`.
+(`"90m"`, `"1h30"`, `"1.5h"`). Also `area`, `goal`, `notes`.
 
 ### `goal`
 `{"op": "goal", "title": "…", "targetDate": "2026-12-01", "why": "…", "milestones": ["…", "…"]}` —
-progress is by milestones ticked.
+progress is by milestones ticked. Also `notes`.
 
 ### `milestone`
 `{"op": "milestone", "goal": "<goal id>", "title": "…"}`.
@@ -95,9 +102,9 @@ An amount on a weekly target, or on a goal measured by a number:
 
 ### `edit`
 `{"op": "edit", "id": "…", "set": {"title": "…", "date": "…"}}`. Editable — tasks: `title, date,
-area, goalId, order, minutes, time`; habits: `title, area, goalId, repeat, order, minutes`
-(`null` clears a length or time); weekly targets: `title, area,
-goalId, target, unitLabel, order`; goals: `title, targetDate, target, unitLabel, why, order`
+area, goalId, order, minutes, time, notes, priority`; habits: `title, area, goalId, repeat, order,
+minutes, notes, priority` (`null` clears a length or time); weekly targets: `title, area,
+goalId, target, unitLabel, order, notes`; goals: `title, targetDate, target, unitLabel, why, order, notes`
 (`target: null` measures by milestones); milestones: `title, done, goalId, order`. A weekly target's
 unit can't change — archive it and add a new one.
 
@@ -128,4 +135,19 @@ Change the calendar planner's settings; every other setting is kept.
 with exact times), `firmUpHour` (12–23, when the next day turns exact), `ignore` (calendar names, by
 their start), `areaCalendars` (`{"Job search": "Application"}`), `defaultCalendar` (`"main"` or a
 name), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` — a habit by id or the
-start of its title, and the events that are its sessions).
+start of its title, and the events that are its sessions), `priorityAreas` (areas booked first and
+starred), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour names: Lavender, Sage, Grape,
+Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
+take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`). `areaCalendars`,
+`areaColors` and `dayHours` change one key at a time; `null` removes a key.
+
+### `off`
+Time off. `{"op": "off", "start": "2026-09-16", "end": "2026-09-17", "areas": ["Job search"], "reason": "…"}`
+— whole days (dates, `today` or `tomorrow`; `end` defaults to `start`), or a stretch of hours
+(`"2026-09-18T13:00"` to `"2026-09-18T19:00"`). `areas` left out covers everything. Whole days excuse
+what they cover — nothing is booked, streaks are safe, dated tasks move on — while hours only keep the
+planner out. Cancel: `{"op": "off", "cancel": "off:2026-09-16"}`.
+
+### `brief`
+The line at the top of George's list: `{"op": "brief", "text": "…", "day": "tomorrow"}` (`day`
+defaults to today; up to 500 characters). Writing one for a day replaces it.

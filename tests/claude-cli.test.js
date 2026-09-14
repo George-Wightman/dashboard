@@ -26,7 +26,7 @@ test('usage: no config, help, and an unknown command', async () => {
   const unknown = await run(['fly']);
   assert.equal(unknown.code, 1);
   assert.match(unknown.text, /^Unknown command "fly"\./);
-  assert.match(USAGE, /Ops: task · habit · target · goal · milestone · plan · done · undone · log · edit · archive · accept · dismiss · flag · undo · planner/);
+  assert.match(USAGE, /Ops: task · habit · target · goal · milestone · plan · done · undone · log · edit · archive · accept · dismiss · flag · undo · planner · off · brief/);
 });
 
 test('a bad config is a sentence, not a stack trace', async () => {

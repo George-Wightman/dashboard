@@ -173,6 +173,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   .row .title-cell { display: block; }
   .row .title { white-space: normal; overflow-wrap: anywhere; }
   .row .carry, .row .for { margin-left: .5rem; }
+  .row .time, .row .star { margin-right: .35rem; }
   .row .meta { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; grid-column: 2; grid-row: 2; }
   .row .meta:empty { display: none; }
   .row .meta > * { grid-column: auto; grid-row: auto; }

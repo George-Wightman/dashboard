@@ -9,7 +9,13 @@ import { longDate, weekStart, addDays, shortWeekday, carryLabel, forLabel } from
 import { formatProgress } from '../js/parse.js';
 import { openFlags } from '../js/flags.js';
 import { changeList } from '../js/changes.js';
-import { readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel } from '../js/calendar.js';
+import {
+  readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText,
+} from '../js/calendar.js';
+import { attention } from '../js/attention.js';
+
+// A row's notes, on their own indented line under it.
+const withNote = (line, item) => (item.notes ? `${line}\n      note: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 300)}` : line);
 import { shortId } from './ids.js';
 import { q, dayName, when, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 
@@ -28,7 +34,8 @@ export function header(doc, today) {
 function rowLine(doc, row, today, idx) {
   const { item } = row;
   const mark = row.suggested ? '?' : row.done ? '[x]' : '[ ]';
-  const parts = [`${mark} ${TYPE_NAMES[item.type]} ${q(item.title)} ${tag(item.id)}`];
+  const star = !row.suggested && item.type !== 'quota' && isPriority(doc, item) ? '★ ' : '';
+  const parts = [`${mark} ${star}${TYPE_NAMES[item.type]} ${q(item.title)} ${tag(item.id)}`];
   if (row.suggested && item.type === 'task' && item.date && item.date !== today) parts.push(forLabel(item.date, today));
   if (row.carriedFrom) parts.push(carryLabel(row.carriedFrom, today));
   if (item.type === 'habit' && !row.suggested) {
@@ -44,13 +51,17 @@ function rowLine(doc, row, today, idx) {
     parts.push(`${formatProgress(total, item.target, item.unit)}${item.unitLabel ? ` ${item.unitLabel}` : ''} this week`);
   }
   if (item.area) parts.push(item.area);
-  return `  ${parts.join(' · ')}${by(item)}`;
+  return withNote(`  ${parts.join(' · ')}${by(item)}`, item);
 }
 
 function today(doc, day) {
   const rows = todayRows(doc, day);
   const idx = doneIndex(doc);
   const out = [header(doc, day)];
+  const brief = briefFor(doc, day);
+  if (brief) out.push(`Claude's brief: ${brief}`);
+  const off = offLine(doc, day);
+  if (off) out.push(off);
   const groups = [
     ['Suggested (waiting for ✓/✕ in the app)', rows.filter((r) => r.suggested)],
     ['To do', rows.filter((r) => !r.suggested && !r.done)],
@@ -76,6 +87,8 @@ function week(doc, day) {
     out.push(`  habit ${q(i.title)} ${tag(i.id)} · ${n} of ${i.repeat.n}${n >= i.repeat.n ? ' · met' : ''}`);
   }
   if (out.length === 2) out.push('  No weekly targets or times-a-week habits.');
+  const offs = timeOff(doc).filter((o) => o.end.slice(0, 10) >= day);
+  if (offs.length) out.push('Time off coming:', ...offs.map((o) => `  ${offText(o)} ${tag(o.id)}`));
   out.push(...calendarLines(doc, day));
   return out.join('\n');
 }
@@ -105,6 +118,9 @@ function plannerRead(doc, day) {
   out.push(`  areaCalendars: ${Object.entries(config.areaCalendars).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'} · defaultCalendar: ${config.defaultCalendar}`);
   out.push(`  habitEvents: ${config.habitEvents.map((l) => `${l.habit} → "${l.title}" on ${l.calendar}`).join(', ') || 'none'}`);
   out.push(`  ignore: ${config.ignore.join(', ') || 'nothing'}`);
+  out.push(`  priorityAreas: ${config.priorityAreas.join(', ') || 'none'} · areaColors: ${Object.entries(config.areaColors).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'}`);
+  out.push(`  dayHours: ${Object.entries(config.dayHours).map(([d, [f, t]]) => `${d} ${f}–${t}`).join(', ') || 'none'}`);
+  out.push(`  Colours George's calendars take (not for areas): ${s?.takenColors?.length ? s.takenColors.join(', ') : 'not known until the planner runs'}`);
   for (const p of problems) out.push(`  ! ${p}`);
   const notes = plannerNotes(doc, day);
   out.push(notes.length ? 'Its notes today:' : 'No notes from it today.', ...notes.map((n) => `  ${n}`));
@@ -141,12 +157,13 @@ function list(doc, day) {
   const out = [header(doc, day)];
   const section = (name, rows) => { if (rows.length) out.push(`${name}:`, ...rows); };
   const area = (i) => (i.area ? ` · ${i.area}` : '');
+  const star = (i) => (isPriority(doc, i) ? ' · ★' : '');
   section('Upcoming tasks', items
     .filter((i) => i.type === 'task' && i.date > day)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : byOrder(a, b)))
-    .map((i) => `  task ${q(i.title)} ${tag(i.id)} · ${dayName(i.date, day)}${area(i)}${by(i)}`));
+    .map((i) => withNote(`  task ${q(i.title)} ${tag(i.id)} · ${dayName(i.date, day)}${area(i)}${star(i)}${by(i)}`, i)));
   section('Habits', items.filter((i) => i.type === 'habit')
-    .map((i) => `  habit ${q(i.title)} ${tag(i.id)} · ${repeatText(i.repeat)}${area(i)}${by(i)}`));
+    .map((i) => withNote(`  habit ${q(i.title)} ${tag(i.id)} · ${repeatText(i.repeat)}${area(i)}${star(i)}${by(i)}`, i)));
   section('Weekly targets', items.filter((i) => i.type === 'quota')
     .map((i) => `  target ${q(i.title)} ${tag(i.id)} · ${amountText(i.target, i.unit, i.unitLabel)} a week${area(i)}${by(i)}`));
   if (out.length === 1) out.push('Nothing beyond today.');
@@ -175,6 +192,8 @@ function day(doc, today, arg) {
   const { rows, amounts } = dayDetail(doc, d);
   const { done, total } = dayCompletion(doc, d);
   const out = [header(doc, today), `${longDate(d)} (${d}) · ${done} of ${total} done`];
+  const off = offLine(doc, d);
+  if (off) out.push(off);
   for (const r of rows) out.push(`  ${r.done ? '[x]' : '[ ]'} ${TYPE_NAMES[r.item.type]} ${q(r.item.title)} ${tag(r.item.id)}`);
   for (const { log, item, goal } of amounts) {
     const on = item ?? goal;
@@ -232,4 +251,10 @@ function changes(doc, today, arg) {
     ...list.map((c) => `  ${tag(c.id)} · ${when(c.at)} · ${c.summary}${state(c)}`)].join('\n');
 }
 
-export const READS = { today, week, goals, list, find, day, history: hist, journal, flags, changes, planner: plannerRead };
+// What needs Claude's attention (js/attention.js).
+function attentionRead(doc, day) {
+  const lines = attention(doc, day);
+  return [header(doc, day), lines.length ? 'Needs attention:' : 'Nothing needs attention.', ...lines.map((l) => `  ${l}`)].join('\n');
+}
+
+export const READS = { today, week, goals, list, find, day, history: hist, journal, flags, changes, planner: plannerRead, attention: attentionRead };
