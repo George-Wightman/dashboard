@@ -14,8 +14,8 @@ const bytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 // ---- the map -----------------------------------------------------------------------------------
 
 test('flags is a known map; documents from before it are still documents', () => {
-  assert.deepEqual(MAPS, ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes']);
-  assert.deepEqual(emptyDoc(), { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {} });
+  assert.deepEqual(MAPS, ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar']);
+  assert.deepEqual(emptyDoc(), { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {}, calendar: {} });
   assert.equal(isDoc({ schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {} }), true);
   assert.equal(isDoc({ schema: 1, items: {}, flags: {} }), true);
   assert.equal(isDoc({ schema: 1, items: {}, flags: [] }), false);
@@ -290,7 +290,7 @@ test('flagSyncLine: the three lines at the foot of the panel', () => {
 
 test('the last successful sync is kept on the device, and failures never throw', () => {
   assert.equal(LAST_SYNCED_KEY, 'dash_last_synced');
-  assert.equal(APP_VERSION, 'dash-v6');
+  assert.equal(APP_VERSION, 'dash-v7');
   const storage = new MemoryStorage();
   assert.equal(readLastSynced(storage), null);
   assert.equal(writeLastSynced(storage, '2026-09-12T17:04:00.000Z'), true);

@@ -6,6 +6,7 @@ import { MAPS, emptyDoc, stableStringify, isDoc, journalId } from './doc.js';
 import { mergeDocs } from './merge.js';
 import { FLAG_TEXT_MAX, capContext } from './flags.js';
 import { CHANGE_KEEP_DAYS, canUndo } from './changes.js';
+import { checkLength, checkClock } from './parse.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -127,7 +128,13 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     if (fields.type === 'task') defaults.date = today();
     if (fields.type === 'habit') defaults.repeat = { kind: 'daily' };
     if (fields.type === 'quota') Object.assign(defaults, { unit: 'count', unitLabel: '' });
-    return { ...defaults, ...fields, title };
+    const out = { ...defaults, ...fields, title };
+    if (fields.minutes !== undefined) out.minutes = checkLength(fields.minutes);
+    if (fields.time !== undefined && fields.time !== null && fields.time !== '') {
+      if (fields.type !== 'task') throw new Error('Only a task has a time');
+      out.time = checkClock(fields.time);
+    }
+    return out;
   }
 
   function addItem(fields) {
@@ -334,6 +341,22 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return n;
   }
 
+  // The calendar planner's records (js/calendar.js): created, or given new content. A record whose
+  // content is already the same is left alone — nothing is written, so nothing syncs.
+  function putCalendar(id, fields, source = 'planner') {
+    const content = JSON.parse(JSON.stringify(fields));
+    const existing = doc.calendar[id];
+    if (existing && existing.status === 'active') {
+      const same = existing.source === source
+        && Object.keys(content).every((k) => stableStringify(existing[k]) === stableStringify(content[k]));
+      if (same) return { rec: existing, changed: false };
+      doc.calendar[id] = { ...existing, ...content, id, source, updated: stamp() };
+      commit('local');
+      return { rec: doc.calendar[id], changed: true };
+    }
+    return { rec: create('calendar', { ...content, id, source }), changed: true };
+  }
+
   // Move `id` to just before `targetId` within `groupIds` (the on-screen order of the draggable
   // rows in the dragged row's own done/undone group, including `id`). The on-screen list is
   // shown as undone-then-done, so it isn't globally sorted by `order` — reordering has to stay
@@ -450,6 +473,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     addChange,
     undoChange,
     pruneChanges,
+
+    putCalendar,
 
     replaceDoc,
     absorbStored,

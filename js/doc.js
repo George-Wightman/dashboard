@@ -1,9 +1,9 @@
 // The shape of the synced document, shared by the store and the merge.
 
-export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes'];
+export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar'];
 
 export function emptyDoc() {
-  return { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {} };
+  return { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {}, calendar: {} };
 }
 
 // One check-in per logical day and one digest per week (filed under that week's Monday), on
