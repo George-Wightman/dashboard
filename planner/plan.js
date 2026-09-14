@@ -5,9 +5,9 @@
 // George has moved them; trimmed, or moved to the tick, when he ticks; removed when missed.
 
 import { addDays, logicalDay, daysBetween, shortWeekday } from '../js/dates.js';
-import { readPlannerConfig } from '../js/calendar.js';
+import { readPlannerConfig, timeOff, offWindows, offCovers, COLOR_NAMES, colorName } from '../js/calendar.js';
 import { at, localDay, iso, MINUTE } from './time.js';
-import { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, roughColor } from './events.js';
+import { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, roughColor, nearestColor, paleOf } from './events.js';
 import { norm, resolveCalendars, calendarFor, habitLinks } from './calendars.js';
 import { demand, fixedTasks } from './demand.js';
 import { fits, earliestFit, nearestFit, ceilQuarter } from './place.js';
@@ -27,7 +27,9 @@ export function blockTitle(base, state, done = 0, total = 0) {
   return base;
 }
 
-export function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false }) {
+// A block as a Google event. `notes` lead the description (the items' notes); the title stays the
+// title. `colorId` is the area's colour, or a rough block's pale one; none means the calendar's own.
+export function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [] }) {
   const rough = state === 'rough';
   const props = {
     [P.mine]: '1', [P.key]: key, [P.items]: items.join(','), [P.title]: base,
@@ -36,10 +38,10 @@ export function blockBody({ key, base, title, start, end, items, state, colorId 
   if (pinned) props[P.pin] = '1';
   return {
     summary: title,
-    description: [...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
+    description: [...notes, ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
     start: { dateTime: iso(start) },
     end: { dateTime: iso(end) },
-    ...(rough && colorId ? { colorId } : {}),
+    ...(colorId ? { colorId } : {}),
     reminders: rough ? { useDefault: false, overrides: [] } : { useDefault: true },
     extendedProperties: { private: props },
   };
@@ -89,6 +91,52 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   const links = habitLinks(doc, config, find, problems);
   const items = doc.items ?? {};
   const itemIds = Object.keys(items);
+  const offs = timeOff(doc);
+
+  // Colours: each watched calendar takes the event colour nearest its own, so an area can't have it.
+  const takenBy = new Map();
+  for (const c of watched) {
+    const id = nearestColor(c.backgroundColor, eventColors);
+    if (id && !takenBy.has(id)) takenBy.set(id, String(c.name).trim());
+  }
+  const takenColors = [...takenBy.keys()].map(colorName).filter(Boolean).sort();
+  const areaColorId = (area) => {
+    const key = Object.keys(config.areaColors).find((a) => norm(a) === norm(area));
+    if (key === undefined) return null;
+    const name = config.areaColors[key];
+    const id = COLOR_NAMES[name];
+    if (!takenBy.has(id)) return id;
+    const used = new Set([...takenBy.keys(), ...Object.values(config.areaColors).map((n) => COLOR_NAMES[n])]);
+    const free = Object.keys(COLOR_NAMES).filter((n) => !used.has(COLOR_NAMES[n]));
+    problems.add(`${name} is taken by your ${takenBy.get(id)} calendar — free: ${free.join(', ')}`);
+    return null;
+  };
+  const colourFor = (area, state, cal) => {
+    const id = areaColorId(area);
+    if (state === 'rough') return id ? paleOf(id) : roughColor(cal?.backgroundColor, eventColors);
+    return id;
+  };
+  // A block's area from its key (a task with a time, or a record of a missed one, takes its task's).
+  const areaOfKey = (key, ids) => {
+    const seg = String(key).split('|')[1] ?? '';
+    return seg === 'fixed' || seg === 'done' ? String(items[ids[0]]?.area ?? '') : seg;
+  };
+  // The notes at the top of a block's description: the note alone for one task, "Title — note" for several.
+  const noteLines = (ids) => {
+    const unique = [...new Set(ids)];
+    const withNotes = unique.map((id) => items[id]).filter((i) => i?.notes);
+    if (unique.length === 1) return withNotes.map((i) => i.notes);
+    return withNotes.map((i) => `${i.title} — ${i.notes}`);
+  };
+  // Time off as busy time for one area's blocks on a day: its stretches of hours, or the whole day.
+  const offBusy = (d, area) => {
+    const covers = (areas) => !areas?.length || areas.some((a) => norm(a) === norm(area));
+    const out = offWindows(doc, d, offs).filter((w) => covers(w.areas)).map((w) => ({ start: w.start, end: w.end, title: 'time off' }));
+    if (offs.some((o) => offCovers(o, d) && covers(o.areas))) {
+      out.push({ start: at(d, '00:00').getTime(), end: at(addDays(d, 1), '00:00').getTime(), title: 'time off' });
+    }
+    return out;
+  };
 
   const listed = raw.filter((e) => watchedIds.has(e.calendarId)).map((e) => normEvent(e, e.calendarId));
   const present = new Set(listed.map((e) => e.id));
@@ -130,7 +178,8 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   // An event's new shape: nothing when it's already right; a patch; or, for a rough block becoming
   // anything else, a fresh event (a patch can't be relied on to take the rough colour off).
   function emit(ev, body, key) {
-    if (ev.props[P.state] === 'rough' && body.extendedProperties.private[P.state] !== 'rough') {
+    const toRough = body.extendedProperties.private[P.state] === 'rough';
+    if ((ev.props[P.state] === 'rough' && !toRough) || (ev.colorId && body.colorId === undefined)) {
       actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
       actions.push({ op: 'insert', calendarId: ev.calendarId, key, body });
       return null;
@@ -186,7 +235,8 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const end = ev.end.getTime();
     const pinned = movedByGeorge(ev);
     const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
-      const body = blockBody({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned });
+      const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), nextState, calendars.find((c) => c.id === ev.calendarId));
+      const body = blockBody({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
       const eventId = emit(ev, body, key);
       busy(span.start, span.end, title);
       cover(kd, coverIds);
@@ -263,7 +313,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     if (f.start <= nowMs || tickOf(f.itemId, f.day).finished || rec(f.day).skipped.has(f.itemId)) continue;
     const cal = calendarFor(f.area, config, find, problems);
     if (!cal) continue;
-    actions.push({ op: 'insert', calendarId: cal.id, key: f.key, body: blockBody({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed' }) });
+    actions.push({ op: 'insert', calendarId: cal.id, key: f.key, body: blockBody({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed', colorId: colourFor(f.area, 'fixed', cal), notes: noteLines([f.itemId]) }) });
     busy(f.start, f.end, f.title);
     cover(f.day, [f.itemId]);
     useKey(f.day, f.key);
@@ -320,7 +370,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const key = `${today}|done|${m.itemId}`;
     const span = recordSpan(t.at, m.minutes * MINUTE, null);
     const title = blockTitle(items[m.itemId].title, 'done');
-    actions.push({ op: 'insert', calendarId: cal.id, key, body: blockBody({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done' }) });
+    actions.push({ op: 'insert', calendarId: cal.id, key, body: blockBody({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
     busy(span.start, span.end, title);
     cover(today, [m.itemId]);
     useKey(today, key);
@@ -330,8 +380,9 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
 
   // ---- What needs time, and where it goes ---------------------------------------------------------
   const windowOf = (d) => {
-    const open = at(d, config.hours[0]).getTime();
-    const close = at(d, config.hours[1]).getTime();
+    const [from, to] = config.dayHours[d] ?? config.hours;
+    const open = at(d, from).getTime();
+    const close = at(d, to).getTime();
     return { open, start: d === today ? Math.max(open, ceilQuarter(nowMs)) : open, end: close };
   };
   const todayWindow = windowOf(today);
@@ -360,7 +411,8 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     }
 
     const queue = [...overflow, ...wanted.filter((b) => b.day === d)]
-      .sort((a, b) => Number(b.carried) - Number(a.carried) || b.minutes - a.minutes || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      .sort((a, b) => Number(b.priority) - Number(a.priority) || Number(b.carried) - Number(a.carried)
+        || b.minutes - a.minutes || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     overflow = [];
     const taken = [...hard];
     const slot = new Map();
@@ -371,12 +423,12 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
         if (!ex || localDay(ex.start) !== d) continue;
         const s = ex.start.getTime();
         const e = s + b.minutes * MINUTE;
-        if (s >= win.open && e <= win.end && fits(s, e, taken, gap)) take(b, s);
+        if (s >= win.open && e <= win.end && fits(s, e, [...taken, ...offBusy(d, b.area)], gap)) take(b, s);
       }
     }
     for (const b of queue) {
       if (slot.has(b.key)) continue;
-      const s = earliestFit(b.minutes * MINUTE, win, taken, gap);
+      const s = earliestFit(b.minutes * MINUTE, win, [...taken, ...offBusy(d, b.area)], gap);
       if (s != null) { take(b, s); continue; }
       const next = addDays(d, 1);
       if (next <= lastDay) {
@@ -395,7 +447,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const cal = calendarFor(b.area, config, find, problems);
     if (!cal) continue;
     const title = blockTitle(b.base, state);
-    const body = blockBody({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: roughColor(cal.backgroundColor, eventColors) });
+    const body = blockBody({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: colourFor(b.area, state, cal), notes: noteLines(b.items) });
     const ex = keep.get(b.key);
     keep.delete(b.key);
     let eventId = null;
@@ -428,5 +480,5 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   }
   const before = memory[today]?.notes ?? [];
   out[today].notes = [...before, ...[...problems, ...notes].filter((n) => !before.includes(n))].slice(-MAX_NOTES);
-  return { actions, days: out, problems: [...problems] };
+  return { actions, days: out, problems: [...problems], takenColors };
 }

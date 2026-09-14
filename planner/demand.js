@@ -1,9 +1,11 @@
 // What needs time on each day of the window, before any of it has a time: the day's tasks and
 // habits grouped by area into blocks, their lengths, a weekly time target's share, and tasks with a
-// set time. Pure; planner/plan.js places what this returns.
+// set time. Time off (js/calendar.js) excuses what it covers: a task dated inside it moves to the
+// next day that isn't off for it. Pure; planner/plan.js places what this returns.
 
 import { addDays, weekStart } from '../js/dates.js';
 import { isHabitDue, doneIndex, doneDays, doneBetween, weekTotal } from '../js/schedule.js';
+import { timeOff, excused } from '../js/calendar.js';
 import { at, MINUTE } from './time.js';
 import { norm } from './calendars.js';
 
@@ -18,10 +20,11 @@ export function evenPicks(list, k) {
   return Array.from({ length: k }, (_, i) => list[Math.floor((i * list.length) / k)]);
 }
 
-// Tasks with a set time: a fixed event on their date, for their length.
+// Tasks with a set time: a fixed event on their date, for their length (not on time off).
 export function fixedTasks({ doc, days, config }) {
+  const offs = timeOff(doc);
   return values(doc.items)
-    .filter((i) => i.type === 'task' && i.status === 'active' && i.time && days.includes(i.date))
+    .filter((i) => i.type === 'task' && i.status === 'active' && i.time && days.includes(i.date) && !excused(doc, i, i.date, offs))
     .sort(byOrder)
     .map((i) => {
       const start = at(i.date, i.time).getTime();
@@ -83,14 +86,28 @@ function parts(entries, share, name, config) {
 
 export function demand({ doc, today, days, config, links, covered = new Map(), usedKeys = new Map(), todayClosed = false }) {
   const idx = doneIndex(doc);
+  const offs = timeOff(doc);
+  const off = (item, d) => offs.length > 0 && excused(doc, item, d, offs);
   const linked = new Set(links.map((l) => l.habitId));
   const linkedAreas = new Set(links.map((l) => norm(l.area)).filter(Boolean));
   const active = values(doc.items).filter((i) => i.status === 'active').sort(byOrder);
   const inWindow = new Set(days);
+  const lastDay = days[days.length - 1];
   const thisMonday = weekStart(today);
 
+  // The day a task is planned on: its date (today if it's overdue), moved past any time off for it.
+  const dueDays = new Map();
+  const dueDay = (i) => {
+    if (!dueDays.has(i.id)) {
+      let d = i.date < today ? today : i.date;
+      while (d <= lastDay && off(i, d)) d = addDays(d, 1);
+      dueDays.set(i.id, d);
+    }
+    return dueDays.get(i.id);
+  };
+
   // A times-a-week habit: what's left this week spread over its remaining days; next week's n over
-  // the whole of next week.
+  // the whole of next week. Days off for it don't count.
   const perWeekDays = new Map();
   for (const h of active.filter((i) => i.type === 'habit' && i.repeat?.kind === 'perWeek' && !linked.has(i.id))) {
     const picks = new Set();
@@ -103,17 +120,18 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
         const doneToday = doneDays(doc, h.id, idx).has(today);
         candidates = week.filter((d) => d > today || (d === today && !doneToday && !todayClosed));
       }
-      for (const d of evenPicks(candidates, left)) if (inWindow.has(d)) picks.add(d);
+      for (const d of evenPicks(candidates.filter((d) => !off(h, d)), left)) if (inWindow.has(d)) picks.add(d);
     }
     perWeekDays.set(h.id, picks);
   }
 
-  // A weekly time target's share of each day, by area.
-  const daysLeft = days.filter((d) => weekStart(d) === thisMonday && (d !== today || !todayClosed));
+  // A weekly time target's share of each day, by area, over the days not off for it.
   const shares = new Map();
   for (const q of active.filter((i) => i.type === 'quota' && i.unit === 'minutes' && !linkedAreas.has(norm(i.area)))) {
     const remaining = Math.max(0, q.target - weekTotal(doc, q.id, today));
+    const daysLeft = days.filter((d) => weekStart(d) === thisMonday && (d !== today || !todayClosed) && !off(q, d));
     for (const d of days) {
+      if (off(q, d)) continue;
       const minutes = weekStart(d) === thisMonday
         ? (daysLeft.includes(d) ? ceil15(remaining / daysLeft.length) : 0)
         : ceil15(q.target / 7);
@@ -142,10 +160,9 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
       if (skip.has(i.id)) continue;
       if (i.type === 'task' && !i.time) {
         if (doneDays(doc, i.id, idx).size) continue;
-        const carried = i.date < today;
-        if (i.date === d || (d === today && carried)) add(i, carried);
+        if (dueDay(i) === d) add(i, i.date < d);
       } else if (i.type === 'habit' && !linked.has(i.id)) {
-        if (doneDays(doc, i.id, idx).has(d)) continue;
+        if (doneDays(doc, i.id, idx).has(d) || off(i, d)) continue;
         const due = i.repeat?.kind === 'perWeek' ? perWeekDays.get(i.id)?.has(d) : isHabitDue(doc, i, d, idx);
         if (due) add(i, false);
       }
@@ -156,10 +173,12 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
     const used = usedKeys.get(d) ?? new Set();
     for (const [a, g] of [...groups].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) {
       g.entries.sort((x, y) => Number(y.carried) - Number(x.carried) || byOrder(x.item, y.item));
+      const areaFirst = config.priorityAreas.some((p) => norm(p) === a);
       let n = 0;
       for (const p of parts(g.entries, shares.get(a)?.get(d), g.area || 'Tasks', config)) {
         while (used.has(`${d}|${a}|${n}`)) n++;
-        blocks.push({ key: `${d}|${a}|${n++}`, day: d, area: g.area, items: p.ids, minutes: p.minutes, carried: p.carried, base: p.base });
+        const priority = areaFirst || p.ids.some((id) => doc.items[id]?.priority === true);
+        blocks.push({ key: `${d}|${a}|${n++}`, day: d, area: g.area, items: p.ids, minutes: p.minutes, carried: p.carried, base: p.base, priority });
       }
     }
   }

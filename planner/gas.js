@@ -146,11 +146,14 @@ export function createPlanner({
     return { byKey, errors };
   }
 
-  function heartbeat(store, t, lastError) {
+  // The planner's status for the dashboard, at most hourly unless something in it changed. It
+  // carries the colours George's calendars take, so Claude's tool can refuse a clashing area colour.
+  function heartbeat(store, t, lastError, takenColors = []) {
     const prev = plannerStatus(store.doc());
     const due = !prev || !prev.lastRun || prev.lastError !== lastError || prev.version !== version || prev.paused
+      || (prev.takenColors ?? []).join() !== takenColors.join()
       || t.getTime() - Date.parse(prev.lastRun) > HEARTBEAT_MS;
-    if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false });
+    if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors });
   }
 
   async function run(e) {
@@ -182,7 +185,7 @@ export function createPlanner({
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
-      heartbeat(store, t, problem ? clean(problem) : null);
+      heartbeat(store, t, problem ? clean(problem) : null, result.takenColors ?? []);
       drop('LAST_ERROR');
       if (session.changed()) {
         const pushed = await syncOnce({ store, client: session.client });
@@ -234,7 +237,7 @@ export function createPlanner({
     try {
       const s = await open();
       const prev = plannerStatus(s.store.doc());
-      s.store.putCalendar('status', { lastRun: prev?.lastRun ?? null, lastError: prev?.lastError ?? null, version, paused: true });
+      s.store.putCalendar('status', { lastRun: prev?.lastRun ?? null, lastError: prev?.lastError ?? null, version, paused: true, takenColors: prev?.takenColors ?? [] });
       if (s.changed()) await syncOnce({ store: s.store, client: s.client });
     } catch (err) {
       log(`Paused, but couldn't tell the dashboard: ${err?.message ?? err}`);

@@ -67,9 +67,10 @@ function rgb(hex) {
   return [n >> 16, (n >> 8) & 255, n & 255];
 }
 
-export function roughColor(calendarHex, eventColors) {
+// The event colour nearest a calendar's colour, by RGB distance; null when there's nothing to compare.
+export function nearestColor(calendarHex, eventColors) {
   const c = rgb(calendarHex);
-  if (!c) return '8';
+  if (!c) return null;
   let best = null;
   let bestDistance = Infinity;
   for (const [id, hex] of Object.entries(eventColors ?? {}).sort(([a], [b]) => Number(a) - Number(b))) {
@@ -78,6 +79,16 @@ export function roughColor(calendarHex, eventColors) {
     const d = (c[0] - e[0]) ** 2 + (c[1] - e[1]) ** 2 + (c[2] - e[2]) ** 2;
     if (d < bestDistance) { best = id; bestDistance = d; }
   }
-  const pale = best == null ? '8' : PALE[best] ?? '8';
-  return pale === best ? '8' : pale;
+  return best;
+}
+
+// An event colour's light partner; Graphite when it is already a light one.
+export function paleOf(id) {
+  const pale = PALE[id] ?? '8';
+  return pale === String(id) ? '8' : pale;
+}
+
+export function roughColor(calendarHex, eventColors) {
+  const best = nearestColor(calendarHex, eventColors);
+  return best == null ? '8' : paleOf(best);
 }
