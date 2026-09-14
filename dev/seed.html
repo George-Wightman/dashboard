@@ -73,6 +73,33 @@
       ] });
     rec('calendar', { id: 'status', source: 'planner', lastRun: stamp, lastError: null, version: 'seed', paused: false });
 
+    // Hevy: eight weeks of squat and bench going up, a run and today's session with a walk, Cardio
+    // minutes from them, and today's workout ticking Gym.
+    const cardioTarget = rec('items', { type: 'quota', title: 'Cardio', area: 'Health', target: 150, unit: 'minutes', unitLabel: '', goalId: null, order: 10 });
+    rec('gym', { id: 'config', source: 'claude', cardioQuota: cardioTarget.id, liftTargets: { 'Squat (Barbell)': 120 } });
+    rec('gym', { id: 'templates', source: 'hevy', list: {
+      SQ: ['Squat (Barbell)', 'weight_reps', 'quadriceps'], BP: ['Bench Press (Barbell)', 'weight_reps', 'chest'],
+      ROW: ['Bent Over Row (Barbell)', 'weight_reps', 'upper_back'], WK: ['Walking', 'duration', 'cardio'], TM: ['Treadmill', 'distance_duration', 'cardio'],
+    } });
+    const clock = (day, hh, mm = 0) => new Date(`${day}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`).toISOString();
+    const halfKg = (n) => Math.round(n * 2) / 2;
+    const liftEx = (name, tpl, kg, reps) => ({ name, tpl, kind: 'lift', n: 3, best: [kg, reps], e1rm: Math.round(kg * (1 + reps / 30) * 10) / 10, volume: Math.round(kg * reps * 3), sets: [[kg, reps, 8], [kg, reps, 8.5], [kg, reps - 1, 9]] });
+    const walk = (min) => ({ name: 'Walking', tpl: 'WK', kind: 'cardio', n: 1, minutes: min, km: Math.round(min * 0.08 * 100) / 100 });
+    const workout = (id, day, title, from, minutes, exercises) => rec('gym', {
+      id: `w:${id}`, source: 'hevy', hevyId: id, title, day, start: clock(day, from), end: new Date(Date.parse(clock(day, from)) + minutes * 60000).toISOString(), minutes, exercises,
+    });
+    for (let k = 16; k >= 1; k--) {
+      const day = ago(k * 3 + 1);
+      if (k % 2) workout(`legs${k}`, day, 'Legs A', 18, 62, [liftEx('Squat (Barbell)', 'SQ', halfKg(85 + (16 - k) * 1.25), 5), liftEx('Bent Over Row (Barbell)', 'ROW', 60, 10)]);
+      else workout(`upper${k}`, day, 'Upper A', 18, 55, [liftEx('Bench Press (Barbell)', 'BP', halfKg(70 + (16 - k) * 0.6), 6), walk(10)]);
+    }
+    const run = workout('run1', ago(2), 'Run', 7, 22, [{ name: 'Treadmill', tpl: 'TM', kind: 'cardio', n: 1, minutes: 22, km: 3.4 }]);
+    const now = workout('today1', today, 'Upper A', 7, 58, [liftEx('Bench Press (Barbell)', 'BP', 80, 6), walk(15)]);
+    rec('logs', { id: 'hevy-done-today1', itemId: gym.id, goalId: null, kind: 'done', day: today, from: now.start, at: now.end, note: '', source: 'hevy' });
+    rec('logs', { id: 'hevy-cardio-today1', itemId: cardioTarget.id, goalId: null, kind: 'amount', amount: 15, day: today, at: now.end, note: 'Upper A', source: 'hevy' });
+    rec('logs', { id: 'hevy-cardio-run1', itemId: cardioTarget.id, goalId: null, kind: 'amount', amount: 22, day: ago(2), at: run.end, note: 'Run', source: 'hevy' });
+    rec('gym', { id: 'status', source: 'hevy', lastSync: stamp, lastError: null, since: stamp, backfillPage: null, startedOn: ago(6), count: 18 });
+
     localStorage.setItem('dash_data', JSON.stringify(doc));
     location.href = '../';
   }

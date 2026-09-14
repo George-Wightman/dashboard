@@ -11,9 +11,11 @@
 
 export const LAYOUT_KEY = 'dash_layout';
 
+// Gym (2026-09-14) sits under Last 3 weeks; on a device with a saved arrangement it arrives at the
+// end of the first column, like any new widget.
 export const DEFAULT_LAYOUT = Object.freeze({
   v: 2,
-  columns: Object.freeze([Object.freeze(['coach', 'goals']), Object.freeze(['history'])]),
+  columns: Object.freeze([Object.freeze(['coach', 'goals']), Object.freeze(['history', 'gym'])]),
   hidden: Object.freeze(['week']),
 });
 

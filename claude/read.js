@@ -13,6 +13,9 @@ import {
   readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText,
 } from '../js/calendar.js';
 import { attention } from '../js/attention.js';
+import {
+  gymConfig, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText,
+} from '../js/gym.js';
 
 // A row's notes, on their own indented line under it.
 const withNote = (line, item) => (item.notes ? `${line}\n      note: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 300)}` : line);
@@ -257,4 +260,43 @@ function attentionRead(doc, day) {
   return [header(doc, day), lines.length ? 'Needs attention:' : 'Nothing needs attention.', ...lines.map((l) => `  ${l}`)].join('\n');
 }
 
-export const READS = { today, week, goals, list, find, day, history: hist, journal, flags, changes, planner: plannerRead, attention: attentionRead };
+// Training from Hevy (js/gym.js): the connection, each key lift, cardio by week, the last 14 days'
+// sessions, and the settings.
+function gymRead(doc, day) {
+  const config = gymConfig(doc);
+  const out = [header(doc, day), ...gymStatusLines(doc, (iso) => when(iso))];
+  out.push('Key lifts (estimated 1RM, Epley, from sets of 1–12 reps):');
+  for (const lift of config.keyLifts) {
+    const s = liftSummary(doc, lift, day, config);
+    if (!s) { out.push(`  ${lift}: no sessions yet`); continue; }
+    const parts = [`est. 1RM ${kgText(s.e1rm)} kg`, `last ${kgText(s.last.kg)} × ${s.last.reps} ${dayName(s.last.day, day)}`];
+    parts.push(s.prDay ? `last PR ${dayName(s.prDay, day)}${s.pr ? ' (that session)' : ''}` : 'no PR yet');
+    if (s.repNote) parts.push(`${s.repNote} at that weight`);
+    parts.push(s.pace != null ? `pace ${s.pace >= 0 ? '+' : ''}${s.pace} kg/wk over 8 weeks` : 'pace: needs 4 sessions in 8 weeks');
+    if (s.target) parts.push(s.projection?.reached ? `target ${kgText(s.target)} reached` : s.projection ? `target ${kgText(s.target)} → ~${s.projection.label}` : `target ${kgText(s.target)}, no projection yet`);
+    parts.push(`${s.sessions} session${s.sessions === 1 ? '' : 's'}`);
+    out.push(`  ${lift}: ${parts.join(' · ')}`);
+  }
+  const quota = cardioQuotaId(doc, config);
+  const all = workouts(doc);
+  const weeks = [0, 1, 2, 3].map((n) => {
+    const start = addDays(weekStart(day), -7 * n);
+    const minutes = Math.round(all.filter((w) => w.day >= start && w.day <= addDays(start, 6)).reduce((m, w) => m + cardioOf(w).minutes, 0));
+    return `${n === 0 ? 'this week' : `w/c ${dayName(start, day)}`} ${minutes} min`;
+  });
+  out.push(quota
+    ? `Cardio target ${q(doc.items[quota].title)} ${tag(quota)} · ${formatProgress(weekTotal(doc, quota, day), doc.items[quota].target, 'minutes')} this week`
+    : 'Cardio: no target linked — set one with {"op": "gym", "cardioQuota": "<a weekly target in minutes>"}');
+  out.push(`  From Hevy: ${weeks.join(' · ')}`);
+  const recent = all.filter((w) => w.day > addDays(day, -14) && w.day <= day);
+  out.push(recent.length ? 'Last 14 days:' : 'No sessions in the last 14 days.');
+  for (const w of [...recent].reverse()) out.push(`  ${dayName(w.day, day)}: ${sessionLine(doc, w, config)}`);
+  const habit = gymHabitId(doc, config);
+  const targets = Object.entries(config.liftTargets).map(([l, kg]) => `${l} ${kgText(kg)}`).join(', ') || 'none';
+  out.push(`Settings: keyLifts ${config.keyLifts.join(', ')} · liftTargets ${targets} · habit ${habit ? `${q(doc.items[habit].title)} ${tag(habit)}` : `"${config.habit}" (no single live habit matches)`}`);
+  return out.join('\n');
+}
+
+export const READS = {
+  today, week, goals, list, find, day, history: hist, journal, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead,
+};

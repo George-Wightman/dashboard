@@ -50,6 +50,12 @@ planner booked for the next seven days (`~` marks a rough time).
 What needs you: tasks with no length, tasks carried over 3 days or more, weekly targets behind pace,
 and what the planner couldn't fit or use. Fix what you can; tell George the rest.
 
+### `gym`
+Training from Hevy: whether it's connected (and any problem), each key lift (estimated 1RM, last top
+set, last PR, pace in kg a week over 8 weeks, its target and roughly when it'll be reached), cardio
+against the linked weekly target and by week, the last 14 days' sessions in a line each, and the
+settings.
+
 ## Ops
 
 Every op is an object with `"op"`. Add `"suggest": true` to `task`, `habit`, `target`, `goal` or
@@ -151,3 +157,11 @@ planner out. Cancel: `{"op": "off", "cancel": "off:2026-09-16"}`.
 ### `brief`
 The line at the top of George's list: `{"op": "brief", "text": "…", "day": "tomorrow"}` (`day`
 defaults to today; up to 500 characters). Writing one for a day replaces it.
+
+### `gym`
+Hevy's settings on the dashboard (nothing is ever sent to Hevy). `{"op": "gym", "cardioQuota":
+"Cardio"}` — the weekly target (in minutes, by title or id) that workouts' cardio minutes count
+towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 120}}` — an estimated
+1RM target in kg, one lift per op, `null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
+"Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts followed closely (Hevy's exercise names).
+`{"op": "gym", "habit": "Gym"}` — the habit a workout ticks (by id or the start of its title).

@@ -96,7 +96,8 @@ test('fixed sizes are in rem (borders, outlines, shadows, media queries and page
 
 test('gold means "you did this" and is used for nothing else', () => {
   const gold = rules().filter(([, body]) => body.includes('var(--gold)')).map(([sel]) => sel).sort();
-  assert.deepEqual(gold, ['.bar.met > span', '.count.met .mini-bar > span', '.met', '.pips.met .pip', '.streak']);
+  // A PR in the Gym panel is one of those: its badge and its dot on the sparkline.
+  assert.deepEqual(gold, ['.bar.met > span', '.count.met .mini-bar > span', '.gym .pr', '.met', '.pips.met .pip', '.spark .dot.pr', '.streak']);
   const amber = rules().filter(([, body]) => body.includes('var(--warn)')).map(([sel]) => sel).sort();
   assert.deepEqual(amber, ['.carry', '.coach h2 .fake']);
 });

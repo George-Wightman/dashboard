@@ -192,6 +192,27 @@ change by asking Claude.
 `pause`, `resume` and `removeAll` (every future block it made, then pause) run the same way. Updates
 arrive by themselves: the script loads the planner from this site each time it runs.
 
+## Hevy
+
+The same script reads your Hevy workouts (Hevy Pro's API) every 10 minutes. It only ever reads:
+nothing is written to Hevy, and your sessions stay yours to plan.
+
+- **A workout ticks Gym**, and the Gym block in your calendar moves to when you actually trained.
+  Its cardio minutes count towards your Cardio target (Claude links it). Untick it and it stays
+  unticked; edit or delete the workout in Hevy and the dashboard follows.
+- **The Gym panel** (a widget — Arrange moves or hides it): the week, the Cardio target, and a card for
+  each key lift (Squat and Bench Press to start) — estimated 1RM, PRs in gold, the trend with its
+  projection towards a target, pace in kg a week — and today's session. Today's Gym row says *via
+  Hevy* and when; a day in *Last 3 weeks* lists its workouts.
+- **The Coach and Claude see it too**: the Coach is told the day's training and the week's, the digest
+  gets a Training line, and Claude reads everything with `gym`. Everything from before the week you
+  connect only feeds the trends.
+
+**Setting it up:** get your key at [hevy.com/settings?developer](https://hevy.com/settings?developer),
+then in the *Dashboard planner* script → ⚙ Project Settings → *Script properties* → add `HEVY_KEY`
+with the key as its value. That's all: the first runs copy your history, a few hundred workouts at a
+time. ⚙ → Claude → *Gym* says how it's going.
+
 ## Updates
 
 A push reaches every device on its own, with no version number to bump:

@@ -7,6 +7,7 @@ import {
 import { MemoryStorage, FullStorage } from './helpers.js';
 
 const IDS = ['coach', 'week', 'goals', 'history'];
+const ALL = [...IDS, 'gym']; // every widget the default arrangement places
 const L = (columns, hidden = []) => ({ v: 2, columns, hidden });
 
 // Freezes a layout all the way down, so a function that changes its input throws.
@@ -24,15 +25,15 @@ function assertEachOnce(layout, ids = IDS) {
 
 // ---- the default and normalizeLayout ------------------------------------------------------------
 
-test('the default arrangement: Coach and Goals, then Last 3 weeks; This week hidden', () => {
+test('the default arrangement: Coach and Goals, then Last 3 weeks and Gym; This week hidden', () => {
   assert.equal(LAYOUT_KEY, 'dash_layout');
-  assert.deepEqual(DEFAULT_LAYOUT, { v: 2, columns: [['coach', 'goals'], ['history']], hidden: ['week'] });
+  assert.deepEqual(DEFAULT_LAYOUT, { v: 2, columns: [['coach', 'goals'], ['history', 'gym']], hidden: ['week'] });
   assert.throws(() => DEFAULT_LAYOUT.columns[0].push('x'), TypeError);
   assert.throws(() => { DEFAULT_LAYOUT.hidden = ['coach']; }, TypeError);
 });
 
 test('normalizeLayout of the default is a fresh copy of it', () => {
-  const out = normalizeLayout(DEFAULT_LAYOUT, IDS);
+  const out = normalizeLayout(DEFAULT_LAYOUT, ALL);
   assert.deepEqual(out, DEFAULT_LAYOUT);
   out.columns[0].push('extra');
   assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['coach', 'goals']);
@@ -40,7 +41,7 @@ test('normalizeLayout of the default is a fresh copy of it', () => {
 
 test('unreadable saved data gives the default', () => {
   const unreadable = [null, undefined, 'x', 42, true, [], {}, { v: 3, columns: [['coach'], []], hidden: [] }, { v: 2 }, { v: 1, columns: 'coach' }];
-  for (const saved of unreadable) assert.deepEqual(normalizeLayout(saved, IDS), DEFAULT_LAYOUT, JSON.stringify(saved));
+  for (const saved of unreadable) assert.deepEqual(normalizeLayout(saved, ALL), DEFAULT_LAYOUT, JSON.stringify(saved));
 });
 
 test('normalizeLayout drops unknown ids, non-strings and repeats; hidden wins over placed', () => {
@@ -83,7 +84,7 @@ test('visibleColumns: two columns side by side, or one list, never the hidden on
   const layout = L([['coach', 'week'], ['goals']], ['history']);
   assert.deepEqual(visibleColumns(layout, 2), [['coach', 'week'], ['goals']]);
   assert.deepEqual(visibleColumns(layout, 1), [['coach', 'week', 'goals']]);
-  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['coach', 'goals', 'history']]);
+  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['coach', 'goals', 'history', 'gym']]);
   // hidden ids stay out even if a hand-edited layout still has them in a column
   assert.deepEqual(visibleColumns(L([['coach', 'history'], ['week']], ['history']), 2), [['coach'], ['week']]);
   const out = visibleColumns(DEFAULT_LAYOUT, 2);
@@ -210,10 +211,10 @@ test('loadLayout reads the saved arrangement, normalised; nothing saved or unrea
   const layout = L([['history'], ['goals', 'coach']], ['week']);
   const storage = new MemoryStorage({ [LAYOUT_KEY]: JSON.stringify(layout) });
   assert.deepEqual(loadLayout(storage, IDS), layout);
-  assert.deepEqual(loadLayout(new MemoryStorage(), IDS), DEFAULT_LAYOUT);
-  assert.deepEqual(loadLayout(new MemoryStorage({ [LAYOUT_KEY]: '{not json' }), IDS), DEFAULT_LAYOUT);
+  assert.deepEqual(loadLayout(new MemoryStorage(), ALL), DEFAULT_LAYOUT);
+  assert.deepEqual(loadLayout(new MemoryStorage({ [LAYOUT_KEY]: '{not json' }), ALL), DEFAULT_LAYOUT);
   class DeniedRead extends MemoryStorage { getItem() { throw new Error('denied'); } }
-  assert.deepEqual(loadLayout(new DeniedRead(), IDS), DEFAULT_LAYOUT);
+  assert.deepEqual(loadLayout(new DeniedRead(), ALL), DEFAULT_LAYOUT);
   assert.deepEqual(loadLayout(storage, [...IDS, 'calendar']), L([['history', 'calendar'], ['goals', 'coach']], ['week']));
 });
 

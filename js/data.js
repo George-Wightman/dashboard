@@ -350,20 +350,36 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return n;
   }
 
-  // The calendar planner's records (js/calendar.js): created, or given new content. A record whose
-  // content is already the same is left alone — nothing is written, so nothing syncs.
-  function putCalendar(id, fields, source = 'planner') {
+  // A record the planner's script (or Claude) keeps by a fixed id: created, or given new content. A
+  // record whose content is already the same is left alone — nothing is written, so nothing syncs.
+  function putRecord(map, id, fields, source) {
     const content = JSON.parse(JSON.stringify(fields));
-    const existing = doc.calendar[id];
+    const existing = doc[map][id];
     if (existing && existing.status === 'active') {
       const same = existing.source === source
         && Object.keys(content).every((k) => stableStringify(existing[k]) === stableStringify(content[k]));
       if (same) return { rec: existing, changed: false };
-      doc.calendar[id] = { ...existing, ...content, id, source, updated: stamp() };
+      doc[map][id] = { ...existing, ...content, id, source, updated: stamp() };
       commit('local');
-      return { rec: doc.calendar[id], changed: true };
+      return { rec: doc[map][id], changed: true };
     }
-    return { rec: create('calendar', { ...content, id, source }), changed: true };
+    return { rec: create(map, { ...content, id, source }), changed: true };
+  }
+
+  // The calendar planner's records (js/calendar.js).
+  const putCalendar = (id, fields, source = 'planner') => putRecord('calendar', id, fields, source);
+
+  // The gym's records (js/gym.js): workouts, templates and status from Hevy, settings from Claude.
+  const putGym = (id, fields, source = 'hevy') => putRecord('gym', id, fields, source);
+
+  // A log with a fixed id (a Hevy workout's tick or cardio minutes): made once, then only its given
+  // fields change, whatever its status — so a tick George has taken off stays off.
+  function putLog(id, fields) {
+    const existing = doc.logs[id];
+    if (!existing) return create('logs', { goalId: null, note: '', ...structuredClone(fields), id });
+    const same = Object.keys(fields).every((k) => stableStringify(existing[k]) === stableStringify(fields[k]));
+    if (same) return existing;
+    return patch('logs', id, structuredClone(fields));
   }
 
   // Move `id` to just before `targetId` within `groupIds` (the on-screen order of the draggable
@@ -484,6 +500,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     pruneChanges,
 
     putCalendar,
+    putGym,
+    putLog,
 
     replaceDoc,
     absorbStored,

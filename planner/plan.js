@@ -143,19 +143,23 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   const timed = listed.filter((e) => !e.cancelled && !e.allDay && e.start && e.end);
 
   // A task counts as done from the day it's ticked; a habit only on the day ticked. `at` is the
-  // latest tick's time, when the log has one.
+  // latest tick's time, when the log has one; `span` is when it actually happened, from a tick that
+  // knows (a Hevy workout's start and end).
   const doneLogs = Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active' && l.itemId);
   function tickOf(id, day) {
     const isTask = items[id]?.type === 'task';
     let finished = false;
     let when = null;
+    let span = null;
     for (const l of doneLogs) {
       if (l.itemId !== id || (isTask ? l.day > day : l.day !== day)) continue;
       finished = true;
       const t = Date.parse(l.at ?? '');
       if (Number.isFinite(t) && (when == null || t > when)) when = t;
+      const f = Date.parse(l.from ?? '');
+      if (Number.isFinite(f) && Number.isFinite(t) && t > f && (span == null || t > span.end)) span = { start: f, end: t };
     }
-    return { finished, at: when };
+    return { finished, at: when, span };
   }
 
   const recs = {};
@@ -343,7 +347,8 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     if (ev.props[P.state] === 'done' || d < today) { busy(start, end, ev.title); continue; }
     if (tick.finished) {
       let span = { start, end };
-      if (tick.at != null && tick.at >= start && tick.at < end) span = { start, end: Math.max(tick.at, start + MIN_BLOCK) };
+      if (tick.span && localDay(new Date(tick.span.start)) === d) span = { start: tick.span.start, end: Math.max(tick.span.end, tick.span.start + MIN_BLOCK) };
+      else if (tick.at != null && tick.at >= start && tick.at < end) span = { start, end: Math.max(tick.at, start + MIN_BLOCK) };
       else if (tick.at != null && localDay(new Date(tick.at)) === d) span = recordSpan(tick.at, end - start, ev.id);
       patchHabit(ev, span, { [P.state]: 'done', [P.habit]: link.habitId });
       busy(span.start, span.end, ev.title);

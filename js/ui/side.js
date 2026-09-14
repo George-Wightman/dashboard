@@ -6,6 +6,7 @@ import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail } 
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 import { shortDate, shortWeekday } from '../dates.js';
 import { offLine } from '../calendar.js';
+import { dayLines } from '../gym.js';
 import { SOURCE_NAMES } from './sources.js';
 import { renderShapeBox } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 import { proposedItems, proposalLine } from '../coach.js';
@@ -156,10 +157,11 @@ export function renderGoals(ctx) {
 
 function renderDayDetail(ctx, day) {
   const { rows, amounts } = dayDetail(ctx.store.doc(), day);
+  const gym = dayLines(ctx.store.doc(), day);
   const box = h('div', { class: 'day-detail' }, h('strong', {}, `${shortWeekday(day)} ${shortDate(day)}`));
   const off = offLine(ctx.store.doc(), day);
   if (off) box.append(h('div', { class: 'muted' }, off));
-  if (!rows.length && !amounts.length) {
+  if (!rows.length && !amounts.length && !gym.length) {
     box.append(h('div', { class: 'muted' }, 'Nothing was scheduled.'));
     return box;
   }
@@ -168,7 +170,8 @@ function renderDayDetail(ctx, day) {
     amounts.map(({ log, item, goal }) => {
       const target = item ?? goal;
       return h('li', {}, `+ ${formatAmount(log.amount, target?.unit ?? 'count')} ${target?.title ?? ''}`);
-    })));
+    }),
+    gym.map((line) => h('li', { class: 'gym' }, `Gym: ${line}`))));
   return box;
 }
 

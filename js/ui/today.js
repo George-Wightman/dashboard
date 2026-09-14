@@ -8,6 +8,7 @@ import { carryLabel, addDays, weekStart, shortWeekday, forLabel } from '../dates
 import { formatProgress, formatAmount, parseAmount, splitTaskInput } from '../parse.js';
 import { SOURCE_NAMES, sourceMark } from './sources.js';
 import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
+import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 
 // Today's rows as the list shows them: everything else first (suggestions stay on top), then the
 // weekly targets for the "This week" section, each part in todayRows' order.
@@ -183,7 +184,8 @@ function noteMark(item, ctx) {
   }, '≡');
 }
 
-function renderRow(row, ctx, slot = null, star = false) {
+// `via` is a Hevy workout's tick ({ from, at }): the row says when he trained.
+function renderRow(row, ctx, slot = null, star = false, via = null) {
   if (row.suggested) return renderSuggestion(row, ctx);
   const { store } = ctx;
   const { item } = row;
@@ -198,6 +200,7 @@ function renderRow(row, ctx, slot = null, star = false) {
       slot ? h('span', { class: 'time', title: `${clockLabel(slot.start)}–${clockLabel(slot.end)} in your calendar` }, clockLabel(slot.start)) : null,
       star ? h('span', { class: 'star', title: 'A priority', role: 'img', 'aria-label': 'A priority' }, '★') : null,
       titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
+      via?.from && via?.at ? h('span', { class: 'via', title: 'Ticked by your Hevy workout' }, `via Hevy · ${clockLabel(via.from)}–${clockLabel(via.at)}`) : null,
       item.notes ? noteMark(item, ctx) : null,
       row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
     h('span', { class: 'meta' },
@@ -244,13 +247,18 @@ export function renderToday(ctx) {
   const doc = ctx.store.doc();
   const slots = todaySlots(doc, ctx.store.today());
   const { config } = readPlannerConfig(doc);
+  const today = ctx.store.today();
+  const gymId = gymHabitId(doc);
   const els = [];
   const add = (row) => {
     const slot = row.suggested ? null : slots.get(row.item.id) ?? null;
-    const li = renderRow(row, ctx, slot, !row.suggested && row.kind !== 'quota' && isPriority(doc, row.item, config));
+    const isGym = !row.suggested && row.item.id === gymId;
+    const li = renderRow(row, ctx, slot, !row.suggested && row.kind !== 'quota' && isPriority(doc, row.item, config),
+      isGym ? hevyTick(doc, gymId, today) : null);
     // A row with a time follows the day's order, so only the others can be dragged.
     if (!row.suggested && !slot) enableDrag(li, row, ctx);
     els.push(li);
+    if (isGym) for (const line of dayLines(doc, today)) els.push(h('li', { class: 'gym-line' }, line));
     if (row.item.notes && ctx.ui.noteFor === row.item.id) els.push(h('li', { class: 'note-row' }, row.item.notes));
     if (row.kind === 'quota' && ctx.ui.entriesFor === row.item.id) els.push(entriesList(row, ctx));
   };

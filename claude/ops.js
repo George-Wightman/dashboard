@@ -8,6 +8,7 @@ import { undoLine } from '../js/changes.js';
 import {
   checkConfigField, readPlannerConfig, mergeSetting, MERGED_SETTINGS, plannerStatus, COLOR_NAMES, checkTimeOff, nextOffId, offText,
 } from '../js/calendar.js';
+import { gymConfig, gymHabitId } from '../js/gym.js';
 import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 
@@ -456,11 +457,79 @@ function brief(store, op) {
   return `Brief for ${dayName(day, today)}: ${q(text, 80)}`;
 }
 
+// ---- The gym --------------------------------------------------------------------------------------
+
+// The weekly target cardio minutes count towards: a live one in minutes, by title or id.
+function cardioTarget(doc, ref) {
+  const want = str(ref).toLowerCase();
+  const byTitle = Object.values(doc.items).filter((i) => i.type === 'quota' && i.status === 'active' && i.title.trim().toLowerCase() === want);
+  const { id, rec } = byTitle.length === 1 ? { id: byTitle[0].id, rec: byTitle[0] } : resolveId(doc, ref, ['items']);
+  if (rec.type !== 'quota' || rec.unit !== 'minutes' || rec.status !== 'active') {
+    throw new Error(`${q(rec.title)} isn't a live weekly target in minutes — add one first: {"op": "target", "title": "Cardio", "target": "150m", "unit": "minutes"}`);
+  }
+  return { id, rec };
+}
+
+// Hevy's settings (js/gym.js): key lifts, lift targets (one lift per op; null removes), the weekly
+// target cardio minutes count towards, and the habit a workout ticks. Nothing here reaches Hevy.
+function gym(store, op) {
+  const fields = Object.keys(op).filter((k) => k !== 'op');
+  if (!fields.length) throw new Error('gym needs a setting, like {"op": "gym", "cardioQuota": "Cardio"}');
+  const doc = store.doc();
+  const next = gymConfig(doc);
+  const said = [];
+  for (const field of fields) {
+    const v = op[field];
+    if (field === 'keyLifts') {
+      if (!Array.isArray(v) || !v.length || !v.every((x) => typeof x === 'string' && x.trim())) {
+        throw new Error('keyLifts is a list of Hevy exercise names, like ["Squat (Barbell)", "Bench Press (Barbell)"]');
+      }
+      next.keyLifts = [...new Set(v.map((x) => x.trim()))];
+      said.push(`key lifts → ${next.keyLifts.join(', ')}`);
+    } else if (field === 'liftTargets') {
+      if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).length !== 1) {
+        throw new Error('liftTargets changes one lift at a time, like {"Squat (Barbell)": 120} (null removes it)');
+      }
+      const [[lift, kg]] = Object.entries(v);
+      const targets = { ...next.liftTargets };
+      const key = Object.keys(targets).find((k) => k.toLowerCase() === lift.trim().toLowerCase()) ?? lift.trim();
+      if (kg == null) {
+        delete targets[key];
+        said.push(`${key} target removed`);
+      } else {
+        if (!(typeof kg === 'number' && kg > 0 && kg <= 500)) throw new Error('A lift target is an estimated 1RM in kg, above 0 and at most 500');
+        targets[key] = kg;
+        said.push(`${key} target → ${kg} kg`);
+      }
+      next.liftTargets = targets;
+    } else if (field === 'cardioQuota') {
+      if (v == null || v === '') {
+        next.cardioQuota = null;
+        said.push('cardio minutes → no target');
+      } else {
+        const { id, rec } = cardioTarget(doc, v);
+        next.cardioQuota = id;
+        said.push(`cardio minutes → ${q(rec.title)}`);
+      }
+    } else if (field === 'habit') {
+      const t = str(v);
+      const id = t ? gymHabitId(doc, { ...next, habit: t }) : null;
+      if (!id) throw new Error(`No single live habit is "${t}" (by id or the start of its title)`);
+      next.habit = t;
+      said.push(`workouts tick ${q(doc.items[id].title)}`);
+    } else {
+      throw new Error(`Unknown gym setting ${field} — settings: keyLifts, liftTargets, cardioQuota, habit`);
+    }
+  }
+  store.putGym('config', next, CLAUDE);
+  return `Changed the gym settings: ${said.join(', ')}`;
+}
+
 export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
-  log, edit, archive, accept, dismiss, flag, undo, planner, off, brief,
+  log, edit, archive, accept, dismiss, flag, undo, planner, off, brief, gym,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own.

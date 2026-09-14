@@ -15,6 +15,7 @@ import { resolveCalendars } from './calendars.js';
 import { P } from './events.js';
 import { at } from './time.js';
 import { tagPrompt, readArea } from './tag.js';
+import { syncHevy } from './hevy.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -35,7 +36,7 @@ export function createPlanner({
   const get = (k) => props().getProperty(k);
   const put = (k, v) => props().setProperty(k, String(v));
   const drop = (k) => props().deleteProperty(k);
-  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY')].filter(Boolean));
+  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
@@ -131,6 +132,15 @@ export function createPlanner({
     put('TAGGED', JSON.stringify(Object.fromEntries(Object.entries(asked).filter(([id]) => live.has(id)))));
   }
 
+  // Hevy first, so a workout's tick is planned around in the same run. With no HEVY_KEY it's
+  // skipped; its problems go in the gym's status for the dashboard and never stop the planner.
+  async function hevy(store) {
+    const key = get('HEVY_KEY');
+    if (!key) return;
+    const s = await syncHevy({ fetch, key, store, now, dayStartHour: dayStartHour(), scrub: clean });
+    if (s.lastError) log(`Hevy: ${s.lastError}`);
+  }
+
   function apply(actions) {
     const byKey = {};
     const errors = [];
@@ -165,6 +175,7 @@ export function createPlanner({
       if (e && e.calendarId && Number(get('LAST_WRITE') ?? 0) > t.getTime() - ECHO_MS) return 'echo';
       const session = await open();
       const { store } = session;
+      await hevy(store);
       tag(store, t);
       const doc = store.doc();
       const { config } = readPlannerConfig(doc);

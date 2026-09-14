@@ -95,5 +95,5 @@ test('offText and what Claude can do', async () => {
   assert.equal(offText({ start: '2026-09-16', end: '2026-09-17', areas: ['Job search'], reason: 'Maya leaves for Austria' }),
     'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search');
   assert.equal(offText({ start: '2026-09-18T13:00', end: '2026-09-18T19:00', areas: [], reason: '' }), 'Fri 18 Sep, 13:00–19:00 — Time off · everything');
-  assert.equal(CLAUDE_CAN.length, 8);
+  assert.equal(CLAUDE_CAN.length, 9);
 });

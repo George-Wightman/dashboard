@@ -8,6 +8,7 @@ import {
 import { formatAmount } from './parse.js';
 import { journalId } from './doc.js';
 import { GeminiError } from './gemini.js';
+import { gymContext, trainingWeek, workouts } from './gym.js';
 
 export const CONTEXT_CAP = 4000;
 const ROW_CAP = 25;
@@ -129,6 +130,7 @@ export function coachContext(doc, today) {
     `Today: ${longDate(today)} ${today.slice(0, 4)}`,
     ...section("Today's list:", rows.slice(0, ROW_CAP).map((r) => rowLine(doc, r, today)), rows.length, 'nothing scheduled'),
     ...section("This week's targets:", quotas.slice(0, TARGET_CAP).map((q) => targetLine(q, weekTotal(doc, q.id, today))), quotas.length, 'none'),
+    ...gymContext(doc, today),
     `Last 7 days: ${week.join(' · ')}`,
     ...section('Goals:', goals.slice(0, GOAL_CAP).map((g) => goalLine(doc, g)), goals.length, 'none'),
     ...(checkins.length ? ['Recent check-ins (his answers):', ...checkins] : []),
@@ -290,6 +292,7 @@ export function digestPrompt(doc, monday) {
     ...section('Habits:', s.habits.slice(0, ROW_CAP).map((h) => `${clip(h.title, 80)}: ${h.done} of ${h.scheduled}`), s.habits.length, 'none'),
     ...section('Weekly targets:', s.targets.slice(0, TARGET_CAP).map((t) => targetLine(t, t.total)), s.targets.length, 'none'),
     `Tasks: ${s.tasks.done} of ${s.tasks.total} done`,
+    ...(workouts(doc).length ? [`Training: ${trainingWeek(doc, s.sunday)}`] : []),
     ...section('Goals:', s.goals.slice(0, GOAL_CAP).map(goalWeekLine), s.goals.length, 'none'),
     ...section('Check-ins:', checkins, checkins.length, 'none'),
   ];

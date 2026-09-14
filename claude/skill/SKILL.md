@@ -18,7 +18,8 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
     bash <skill folder>/run.sh today
 
 **Reads:** `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`, `history`,
-`journal`, `flags`, `changes`. Each starts with today's date — work other dates out from it.
+`journal`, `flags`, `changes`, `planner`, `attention`, `gym`. Each starts with today's date — work
+other dates out from it.
 
 **Changes** go in one `apply`, as JSON on a quoted heredoc, so apostrophes, quotes and `$` in titles
 are safe. Several ops in one `apply` are one sync:
@@ -29,8 +30,8 @@ are safe. Several ops in one `apply` are one sync:
     EOF
 
 Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `log`, `edit`,
-`archive`, `accept`, `dismiss`, `flag`, `undo`. Every field is in `reference.md` in this folder —
-read it before using anything beyond a plain task, tick or log.
+`archive`, `accept`, `dismiss`, `flag`, `undo`, `planner`, `off`, `brief`, `gym`. Every field is in
+`reference.md` in this folder — read it before using anything beyond a plain task, tick or log.
 
 Ids show as `#a1b2c3d4`; pass them without the `#`. Dates are `YYYY-MM-DD`, `today`, `tomorrow` or
 `yesterday`. If `apply` fails, **nothing** was changed: fix the op it names and send the whole batch
@@ -97,6 +98,26 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
   (`null` removes it); `dayHours` sets planning hours for a date.
 - **Attention** — read `attention` in *plan my week* and whenever George asks how things stand, then
   fix what you can (lengths, stuck tasks, targets behind) and tell him the rest.
+
+## The gym (Hevy)
+
+George logs every workout in Hevy. The planner's script copies them into the dashboard every 10
+minutes: a workout ticks his Gym habit (and moves the Gym block in his calendar to when he trained),
+and its cardio minutes count towards his Cardio target. Read `gym` for his key lifts — estimated 1RM,
+PRs, pace over 8 weeks, when a target will be reached — cardio by week, and the last two weeks'
+sessions. He's training for more cardio while still progressing his squat and bench.
+
+- **He plans his own sessions.** Never write a session or a routine for him, and never try to reach
+  Hevy — there's no way to from here. Predict and guide: read the trend, say what it means, and put
+  advice where he'll see it — the Gym habit's `notes` (they lead the Gym block in his calendar, so
+  he has them in the gym), the brief, or a task.
+- **Set up with him:** a weekly target in minutes (`{"op": "target", "title": "Cardio", "target":
+  "150m", "unit": "minutes"}`), then link it: `{"op": "gym", "cardioQuota": "Cardio"}`. Targets for
+  key lifts as an estimated 1RM: `{"op": "gym", "liftTargets": {"Squat (Barbell)": 120}}`. Key lifts
+  are Squat and Bench Press by default (Hevy's names; `keyLifts` changes them).
+- **A bigger chart** when he asks: draw it here in the chat, from the `gym` read's numbers.
+- If `gym` says Hevy isn't connected or shows a problem, tell him in a line — the key lives in the
+  planner script's Script properties as `HEVY_KEY`.
 
 ## If something goes wrong
 
