@@ -2,6 +2,7 @@
 
 import { h } from './dom.js';
 import { weekday } from '../dates.js';
+import { parseLength, formatAmount } from '../parse.js';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TYPES = [['task', 'Task — one-off'], ['habit', 'Habit — repeats'], ['quota', 'Weekly target — an amount']];
@@ -22,7 +23,7 @@ function defaultRepeat(kind, today) {
 
 function defaultDraft(map, type, today) {
   if (map === 'goals') return { title: '', targetDate: '', target: null, unit: 'count', unitLabel: '' };
-  return { type, title: '', area: '', goalId: '', date: today, repeat: { kind: 'daily' }, target: '', unit: 'count', unitLabel: '' };
+  return { type, title: '', area: '', goalId: '', date: today, repeat: { kind: 'daily' }, target: '', unit: 'count', unitLabel: '', minutesText: '', time: '' };
 }
 
 export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}) {
@@ -33,6 +34,8 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
   const existing = id ? store.doc()[map][id] : null;
   const draft = existing ? structuredClone(existing) : defaultDraft(map, type, today);
   draft.repeat ??= { kind: 'daily' };
+  draft.minutesText ??= draft.minutes ? formatAmount(draft.minutes, 'minutes') : '';
+  draft.time ??= '';
   let measure = map === 'goals' && draft.target > 0 ? 'number' : 'milestones';
   let errorEl = null;
 
@@ -91,8 +94,16 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       }), name)));
   }
 
+  const lengthField = () => field('Length (optional)', input('minutesText', draft.minutesText, { placeholder: '45m, 2h, 1h30' }));
+
   function typeFields() {
-    if (draft.type === 'task') return [field('Date', input('date', draft.date, { type: 'date' }))];
+    if (draft.type === 'task') {
+      return [
+        field('Date', input('date', draft.date, { type: 'date' })),
+        field('Time (optional)', input('time', draft.time, { type: 'time' })),
+        lengthField(),
+      ];
+    }
     if (draft.type === 'habit') {
       const r = draft.repeat;
       const rows = [field('Repeats', select('repeat.kind', r.kind, REPEATS))];
@@ -100,6 +111,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       if (r.kind === 'perWeek') rows.push(field('Times a week', input('repeat.n', r.n, { type: 'number', min: 1, max: 7 })));
       if (r.kind === 'weekly') rows.push(field('Day', select('repeat.day', r.day, WEEKDAYS.map((n, i) => [i + 1, n]))));
       if (r.kind === 'monthly') rows.push(field('Day of the month', input('repeat.date', r.date, { type: 'number', min: 1, max: 31 })));
+      rows.push(lengthField());
       return rows;
     }
     const minutes = draft.unit === 'minutes';
@@ -183,6 +195,13 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       fields.unit = draft.unit;
       fields.unitLabel = draft.unit === 'count' ? String(draft.unitLabel ?? '').trim() : '';
     }
+    if (draft.type === 'task' || draft.type === 'habit') {
+      const text = String(draft.minutesText ?? '').trim();
+      const minutes = text ? parseLength(text) : null;
+      if (text && minutes == null) throw new Error('Length: try 45m, 2h or 1h30 (5 minutes to 12 hours).');
+      fields.minutes = minutes;
+    }
+    if (draft.type === 'task') fields.time = draft.time || null;
     return fields;
   }
 

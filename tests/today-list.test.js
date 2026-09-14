@@ -59,3 +59,19 @@ test('the list lines up: a grid of six columns, each row a subgrid, one-line tit
   assert.match(css, /\.row \.title \{[^}]*text-overflow: ellipsis; white-space: nowrap;/);
   assert.doesNotMatch(read('js/ui/today.js'), /added by \$\{/);
 });
+
+test("the list shows today's times in the day's order; lengths and times in the add box and the edit panel", () => {
+  const today = read('js/ui/today.js');
+  assert.match(today, /timedOrder\(main, slots\)/);
+  assert.match(today, /splitTaskInput\(/);
+  assert.match(today, /if \(!row\.suggested && !slot\) enableDrag/);
+  assert.match(read('styles.css'), /\.row \.time \{[^}]*font-variant-numeric: tabular-nums;/);
+  const edit = read('js/ui/edit.js');
+  assert.ok(edit.includes("field('Length (optional)'"), 'Length field');
+  assert.ok(edit.includes("field('Time (optional)'"), 'Time field');
+  const html = read('index.html');
+  assert.match(html, /<span id="planner-warning" class="warning" hidden><\/span>/);
+  assert.match(html, /<div id="planner-notes" class="planner-notes" hidden><\/div>/);
+  assert.match(read('js/ui/settings.js'), /group\('Calendar planner', planner\.summary/);
+  assert.match(read('js/app.js'), /visibleNotes\(plannerNotes\(store\.doc\(\), today\), hiddenNotes\(\), today\)/);
+});

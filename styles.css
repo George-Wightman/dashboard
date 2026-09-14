@@ -66,6 +66,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .top h1 { display: inline; font-family: var(--display); font-size: 1.65rem; font-weight: 400; margin: 0 .75rem 0 0; }
 .top-actions { display: flex; gap: .75rem; align-items: center; }
 .warning { color: var(--bad); font-size: .85rem; }
+/* The calendar planner's notes, under the date and as wide as the header */
+.planner-notes { width: min(88vw, 1500px); margin: -.35rem auto .6rem; font-size: .85rem; color: var(--muted); }
+.planner-notes p { margin: .1rem 0; display: flex; gap: .5rem; align-items: baseline; }
+.planner-notes button.link { font-size: 1rem; line-height: 1; padding: 0 .2rem; }
 button.link { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; font-size: .85rem; }
 button.link:hover { color: var(--ink); text-decoration: underline; }
 button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; color: var(--muted); cursor: pointer; }
@@ -105,6 +109,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .row .title-cell { grid-column: 2; display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
 .row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .row .carry, .row .for { flex: none; font-size: .8rem; }
+.row .time { flex: none; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .row .meta { display: contents; font-size: .8rem; color: var(--muted); }
 .row .src, .row .by { grid-column: 3; }
 .row .tag { grid-column: 4; justify-self: start; white-space: nowrap; }

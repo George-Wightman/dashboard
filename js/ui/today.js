@@ -5,8 +5,9 @@
 import { h } from './dom.js';
 import { todayRows, streak, doneBetween } from '../schedule.js';
 import { carryLabel, addDays, weekStart, shortWeekday, forLabel } from '../dates.js';
-import { formatProgress, formatAmount, parseAmount } from '../parse.js';
+import { formatProgress, formatAmount, parseAmount, splitTaskInput } from '../parse.js';
 import { SOURCE_NAMES, sourceMark } from './sources.js';
+import { todaySlots, timedOrder, clockLabel } from '../calendar.js';
 
 // Today's rows as the list shows them: everything else first (suggestions stay on top), then the
 // weekly targets for the "This week" section, each part in todayRows' order.
@@ -172,7 +173,7 @@ function renderSuggestion(row, ctx) {
         onclick: () => store.dismissSuggestion('items', item.id) }, '✕')));
 }
 
-function renderRow(row, ctx) {
+function renderRow(row, ctx, slot = null) {
   if (row.suggested) return renderSuggestion(row, ctx);
   const { store } = ctx;
   const { item } = row;
@@ -184,6 +185,7 @@ function renderRow(row, ctx) {
       : h('input', { type: 'checkbox', checked: row.done, 'aria-label': `Done: ${item.title}`,
         onchange: () => store.toggleDone(item.id, store.today()) }),
     h('span', { class: 'title-cell' },
+      slot ? h('span', { class: 'time', title: `${clockLabel(slot.start)}–${clockLabel(slot.end)} in your calendar` }, clockLabel(slot.start)) : null,
       titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
       row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
     h('span', { class: 'meta' },
@@ -227,14 +229,17 @@ export function renderToday(ctx) {
     return;
   }
   const { main, week } = splitRows(rows);
+  const slots = todaySlots(ctx.store.doc(), ctx.store.today());
   const els = [];
   const add = (row) => {
-    const li = renderRow(row, ctx);
-    if (!row.suggested) enableDrag(li, row, ctx);
+    const slot = row.suggested ? null : slots.get(row.item.id) ?? null;
+    const li = renderRow(row, ctx, slot);
+    // A row with a time follows the day's order, so only the others can be dragged.
+    if (!row.suggested && !slot) enableDrag(li, row, ctx);
     els.push(li);
     if (row.kind === 'quota' && ctx.ui.entriesFor === row.item.id) els.push(entriesList(row, ctx));
   };
-  main.forEach(add);
+  timedOrder(main, slots).forEach(add);
   if (week.length) els.push(h('li', { class: 'list-section' }, 'This week'));
   week.forEach(add);
   list.replaceChildren(...els);
@@ -257,7 +262,8 @@ export function initAddBox(ctx) {
     let day = today;
     if (when.value === 'tomorrow') day = addDays(today, 1);
     if (when.value === 'date' && date.value) day = date.value;
-    ctx.store.addItem({ type: 'task', title: text, date: day });
+    const { title: name, minutes, time } = splitTaskInput(text);
+    ctx.store.addItem({ type: 'task', title: name, date: day, ...(minutes ? { minutes } : {}), ...(time ? { time } : {}) });
     title.value = '';
     title.focus();
   }

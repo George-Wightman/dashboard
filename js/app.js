@@ -16,6 +16,8 @@ import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js
 import { readLastSynced, writeLastSynced, waitingFlags, APP_VERSION } from './flags.js';
 import { openFlagPanel } from './ui/flags.js';
 import { createUpdater, runningBuild, IDLE_CHECK_GAP } from './version.js';
+import { h } from './ui/dom.js';
+import { plannerNotes, staleSince, visibleNotes } from './calendar.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -123,6 +125,20 @@ function syncLabel() {
   }
 }
 
+// The planner's notes under the date (js/calendar.js), each hidden with × on this device until the
+// next day. Kept as "<day>|<note>"; only today's are kept.
+const NOTES_HIDDEN_KEY = 'dash_notes_hidden';
+
+function hiddenNotes() {
+  try { return JSON.parse(localStorage.getItem(NOTES_HIDDEN_KEY)) ?? []; } catch { return []; }
+}
+
+function hideNote(day, text) {
+  const keep = hiddenNotes().filter((k) => k.startsWith(`${day}|`));
+  try { localStorage.setItem(NOTES_HIDDEN_KEY, JSON.stringify([...keep, `${day}|${text}`])); } catch { /* best effort */ }
+  renderHeader();
+}
+
 function renderHeader() {
   const today = store.today();
   document.getElementById('date').textContent = longDate(today);
@@ -135,6 +151,17 @@ function renderHeader() {
   warning.hidden = !problem;
   warning.textContent = problem ?? '';
   document.getElementById('update-ready').hidden = !updater.state().ready;
+
+  const notes = visibleNotes(plannerNotes(store.doc(), today), hiddenNotes(), today);
+  const notesEl = document.getElementById('planner-notes');
+  notesEl.hidden = !notes.length;
+  notesEl.replaceChildren(...notes.map((text) => h('p', {},
+    h('span', {}, text),
+    h('button', { class: 'link', type: 'button', title: 'Hide this note', 'aria-label': `Hide: ${text}`, onclick: () => hideNote(today, text) }, '×'))));
+  const stale = staleSince(store.doc(), new Date());
+  const plannerWarning = document.getElementById('planner-warning');
+  plannerWarning.hidden = !stale;
+  plannerWarning.textContent = stale ? `calendar planner hasn't run since ${stale}` : '';
 
   const status = document.getElementById('sync-status');
   const [text, title] = syncLabel();

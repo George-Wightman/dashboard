@@ -29,6 +29,7 @@
     </div>
     <div class="top-actions">
       <span id="save-warning" class="warning" hidden></span>
+      <span id="planner-warning" class="warning" hidden></span>
       <button id="update-ready" class="link update-ready" type="button" title="A newer version is downloaded and ready" hidden>Update ready · reload</button>
       <button id="sync-status" class="link" type="button"></button>
       <button id="flag-button" class="icon flag-button" type="button" title="Note something to change" aria-label="Note something to change">⚑</button>
@@ -36,13 +37,14 @@
       <button id="settings-button" class="icon" type="button" aria-label="Settings">⚙</button>
     </div>
   </header>
+  <div id="planner-notes" class="planner-notes" hidden></div>
 
   <main class="layout">
     <section class="today" aria-label="Today">
       <p id="arrange-note" class="arrange-note" hidden>Today's list stays here</p>
       <ul id="list" class="list"></ul>
       <form id="add" class="add" autocomplete="off">
-        <input id="add-title" type="text" placeholder="Add a task…" aria-label="New task">
+        <input id="add-title" type="text" placeholder="Add a task… (end with 2h or 14:00 to book time)" aria-label="New task">
         <select id="add-when" aria-label="When">
           <option value="today">Today</option>
           <option value="tomorrow">Tomorrow</option>

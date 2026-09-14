@@ -24,7 +24,7 @@ test("⚙ has a folded Claude's changes group with its count line, before Backup
   const src = read('js/ui/settings.js');
   assert.match(src, /import \{ changesPanel \} from '\.\/changes\.js';/);
   assert.match(src, /import \{ changeCountLine \} from '\.\.\/changes\.js';/);
-  assert.match(src, /group\("Claude's changes", changeCountLine\(store\.doc\(\), new Date\(\)\), false,\s*changesPanel\(ctx\)\),\s*group\('Backups'/);
+  assert.match(src, /group\("Claude's changes", changeCountLine\(store\.doc\(\), new Date\(\)\), false,\s*changesPanel\(ctx\)\),\s*group\('Calendar planner'[\s\S]*?group\('Backups'/);
 });
 
 test('styles.css styles the change list', () => {

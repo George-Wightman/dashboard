@@ -5,6 +5,7 @@
 <script type="module">
   import { logicalDay, addDays, weekday } from '../js/dates.js';
   import { emptyDoc } from '../js/doc.js';
+  import { dayRecordId } from '../js/calendar.js';
 
   const msg = document.getElementById('msg');
   const replace = new URLSearchParams(location.search).has('replace');
@@ -38,8 +39,8 @@
     const jobs = rec('items', { type: 'quota', title: 'Job search', area: 'Job', target: 360, unit: 'minutes', unitLabel: '', goalId: goal.id, order: 4 });
     const apps = rec('items', { type: 'quota', title: 'Applications', area: 'Job', target: 5, unit: 'count', unitLabel: 'applications', goalId: goal.id, order: 5 });
     rec('items', { type: 'task', title: 'Email Sarah about the reference', area: 'Job', date: ago(2), created: ago(2), goalId: null, order: 6 });
-    rec('items', { type: 'task', title: 'Book dentist', area: '', date: today, created: today, goalId: null, order: 7 });
-    rec('items', { type: 'task', title: 'Finish NatCen supporting statement', area: 'Job', date: today, created: today, goalId: goal.id, source: 'claude', order: 8 });
+    const dentist = rec('items', { type: 'task', title: 'Book dentist', area: '', date: today, created: today, goalId: null, order: 7 });
+    const natcen = rec('items', { type: 'task', title: 'Finish NatCen supporting statement', area: 'Job', date: today, created: today, goalId: goal.id, source: 'claude', order: 8 });
     rec('items', { type: 'task', title: 'Read one policy brief a day this week', area: '', date: today, created: today, goalId: null, status: 'suggested', source: 'gemini', order: 9 });
 
     for (let i = 20; i >= 1; i--) if (i % 6 !== 0) tick(hebrew.id, ago(i));
@@ -52,6 +53,16 @@
       const t = rec('items', { type: 'task', title: `Past task ${i}`, area: '', date: ago(i), created: ago(i), goalId: null, order: 20 + i });
       if (i % 2) tick(t.id, ago(i));
     }
+
+    // The calendar planner's record for today, so the list shows times and a note.
+    const hm = (hh, mm) => new Date(`${today}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`).toISOString();
+    rec('calendar', { id: dayRecordId(today), source: 'planner', day: today, skipped: [], missed: [],
+      notes: ['Moved Job search to 15:30 (Signify)'],
+      blocks: [
+        { key: `${today}||0`, eventId: 'seed-1', calendarId: 'seed', calendar: 'Tasks', title: 'Book dentist', start: hm(10, 30), end: hm(11, 0), state: 'exact', items: [dentist.id] },
+        { key: `${today}|job|0`, eventId: 'seed-2', calendarId: 'seed', calendar: 'Application', title: 'Finish NatCen supporting statement', start: hm(15, 30), end: hm(17, 0), state: 'exact', items: [natcen.id] },
+      ] });
+    rec('calendar', { id: 'status', source: 'planner', lastRun: stamp, lastError: null, version: 'seed', paused: false });
 
     localStorage.setItem('dash_data', JSON.stringify(doc));
     location.href = '../';
