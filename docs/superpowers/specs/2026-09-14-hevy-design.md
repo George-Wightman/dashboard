@@ -125,7 +125,8 @@ Gold only for PRs and targets met (the palette rule). Elsewhere:
 
 - **The Coach** — the context Gemini is given gains *"Gym today"* (the day's lines) and *"Training this
   week"* (sessions, cardio against target, key-lift bests and PRs); the digest gains a *Training*
-  section. Facts only — the numbers are worked out in `js/gym.js`.
+  section. Facts only — the numbers are worked out in `js/gym.js`. In a conversation it can look up
+  more itself (`get_gym`, in the Coach design).
 - **Claude's `gym` read** — the last 14 days' sessions; per key lift: estimated 1RM, last top set, PR,
   pace, projection; cardio against target by week; connection status.
 - **Claude's `gym` op** — sets `keyLifts`, `liftTargets` (one lift per op, `null` removes),
