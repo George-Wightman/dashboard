@@ -113,14 +113,19 @@ Binding values from the design (copied verbatim; do not change them):
 
 Each task lives in its own file under [`2026-09-14-calendar-planner/`](2026-09-14-calendar-planner/). Tick here when a task is committed.
 
-- [ ] [Task 1: Lengths, times and the planner's records](2026-09-14-calendar-planner/task-01-data.md)
-- [ ] [Task 2: Events, calendars and finding time](2026-09-14-calendar-planner/task-02-parts.md)
-- [ ] [Task 3: What needs time](2026-09-14-calendar-planner/task-03-demand.md)
-- [ ] [Task 4: One planning pass](2026-09-14-calendar-planner/task-04-plan.md)
-- [ ] [Task 5: The planner in Apps Script](2026-09-14-calendar-planner/task-05-gas.md)
-- [ ] [Task 6: The bundle and the loader](2026-09-14-calendar-planner/task-06-bundle.md)
-- [ ] [Task 7: The dashboard shows the plan](2026-09-14-calendar-planner/task-07-ui.md)
-- [ ] [Task 8: Claude, the skill and the README](2026-09-14-calendar-planner/task-08-claude.md)
+- [x] [Task 1: Lengths, times and the planner's records](2026-09-14-calendar-planner/task-01-data.md)
+- [x] [Task 2: Events, calendars and finding time](2026-09-14-calendar-planner/task-02-parts.md)
+- [x] [Task 3: What needs time](2026-09-14-calendar-planner/task-03-demand.md)
+- [x] [Task 4: One planning pass](2026-09-14-calendar-planner/task-04-plan.md)
+- [x] [Task 5: The planner in Apps Script](2026-09-14-calendar-planner/task-05-gas.md)
+- [x] [Task 6: The bundle and the loader](2026-09-14-calendar-planner/task-06-bundle.md)
+- [x] [Task 7: The dashboard shows the plan](2026-09-14-calendar-planner/task-07-ui.md)
+- [x] [Task 8: Claude, the skill and the README](2026-09-14-calendar-planner/task-08-claude.md)
+
+Built 14 Sep: 407 tests. Task 1 also updated `tests/data.test.js` (the store's map list) and Task 7
+`tests/changes-ui.test.js` (⚙'s group order); two test expectations in Tasks 2 and 4 were worked out
+wrong in the plan and corrected. `tests/schedule-perf.test.js` (a 250ms timing check) can fail when the
+machine is busy; it passes on its own.
 
 Task 7 is browser work, checked in the Browser pane: serve with `preview_start` `dashboard`, open
 `http://localhost:8080/dev/seed.html?replace`, then `http://localhost:8080/`, reload twice (the
