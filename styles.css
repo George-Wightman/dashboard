@@ -70,6 +70,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .planner-notes { width: min(88vw, 1500px); margin: -.35rem auto .6rem; font-size: .85rem; color: var(--muted); }
 .planner-notes p { margin: .1rem 0; display: flex; gap: .5rem; align-items: baseline; }
 .planner-notes button.link { font-size: 1rem; line-height: 1; padding: 0 .2rem; }
+.planner-notes .brief { color: var(--ink); }
+.planner-notes .brief .src svg { width: .9rem; height: .9rem; }
+.planner-notes .off { color: var(--ink); font-weight: 500; }
+/* ⚙ → Claude (js/ui/claude.js) */
+.claude-panel h4 { margin: .9rem 0 .3rem; font-size: .75rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.claude-lines { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
+.claude-lines li { margin: .15rem 0; }
 button.link { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; font-size: .85rem; }
 button.link:hover { color: var(--ink); text-decoration: underline; }
 button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; color: var(--muted); cursor: pointer; }
@@ -110,6 +117,10 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .row .carry, .row .for { flex: none; font-size: .8rem; }
 .row .time { flex: none; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row .star { flex: none; color: var(--accent); font-size: .8rem; }
+.row .note-mark { flex: none; background: none; border: 0; padding: 0 .15rem; color: var(--muted); cursor: pointer; font-size: .95rem; line-height: 1; }
+.row .note-mark[aria-expanded="true"], .row .note-mark:hover { color: var(--accent); }
+.note-row { grid-column: 1 / -1; padding: .1rem .9rem .55rem 3rem; font-size: .8rem; color: var(--muted); white-space: pre-wrap; }
 .row .meta { display: contents; font-size: .8rem; color: var(--muted); }
 .row .src, .row .by { grid-column: 3; }
 .row .tag { grid-column: 4; justify-self: start; white-space: nowrap; }
@@ -211,6 +222,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .cell.lvl3 { background: var(--lvl3); }
 .cell.lvl4 { background: var(--lvl4); color: var(--panel); }
 .cell.future { background: transparent; border: 1px dashed var(--border); cursor: default; }
+.cell.off { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: .7rem; }
 .cell.today { outline: 2px solid var(--ink); outline-offset: 1px; }
 .cell.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 .day-detail { margin-top: .6rem; padding: .5rem .75rem; font-size: .85rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }

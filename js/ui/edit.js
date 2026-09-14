@@ -22,8 +22,8 @@ function defaultRepeat(kind, today) {
 }
 
 function defaultDraft(map, type, today) {
-  if (map === 'goals') return { title: '', targetDate: '', target: null, unit: 'count', unitLabel: '' };
-  return { type, title: '', area: '', goalId: '', date: today, repeat: { kind: 'daily' }, target: '', unit: 'count', unitLabel: '', minutesText: '', time: '' };
+  if (map === 'goals') return { title: '', targetDate: '', target: null, unit: 'count', unitLabel: '', notes: '' };
+  return { type, title: '', area: '', goalId: '', date: today, repeat: { kind: 'daily' }, target: '', unit: 'count', unitLabel: '', minutesText: '', time: '', notes: '' };
 }
 
 export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}) {
@@ -74,6 +74,14 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
     el.addEventListener('input', () => set(name, el.value));
     return el;
   }
+
+  function textarea(name, value, attrs = {}) {
+    const el = h('textarea', { name, rows: 3, ...attrs }, value ?? '');
+    el.addEventListener('input', () => set(name, el.value));
+    return el;
+  }
+
+  const notesField = () => field('Notes (optional)', textarea('notes', draft.notes, { maxlength: 1000, placeholder: 'Anything worth knowing — shows under the title and in its calendar block' }));
 
   function select(name, value, options, attrs = {}) {
     const el = h('select', { name, ...attrs },
@@ -142,6 +150,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       ...typeFields(),
       field('Area (optional)', input('area', draft.area, { placeholder: 'e.g. Job, Hebrew, Health' })),
       field('Goal (optional)', select('goalId', draft.goalId ?? '', [['', 'None'], ...goals.map((g) => [g.id, g.title])])),
+      notesField(),
     ];
   }
 
@@ -153,6 +162,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       field('Progress measured by', select('measure', measure, [['milestones', 'Milestones ticked off'], ['number', 'A number (e.g. £ saved, pages read)']])),
       measure === 'number' ? field('Target', input('target', draft.target ?? '', { type: 'number', min: 1 })) : null,
       measure === 'number' ? field('Unit (optional)', input('unitLabel', draft.unitLabel, { placeholder: '£, pages, books' })) : null,
+      notesField(),
     ];
   }
 
@@ -202,15 +212,19 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       fields.minutes = minutes;
     }
     if (draft.type === 'task') fields.time = draft.time || null;
+    fields.notes = String(draft.notes ?? '').trim();
+    if (fields.notes.length > 1000) throw new Error('Notes can be at most 1000 characters.');
     return fields;
   }
 
   function goalFields(title) {
     const target = measure === 'number' ? Number(draft.target) : null;
     if (measure === 'number' && !(target > 0)) throw new Error('The target needs to be a number above 0.');
+    const notes = String(draft.notes ?? '').trim();
+    if (notes.length > 1000) throw new Error('Notes can be at most 1000 characters.');
     return {
       title, targetDate: draft.targetDate || null, target, unit: 'count',
-      unitLabel: measure === 'number' ? String(draft.unitLabel ?? '').trim() : '',
+      unitLabel: measure === 'number' ? String(draft.unitLabel ?? '').trim() : '', notes,
     };
   }
 

@@ -17,11 +17,12 @@ import { readLastSynced, writeLastSynced, waitingFlags, APP_VERSION } from './fl
 import { openFlagPanel } from './ui/flags.js';
 import { createUpdater, runningBuild, IDLE_CHECK_GAP } from './version.js';
 import { h } from './ui/dom.js';
-import { plannerNotes, staleSince, visibleNotes } from './calendar.js';
+import { plannerNotes, staleSince, visibleNotes, briefFor, offLine } from './calendar.js';
+import { LOGOS } from './ui/sources.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
-  entriesFor: null, amountFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
+  entriesFor: null, amountFor: null, noteFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
   // Arrange mode (js/ui/widgets.js): toggled by #arrange-button, Escape, or Done.
   arranging: false,
   // The Coach panel's page-only state (js/ui/coach.js). Typed text lives here, not only in the
@@ -152,12 +153,29 @@ function renderHeader() {
   warning.textContent = problem ?? '';
   document.getElementById('update-ready').hidden = !updater.state().ready;
 
+  // Under the date: Claude's brief, any time off today, then the planner's latest notes — each
+  // hidden with × for the rest of the day on this device.
   const notes = visibleNotes(plannerNotes(store.doc(), today), hiddenNotes(), today);
-  const notesEl = document.getElementById('planner-notes');
-  notesEl.hidden = !notes.length;
-  notesEl.replaceChildren(...notes.map((text) => h('p', {},
+  const hidden = new Set(hiddenNotes());
+  const shown = (text) => text && !hidden.has(`${today}|${text}`);
+  const brief = briefFor(store.doc(), today);
+  const off = offLine(store.doc(), today);
+  const line = (cls, text, lead = null) => h('p', { class: cls },
+    lead,
     h('span', {}, text),
-    h('button', { class: 'link', type: 'button', title: 'Hide this note', 'aria-label': `Hide: ${text}`, onclick: () => hideNote(today, text) }, '×'))));
+    h('button', { class: 'link', type: 'button', title: 'Hide this note', 'aria-label': `Hide: ${text}`, onclick: () => hideNote(today, text) }, '×'));
+  const claudeMark = () => {
+    const el = h('span', { class: 'src', title: 'From Claude', role: 'img', 'aria-label': 'From Claude' });
+    el.innerHTML = LOGOS.claude; // a fixed string from js/ui/sources.js, never data
+    return el;
+  };
+  const notesEl = document.getElementById('planner-notes');
+  notesEl.replaceChildren(...[
+    shown(brief) ? line('brief', brief, claudeMark()) : null,
+    shown(off) ? line('off', off) : null,
+    ...notes.map((text) => line('', text)),
+  ].filter(Boolean));
+  notesEl.hidden = !notesEl.children.length;
   const stale = staleSince(store.doc(), new Date());
   const plannerWarning = document.getElementById('planner-warning');
   plannerWarning.hidden = !stale;

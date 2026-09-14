@@ -1,5 +1,5 @@
-// Settings: which version this is at the top, then sync, the day, the coach, the look, Claude's
-// changes, the calendar planner and backups,
+// Settings: which version this is at the top, then sync, the day, the coach, the look, Claude
+// (everything Claude steers, js/ui/claude.js) and backups,
 // each folded away showing what it's set to (they're set once and rarely touched). Settings are
 // device-local and never synced.
 
@@ -8,9 +8,7 @@ import { hebrewKeys } from '../gemini.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
 import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
-import { changesPanel } from './changes.js';
-import { changeCountLine } from '../changes.js';
-import { plannerSummary } from '../calendar.js';
+import { claudePanel, claudeSummary } from './claude.js';
 
 // The Version section: filled in once the site and GitHub have answered. Asked fresh every time
 // ⚙ opens, so "up to date" is about now, not about when the page was opened.
@@ -132,8 +130,6 @@ export function openSettings(ctx) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  const planner = plannerSummary(store.doc(), new Date());
-
   dialog.replaceChildren(h('form', { onsubmit: save },
     h('h2', {}, 'Settings'),
     syncStatus,
@@ -154,10 +150,9 @@ export function openSettings(ctx) {
       h('p', { class: 'note' }, "Check-ins and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products.")),
     group('Look', lookName, false,
       h('label', { class: 'field' }, h('span', {}, 'Look'), look)),
-    group("Claude's changes", changeCountLine(store.doc(), new Date()), false,
-      changesPanel(ctx)),
-    group('Calendar planner', planner.summary, false,
-      ...planner.lines.map((line) => h('p', { class: 'note' }, line))),
+    group('Claude', claudeSummary(store.doc(), store.today(), new Date()), false,
+      h('p', { class: 'note' }, 'Everything Claude steers for you. Ask Claude to change any of it; Undo is under Changes.'),
+      claudePanel(ctx)),
     group('Backups', 'export, or merge one in', false,
       h('div', { class: 'buttons' },
         h('button', { class: 'btn', type: 'button', onclick: exportBackup }, 'Export backup'),

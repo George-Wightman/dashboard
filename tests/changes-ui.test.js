@@ -20,11 +20,14 @@ test("js/ui/changes.js lists Claude's changes with Details, Undo and Show more",
   assert.match(src, /box\.replaceChildren\(\.\.\.\[[^\]]*more\]\.filter\(Boolean\)\)/);
 });
 
-test("⚙ has a folded Claude's changes group with its count line, before Backups", () => {
-  const src = read('js/ui/settings.js');
-  assert.match(src, /import \{ changesPanel \} from '\.\/changes\.js';/);
-  assert.match(src, /import \{ changeCountLine \} from '\.\.\/changes\.js';/);
-  assert.match(src, /group\("Claude's changes", changeCountLine\(store\.doc\(\), new Date\(\)\), false,\s*changesPanel\(ctx\)\),\s*group\('Calendar planner'[\s\S]*?group\('Backups'/);
+test('⚙ has a folded Claude group — its count line, and the changes inside it — before Backups', () => {
+  const settings = read('js/ui/settings.js');
+  assert.match(settings, /import \{ claudePanel, claudeSummary \} from '\.\/claude\.js';/);
+  assert.match(settings, /group\('Claude', claudeSummary\(store\.doc\(\), store\.today\(\), new Date\(\)\), false,[\s\S]*?claudePanel\(ctx\)\),\s*group\('Backups'/);
+  const panel = read('js/ui/claude.js');
+  assert.match(panel, /import \{ changesPanel \} from '\.\/changes\.js';/);
+  assert.match(panel, /import \{ changeCountLine \} from '\.\.\/changes\.js';/);
+  assert.match(panel, /section\('Changes', changesPanel\(ctx\)\)/);
 });
 
 test('styles.css styles the change list', () => {

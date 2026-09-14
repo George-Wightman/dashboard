@@ -72,6 +72,28 @@ test("the list shows today's times in the day's order; lengths and times in the 
   const html = read('index.html');
   assert.match(html, /<span id="planner-warning" class="warning" hidden><\/span>/);
   assert.match(html, /<div id="planner-notes" class="planner-notes" hidden><\/div>/);
-  assert.match(read('js/ui/settings.js'), /group\('Calendar planner', planner\.summary/);
+  assert.match(read('js/ui/claude.js'), /section\('Calendar planner', \.\.\.plannerSummary\(doc, new Date\(\)\)\.lines/);
   assert.match(read('js/app.js'), /visibleNotes\(plannerNotes\(store\.doc\(\), today\), hiddenNotes\(\), today\)/);
+});
+
+test("Claude's controls on the page: ★, the notes mark, the brief and time off, off days, Notes, ⚙ → Claude", () => {
+  const today = read('js/ui/today.js');
+  assert.match(today, /isPriority\(doc, row\.item, config\)/);
+  assert.match(today, /item\.notes \? noteMark\(item, ctx\) : null/);
+  assert.match(today, /h\('li', \{ class: 'note-row' \}, row\.item\.notes\)/);
+  const app = read('js/app.js');
+  assert.match(app, /shown\(brief\) \? line\('brief', brief, claudeMark\(\)\) : null/);
+  assert.match(app, /shown\(off\) \? line\('off', off\) : null/);
+  assert.match(read('js/ui/side.js'), /\}, 'off'\);/);
+  assert.equal((read('js/ui/edit.js').match(/notesField\(\),/g) ?? []).length, 2, 'Notes on items and goals');
+  const css = read('styles.css');
+  for (const rule of ['.row .star', '.row .note-mark', '.note-row', '.planner-notes .brief', '.cell.off', '.claude-panel h4']) assert.ok(css.includes(`${rule} {`), rule);
+});
+
+test('offText and what Claude can do', async () => {
+  const { offText, CLAUDE_CAN } = await import('../js/ui/claude.js');
+  assert.equal(offText({ start: '2026-09-16', end: '2026-09-17', areas: ['Job search'], reason: 'Maya leaves for Austria' }),
+    'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search');
+  assert.equal(offText({ start: '2026-09-18T13:00', end: '2026-09-18T19:00', areas: [], reason: '' }), 'Fri 18 Sep, 13:00–19:00 — Time off · everything');
+  assert.equal(CLAUDE_CAN.length, 8);
 });

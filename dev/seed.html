@@ -54,6 +54,15 @@
       if (i % 2) tick(t.id, ago(i));
     }
 
+    // Claude's controls: a brief, a priority, notes, time off (tomorrow for job things, and a past
+    // day for everything, so history shows "off"), and planner settings.
+    dentist.notes = 'Ask for a Saturday slot; the practice number is on the fridge.';
+    natcen.priority = true;
+    rec('journal', { id: `brief:${today}`, kind: 'brief', day: today, text: 'NatCen statement first; the dentist call can wait till after lunch.', source: 'claude' });
+    rec('calendar', { id: `off:${addDays(today, 1)}`, source: 'claude', start: addDays(today, 1), end: addDays(today, 1), areas: ['Job'], reason: 'Helping Maya move' });
+    rec('calendar', { id: `off:${ago(4)}`, source: 'claude', start: ago(4), end: ago(4), areas: [], reason: 'Moving day' });
+    rec('calendar', { id: 'config', source: 'claude', priorityAreas: ['Job'], areaColors: { Job: 'Grape' }, dayHours: { [addDays(today, 2)]: ['09:00', '13:00'] } });
+
     // The calendar planner's record for today, so the list shows times and a note.
     const hm = (hh, mm) => new Date(`${today}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`).toISOString();
     rec('calendar', { id: dayRecordId(today), source: 'planner', day: today, skipped: [], missed: [],

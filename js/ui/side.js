@@ -5,6 +5,7 @@ import { h } from './dom.js';
 import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail } from '../schedule.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 import { shortDate, shortWeekday } from '../dates.js';
+import { offLine } from '../calendar.js';
 import { SOURCE_NAMES } from './sources.js';
 import { renderShapeBox } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 import { proposedItems, proposalLine } from '../coach.js';
@@ -156,6 +157,8 @@ export function renderGoals(ctx) {
 function renderDayDetail(ctx, day) {
   const { rows, amounts } = dayDetail(ctx.store.doc(), day);
   const box = h('div', { class: 'day-detail' }, h('strong', {}, `${shortWeekday(day)} ${shortDate(day)}`));
+  const off = offLine(ctx.store.doc(), day);
+  if (off) box.append(h('div', { class: 'muted' }, off));
   if (!rows.length && !amounts.length) {
     box.append(h('div', { class: 'muted' }, 'Nothing was scheduled.'));
     return box;
@@ -177,6 +180,14 @@ export function renderHistory(ctx) {
     ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => h('span', { class: 'dow' }, d)),
     cells.map((c) => {
       if (c.future) return h('span', { class: 'cell future', 'aria-hidden': 'true' });
+      if (c.off) {
+        const label = `${shortWeekday(c.day)} ${shortDate(c.day)}: time off — ${c.off}`;
+        return h('button', {
+          class: ['cell off', c.day === today && 'today', c.day === ui.historyDay && 'selected'].filter(Boolean).join(' '),
+          type: 'button', title: label, 'aria-label': label,
+          onclick: () => { ui.historyDay = ui.historyDay === c.day ? null : c.day; ctx.render(); },
+        }, 'off');
+      }
       const cls = ['cell', `lvl${level(c.done, c.total)}`, c.day === today && 'today', c.day === ui.historyDay && 'selected']
         .filter(Boolean).join(' ');
       const label = `${shortWeekday(c.day)} ${shortDate(c.day)}: ${c.done} of ${c.total} done`;

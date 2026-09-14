@@ -7,7 +7,7 @@ import { todayRows, streak, doneBetween } from '../schedule.js';
 import { carryLabel, addDays, weekStart, shortWeekday, forLabel } from '../dates.js';
 import { formatProgress, formatAmount, parseAmount, splitTaskInput } from '../parse.js';
 import { SOURCE_NAMES, sourceMark } from './sources.js';
-import { todaySlots, timedOrder, clockLabel } from '../calendar.js';
+import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 
 // Today's rows as the list shows them: everything else first (suggestions stay on top), then the
 // weekly targets for the "This week" section, each part in todayRows' order.
@@ -173,7 +173,17 @@ function renderSuggestion(row, ctx) {
         onclick: () => store.dismissSuggestion('items', item.id) }, '✕')));
 }
 
-function renderRow(row, ctx, slot = null) {
+// A row's notes mark: tap (or hover) to open the note under the row, as a weekly target opens its
+// entries.
+function noteMark(item, ctx) {
+  const open = ctx.ui.noteFor === item.id;
+  return h('button', {
+    class: 'note-mark', type: 'button', title: item.notes, 'aria-label': `Notes: ${item.title}`, 'aria-expanded': String(open),
+    onclick: () => { ctx.ui.noteFor = open ? null : item.id; ctx.render(); },
+  }, '≡');
+}
+
+function renderRow(row, ctx, slot = null, star = false) {
   if (row.suggested) return renderSuggestion(row, ctx);
   const { store } = ctx;
   const { item } = row;
@@ -186,7 +196,9 @@ function renderRow(row, ctx, slot = null) {
         onchange: () => store.toggleDone(item.id, store.today()) }),
     h('span', { class: 'title-cell' },
       slot ? h('span', { class: 'time', title: `${clockLabel(slot.start)}–${clockLabel(slot.end)} in your calendar` }, clockLabel(slot.start)) : null,
+      star ? h('span', { class: 'star', title: 'A priority', role: 'img', 'aria-label': 'A priority' }, '★') : null,
       titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
+      item.notes ? noteMark(item, ctx) : null,
       row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
     h('span', { class: 'meta' },
       sourceMark(item.source, 'added'),
@@ -229,14 +241,17 @@ export function renderToday(ctx) {
     return;
   }
   const { main, week } = splitRows(rows);
-  const slots = todaySlots(ctx.store.doc(), ctx.store.today());
+  const doc = ctx.store.doc();
+  const slots = todaySlots(doc, ctx.store.today());
+  const { config } = readPlannerConfig(doc);
   const els = [];
   const add = (row) => {
     const slot = row.suggested ? null : slots.get(row.item.id) ?? null;
-    const li = renderRow(row, ctx, slot);
+    const li = renderRow(row, ctx, slot, !row.suggested && row.kind !== 'quota' && isPriority(doc, row.item, config));
     // A row with a time follows the day's order, so only the others can be dragged.
     if (!row.suggested && !slot) enableDrag(li, row, ctx);
     els.push(li);
+    if (row.item.notes && ctx.ui.noteFor === row.item.id) els.push(h('li', { class: 'note-row' }, row.item.notes));
     if (row.kind === 'quota' && ctx.ui.entriesFor === row.item.id) els.push(entriesList(row, ctx));
   };
   timedOrder(main, slots).forEach(add);

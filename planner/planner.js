@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '4778b203';
+var PLANNER_BUILD = '5818603e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2154,8 +2154,8 @@ function occurrenceStreak(doc, item, today) {
   const outcomes = [];
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
-    if (offs.length && excused(doc, item, day, offs)) continue; // time off: neither kept nor broken
     const ok = ticked.has(day);
+    if (!ok && offs.length && excused(doc, item, day, offs)) continue; // time off: a miss doesn't count, a tick still does
     if (day === today && !ok) continue; // today isn't over yet
     outcomes.push(ok);
   }
