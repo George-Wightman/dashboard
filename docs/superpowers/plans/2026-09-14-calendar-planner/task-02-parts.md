@@ -132,10 +132,11 @@ test('finding time: quarter hours, the gap, the window, the nearest start', () =
   assert.equal(fits(t('10:30'), t('11:00'), busy, gap), false);
   const win = { start: t('09:00'), end: t('19:00') };
   assert.equal(earliestFit(60 * MINUTE, win, busy, gap), t('13:15'));
-  assert.equal(earliestFit(15 * MINUTE, win, busy, gap), t('10:30'));
+  assert.equal(earliestFit(15 * MINUTE, win, busy, gap), t('09:00'), 'ends 15 minutes clear of 09:30');
   assert.equal(earliestFit(11 * 60 * MINUTE, win, busy, gap), null);
   assert.equal(nearestFit(120 * MINUTE, t('11:00'), win, [{ start: t('11:45'), end: t('12:30') }], gap), t('09:30'));
-  assert.equal(nearestFit(30 * MINUTE, t('12:00'), win, [{ start: t('11:00'), end: t('13:00') }], 0), t('10:30'), 'earlier on a tie');
+  assert.equal(nearestFit(30 * MINUTE, t('12:00'), win, [{ start: t('11:00'), end: t('13:00') }], 0), t('13:00'), 'the nearer one');
+  assert.equal(nearestFit(30 * MINUTE, t('11:45'), win, [{ start: t('11:00'), end: t('13:00') }], 0), t('10:30'), 'earlier on a tie');
 });
 ```
 
