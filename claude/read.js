@@ -9,6 +9,7 @@ import { longDate, weekStart, addDays, shortWeekday, carryLabel, forLabel } from
 import { formatProgress } from '../js/parse.js';
 import { openFlags } from '../js/flags.js';
 import { changeList } from '../js/changes.js';
+import { readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel } from '../js/calendar.js';
 import { shortId } from './ids.js';
 import { q, dayName, when, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 
@@ -75,6 +76,38 @@ function week(doc, day) {
     out.push(`  habit ${q(i.title)} ${tag(i.id)} · ${n} of ${i.repeat.n}${n >= i.repeat.n ? ' · met' : ''}`);
   }
   if (out.length === 2) out.push('  No weekly targets or times-a-week habits.');
+  out.push(...calendarLines(doc, day));
+  return out.join('\n');
+}
+
+// What the planner booked for the next seven days, from its day records (js/calendar.js).
+function calendarLines(doc, day) {
+  const line = (b) => `${b.state === 'rough' ? '~' : ''}${clockLabel(b.start)}–${clockLabel(b.end)} ${String(b.title).replace(/^~ /, '')}`;
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(day, i);
+    const blocks = dayRecord(doc, d)?.blocks ?? [];
+    if (blocks.length) out.push(`  ${dayName(d, day)}: ${blocks.map(line).join(' · ')}`);
+  }
+  return out.length ? ['Calendar, as the planner booked it (~ = rough):', ...out] : ["Calendar: the planner hasn't booked anything yet."];
+}
+
+// The calendar planner: when it last ran, its settings, anything it couldn't use, its notes today.
+function plannerRead(doc, day) {
+  const { config, problems } = readPlannerConfig(doc);
+  const s = plannerStatus(doc);
+  const out = [header(doc, day)];
+  out.push(s
+    ? `Calendar planner: last ran ${when(s.lastRun)}${s.paused ? ' · paused' : ''}${s.version ? ` · build ${s.version}` : ''}`
+    : "Calendar planner: hasn't run yet.");
+  if (s?.lastError) out.push(`  Last problem: ${s.lastError}`);
+  out.push(`Settings: hours ${config.hours[0]}–${config.hours[1]} · gapMinutes ${config.gapMinutes} · defaultMinutes ${config.defaultMinutes} · maxBlockMinutes ${config.maxBlockMinutes} · days ${config.days} · exactDays ${config.exactDays} · firmUpHour ${config.firmUpHour}`);
+  out.push(`  areaCalendars: ${Object.entries(config.areaCalendars).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'} · defaultCalendar: ${config.defaultCalendar}`);
+  out.push(`  habitEvents: ${config.habitEvents.map((l) => `${l.habit} → "${l.title}" on ${l.calendar}`).join(', ') || 'none'}`);
+  out.push(`  ignore: ${config.ignore.join(', ') || 'nothing'}`);
+  for (const p of problems) out.push(`  ! ${p}`);
+  const notes = plannerNotes(doc, day);
+  out.push(notes.length ? 'Its notes today:' : 'No notes from it today.', ...notes.map((n) => `  ${n}`));
   return out.join('\n');
 }
 
@@ -199,4 +232,4 @@ function changes(doc, today, arg) {
     ...list.map((c) => `  ${tag(c.id)} · ${when(c.at)} · ${c.summary}${state(c)}`)].join('\n');
 }
 
-export const READS = { today, week, goals, list, find, day, history: hist, journal, flags, changes };
+export const READS = { today, week, goals, list, find, day, history: hist, journal, flags, changes, planner: plannerRead };

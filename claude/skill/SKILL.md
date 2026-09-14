@@ -1,6 +1,6 @@
 ---
 name: dashboard
-description: George's personal dashboard ("Today") — read it and change anything in it. Use when George says /dashboard, "add … to the dashboard", "put it on my list", "what's on today?", "how did last week go?", "log 45m of Hebrew", "tick off …", or asks about his tasks, habits, weekly targets or goals. Also use it unprompted to add a suggestion when a chat turns up something that sounds like a to-do, or to suggest a plan of stages for a bigger job such as an application or interview prep.
+description: George's personal dashboard ("Today") — read it and change anything in it. Use when George says /dashboard, "add … to the dashboard", "put it on my list", "what's on today?", "how did last week go?", "log 45m of Hebrew", "tick off …", "plan my week", or asks about his tasks, habits, weekly targets or goals. Also use it unprompted to add a suggestion when a chat turns up something that sounds like a to-do, or to suggest a plan of stages for a bigger job such as an application or interview prep.
 ---
 
 # George's dashboard
@@ -57,10 +57,24 @@ again.
 
 ## The calendar
 
-If the Google Calendar connector is available and you're choosing a day or time for something, check
-the calendar first. When a task needs real time (more than about half an hour of focused work),
-offer to book a block. An event booked for a dashboard task gets `dashboard:<id>` (the id as the tool
-shows it) on its own line in the description.
+A planner — a Google Apps Script in George's account — books the dashboard into his Google Calendar
+every 10 minutes: each day's tasks grouped by area into blocks, around his fixed events, exact for
+today and tomorrow and rough (`~`, pale) further out. It moves blocks off new shifts and trims them
+when he ticks. **Don't book blocks for dashboard tasks yourself.** Give the planner what it needs:
+
+- `minutes` on anything longer than half an hour (`"2h"`, `"90m"`), and `time` when it happens at a
+  set time (`"14:00"`) — an interview, the assessment centre day.
+- An `area` on every task, so similar ones share a block (reuse the areas already in `list`).
+- A date on each task — spread a week's work over its days rather than piling it on one.
+
+**"Plan my week"** (the weekly check): read `week`, `list`, `goals` and `planner`, and the calendar if
+the connector is on. Then spread the week's tasks and the next stage of each goal over the days, set
+lengths and areas, and say what you changed. The calendar follows within 10 minutes.
+
+An event booked by hand for a dashboard task should carry `dashboard:<id>` (the id as the tool shows
+it) on its own line in the description; the planner then treats it as that task's time. The planner's
+settings — planning hours, which calendar an area goes on, linked habits — change with the `planner`
+op (reference.md). Its last run and notes are in the `planner` read.
 
 ## If something goes wrong
 

@@ -6,6 +6,7 @@ import { fixture, done, amount } from './helpers.js';
 import { shortId, resolveId } from '../claude/ids.js';
 import { q, dayName, when, toDay, repeatText, amountText } from '../claude/text.js';
 import { header, READS } from '../claude/read.js';
+import { clockLabel } from '../js/calendar.js';
 
 const TODAY = '2026-09-13'; // a Sunday
 
@@ -145,4 +146,29 @@ test('journal, flags and changes', () => {
   assert.match(changes, /^ {2}#c1 · Sat 12 Sep, 14:02 · Added task "Email Sarah" for today$/m);
   assert.match(changes, /^ {2}#c2 · .* · Archived task "X" · undone$/m);
   assert.match(READS.changes(doc(), TODAY, '1'), /Claude's last 1 changes/);
+});
+
+test("planner: its settings, when it last ran, its notes; week shows what it booked", () => {
+  const empty = doc();
+  assert.match(READS.planner(empty, TODAY), /^Calendar planner: hasn't run yet\.$/m);
+  assert.match(READS.week(empty, TODAY), /^Calendar: the planner hasn't booked anything yet\.$/m);
+  const d = doc();
+  const block = (title, start, end, state) => ({ key: 'k', title, start, end, state, items: ['t1'] });
+  d.calendar = {
+    status: { id: 'status', status: 'active', lastRun: '2026-09-13T13:02:00.000Z', lastError: null, version: 'b1', paused: false },
+    'day:7': { id: 'day:7', status: 'active', day: TODAY, skipped: [], missed: [], notes: ['Moved Gym to 09:30 (Learn Hebrew)'],
+      blocks: [block('Job search ×2', '2026-09-13T12:15:00.000Z', '2026-09-13T13:15:00.000Z', 'exact')] },
+    'day:2': { id: 'day:2', status: 'active', day: '2026-09-15', skipped: [], missed: [], notes: [],
+      blocks: [block('~ Read the pack', '2026-09-15T08:00:00.000Z', '2026-09-15T08:30:00.000Z', 'rough')] },
+  };
+  const planner = READS.planner(d, TODAY);
+  assert.match(planner, /^Calendar planner: last ran Sun 13 Sep, \d\d:\d\d · build b1$/m);
+  assert.match(planner, /^Settings: hours 09:00–19:00 · gapMinutes 15 · defaultMinutes 30 · maxBlockMinutes 150 · days 7 · exactDays 2 · firmUpHour 20$/m);
+  assert.match(planner, /^ {2}areaCalendars: Job search → Application, Assessment centre → Application, Health → Gym, Challenger → Challenger · defaultCalendar: main$/m);
+  assert.match(planner, /^Its notes today:\n {2}Moved Gym to 09:30 \(Learn Hebrew\)$/m);
+  const week = READS.week(d, TODAY);
+  const span = (s, e) => `${clockLabel(s)}–${clockLabel(e)}`;
+  assert.ok(week.includes('Calendar, as the planner booked it (~ = rough):'), week);
+  assert.ok(week.includes(`  today: ${span('2026-09-13T12:15:00.000Z', '2026-09-13T13:15:00.000Z')} Job search ×2`), week);
+  assert.ok(week.includes(`  Tue 15 Sep: ~${span('2026-09-15T08:00:00.000Z', '2026-09-15T08:30:00.000Z')} Read the pack`), week);
 });

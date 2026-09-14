@@ -121,8 +121,8 @@ today?", "log 45m of Hebrew", "tick off the CV task".
 - **Every change Claude makes is listed** in ⚙ → **Claude's changes**, newest first, with *Details*
   (what changed, field by field) and **Undo**. Undo never overwrites something you've changed since —
   it says so instead. Details are kept for 30 days; the one-line summaries for good.
-- **Planning with the calendar.** Where the Google Calendar connector is on, Claude checks the
-  calendar before picking a day, and offers to book time for bigger tasks.
+- **Planning your week.** Say "plan my week" and Claude spreads the week's work over the days, with
+  lengths and areas; the calendar planner (below) books it.
 
 **How it works.** The skill (`claude/skill/`) clones this public repo into Claude's sandbox and runs
 `claude/dash.mjs`, a small command-line tool built on the app's own modules: it reads `data.json`
@@ -141,6 +141,49 @@ back — to the laptop and the phone, Claude is just a third device. Changes app
 
 A new key (or a change to `SKILL.md` or `reference.md`) means building and uploading again. A change
 to the tool itself doesn't: the skill always runs the version on GitHub.
+
+## The calendar planner
+
+Your dashboard, booked into your Google Calendar. A small script in your own Google account (the
+*Dashboard planner*) runs every 10 minutes, and whenever one of your calendars changes:
+
+- **Every task gets time.** A day's tasks and habits are grouped by area into one block — *Job
+  search ×2* — around your fixed events, between 9:00 and 19:00, 15 minutes clear of anything else. A
+  task's length is its own (*Draft cover letter 2h* in the add box, or Length in the edit panel),
+  otherwise 30 minutes; *Call NatCen 14:00* makes it a fixed event at 14:00. A weekly time target
+  (*Assessment centre prep 5h*) adds its share to each day.
+- **Today and tomorrow are exact; later days are rough** — `~` and a paler colour — and at 20:00 each
+  evening the day after tomorrow turns exact.
+- **Blocks go on the calendar for their area** (Job search and Assessment centre on Application,
+  Health on Gym), so they take your colours. Hebrew and Gym are your own events: moved off a clash,
+  never copied.
+- **When things change:** a shift on top of a block moves it, and a note under the date says so. Move
+  a block yourself and it stays where you put it. Delete one and it isn't booked again that day.
+- **When you tick:** during its block, the block ends at the tick; before it or later that day, it
+  moves to end at the tick; part done, it says *1 of 2 done* and the rest gets a new slot; missed, it
+  goes and the task gets a new slot.
+- **On the list,** today's tasks show their time and follow the day's order. ⚙ → *Calendar planner*
+  says when it last ran; the header warns if it stops.
+
+Claude does the thinking: say **"plan my week"** and it spreads the week's work over the days, with
+lengths and areas, and the calendar follows. Its settings (planning hours, calendars, linked habits)
+change by asking Claude.
+
+**Setting it up (once, about 10 minutes):**
+
+1. GitHub → Settings → Developer settings → Fine-grained tokens → *Generate new token*: name it
+   *Calendar planner*, *Only select repositories* → `dashboard-sync`, *Contents: Read and write*.
+2. Go to [script.google.com](https://script.google.com) → *New project*, and name it *Dashboard
+   planner*. In ⚙ Project Settings tick *Show "appsscript.json" manifest file in editor*. Replace the
+   contents of `appsscript.json` and `Code.gs` with the two files in `planner/apps-script/`.
+3. ⚙ Project Settings → *Script properties*: `GITHUB_TOKEN` (the token), `SYNC_REPO`
+   (`George-Wightman/dashboard-sync`), and `GEMINI_KEY` if you'd like untagged tasks sorted into areas.
+4. Back in the editor, choose `install` and press *Run*. Google asks for permission; *Google hasn't
+   verified this app* is expected for a script of your own → *Advanced* → *Go to Dashboard planner* →
+   *Allow*. Within 10 minutes your next 7 days fill in.
+
+`pause`, `resume` and `removeAll` (every future block it made, then pause) run the same way. Updates
+arrive by themselves: the script loads the planner from this site each time it runs.
 
 ## Updates
 
@@ -237,13 +280,16 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependen
 | `js/flags.js` | A flag's captured context, its 4 KB cap, and the panel's readers |
 | `js/version.js` | Which build this is, whether a newer one is live, and taking the update |
 | `js/changes.js` | Claude's change log: what a change did, and the readers ⚙ uses |
+| `js/calendar.js` | The calendar planner's records: its settings, today's times, its notes and health |
 | `claude/` | The command-line tool and the skill Claude runs (`npm run build-skill` zips the skill) |
+| `planner/` | The calendar planner: a pure planning core (`plan.js` and its parts), the Apps Script side (`gas.js`), bundled by `npm run build-planner` into `planner/planner.js`, which the loader in `planner/apps-script/` fetches |
 | `js/ui/*.js`, `js/app.js` | The screen |
 | `sw.js`, `manifest.webmanifest` | Offline and install |
 
 Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, `journal` (the coach's
-check-ins and weekly digests), `flags` (notes of something to change) and `changes` (what Claude
-has changed, for ⚙ and Undo). Nothing is ever
+check-ins and weekly digests), `flags` (notes of something to change), `changes` (what Claude
+has changed, for ⚙ and Undo) and `calendar` (the calendar planner's settings, its day-by-day
+bookings and its notes). Nothing is ever
 hard-deleted. Records are archived or tombstoned, so a sync can't bring back something removed on
 another device. Settings (repo, access key, day start, Gemini key, check-in hour, look) stay on
 each device and are never synced, and so do the widget arrangement (`dash_layout`) and the last
@@ -256,4 +302,4 @@ successful sync time (`dash_last_synced`).
 3. **Claude skill** — built
 4. Job search + Notion — application counts and deadlines from the Job Tracker
 5. **Gemini coach** — goal shaping, evening check-in, weekly digest — built
-6. Google Calendar — today's events beside the list
+6. **Google Calendar** — the planner books the dashboard into your calendar — built

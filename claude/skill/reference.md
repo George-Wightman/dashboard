@@ -40,6 +40,11 @@ Open flags — notes George made about something to change in the app.
 ### `changes [n]`
 Your own last n changes (10 by default), with their ids for `undo`.
 
+### `planner`
+The calendar planner: when it last ran (and any problem), its settings, anything it couldn't use, and
+its notes today (*Moved Job search ×2 on Wed to 15:15 (Signify)*). `week` also lists what it booked
+for the next seven days (`~` marks a rough time).
+
 ## Ops
 
 Every op is an object with `"op"`. Add `"suggest": true` to `task`, `habit`, `target`, `goal` or
@@ -47,13 +52,15 @@ Every op is an object with `"op"`. Add `"suggest": true` to `task`, `habit`, `ta
 
 ### `task`
 `{"op": "task", "title": "…", "date": "2026-09-18", "area": "Job", "goal": "<goal id>"}` — only
-`title` is required; `date` defaults to today.
+`title` is required; `date` defaults to today. For the calendar: `"minutes": "2h"` — its length, 5
+minutes to 12 hours (`"45m"`, `"1h30"`, or a number of minutes) — and `"time": "14:00"` for a fixed
+start, which makes it a fixed event in the calendar.
 
 ### `habit`
 `{"op": "habit", "title": "…", "repeat": {…}}` — `repeat` defaults to every day. Shapes:
 `{"kind": "daily"}` · `{"kind": "weekdays", "days": [1, 3, 5]}` (1 = Mon … 7 = Sun) ·
 `{"kind": "perWeek", "n": 3}` · `{"kind": "weekly", "day": 5}` · `{"kind": "monthly", "date": 1}`.
-Also `area`, `goal`.
+Also `area`, `goal`, and `minutes` (its length, as for a task).
 
 ### `target`
 A weekly target. `{"op": "target", "title": "Applications", "target": 5, "unitLabel": "applications"}`
@@ -88,7 +95,8 @@ An amount on a weekly target, or on a goal measured by a number:
 
 ### `edit`
 `{"op": "edit", "id": "…", "set": {"title": "…", "date": "…"}}`. Editable — tasks: `title, date,
-area, goalId, order`; habits: `title, area, goalId, repeat, order`; weekly targets: `title, area,
+area, goalId, order, minutes, time`; habits: `title, area, goalId, repeat, order, minutes`
+(`null` clears a length or time); weekly targets: `title, area,
 goalId, target, unitLabel, order`; goals: `title, targetDate, target, unitLabel, why, order`
 (`target: null` measures by milestones); milestones: `title, done, goalId, order`. A weekly target's
 unit can't change — archive it and add a new one.
@@ -111,3 +119,13 @@ Note something to change in the app itself: `{"op": "flag", "text": "…"}`.
 ### `undo`
 Undo one of your own changes, by the id `changes` shows: `{"op": "undo", "change": "…"}`. Anything
 George has changed since is left alone, and the tool says so.
+
+### `planner`
+Change the calendar planner's settings; every other setting is kept.
+`{"op": "planner", "hours": ["08:30", "18:00"]}`. Settings: `hours` (two times, the planning hours),
+`gapMinutes` (0–60, clear time around events), `defaultMinutes` (5–240, a task with no length),
+`maxBlockMinutes` (30–480, the longest block), `days` (1–14, how far ahead), `exactDays` (1–7, days
+with exact times), `firmUpHour` (12–23, when the next day turns exact), `ignore` (calendar names, by
+their start), `areaCalendars` (`{"Job search": "Application"}`), `defaultCalendar` (`"main"` or a
+name), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` — a habit by id or the
+start of its title, and the events that are its sessions).

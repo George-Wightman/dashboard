@@ -3,8 +3,9 @@
 // reports. Every check happens before the store is touched, so a bad op throws a plain-English
 // error and changes nothing. What Claude adds is marked source 'claude'.
 
-import { parseAmount } from '../js/parse.js';
+import { parseAmount, parseLength, parseClock, formatAmount } from '../js/parse.js';
 import { undoLine } from '../js/changes.js';
+import { checkConfigField, readPlannerConfig } from '../js/calendar.js';
 import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 
@@ -78,6 +79,27 @@ function checkOrder(value) {
   return value;
 }
 
+// A length: "2h", "90m", "1h30" or a number of minutes, 5 to 720. Null clears it.
+function lengthOf(value) {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? (Number.isInteger(value) && value >= 5 && value <= 720 ? value : null) : parseLength(String(value));
+  if (n == null) throw new Error('minutes needs a length from 5m to 12h, like "45m", "2h" or "1h30"');
+  return n;
+}
+
+// A time of day, "14:00". Null clears it.
+function clockOf(value) {
+  if (value == null || value === '') return null;
+  const t = parseClock(String(value));
+  if (!t) throw new Error('time needs a time of day like "14:00"');
+  return t;
+}
+
+const timing = (rec) => {
+  const parts = [rec.minutes ? formatAmount(rec.minutes, 'minutes') : null, rec.time ? `at ${rec.time}` : null].filter(Boolean);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+};
+
 // The goal an op points at (null when it doesn't point at one); it must be live or suggested.
 function goalOf(store, ref) {
   if (ref == null || ref === '') return null;
@@ -90,19 +112,26 @@ function goalOf(store, ref) {
 
 function task(store, op) {
   const today = store.today();
+  const minutes = lengthOf(op.minutes);
+  const time = clockOf(op.time);
   const rec = store.addItem({
     type: 'task', title: title(op.title, 'A task'), date: toDay(op.date ?? 'today', today),
     area: str(op.area), goalId: goalOf(store, op.goal), status: statusOf(op), source: CLAUDE,
+    ...(minutes ? { minutes } : {}), ...(time ? { time } : {}),
   });
-  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}`, rec.id);
+  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}`, rec.id);
 }
 
 function habit(store, op) {
+  if (op.time != null && op.time !== '') throw new Error('Only a task has a time');
+  const minutes = lengthOf(op.minutes);
   const rec = store.addItem({
     type: 'habit', title: title(op.title, 'A habit'), repeat: checkRepeat(op.repeat),
     area: str(op.area), goalId: goalOf(store, op.goal), status: statusOf(op), source: CLAUDE,
+    ...(minutes ? { minutes } : {}),
   });
-  return tagged(`${verb(op)} habit ${q(rec.title)} (${repeatText(rec.repeat)})`, rec.id);
+  const length = rec.minutes ? `, ${formatAmount(rec.minutes, 'minutes')}` : '';
+  return tagged(`${verb(op)} habit ${q(rec.title)} (${repeatText(rec.repeat)}${length})`, rec.id);
 }
 
 function target(store, op) {
@@ -219,6 +248,8 @@ const EDITABLE = {
     target: (v, rec) => { onlyFor('quota', 'Only a weekly target has a target')(rec); return checkTarget(v, rec.unit ?? 'count'); },
     unitLabel: (v, rec) => { onlyFor('quota', 'Only a weekly target has a unit label')(rec); return str(v); },
     order: (v) => checkOrder(v),
+    minutes: (v, rec) => { if (rec.type === 'quota') throw new Error('A weekly target has no length'); return lengthOf(v); },
+    time: (v, rec) => { onlyFor('task', 'Only a task has a time')(rec); return clockOf(v); },
   },
   goals: {
     title: (v) => title(v, 'A goal'),
@@ -245,6 +276,8 @@ function show(value, field, store) {
   if (field === 'goalId') return `goal ${q(store.doc().goals[value]?.title ?? value)}`;
   if (field === 'date' || field === 'targetDate') return dayName(value, store.today());
   if (field === 'repeat') return repeatText(value);
+  if (field === 'minutes') return formatAmount(value, 'minutes');
+  if (field === 'time') return value;
   if (typeof value === 'string') return q(value, 40);
   return JSON.stringify(value);
 }
@@ -335,11 +368,26 @@ function undo(store, op) {
   return `${undoLine(store.undoChange(id, CLAUDE))} (${rec.summary})`;
 }
 
+// ---- The calendar planner ----------------------------------------------------------------------
+
+const settingText = (field, value) => (field === 'hours' ? `${value[0]}–${value[1]}` : typeof value === 'object' ? JSON.stringify(value) : String(value));
+
+// Changes the planner's settings (js/calendar.js); every other setting is kept.
+function planner(store, op) {
+  const fields = Object.keys(op).filter((k) => k !== 'op');
+  if (!fields.length) throw new Error('planner needs a setting to change, like {"op": "planner", "hours": ["08:30", "18:00"]}');
+  const changes = {};
+  for (const field of fields) changes[field] = checkConfigField(field, op[field]);
+  const { config } = readPlannerConfig(store.doc());
+  store.putCalendar('config', { ...config, ...changes }, CLAUDE);
+  return `Changed the planner's settings: ${fields.map((f) => `${f} → ${settingText(f, changes[f])}`).join(', ')}`;
+}
+
 export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
-  log, edit, archive, accept, dismiss, flag, undo,
+  log, edit, archive, accept, dismiss, flag, undo, planner,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own.

@@ -12,9 +12,9 @@ test("runOp refuses what isn't an op", () => {
   const s = fresh();
   assert.throws(() => runOp(s, null), /Each op is an object/);
   assert.throws(() => runOp(s, { op: 'fly' }),
-    /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, undo/);
+    /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, undo, planner/);
   assert.throws(() => runOp(s, { op: 'toString' }), /Unknown op "toString"/);
-  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'undo']);
+  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'undo', 'planner']);
   assert.deepEqual([...UNLOGGED], ['undo']);
 });
 
@@ -115,7 +115,7 @@ test('edit changes the fields it knows, refuses the rest, and says what it chang
   assert.equal(s.doc().items[t.id].title, 'Update CV');
   assert.throws(() => runOp(s, { op: 'edit', id: t.id, set: { repeat: { kind: 'daily' } } }), /Only a habit repeats/);
   assert.throws(() => runOp(s, { op: 'edit', id: t.id, set: { status: 'archived' } }),
-    /Can't edit status on a task — editable: title, date, area, goalId, repeat, target, unitLabel, order/);
+    /Can't edit status on a task — editable: title, date, area, goalId, repeat, target, unitLabel, order, minutes, time/);
   assert.throws(() => runOp(s, { op: 'edit', id: t.id, set: {} }), /edit needs set/);
   const m = s.addMilestone(g.id, 'M');
   assert.equal(runOp(s, { op: 'edit', id: m.id, set: { done: true } }), 'Edited milestone "M": done → true');
@@ -153,4 +153,22 @@ test('flag and undo', () => {
   assert.equal(runOp(s, { op: 'undo', change: c.id }), 'Undone. (Added task "A" for today)');
   assert.equal(runOp(s, { op: 'undo', change: c.id }), 'Already undone, or too old to undo. (Added task "A" for today)');
   assert.throws(() => runOp(s, { op: 'undo', change: 'rec-1' }), /Nothing has the id rec-1/);
+});
+
+test('lengths, times, and the planner settings', () => {
+  const s = fresh();
+  assert.equal(runOp(s, { op: 'task', title: 'Draft cover letter', minutes: '2h', time: '09:30', date: 'tomorrow' }),
+    'Added task "Draft cover letter" for Fri 11 Sep (2h, at 09:30) · #rec-1');
+  assert.equal(s.doc().items['rec-1'].minutes, 120);
+  assert.equal(runOp(s, { op: 'habit', title: 'Read', minutes: 20 }), 'Added habit "Read" (every day, 20m) · #rec-2');
+  assert.throws(() => runOp(s, { op: 'task', title: 'x', minutes: 'ages' }), /minutes needs a length from 5m to 12h/);
+  assert.throws(() => runOp(s, { op: 'task', title: 'x', time: '2pm' }), /time needs a time of day like "14:00"/);
+  assert.throws(() => runOp(s, { op: 'habit', title: 'x', time: '09:00' }), /Only a task has a time/);
+  assert.equal(runOp(s, { op: 'edit', id: 'rec-1', set: { minutes: '90m', time: null } }), 'Edited task "Draft cover letter": minutes → 1.5h, time → none');
+  assert.throws(() => runOp(s, { op: 'edit', id: 'rec-2', set: { time: '10:00' } }), /Only a task has a time/);
+  assert.equal(runOp(s, { op: 'planner', hours: ['08:30', '18:00'], gapMinutes: 10 }), "Changed the planner's settings: hours → 08:30–18:00, gapMinutes → 10");
+  const config = s.doc().calendar.config;
+  assert.deepEqual([config.hours, config.gapMinutes, config.days, config.source], [['08:30', '18:00'], 10, 7, 'claude']);
+  assert.throws(() => runOp(s, { op: 'planner' }), /planner needs a setting to change/);
+  assert.throws(() => runOp(s, { op: 'planner', colour: 'red' }), /no setting "colour"/);
 });
