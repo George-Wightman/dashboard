@@ -16,13 +16,14 @@ import { attention } from '../js/attention.js';
 import {
   gymConfig, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText,
 } from '../js/gym.js';
+import { guideFor, recentEntries, talksOn, entryOf, slotName } from '../js/talk.js';
 
 // A row's notes, on their own indented line under it.
 const withNote = (line, item) => (item.notes ? `${line}\n      note: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 300)}` : line);
 import { shortId } from './ids.js';
 import { q, dayName, when, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 
-const SOURCES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion' };
+const SOURCES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion', coach: 'the Coach' };
 const by = (rec) => (SOURCES[rec.source] ? ` · by ${SOURCES[rec.source]}` : '');
 const tag = (id) => `#${shortId(id)}`;
 const values = (map) => Object.values(map ?? {});
@@ -217,12 +218,25 @@ function hist(doc, today) {
   return out.join('\n');
 }
 
+// The journal: your guide for the Coach this week, the last 14 days' entries from conversations
+// with the Coach, the latest weekly digest, and the last evening check-ins from before the Coach
+// talked.
 function journal(doc, today) {
   const recs = values(doc.journal).filter((r) => r.status === 'active');
   const newest = (a, b) => (a.day < b.day ? 1 : -1);
   const digest = recs.filter((r) => r.kind === 'digest').sort(newest)[0];
   const checkins = recs.filter((r) => r.kind === 'checkin').sort(newest).slice(0, 3);
   const out = [header(doc, today)];
+  const guide = guideFor(doc, today);
+  out.push(guide ? `Your guide for the Coach this week: ${guide}` : 'No guide for the Coach this week yet.');
+  const entries = recentEntries(doc, today, { days: 14, limit: 60 });
+  out.push(entries.length ? 'Journal entries from conversations with the Coach (last 14 days, newest first):' : 'No journal entries in the last 14 days.');
+  for (const e of entries) {
+    out.push(`  ${dayName(e.day, today)}, ${slotName(e.slot).toLowerCase()}${e.feeling ? ` · ${e.feeling}` : ''}: ${e.text.replace(/\s+/g, ' ')}`);
+    for (const p of e.pointers ?? []) out.push(`    pointer: ${p}`);
+    for (const f of e.forClaude ?? []) out.push(`    for you: ${f}`);
+  }
+  if (entries.length) out.push('  (A day\'s conversations in full: talk <day>.)');
   if (digest) {
     out.push(`Weekly digest, week of ${dayName(digest.day, today)}:`, `  ${digest.summary}`);
     if (digest.wins?.length) out.push(`  Went well: ${digest.wins.join('; ')}`);
@@ -240,10 +254,11 @@ function journal(doc, today) {
   return out.join('\n');
 }
 
+// Open flags in full: George's own, yours, and the Coach's handoffs from his conversations.
 function flags(doc, today) {
   const open = openFlags(doc);
   return [header(doc, today), open.length ? 'Open flags (newest first):' : 'No open flags.',
-    ...open.map((f) => `  ${q(f.text, 200)} ${tag(f.id)} · ${when(f.updated)}${by(f)}`)].join('\n');
+    ...open.map((f) => `  ${q(String(f.text).replace(/\s+/g, ' '), 1000)} ${tag(f.id)} · ${when(f.updated)}${by(f)}`)].join('\n');
 }
 
 function changes(doc, today, arg) {
@@ -251,7 +266,25 @@ function changes(doc, today, arg) {
   const list = changeList(doc).slice(0, n);
   const state = (c) => (c.undoneAt ? ' · undone' : c.pruned ? ' · too old to undo' : '');
   return [header(doc, today), list.length ? `Claude's last ${list.length} changes (newest first):` : "Claude hasn't changed anything yet.",
-    ...list.map((c) => `  ${tag(c.id)} · ${when(c.at)} · ${c.summary}${state(c)}`)].join('\n');
+    ...list.map((c) => `  ${tag(c.id)} · ${when(c.at)} · ${c.summary}${c.source === 'coach' ? ' · by the Coach' : ''}${state(c)}`)].join('\n');
+}
+
+// A day's conversations with the Coach, in full, with what it did and the entry each left.
+function talkRead(doc, today, arg) {
+  const d = toDay(arg || 'today', today);
+  const talks = talksOn(doc, d);
+  const out = [header(doc, today), talks.length ? `Conversations with the Coach, ${dayName(d, today)}:` : `No conversations with the Coach on ${dayName(d, today)}.`];
+  for (const t of talks) {
+    out.push(`${slotName(t.slot)}${t.done ? '' : ' (still open)'}${t.pruned ? ' — over 30 days old: only its entry is kept' : ''}:`);
+    for (const m of t.messages ?? []) {
+      out.push(`  ${m.who === 'george' ? 'George' : 'Coach'}: ${String(m.text).replace(/\s+/g, ' ')}`);
+      for (const x of m.did ?? []) out.push(`    did: ${x.text}`);
+    }
+    for (const x of t.handoffs ?? []) out.push(`  for you: ${x}`);
+    const e = entryOf(doc, d, t.slot);
+    if (e) out.push(`  Entry${e.feeling ? ` (${e.feeling})` : ''}: ${e.text.replace(/\s+/g, ' ')}`);
+  }
+  return out.join('\n');
 }
 
 // What needs Claude's attention (js/attention.js).
@@ -298,5 +331,5 @@ function gymRead(doc, day) {
 }
 
 export const READS = {
-  today, week, goals, list, find, day, history: hist, journal, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead,
+  today, week, goals, list, find, day, history: hist, journal, talk: talkRead, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead,
 };

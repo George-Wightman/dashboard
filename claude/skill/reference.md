@@ -32,7 +32,14 @@ One day: what was on it, what was ticked, and any amounts logged.
 The last three weeks, day by day, as done/total.
 
 ### `journal`
-The Gemini coach's latest weekly digest and last three evening check-ins.
+Your guide for the Coach this week; the last 14 days' journal entries from George's conversations
+with the Coach (how he was feeling, what was on his mind, pointers, anything handed to you); the
+latest weekly digest; and the last three evening check-ins from before the Coach talked.
+
+### `talk <day>`
+A day's conversations with the Coach in full (`today`, `yesterday` or a date): who said what, what
+the Coach changed, what it handed to you, and the entry each left. Messages go after 30 days; entries
+stay.
 
 ### `flags`
 Open flags — notes George made about something to change in the app.
@@ -157,6 +164,11 @@ planner out. Cancel: `{"op": "off", "cancel": "off:2026-09-16"}`.
 ### `brief`
 The line at the top of George's list: `{"op": "brief", "text": "…", "day": "tomorrow"}` (`day`
 defaults to today; up to 500 characters). Writing one for a day replaces it.
+
+### `guide`
+The Coach's guide for a week: `{"op": "guide", "text": "…"}` (up to 600 characters; `"week":
+"2026-09-21"` or any day in it for another week — it's filed under that week's Monday). What to focus
+on and ask about; the Coach is given it every time. Writing one again replaces it.
 
 ### `gym`
 Hevy's settings on the dashboard (nothing is ever sent to Hevy). `{"op": "gym", "cardioQuota":

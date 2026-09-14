@@ -14,6 +14,7 @@
 
 import { JOBS, clip } from '../js/coach.js';
 import { addDays } from '../js/dates.js';
+import { TALK_SYSTEM, WRAP_UP } from '../js/talk.js';
 
 export const FAKE_MODES = ['ok', 'slow', 'nokey', 'quota', 'down', 'offline', 'badkey', 'nonsense'];
 
@@ -75,6 +76,45 @@ function answer(prompt) {
   return {};
 }
 
+const call = (name, args) => response(200, { candidates: [{ content: { parts: [{ functionCall: { name, args } }] } }] });
+
+function bodyOf(init) {
+  try { return JSON.parse(init?.body ?? '{}'); } catch { return {}; }
+}
+
+// The canned Coach, for a conversation (talkGemini's requests carry its system text): an opener for
+// a moment; after a tool, what it did; asked to wrap up, or told "bye", it finishes with an entry;
+// "add …" adds a task for today, "tomorrow" moves the first undone task on today's list, a mention
+// of Claude hands it over; anything else gets a short reply.
+function talkAnswer(body) {
+  const last = (body.contents ?? []).at(-1) ?? {};
+  const said = (last.parts ?? []).map((p) => p.text ?? '').join(' ');
+  const results = (last.parts ?? []).map((p) => p.functionResponse?.response).filter(Boolean);
+  if (results.length) {
+    if (results.some((r) => r.did === 'Saved the journal entry')) return reply("Good talk — it's in your journal.");
+    return reply(`Done: ${results.map((r) => r.did ?? r.error).join('; ')}.`);
+  }
+  if (!body.tools) {
+    const moment = ['morning', 'afternoon', 'evening'].find((m) => said.includes(`It's the ${m}`)) ?? 'morning';
+    return reply({
+      morning: "Fake coach: morning — what's the one thing today has to hold?",
+      afternoon: 'Fake coach: something from the morning slipped. Move it to tomorrow?',
+      evening: 'Fake coach: how did today go — did the NatCen statement get done?',
+    }[moment]);
+  }
+  if (said.includes(WRAP_UP) || /\bbye\b/i.test(said)) {
+    return call('finish', { feeling: 'steady', text: 'Fake entry: talked through the day and what matters tomorrow.', pointers: ['Likes the hardest task first'] });
+  }
+  const add = said.match(/\badd (.+)/i);
+  if (add) return call('add_task', { title: clip(add[1], 60), day: 'today' });
+  if (/\bclaude\b/i.test(said)) return call('hand_to_claude', { text: clip(said, 200) });
+  if (/\btomorrow\b/i.test(said)) {
+    const id = (body.systemInstruction?.parts?.[0]?.text ?? '').match(/\[ \] (\S+) task/)?.[1];
+    if (id) return call('move_task', { id, day: 'tomorrow' });
+  }
+  return reply('Fake coach: noted. What would make the rest of today easier?');
+}
+
 function wait(ms, signal) {
   if (!(ms > 0)) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -97,7 +137,11 @@ export function fakeGeminiFetch(mode = 'ok', { delayMs = mode === 'slow' ? 5000 
       case 'offline': throw new TypeError('Failed to fetch');
       case 'badkey': return failure(400, 'API key not valid. Please pass a valid API key.');
       case 'nonsense': return reply('Happy to help!');
-      default: return reply(JSON.stringify(answer(promptOf(init))));
+      default: {
+        const body = bodyOf(init);
+        if ((body.systemInstruction?.parts?.[0]?.text ?? '').startsWith(TALK_SYSTEM)) return talkAnswer(body);
+        return reply(JSON.stringify(answer(promptOf(init))));
+      }
     }
   };
 }

@@ -20,7 +20,15 @@ const JOURNAL_FIELDS = {
   checkin: { questions: [], answers: [], feedback: '', tomorrowIds: [], model: '' },
   digest: { summary: '', wins: [], slipped: [], focus: '', model: '' },
   brief: { text: '' },
+  // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
+  // slot; Claude's guide for the Coach, filed under the week's Monday.
+  talk: { slot: '', messages: [], handoffs: [], done: false, model: '' },
+  entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
+  guide: { text: '' },
 };
+const SLOTTED = new Set(['talk', 'entry']);
+const SLOT = /^(morning|afternoon|evening|own-\d{1,2})$/;
+const WEEKLY = new Set(['digest', 'guide']);
 
 function readJson(storage, key) {
   try {
@@ -160,6 +168,25 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return create('logs', { itemId, goalId: null, kind: 'done', day, at: stamp(), note: '', source });
   }
 
+  // A habit let off for a day (the Coach's skip): excused like time off, so its streak is safe.
+  function skipItem(itemId, day = today(), note = '', source = 'coach') {
+    return create('logs', { itemId, goalId: null, kind: 'skip', day, at: stamp(), note, source });
+  }
+
+  // Conversations older than TALK_KEEP_DAYS lose their messages; their journal entries stay.
+  function pruneTalks(keepDays = 30) {
+    const cutoff = addDays(today(), -keepDays);
+    const t = stamp();
+    let n = 0;
+    for (const [id, r] of Object.entries(doc.journal)) {
+      if (r.kind !== 'talk' || !(r.day < cutoff) || !r.messages?.length) continue;
+      doc.journal[id] = { ...r, messages: [], pruned: true, updated: t };
+      n++;
+    }
+    if (n) commit('local');
+    return n;
+  }
+
   function logAmount({ itemId = null, goalId = null, amount, day = today(), note = '', source = 'me' }) {
     if (!(amount > 0)) throw new Error('An amount must be above 0');
     if (!itemId && !goalId) throw new Error('logAmount needs an itemId or a goalId');
@@ -197,8 +224,12 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || addDays(day, 0) !== day) {
       throw new Error(`A journal record needs a real day, not ${day}`);
     }
-    if (kind === 'digest' && weekStart(day) !== day) throw new Error("A digest is filed under its week's Monday");
-    const id = journalId(kind, day);
+    if (WEEKLY.has(kind) && weekStart(day) !== day) throw new Error(`A ${kind} is filed under its week's Monday`);
+    let id = journalId(kind, day);
+    if (SLOTTED.has(kind)) {
+      if (!SLOT.test(String(record.slot ?? ''))) throw new Error(`A ${kind} needs a slot: morning, afternoon, evening or own-1 …`);
+      id = `${id}:${record.slot}`;
+    }
     if (record.id != null && record.id !== id) throw new Error(`A ${kind} for ${day} has the id ${id}`);
     const content = {};
     for (const key of Object.keys(fields)) {
@@ -296,12 +327,12 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // Claude's change log (js/changes.js): one record per command of Claude's that changed
   // something, with a copy of every record it touched before and after. The tool writes these; the
   // page only reads and undoes them.
-  function addChange({ summary, edits } = {}) {
+  function addChange({ summary, edits, source = 'claude' } = {}) {
     const text = String(summary ?? '').trim();
     if (!text) throw new Error('A change needs a summary');
     if (!Array.isArray(edits) || !edits.length) throw new Error('A change needs at least one edit');
     return create('changes', {
-      source: 'claude', at: stamp(), summary: text, edits: structuredClone(edits),
+      source, at: stamp(), summary: text, edits: structuredClone(edits),
       undoneAt: null, undoneBy: null, pruned: false,
     });
   }
@@ -476,6 +507,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     dismissSuggestion: (map, id) => patch(map, id, { status: 'dismissed' }),
 
     toggleDone,
+    skipItem,
     logAmount,
     removeLog: (id) => patch('logs', id, { status: 'archived' }),
 
@@ -488,6 +520,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
 
     saveJournal,
+    updateJournal: (id, changes) => patch('journal', id, structuredClone(changes)),
+    pruneTalks,
     addPlan,
     acceptGoalPlan,
     dismissGoalPlan,

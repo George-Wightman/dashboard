@@ -1,7 +1,7 @@
 // Boot: one store, one render loop, the header, sync, and the day rollover.
 
 import { createStore, DATA_KEY } from './data.js';
-import { askGemini, geminiKeys, hebrewKeys } from './gemini.js';
+import { askGemini, talkGemini, geminiKeys, hebrewKeys } from './gemini.js';
 import { longDate, weekStart } from './dates.js';
 import { dayCompletion } from './schedule.js';
 import { digestDue } from './coach.js';
@@ -10,7 +10,8 @@ import { renderToday, initAddBox } from './ui/today.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
-import { checkinNow, writeDigest } from './ui/coach.js';
+import { talkNow, writeDigest, openMoment, openCoachSheet, paintCoachSheet } from './ui/coach.js';
+import { openerDue, waitingOpener, TALK_KEEP_DAYS } from './talk.js';
 import { resolveLook, THEME_COLORS } from './look.js';
 import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
 import { readLastSynced, writeLastSynced, waitingFlags, APP_VERSION } from './flags.js';
@@ -26,9 +27,10 @@ const ui = {
   // Arrange mode (js/ui/widgets.js): toggled by #arrange-button, Escape, or Done.
   arranging: false,
   // The Coach panel's page-only state (js/ui/coach.js). Typed text lives here, not only in the
-  // textareas, so a re-render never loses it.
+  // textareas, so a re-render never loses it. `talk` is the conversation on show, `tried` the
+  // moments this page has already asked Gemini to open ("day|slot"), `sheet` the phone sheet.
   coach: {
-    busy: '', error: '', answers: [], notNow: '', feedbackOpen: true,
+    talk: null, draft: '', talkBusy: '', talkError: '', editing: null, sheet: false, tried: {},
     shapeOpen: false, shapeText: '', shapeBusy: false, shapeError: '',
     digestOpen: false, digestBusy: false, digestError: '', digestTried: false,
   },
@@ -84,8 +86,8 @@ const ctx = {
     expandedGoals: ui.expandedGoals.size,
     historyDay: ui.historyDay,
     coach: {
-      checkin: checkinNow(ctx), busy: ui.coach.busy, shapeBusy: ui.coach.shapeBusy, digestBusy: ui.coach.digestBusy,
-      error: ui.coach.error, shapeError: ui.coach.shapeError, digestError: ui.coach.digestError,
+      checkin: talkNow(ctx), busy: ui.coach.talkBusy, shapeBusy: ui.coach.shapeBusy, digestBusy: ui.coach.digestBusy,
+      error: ui.coach.talkError, shapeError: ui.coach.shapeError, digestError: ui.coach.digestError,
     },
     sync: { state: sync.state, error: sync.error, lastSynced: readLastSynced(localStorage) },
     hebrewKey: hebrewKeys(localStorage).length > 0,
@@ -111,6 +113,21 @@ const ctx = {
       const fetch = FAKE ? (await import('../dev/fake-gemini.js')).fakeGeminiFetch(FAKE) : undefined;
       return askGemini({ keys: ctx.coach.keys(), system, prompt, fetch });
     },
+    // A turn of a conversation, with the Coach's tools (js/gemini.js's talkGemini).
+    async talk(opts) {
+      const fetch = FAKE ? (await import('../dev/fake-gemini.js')).fakeGeminiFetch(FAKE) : undefined;
+      return talkGemini({ keys: ctx.coach.keys(), ...opts, ...(fetch ? { fetch } : {}) });
+    },
+  },
+  // Reply on the Coach's line under the date: its conversation, as a sheet on a phone, else the
+  // panel scrolled into view with the box ready.
+  openTalk(slot) {
+    ui.coach.talk = slot;
+    if (matchMedia('(max-width: 759px)').matches) { openCoachSheet(ctx); return; }
+    render();
+    const panel = document.querySelector('#side .coach');
+    panel?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    panel?.querySelector('[data-focus^="coach-talk"]')?.focus();
   },
 };
 
@@ -153,25 +170,29 @@ function renderHeader() {
   warning.textContent = problem ?? '';
   document.getElementById('update-ready').hidden = !updater.state().ready;
 
-  // Under the date: Claude's brief, any time off today, then the planner's latest notes — each
-  // hidden with × for the rest of the day on this device.
+  // Under the date: Claude's brief, the Coach's question when one is waiting, any time off today,
+  // then the planner's latest notes — each hidden with × for the rest of the day on this device.
   const notes = visibleNotes(plannerNotes(store.doc(), today), hiddenNotes(), today);
   const hidden = new Set(hiddenNotes());
   const shown = (text) => text && !hidden.has(`${today}|${text}`);
   const brief = briefFor(store.doc(), today);
   const off = offLine(store.doc(), today);
-  const line = (cls, text, lead = null) => h('p', { class: cls },
+  const waiting = ctx.coach.keys().length ? waitingOpener(store.doc(), today) : null;
+  const line = (cls, text, lead = null, action = null) => h('p', { class: cls },
     lead,
     h('span', {}, text),
+    action,
     h('button', { class: 'link', type: 'button', title: 'Hide this note', 'aria-label': `Hide: ${text}`, onclick: () => hideNote(today, text) }, '×'));
-  const claudeMark = () => {
-    const el = h('span', { class: 'src', title: 'From Claude', role: 'img', 'aria-label': 'From Claude' });
-    el.innerHTML = LOGOS.claude; // a fixed string from js/ui/sources.js, never data
+  const mark = (logo, label) => {
+    const el = h('span', { class: 'src', title: label, role: 'img', 'aria-label': label });
+    el.innerHTML = LOGOS[logo]; // a fixed string from js/ui/sources.js, never data
     return el;
   };
+  const reply = waiting ? h('button', { class: 'link', type: 'button', onclick: () => ctx.openTalk(waiting.slot) }, 'Reply') : null;
   const notesEl = document.getElementById('planner-notes');
   notesEl.replaceChildren(...[
-    shown(brief) ? line('brief', brief, claudeMark()) : null,
+    shown(brief) ? line('brief', brief, mark('claude', 'From Claude')) : null,
+    waiting && shown(waiting.text) ? line('coach-line', waiting.text, mark('gemini', 'From the Coach'), reply) : null,
     shown(off) ? line('off', off) : null,
     ...notes.map((text) => line('', text)),
   ].filter(Boolean));
@@ -212,14 +233,15 @@ function applyLook() {
   if (meta && meta.getAttribute('content') !== THEME_COLORS[look]) meta.setAttribute('content', THEME_COLORS[look]);
 }
 
-// The check-in state the Coach panel last showed; the minute tick repaints when it changes.
-let shownCheckin = null;
+// What the Coach was doing when the page was last drawn; the minute tick repaints when it changes.
+let shownTalk = null;
 
 function render() {
   renderHeader();
   renderToday(ctx);
   renderSide(ctx);
-  shownCheckin = checkinNow(ctx);
+  paintCoachSheet(ctx);
+  shownTalk = talkNow(ctx);
 }
 
 // A storage-event save held back while typing/editing (see below), absorbed as soon as a sync
@@ -256,11 +278,12 @@ async function runSync() {
 
 // Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the
 // re-rendered area (#list, #side): the add box lives outside it, so a sync there can't wipe it,
-// and a half-typed task title shouldn't hold up sync all day.
+// and a half-typed task title shouldn't hold up sync all day. The Coach's message box doesn't count
+// either: its text and caret come back after every redraw, and a reply must land while he types on.
 function typing() {
   const el = document.activeElement;
   return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
-    && !!el.closest('#list, #side');
+    && !!el.closest('#list, #side') && !String(el.dataset.focus ?? '').startsWith('coach-talk');
 }
 
 function canRun() {
@@ -309,10 +332,22 @@ function maybeWriteDigest() {
   writeDigest(ctx, { quiet: true });
 }
 
-// Each sync pass (on open, on focus, after a change) is followed by the digest check, so a digest
-// another device already wrote has been pulled in before deciding to write one.
+// The Coach opens a conversation at its moments (js/talk.js): the morning, the afternoon when
+// something slipped, the evening — once a moment a day, and only once from this page if Gemini
+// can't be reached (openMoment then leaves its plain line).
+function maybeOpenMoment() {
+  if (!ctx.coach.keys().length || navigator.onLine === false || ui.coach.talkBusy) return;
+  const today = store.today();
+  const { dayStartHour, checkinHour } = store.settings();
+  const slot = openerDue(store.doc(), { today, now: new Date(), dayStartHour, checkinHour });
+  if (!slot || ui.coach.tried[`${today}|${slot}`]) return;
+  openMoment(ctx, slot);
+}
+
+// Each sync pass (on open, on focus, after a change) is followed by the digest check and the
+// Coach's moment, so what another device already wrote has been pulled in before deciding.
 const scheduler = createSyncScheduler({
-  run: async () => { await runSync(); maybeWriteDigest(); },
+  run: async () => { await runSync(); maybeWriteDigest(); maybeOpenMoment(); },
   canRun,
 });
 
@@ -326,8 +361,8 @@ function checkRollover() {
     }
     shownDay = day;
     ui.historyDay = null;
-    // Yesterday's check-in is over: its typed answers, "Not now" and last error no longer apply.
-    Object.assign(ui.coach, { answers: [], notNow: '', error: '', feedbackOpen: true });
+    // A new day: yesterday's conversation, its last error and the moments tried no longer apply.
+    Object.assign(ui.coach, { talk: null, talkError: '', editing: null, tried: {} });
     render();
   }
 }
@@ -393,17 +428,19 @@ window.addEventListener('storage', (e) => {
   if (!canRun()) { pendingStored = e.newValue; scheduler.changed(); return; }
   store.absorbStored(e.newValue);
 });
-// Once a minute: roll over to a new day, and repaint when the check-in state has moved on (the
-// check-in hour arriving) — unless something is being typed in the column. The update check
-// only actually asks the site every ten minutes.
+// Once a minute: roll over to a new day, open the Coach's moment when one arrives, and repaint
+// when what the Coach is doing has moved on — unless something is being typed in the column. The
+// update check only actually asks the site every ten minutes.
 setInterval(() => {
   applyLook();
   checkRollover();
-  if (checkinNow(ctx) !== shownCheckin && !typing()) render();
+  maybeOpenMoment();
+  if (talkNow(ctx) !== shownTalk && !typing()) render();
   if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });
 }, 60000);
 
 applyLook();
+store.pruneTalks(TALK_KEEP_DAYS);
 render();
 scheduler.now();
 

@@ -43,7 +43,7 @@ test('js/ui/flags.js builds the panel from the plan: About, Save/Ctrl+Enter, the
 
 test("js/app.js wires ⚑'s state, the last-synced time, and the flag state ctx.flagState() captures", () => {
   const src = read('js/app.js');
-  assert.match(src, /import \{ askGemini, geminiKeys, hebrewKeys \} from '\.\/gemini\.js';/);
+  assert.match(src, /import \{ askGemini, talkGemini, geminiKeys, hebrewKeys \} from '\.\/gemini\.js';/);
   assert.match(src, /import \{ readLastSynced, writeLastSynced, waitingFlags, APP_VERSION \} from '\.\/flags\.js';/);
   assert.match(src, /import \{ openFlagPanel \} from '\.\/ui\/flags\.js';/);
   assert.match(src, /syncOn: \(\) => !FAKE && !!store\.settings\(\)\.token && !!store\.settings\(\)\.repo,/);

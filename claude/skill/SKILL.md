@@ -18,8 +18,8 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
     bash <skill folder>/run.sh today
 
 **Reads:** `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`, `history`,
-`journal`, `flags`, `changes`, `planner`, `attention`, `gym`. Each starts with today's date — work
-other dates out from it.
+`journal`, `talk <day>`, `flags`, `changes`, `planner`, `attention`, `gym`. Each starts with today's
+date — work other dates out from it.
 
 **Changes** go in one `apply`, as JSON on a quoted heredoc, so apostrophes, quotes and `$` in titles
 are safe. Several ops in one `apply` are one sync:
@@ -30,8 +30,9 @@ are safe. Several ops in one `apply` are one sync:
     EOF
 
 Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `log`, `edit`,
-`archive`, `accept`, `dismiss`, `flag`, `undo`, `planner`, `off`, `brief`, `gym`. Every field is in
-`reference.md` in this folder — read it before using anything beyond a plain task, tick or log.
+`archive`, `accept`, `dismiss`, `flag`, `undo`, `planner`, `off`, `brief`, `gym`, `guide`. Every
+field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
+or log.
 
 Ids show as `#a1b2c3d4`; pass them without the `#`. Dates are `YYYY-MM-DD`, `today`, `tomorrow` or
 `yesterday`. If `apply` fails, **nothing** was changed: fix the op it names and send the whole batch
@@ -98,6 +99,22 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
   (`null` removes it); `dayHours` sets planning hours for a date.
 - **Attention** — read `attention` in *plan my week* and whenever George asks how things stand, then
   fix what you can (lengths, stuck tasks, targets behind) and tell him the rest.
+
+## The Coach
+
+The Coach is Gemini on George's devices, and he talks with it through the day: it opens a
+conversation in the morning, in the afternoon when something has slipped, and in the evening, and he
+can start one any time. It may change today and tomorrow only — add, move, skip, tick, set lengths,
+block out hours — and each change is logged like yours (*by the Coach* in `changes`). Anything bigger
+it hands to you as a **flag from the Coach**: treat those as George's own words, act on them, and
+mark them addressed.
+
+- **Read the journal** (`journal`) in *plan my week* and whenever George asks how things are. Each
+  conversation leaves an entry — how he was feeling, what was on his mind, pointers about how he
+  works. `talk <day>` shows a day's conversations in full when the detail matters.
+- **Write the Coach's guide** in *plan my week*: `{"op": "guide", "text": "…"}` — a few lines on what
+  to focus on and ask about this week (the assessment centre on Thursday, cardio towards 150 minutes,
+  go easy on Mondays). The Coach is given it every time it talks.
 
 ## The gym (Hevy)
 

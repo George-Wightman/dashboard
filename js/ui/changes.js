@@ -26,7 +26,7 @@ export function changesPanel(ctx) {
     const lines = c.pruned ? [] : c.edits.flatMap((e) => editLines(e));
     return h('li', { class: c.undoneAt ? 'change undone' : 'change' },
       h('div', { class: 'change-line' },
-        h('span', { class: 'muted' }, `${when(c.at)} · `),
+        h('span', { class: 'muted' }, `${when(c.at)} · ${c.source === 'coach' ? 'Coach · ' : ''}`),
         h('span', { class: 'change-summary' }, c.summary),
         c.undoneAt ? h('span', { class: 'muted' }, ' · undone') : null),
       lines.length

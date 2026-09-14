@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'ccc08f89';
+var PLANNER_BUILD = 'dd5720a8';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -419,7 +419,8 @@ function flagContext(state = {}) {
 
 const LOOK_NAMES = { paper: 'Paper', night: 'Night' };
 const CHECKIN_WORDS = {
-  done: 'check-in done', questions: 'check-in waiting', due: 'check-in due', early: 'check-in later', nokey: 'no Gemini key',
+  done: 'check-in done', questions: 'check-in waiting', due: 'about to open a conversation', early: 'check-in later', nokey: 'no Gemini key',
+  waiting: 'a question waiting', talking: 'in a conversation', quiet: 'quiet',
 };
 const SYNC_WORDS = { off: 'sync off', syncing: 'syncing', offline: 'offline', failing: 'sync failing' };
 
@@ -725,7 +726,15 @@ const JOURNAL_FIELDS = {
   checkin: { questions: [], answers: [], feedback: '', tomorrowIds: [], model: '' },
   digest: { summary: '', wins: [], slipped: [], focus: '', model: '' },
   brief: { text: '' },
+  // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
+  // slot; Claude's guide for the Coach, filed under the week's Monday.
+  talk: { slot: '', messages: [], handoffs: [], done: false, model: '' },
+  entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
+  guide: { text: '' },
 };
+const SLOTTED = new Set(['talk', 'entry']);
+const SLOT = /^(morning|afternoon|evening|own-\d{1,2})$/;
+const WEEKLY = new Set(['digest', 'guide']);
 
 function readJson(storage, key) {
   try {
@@ -865,6 +874,25 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     return create('logs', { itemId, goalId: null, kind: 'done', day, at: stamp(), note: '', source });
   }
 
+  // A habit let off for a day (the Coach's skip): excused like time off, so its streak is safe.
+  function skipItem(itemId, day = today(), note = '', source = 'coach') {
+    return create('logs', { itemId, goalId: null, kind: 'skip', day, at: stamp(), note, source });
+  }
+
+  // Conversations older than TALK_KEEP_DAYS lose their messages; their journal entries stay.
+  function pruneTalks(keepDays = 30) {
+    const cutoff = addDays(today(), -keepDays);
+    const t = stamp();
+    let n = 0;
+    for (const [id, r] of Object.entries(doc.journal)) {
+      if (r.kind !== 'talk' || !(r.day < cutoff) || !r.messages?.length) continue;
+      doc.journal[id] = { ...r, messages: [], pruned: true, updated: t };
+      n++;
+    }
+    if (n) commit('local');
+    return n;
+  }
+
   function logAmount({ itemId = null, goalId = null, amount, day = today(), note = '', source = 'me' }) {
     if (!(amount > 0)) throw new Error('An amount must be above 0');
     if (!itemId && !goalId) throw new Error('logAmount needs an itemId or a goalId');
@@ -902,8 +930,12 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || addDays(day, 0) !== day) {
       throw new Error(`A journal record needs a real day, not ${day}`);
     }
-    if (kind === 'digest' && weekStart(day) !== day) throw new Error("A digest is filed under its week's Monday");
-    const id = journalId(kind, day);
+    if (WEEKLY.has(kind) && weekStart(day) !== day) throw new Error(`A ${kind} is filed under its week's Monday`);
+    let id = journalId(kind, day);
+    if (SLOTTED.has(kind)) {
+      if (!SLOT.test(String(record.slot ?? ''))) throw new Error(`A ${kind} needs a slot: morning, afternoon, evening or own-1 …`);
+      id = `${id}:${record.slot}`;
+    }
     if (record.id != null && record.id !== id) throw new Error(`A ${kind} for ${day} has the id ${id}`);
     const content = {};
     for (const key of Object.keys(fields)) {
@@ -1001,12 +1033,12 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // Claude's change log (js/changes.js): one record per command of Claude's that changed
   // something, with a copy of every record it touched before and after. The tool writes these; the
   // page only reads and undoes them.
-  function addChange({ summary, edits } = {}) {
+  function addChange({ summary, edits, source = 'claude' } = {}) {
     const text = String(summary ?? '').trim();
     if (!text) throw new Error('A change needs a summary');
     if (!Array.isArray(edits) || !edits.length) throw new Error('A change needs at least one edit');
     return create('changes', {
-      source: 'claude', at: stamp(), summary: text, edits: structuredClone(edits),
+      source, at: stamp(), summary: text, edits: structuredClone(edits),
       undoneAt: null, undoneBy: null, pruned: false,
     });
   }
@@ -1181,6 +1213,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     dismissSuggestion: (map, id) => patch(map, id, { status: 'dismissed' }),
 
     toggleDone,
+    skipItem,
     logAmount,
     removeLog: (id) => patch('logs', id, { status: 'archived' }),
 
@@ -1193,6 +1226,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
 
     saveJournal,
+    updateJournal: (id, changes) => patch('journal', id, structuredClone(changes)),
+    pruneTalks,
     addPlan,
     acceptGoalPlan,
     dismissGoalPlan,
@@ -1805,6 +1840,29 @@ function verdict(outcomes) {
   return 'failed';
 }
 
+// One round trip, abandoned after timeoutMs. Resolves { status, text } or { fail }.
+async function post({ fetch, timers, timeoutMs, url, body }) {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = timers.setTimeout(() => { controller?.abort(); resolve({ fail: 'timeout' }); }, timeoutMs);
+  });
+  const work = (async () => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller?.signal,
+    });
+    return { status: res.status, text: await res.text() };
+  })().catch(() => ({ fail: 'network' }));
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    timers.clearTimeout(timer);
+  }
+}
+
 async function askGemini({
   keys,
   system,
@@ -1819,28 +1877,9 @@ async function askGemini({
 
   const sleep = (ms) => new Promise((resolve) => { timers.setTimeout(resolve, ms); });
 
-  // One round trip, abandoned after timeoutMs. Resolves { status, text } or { fail }.
-  async function send(model, key, plain) {
-    const controller = typeof AbortController === 'function' ? new AbortController() : null;
-    let timer = null;
-    const timeout = new Promise((resolve) => {
-      timer = timers.setTimeout(() => { controller?.abort(); resolve({ fail: 'timeout' }); }, timeoutMs);
-    });
-    const work = (async () => {
-      const res = await fetch(`${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody(system, prompt, plain)),
-        signal: controller?.signal,
-      });
-      return { status: res.status, text: await res.text() };
-    })().catch(() => ({ fail: 'network' }));
-    try {
-      return await Promise.race([work, timeout]);
-    } finally {
-      timers.clearTimeout(timer);
-    }
-  }
+  const send = (model, key, plain) => post({
+    fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body: requestBody(system, prompt, plain),
+  });
 
   // One model on one key. The plain-body retry after a 400 and the short wait after a 429 each
   // happen at most once. Resolves { data } or { fail }; a 200 that isn't JSON throws.
@@ -1880,7 +1919,105 @@ async function askGemini({
   }
   throw new GeminiError(verdict(outcomes));
 }
-return { MODELS, ENDPOINT, TIMEOUT_MS, MAX_WAIT_S, HEBREW_KEY_NAMES, MESSAGES, GeminiError, hebrewKeys, geminiKeys, readReply, retryAfterSeconds, askGemini };
+
+// ---- A conversation with tools ------------------------------------------------------------------
+
+const TALK_STEPS = 6;
+
+// One turn of a conversation in which Gemini may use tools: `contents` is the conversation so far
+// in Gemini's shape, `tools` the declarations, and `run(name, args)` carries out each call — its
+// result (a plain object) goes back to Gemini, and a throw goes back as { ok: false, error }. At
+// most `steps` rounds of calls; then it's asked for words with no tools. Models and keys are walked
+// as askGemini walks them, starting with whichever answered last. Resolves
+// { text, calls: [{ name, args, result }], model }.
+async function talkGemini({
+  keys, system, contents, tools = [], run = async () => ({}), toolConfig = null, steps = TALK_STEPS,
+  fetch = (...args) => globalThis.fetch(...args), timers = globalThis, models = MODELS, timeoutMs = TIMEOUT_MS,
+}) {
+  const usable = [...new Set((keys ?? []).map((k) => String(k ?? '').trim()).filter(Boolean))];
+  if (!usable.length) throw new GeminiError('nokey');
+  const sleep = (ms) => new Promise((resolve) => { timers.setTimeout(resolve, ms); });
+  let lead = null;
+
+  async function attempt({ model, key }, body) {
+    for (let waited = false; ;) {
+      const res = await post({ fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body });
+      if (res.fail) return { fail: res.fail };
+      if (res.status >= 200 && res.status < 300) {
+        try {
+          return { data: JSON.parse(res.text) };
+        } catch {
+          throw new GeminiError('nonsense');
+        }
+      }
+      if (refusesKey(res.status, res.text)) return { fail: 'badkey' };
+      const wait = res.status === 429 ? retryAfterSeconds(res.text) : null;
+      if (!waited && wait !== null && wait <= MAX_WAIT_S) {
+        waited = true;
+        await sleep(Math.ceil(wait * 1000));
+        continue;
+      }
+      return { fail: res.status === 429 ? 'quota' : res.status >= 500 ? 'server' : 'rejected' };
+    }
+  }
+
+  async function ask(body) {
+    const outcomes = [];
+    const refused = new Set();
+    const tried = new Set();
+    const order = [...(lead ? [lead] : []), ...models.flatMap((model) => usable.map((key) => ({ model, key })))];
+    for (const pair of order) {
+      const tag = `${pair.model}|${pair.key}`;
+      if (tried.has(tag) || refused.has(pair.key)) continue;
+      tried.add(tag);
+      const result = await attempt(pair, body);
+      if (result.data) {
+        lead = pair;
+        return { data: result.data, model: pair.model };
+      }
+      if (result.fail === 'badkey') refused.add(pair.key);
+      outcomes.push(result.fail);
+    }
+    throw new GeminiError(verdict(outcomes));
+  }
+
+  let convo = [...contents];
+  const calls = [];
+  for (let step = 0; ; step++) {
+    const last = step >= steps;
+    const body = {
+      systemInstruction: { parts: [{ text: system }] },
+      contents: convo,
+      generationConfig: { temperature: 0.6 },
+      ...(tools.length && !last ? { tools: [{ functionDeclarations: tools }], ...(toolConfig ? { toolConfig } : {}) } : {}),
+    };
+    const { data, model } = await ask(body);
+    const parts = Array.isArray(data?.candidates?.[0]?.content?.parts) ? data.candidates[0].content.parts : [];
+    const wanted = parts.filter((p) => typeof p?.functionCall?.name === 'string');
+    if (wanted.length && !last) {
+      const responses = [];
+      for (const p of wanted) {
+        const { name } = p.functionCall;
+        const args = p.functionCall.args && typeof p.functionCall.args === 'object' ? p.functionCall.args : {};
+        let result;
+        try {
+          result = await run(name, args);
+        } catch (e) {
+          result = { ok: false, error: String(e?.message ?? e) };
+        }
+        calls.push({ name, args, result });
+        responses.push({ functionResponse: { name, response: result ?? {} } });
+      }
+      // The model's own parts go back as they came (a thinking model's signatures with them).
+      convo = [...convo, { role: 'model', parts }, { role: 'user', parts: responses }];
+      continue;
+    }
+    const text = parts.filter((p) => typeof p?.text === 'string' && !p.thought).map((p) => p.text).join('').trim();
+    if (!text && !calls.length) throw new GeminiError('nonsense');
+    return { text, calls, model };
+  }
+}
+return { MODELS, ENDPOINT, TIMEOUT_MS, MAX_WAIT_S, HEBREW_KEY_NAMES, MESSAGES, GeminiError, hebrewKeys, geminiKeys, readReply, retryAfterSeconds, askGemini, TALK_STEPS, talkGemini };
 })();
 
 // ---- planner/time.js
@@ -2085,6 +2222,13 @@ function doneIndex(doc) {
   return idx;
 }
 
+// Habits let off for a day by the Coach (a 'skip' log), as "itemId|day": excused like time off.
+function skipSet(doc) {
+  const out = new Set();
+  for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'skip') out.add(`${l.itemId}|${l.day}`);
+  return out;
+}
+
 function doneDays(doc, itemId, idx) {
   if (idx) return idx.get(itemId) ?? new Set();
   return new Set(activeLogs(doc, (l) => l.itemId === itemId && l.kind === 'done').map((l) => l.day));
@@ -2123,9 +2267,11 @@ function taskRow(doc, item, day, idx) {
 // excused by time off (js/calendar.js) isn't on it; a task dated then carries to the next day.
 function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = [];
+  const skipped = skipSet(doc);
   for (const item of values(doc.items)) {
     if (!countsOn(item, day)) continue;
     if (offs.length && excused(doc, item, day, offs)) continue;
+    if (skipped.has(`${item.id}|${day}`)) continue;
     if (item.type === 'task') {
       const row = taskRow(doc, item, day, idx);
       if (row) rows.push(row);
@@ -2178,11 +2324,13 @@ function occurrenceStreak(doc, item, today) {
   const idx = doneIndex(doc);
   const ticked = doneDays(doc, item.id, idx);
   const offs = timeOff(doc);
+  const skipped = skipSet(doc);
   const outcomes = [];
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
     const ok = ticked.has(day);
-    if (!ok && offs.length && excused(doc, item, day, offs)) continue; // time off: a miss doesn't count, a tick still does
+    // Time off, or let off by the Coach: a miss doesn't count, a tick still does.
+    if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
     if (day === today && !ok) continue; // today isn't over yet
     outcomes.push(ok);
   }
@@ -2278,7 +2426,7 @@ function goalProgress(doc, goal) {
   const ticked = live.filter((m) => m.done).length;
   return { numeric: false, done: ticked, total: live.length, pct: live.length ? Math.round((ticked / live.length) * 100) : 0 };
 }
-return { countsOn, doneIndex, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
+return { countsOn, doneIndex, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
 })();
 
 // ---- planner/demand.js

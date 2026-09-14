@@ -82,7 +82,8 @@ test("Claude's controls on the page: ★, the notes mark, the brief and time off
   assert.match(today, /item\.notes \? noteMark\(item, ctx\) : null/);
   assert.match(today, /h\('li', \{ class: 'note-row' \}, row\.item\.notes\)/);
   const app = read('js/app.js');
-  assert.match(app, /shown\(brief\) \? line\('brief', brief, claudeMark\(\)\) : null/);
+  assert.match(app, /shown\(brief\) \? line\('brief', brief, mark\('claude', 'From Claude'\)\) : null/);
+  assert.match(app, /waiting && shown\(waiting\.text\) \? line\('coach-line', waiting\.text, mark\('gemini', 'From the Coach'\), reply\) : null/);
   assert.match(app, /shown\(off\) \? line\('off', off\) : null/);
   assert.match(read('js/ui/side.js'), /\}, 'off'\);/);
   assert.equal((read('js/ui/edit.js').match(/notesField\(\),/g) ?? []).length, 2, 'Notes on items and goals');
@@ -95,5 +96,5 @@ test('offText and what Claude can do', async () => {
   assert.equal(offText({ start: '2026-09-16', end: '2026-09-17', areas: ['Job search'], reason: 'Maya leaves for Austria' }),
     'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search');
   assert.equal(offText({ start: '2026-09-18T13:00', end: '2026-09-18T19:00', areas: [], reason: '' }), 'Fri 18 Sep, 13:00–19:00 — Time off · everything');
-  assert.equal(CLAUDE_CAN.length, 9);
+  assert.equal(CLAUDE_CAN.length, 10);
 });

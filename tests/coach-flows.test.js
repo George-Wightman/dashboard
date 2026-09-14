@@ -1,15 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { startCheckin, sendCheckin, shapeGoal, writeDigest } from '../js/ui/coach.js';
-import { checkinOf } from '../js/coach.js';
+import { shapeGoal, writeDigest } from '../js/ui/coach.js';
 import { GeminiError } from '../js/gemini.js';
 import { makeStore } from './helpers.js';
+
+// Goal shaping and the digest (the conversation's flows are in tests/coach-talk.test.js).
 
 // ---- test doubles -------------------------------------------------------------------------------
 
 function coachUi() {
   return {
-    busy: '', error: '', answers: [], notNow: '', feedbackOpen: true,
+    talk: null, draft: '', talkBusy: '', talkError: '', editing: null, sheet: false, tried: {},
     shapeOpen: false, shapeText: '', shapeBusy: false, shapeError: '',
     digestOpen: false, digestBusy: false, digestError: '', digestTried: false,
   };
@@ -39,217 +40,11 @@ function deferred() {
   return { promise, resolve };
 }
 
-const day = (store) => store.today();
-
-function finishedCheckinRecord(today, { answers = ['done'], feedback = 'Nice work today.' } = {}) {
-  return {
-    id: `checkin:${today}`, kind: 'checkin', day: today, source: 'gemini', status: 'active',
-    created: today, archivedOn: null, updated: '2026-09-10T20:00:00.000Z',
-    questions: ['Original question?'], answers, feedback, tomorrowIds: [], model: 'gemini-flash-lite-latest',
-  };
-}
-
-// ---- C1: never overwrite a check-in another device already moved on ----------------------------
-
-test('startCheckin: a check-in finished on another device while Gemini is thought about is left untouched', async () => {
-  const store = makeStore();
-  const today = day(store);
-  const gate = deferred();
-  const ctx = makeCtx({ store, ask: () => gate.promise });
-
-  const p = startCheckin(ctx);
-  // Another device's finished check-in arrives mid-flight, via a sync merge.
-  const finished = { ...store.doc(), journal: { [`checkin:${today}`]: finishedCheckinRecord(today) } };
-  store.replaceDoc(finished);
-
-  gate.resolve({ data: { questions: ['New q1?', 'New q2?'] }, model: 'gemini-flash-lite-latest' });
-  await p;
-
-  const rec = checkinOf(store.doc(), today);
-  assert.deepEqual(rec.answers, ['done']);
-  assert.equal(rec.feedback, 'Nice work today.');
-  assert.equal(ctx.ui.coach.error, '');
-});
-
-test("sendCheckin: feedback arriving from another device while Gemini is thought about is not overwritten, and no tomorrow tasks are added", async () => {
-  const store = makeStore();
-  const today = day(store);
-  store.saveJournal({ kind: 'checkin', day: today, questions: ['How did today go?'], model: 'gemini-flash-lite-latest' });
-  const gate = deferred();
-  const ctx = makeCtx({ store, ask: () => gate.promise });
-  ctx.ui.coach.answers = ['Went fine'];
-
-  const p = sendCheckin(ctx);
-  const finished = {
-    ...store.doc(),
-    journal: { [`checkin:${today}`]: finishedCheckinRecord(today, { answers: ['Went fine'], feedback: 'Already answered elsewhere.' }) },
-  };
-  store.replaceDoc(finished);
-
-  gate.resolve({ data: { feedback: 'Feedback from this device.', tomorrow: [{ title: 'Should not land' }] }, model: 'gemini-flash-lite-latest' });
-  await p;
-
-  const rec = checkinOf(store.doc(), today);
-  assert.equal(rec.feedback, 'Already answered elsewhere.');
-  assert.equal(ctx.ui.coach.error, "This check-in was changed on another device — here's what it says now.");
-  assert.equal(Object.values(store.doc().items).length, 0);
-});
-
-test('sendCheckin: the questions changing on another device while Gemini is thought about is not overwritten, and no tomorrow tasks are added', async () => {
-  const store = makeStore();
-  const today = day(store);
-  store.saveJournal({ kind: 'checkin', day: today, questions: ['How did today go?'], model: 'gemini-flash-lite-latest' });
-  const gate = deferred();
-  const ctx = makeCtx({ store, ask: () => gate.promise });
-  ctx.ui.coach.answers = ['Went fine'];
-
-  const p = sendCheckin(ctx);
-  const changed = {
-    ...store.doc(),
-    journal: {
-      [`checkin:${today}`]: { ...finishedCheckinRecord(today, { answers: [], feedback: '' }), questions: ['Different question?'] },
-    },
-  };
-  store.replaceDoc(changed);
-
-  gate.resolve({ data: { feedback: 'Feedback from this device.', tomorrow: [{ title: 'Should not land' }] }, model: 'gemini-flash-lite-latest' });
-  await p;
-
-  const rec = checkinOf(store.doc(), today);
-  assert.deepEqual(rec.questions, ['Different question?']);
-  assert.equal(rec.feedback, '');
-  assert.equal(ctx.ui.coach.error, "This check-in was changed on another device — here's what it says now.");
-  assert.equal(Object.values(store.doc().items).length, 0);
-});
-
-test('the normal path still saves questions, then answers + feedback + tomorrowIds', async () => {
-  const store = makeStore();
-  const today = day(store);
-  const ctx = makeCtx({ store, ask: async () => ({ data: { questions: ['Q1?', 'Q2?'] }, model: 'gemini-flash-lite-latest' }) });
-
-  await startCheckin(ctx);
-  let rec = checkinOf(store.doc(), today);
-  assert.deepEqual(rec.questions, ['Q1?', 'Q2?']);
-  assert.deepEqual(rec.answers, []);
-  assert.equal(rec.feedback, '');
-
-  ctx.ui.coach.answers = ['Good progress', 'Rest'];
-  ctx.coach.ask = async () => ({
-    data: { feedback: 'Solid day.', tomorrow: [{ title: 'Follow up' }] }, model: 'gemini-flash-lite-latest',
-  });
-  await sendCheckin(ctx);
-  rec = checkinOf(store.doc(), today);
-  assert.deepEqual(rec.questions, ['Q1?', 'Q2?']);
-  assert.deepEqual(rec.answers, ['Good progress', 'Rest']);
-  assert.equal(rec.feedback, 'Solid day.');
-  assert.equal(rec.tomorrowIds.length, 1);
-  assert.equal(ctx.ui.coach.error, '');
-});
-
-// ---- D2: sync before sending a check-in ---------------------------------------------------------
-
-test('sendCheckin: syncNow is called before ctx.coach.ask', async () => {
-  const store = makeStore();
-  const today = day(store);
-  store.saveJournal({ kind: 'checkin', day: today, questions: ['How did today go?'], model: 'gemini-flash-lite-latest' });
-  const order = [];
-  const ctx = makeCtx({
-    store,
-    ask: async () => { order.push('ask'); return { data: { feedback: 'Solid day.', tomorrow: [] }, model: 'gemini-flash-lite-latest' }; },
-    syncNow: async () => { order.push('sync'); },
-  });
-  ctx.ui.coach.answers = ['Went fine'];
-
-  await sendCheckin(ctx);
-
-  assert.deepEqual(order, ['sync', 'ask']);
-});
-
-// ---- D3: don't wait more than 5 seconds for sync before asking ---------------------------------
-
-test('startCheckin: a sync that never resolves does not stop the request being asked (ctx.coach.syncWaitMs shortens the cap)', async () => {
-  const store = makeStore();
-  const today = day(store);
-  const ctx = makeCtx({
-    store,
-    ask: async () => ({ data: { questions: ['Q1?', 'Q2?'] }, model: 'gemini-flash-lite-latest' }),
-    syncNow: () => new Promise(() => {}), // never resolves
-  });
-  ctx.coach.syncWaitMs = 15;
-
-  await startCheckin(ctx);
-
-  assert.deepEqual(checkinOf(store.doc(), today)?.questions, ['Q1?', 'Q2?']);
-});
-
-// ---- D4: skip the question request if the check-in already exists ------------------------------
-
-test('startCheckin: skips the request if the pre-sync already brought a check-in with questions', async () => {
-  const store = makeStore();
-  const today = day(store);
-  let asked = false;
-  const ctx = makeCtx({
-    store,
-    ask: async () => { asked = true; return { data: { questions: ['New q?'] }, model: 'gemini-flash-lite-latest' }; },
-    syncNow: async () => {
-      store.replaceDoc({
-        ...store.doc(),
-        journal: { [`checkin:${today}`]: finishedCheckinRecord(today, { answers: [], feedback: '' }) },
-      });
-    },
-  });
-
-  await startCheckin(ctx);
-
-  assert.equal(asked, false);
-  assert.deepEqual(checkinOf(store.doc(), today)?.questions, ['Original question?']);
-});
-
-// ---- C2: land coach replies only when nothing is being typed -----------------------------------
-
 // Lets pending microtasks (the fake ask() resolving, consult()'s own await) drain before we
 // inspect state, without resolving whatever the test itself is holding back.
 const tick = () => new Promise((r) => { setTimeout(r, 0); });
 
-test('startCheckin: the store write waits for ctx.whenIdle before landing', async () => {
-  const store = makeStore();
-  const today = day(store);
-  const gate = deferred();
-  const ctx = makeCtx({
-    store,
-    ask: async () => ({ data: { questions: ['Q1?', 'Q2?'] }, model: 'gemini-flash-lite-latest' }),
-    whenIdle: () => gate.promise,
-  });
-
-  const p = startCheckin(ctx);
-  await tick();
-  assert.equal(checkinOf(store.doc(), today), null);
-
-  gate.resolve();
-  await p;
-  assert.deepEqual(checkinOf(store.doc(), today)?.questions, ['Q1?', 'Q2?']);
-});
-
-test('sendCheckin: the store write waits for ctx.whenIdle before landing', async () => {
-  const store = makeStore();
-  const today = day(store);
-  store.saveJournal({ kind: 'checkin', day: today, questions: ['How did today go?'], model: 'gemini-flash-lite-latest' });
-  const gate = deferred();
-  const ctx = makeCtx({
-    store,
-    ask: async () => ({ data: { feedback: 'Solid day.', tomorrow: [{ title: 'Follow up' }] }, model: 'gemini-flash-lite-latest' }),
-    whenIdle: () => gate.promise,
-  });
-  ctx.ui.coach.answers = ['Went fine'];
-
-  const p = sendCheckin(ctx);
-  await tick();
-  assert.equal(checkinOf(store.doc(), today).feedback, '');
-
-  gate.resolve();
-  await p;
-  assert.equal(checkinOf(store.doc(), today).feedback, 'Solid day.');
-});
+// ---- C2: land coach replies only when nothing is being typed -----------------------------------
 
 test('shapeGoal: the goal write waits for ctx.whenIdle before landing', async () => {
   const store = makeStore();

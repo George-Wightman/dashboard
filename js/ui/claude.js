@@ -9,6 +9,7 @@ import { readPlannerConfig, timeOff, plannerSummary, briefFor, offText, momentLa
 import { attention } from '../attention.js';
 import { shortWeekday, shortDate } from '../dates.js';
 import { gymConfig, gymStatusLines, cardioQuotaId, shortLift, kgText } from '../gym.js';
+import { guideFor } from '../talk.js';
 
 export const CLAUDE_CAN = [
   'Add, change, tick and archive anything on the dashboard — every change is listed below, with Undo',
@@ -20,6 +21,7 @@ export const CLAUDE_CAN = [
   'Put notes on tasks, habits, weekly targets and goals',
   "See what needs attention: tasks with no length, what didn't fit, targets falling behind",
   'Read your Hevy training — lifts, PRs, pace and cardio — and set the Cardio target and lift targets with you',
+  "Give the Coach a guide for the week, read your journal, and pick up what the Coach hands over",
 ];
 
 // The Gym section: the connection, then what Claude has set.
@@ -69,6 +71,7 @@ export function claudePanel(ctx) {
       earlier.length
         ? h('details', {}, h('summary', {}, 'Earlier briefs'), lines(earlier.map((b) => `${dayText(b.day)}: ${b.text}`), ''))
         : null),
+    section("The Coach's guide this week", h('p', {}, guideFor(doc, today) ?? 'None yet — Claude writes one when you plan your week.')),
     section('Time off', lines(timeOff(doc).filter((o) => o.end.slice(0, 10) >= today).map(offText), 'None coming up.')),
     section('Priorities, colours and hours', lines(steering, 'Nothing set.')),
     section('Calendar planner', ...plannerSummary(doc, new Date()).lines.map((l) => h('p', { class: 'note' }, l))),

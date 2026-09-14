@@ -11,7 +11,7 @@ import { scrubText } from '../js/flags.js';
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · flags · changes [n] · planner · attention · gym',
+  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
 ].join('\n');

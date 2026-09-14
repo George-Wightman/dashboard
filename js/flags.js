@@ -131,7 +131,8 @@ export function flagContext(state = {}) {
 
 const LOOK_NAMES = { paper: 'Paper', night: 'Night' };
 const CHECKIN_WORDS = {
-  done: 'check-in done', questions: 'check-in waiting', due: 'check-in due', early: 'check-in later', nokey: 'no Gemini key',
+  done: 'check-in done', questions: 'check-in waiting', due: 'about to open a conversation', early: 'check-in later', nokey: 'no Gemini key',
+  waiting: 'a question waiting', talking: 'in a conversation', quiet: 'quiet',
 };
 const SYNC_WORDS = { off: 'sync off', syncing: 'syncing', offline: 'offline', failing: 'sync failing' };
 

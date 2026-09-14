@@ -27,6 +27,13 @@ export function doneIndex(doc) {
   return idx;
 }
 
+// Habits let off for a day by the Coach (a 'skip' log), as "itemId|day": excused like time off.
+export function skipSet(doc) {
+  const out = new Set();
+  for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'skip') out.add(`${l.itemId}|${l.day}`);
+  return out;
+}
+
 export function doneDays(doc, itemId, idx) {
   if (idx) return idx.get(itemId) ?? new Set();
   return new Set(activeLogs(doc, (l) => l.itemId === itemId && l.kind === 'done').map((l) => l.day));
@@ -65,9 +72,11 @@ function taskRow(doc, item, day, idx) {
 // excused by time off (js/calendar.js) isn't on it; a task dated then carries to the next day.
 export function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = [];
+  const skipped = skipSet(doc);
   for (const item of values(doc.items)) {
     if (!countsOn(item, day)) continue;
     if (offs.length && excused(doc, item, day, offs)) continue;
+    if (skipped.has(`${item.id}|${day}`)) continue;
     if (item.type === 'task') {
       const row = taskRow(doc, item, day, idx);
       if (row) rows.push(row);
@@ -120,11 +129,13 @@ function occurrenceStreak(doc, item, today) {
   const idx = doneIndex(doc);
   const ticked = doneDays(doc, item.id, idx);
   const offs = timeOff(doc);
+  const skipped = skipSet(doc);
   const outcomes = [];
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
     const ok = ticked.has(day);
-    if (!ok && offs.length && excused(doc, item, day, offs)) continue; // time off: a miss doesn't count, a tick still does
+    // Time off, or let off by the Coach: a miss doesn't count, a tick still does.
+    if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
     if (day === today && !ok) continue; // today isn't over yet
     outcomes.push(ok);
   }

@@ -91,8 +91,9 @@ minutes, km }`:
 Only workouts from the Monday of the week the connection starts (`startedOn`) tick anything; older
 history feeds the trends only.
 
-- **Gym** — each workout gives the Gym habit a done log for its day (`source: 'hevy'`, `ref:
-  'hevy:<id>'`, `at` = the workout's end, `from` = its start), unless that day is already ticked.
+- **Gym** — each workout gives the Gym habit a done log for its day (`source: 'hevy'`, id
+  `hevy-done-<id>`, `at` = the workout's end, `from` = its start) — even on a day George already
+  ticked, so the calendar learns when he trained; unticking takes both off.
 - **Cardio** — a workout with cardio gives the Cardio target an amount log (`source: 'hevy'`, the same
   `ref`, whole minutes). Edited in Hevy, the amount follows; deleted, its logs are archived.
 - **George wins** — a Hevy log is made once per workout. If George unticks it, it stays unticked; his

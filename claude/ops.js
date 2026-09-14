@@ -9,6 +9,8 @@ import {
   checkConfigField, readPlannerConfig, mergeSetting, MERGED_SETTINGS, plannerStatus, COLOR_NAMES, checkTimeOff, nextOffId, offText,
 } from '../js/calendar.js';
 import { gymConfig, gymHabitId } from '../js/gym.js';
+import { GUIDE_MAX } from '../js/talk.js';
+import { weekStart } from '../js/dates.js';
 import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 
@@ -457,6 +459,18 @@ function brief(store, op) {
   return `Brief for ${dayName(day, today)}: ${q(text, 80)}`;
 }
 
+// The Coach's guide for a week (a few lines on what to focus on and ask about), given to it every
+// time it talks with George. Filed under the week's Monday; writing one again replaces it.
+function guide(store, op) {
+  const text = str(op.text);
+  if (!text) throw new Error('A guide needs text');
+  if (text.length > GUIDE_MAX) throw new Error(`A guide can be at most ${GUIDE_MAX} characters`);
+  const today = store.today();
+  const monday = weekStart(toDay(op.week ?? 'today', today));
+  store.saveJournal({ kind: 'guide', day: monday, text }, CLAUDE);
+  return `Guide for the Coach, week of ${dayName(monday, today)}: ${q(text, 80)}`;
+}
+
 // ---- The gym --------------------------------------------------------------------------------------
 
 // The weekly target cardio minutes count towards: a live one in minutes, by title or id.
@@ -529,7 +543,7 @@ export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
-  log, edit, archive, accept, dismiss, flag, undo, planner, off, brief, gym,
+  log, edit, archive, accept, dismiss, flag, undo, planner, off, brief, gym, guide,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own.
