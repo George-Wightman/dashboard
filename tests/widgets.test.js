@@ -14,18 +14,19 @@ test('the widgets: Coach, This week, Goals, Last 3 weeks', () => {
   for (const w of WIDGETS) assert.equal(typeof w.render, 'function', w.id);
 });
 
-test('the default arrangement places every widget, and only widgets', () => {
+test('the default arrangement places every widget, and only widgets; This week starts hidden', () => {
   assert.deepEqual(normalizeLayout(DEFAULT_LAYOUT, WIDGET_IDS), DEFAULT_LAYOUT);
-  assert.deepEqual(DEFAULT_LAYOUT.columns.flat().sort(), [...WIDGET_IDS].sort());
-  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['coach', 'week', 'goals', 'history']]);
+  assert.deepEqual([...DEFAULT_LAYOUT.columns.flat(), ...DEFAULT_LAYOUT.hidden].sort(), [...WIDGET_IDS].sort());
+  assert.deepEqual(DEFAULT_LAYOUT.hidden, ['week']);
+  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['coach', 'goals', 'history']]);
 });
 
 test('styles.css and js/app.js agree on the page width and the columns', () => {
   const css = read('styles.css');
   assert.doesNotMatch(css, /max-width: 1100px/);
-  assert.match(css, /\.top \{[^}]*width: min\(88vw, 1500px\);[^}]*padding: 2\.5rem 0 \.75rem;/);
+  assert.match(css, /\.top \{[^}]*width: min\(88vw, 1500px\);[^}]*padding: 1\.5rem 0 \.75rem;/);
   assert.match(css, /\.layout \{[^}]*grid-template-columns: minmax\(0, 1fr\) 340px;[^}]*width: min\(88vw, 1500px\);/);
-  assert.match(css, /@media \(min-width: 1500px\) \{\s*\.layout \{ grid-template-columns: minmax\(0, 1\.35fr\) minmax\(0, 1fr\) minmax\(0, 1fr\); \}\s*\.side \{[^}]*grid-column: 2 \/ 4;[^}]*grid-template-columns: subgrid;/);
+  assert.match(css, /@media \(min-width: 1500px\) \{\s*\.layout \{ grid-template-columns: minmax\(0, 1\.8fr\) minmax\(0, 1fr\) minmax\(0, 1fr\); \}\s*\.side \{[^}]*grid-column: 2 \/ 4;[^}]*grid-template-columns: subgrid;/);
   assert.match(css, /@media \(max-width: 759px\) \{\s*\.layout \{ grid-template-columns: 1fr; \}/);
   assert.match(read('js/app.js'), /matchMedia\('\(min-width: 1500px\)'\)/);
 });

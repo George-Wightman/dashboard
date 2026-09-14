@@ -5,7 +5,7 @@ import { h } from './dom.js';
 import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail } from '../schedule.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 import { shortDate, shortWeekday } from '../dates.js';
-import { SOURCE_NAMES } from './today.js';
+import { SOURCE_NAMES } from './sources.js';
 import { renderShapeBox } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 import { proposedItems, proposalLine } from '../coach.js';
 

@@ -17,10 +17,13 @@ Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The
   in the Goals panel. Click any row's title to edit it. Archive instead of deleting — history is kept.
 - **Weekly targets:** **+** adds 1 (shift-click to type an amount). For time targets, **+** asks
   for an amount: `45m`, `1.5h`, `1h30`. Click the count to see or remove this week's entries.
+  They sit at the foot of the list under *This week*; a habit done a number of times a week shows
+  a dot for each time.
 - **Unfinished tasks carry over** with an amber *from Tue* marker until they're done.
 - **The day starts at 4am**, so a late night still counts as the day before (change it in ⚙).
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
-  Things Claude added because you asked show *added by Claude*.
+  Things Claude added because you asked carry a small Claude logo (Gemini's star for the coach's);
+  hover it for who added it.
 - **⚙ settings** open with the version at the top. Everything else (GitHub sync, the day, the
   coach, the look, Claude's changes, backups) is folded away on one line each, showing what it's set to. Click a
   line to change it.
@@ -36,6 +39,7 @@ load — the theme is set before the page even paints.
 
 Today's list always stays in the first column; the Coach, This week, Goals and Last 3 weeks are
 widgets you can move around the columns beside it — one column from 760px wide, two from 1500px.
+This week starts hidden, since its targets are at the foot of the list; bring it back from Arrange.
 Click **Arrange** in the header:
 
 - **Drag** a widget's grip (⋮⋮) onto another to put it there, or onto a column's *Drop here* to
@@ -111,7 +115,7 @@ Claude can read the dashboard and change anything in it from any claude.ai chat 
 desktop app or on the phone. Say `/dashboard`, or just "add that to the dashboard", "what's on
 today?", "log 45m of Hebrew", "tick off the CV task".
 
-- **What you ask for goes straight on**, marked *added by Claude*. **What Claude notices** — a to-do
+- **What you ask for goes straight on**, marked with Claude's logo. **What Claude notices** — a to-do
   that comes up in a chat — arrives as a suggestion for ✓ or ✕, and a bigger job (an application,
   interview prep) as a suggested goal with its stages and first tasks.
 - **Every change Claude makes is listed** in ⚙ → **Claude's changes**, newest first, with *Details*

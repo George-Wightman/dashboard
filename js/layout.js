@@ -1,23 +1,27 @@
 // The widget arrangement: which widgets sit in which of the two columns, in what order, and which
 // are hidden. Device-local (localStorage['dash_layout']) and never synced, so the laptop and the
-// phone keep their own. Pure functions over { v: 1, columns: [[ids], [ids]], hidden: [ids] }:
+// phone keep their own. Pure functions over { v: 2, columns: [[ids], [ids]], hidden: [ids] }:
 // each returns a new layout and never changes the one it was given. After normalizeLayout every
 // known widget id is in exactly one place — one of the columns, or hidden — and every other
 // function keeps it that way.
+//
+// v 2 (2026-09-14): the weekly targets moved to the foot of Today's list, so This week starts
+// hidden. A saved v 1 layout is read once more with This week hidden and everything else where it
+// was; it comes back from Arrange like any hidden widget.
 
 export const LAYOUT_KEY = 'dash_layout';
 
 export const DEFAULT_LAYOUT = Object.freeze({
-  v: 1,
-  columns: Object.freeze([Object.freeze(['coach', 'week']), Object.freeze(['goals', 'history'])]),
-  hidden: Object.freeze([]),
+  v: 2,
+  columns: Object.freeze([Object.freeze(['coach', 'goals']), Object.freeze(['history'])]),
+  hidden: Object.freeze(['week']),
 });
 
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const list = (v) => (Array.isArray(v) ? v : []);
 
 function copy(layout) {
-  return { v: 1, columns: [[...layout.columns[0]], [...layout.columns[1]]], hidden: [...layout.hidden] };
+  return { v: 2, columns: [[...layout.columns[0]], [...layout.columns[1]]], hidden: [...layout.hidden] };
 }
 
 // A copy with `id` taken out of wherever it is.
@@ -32,10 +36,11 @@ const inColumns = (layout, id) => layout.columns.some((c) => c.includes(id));
 
 // A saved layout made safe to use: unknown ids, non-strings and repeats dropped (an id both placed
 // and hidden stays hidden), exactly two columns, and any known id found nowhere — a new widget —
-// added to the end of the first column. Anything that isn't { v: 1, columns: [...] } is unreadable
-// and gives the default.
+// added to the end of the first column. A v 1 layout comes out as v 2 with This week hidden.
+// Anything that isn't { v: 1 or 2, columns: [...] } is unreadable and gives the default.
 export function normalizeLayout(saved, knownIds) {
-  const source = isPlainObject(saved) && saved.v === 1 && Array.isArray(saved.columns) ? saved : DEFAULT_LAYOUT;
+  const readable = isPlainObject(saved) && (saved.v === 1 || saved.v === 2) && Array.isArray(saved.columns);
+  const source = readable ? saved : DEFAULT_LAYOUT;
   const known = new Set(knownIds);
   const seen = new Set();
   const keep = (ids) => list(ids).filter((id) => {
@@ -51,7 +56,8 @@ export function normalizeLayout(saved, knownIds) {
       columns[0].push(id);
     }
   }
-  return { v: 1, columns, hidden };
+  const out = { v: 2, columns, hidden };
+  return source.v === 1 && columns.some((c) => c.includes('week')) ? hideWidget(out, 'week') : out;
 }
 
 // What to draw: for 2 columns, the two columns without the hidden ids; for 1, column 0 then

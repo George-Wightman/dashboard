@@ -1,11 +1,27 @@
-// The list: everything on today, one row each, and the add box beneath it.
+// The list: everything on today, one row each, and the add box beneath it. Every row fills the
+// list's six columns — tick, title, source logo, tag, progress, + — so they line up down the page
+// (styles.css). Weekly targets sit at the foot, under "This week".
 
 import { h } from './dom.js';
 import { todayRows, streak, doneBetween } from '../schedule.js';
 import { carryLabel, addDays, weekStart, shortWeekday, forLabel } from '../dates.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
+import { SOURCE_NAMES, sourceMark } from './sources.js';
 
-export const SOURCE_NAMES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion' };
+// Today's rows as the list shows them: everything else first (suggestions stay on top), then the
+// weekly targets for the "This week" section, each part in todayRows' order.
+export function splitRows(rows) {
+  const isWeek = (r) => r.kind === 'quota' && !r.suggested;
+  return { main: rows.filter((r) => !isWeek(r)), week: rows.filter(isWeek) };
+}
+
+// A weekly habit's dots: one per time a week, filled for each tick so far.
+export function pipState(ticks, n) {
+  return Array.from({ length: n }, (_, i) => i < ticks);
+}
+
+// "0/3", "1.5/5h": a weekly target's count in its row.
+export const compactProgress = (total, target, unit) => formatProgress(total, target, unit).replace(' / ', '/');
 
 function streakText(item, s) {
   if (s.current < 2) return null;
@@ -18,6 +34,14 @@ function quotaLabel(row) {
   const { item } = row;
   const unit = item.unit === 'count' && item.unitLabel ? ` ${item.unitLabel}` : '';
   return `${formatProgress(row.total, item.target, item.unit)}${unit} this week`;
+}
+
+// The title, one line; the whole of it on hover, but only when it has been cut short.
+function titleEl(item, onclick) {
+  return h('span', {
+    class: 'title', onclick,
+    onmouseenter: (e) => { const el = e.currentTarget; el.title = el.scrollWidth > el.clientWidth ? item.title : ''; },
+  }, item.title);
 }
 
 function amountInput(item, ctx) {
@@ -46,14 +70,20 @@ function amountInput(item, ctx) {
   return input;
 }
 
-function quotaControls(row, ctx) {
+// A weekly target's progress cell (the count and a thin bar, or the amount box while logging)
+// and its + button.
+function quotaCells(row, ctx) {
   const { store, ui } = ctx;
   const { item } = row;
+  if (ui.amountFor === item.id) return { prog: amountInput(item, ctx), act: null };
+
+  const pct = Math.min(100, Math.round((row.total / item.target) * 100));
   const count = h('span', {
-    class: row.done ? 'count met' : 'count', title: "Show this week's entries",
+    class: row.done ? 'count met' : 'count', title: `${quotaLabel(row)} · click to see the entries`,
+    'aria-label': quotaLabel(row),
     onclick: () => { ui.entriesFor = ui.entriesFor === item.id ? null : item.id; ctx.render(); },
-  }, quotaLabel(row));
-  if (ui.amountFor === item.id) return [count, amountInput(item, ctx)];
+  }, compactProgress(row.total, item.target, item.unit),
+  h('span', { class: 'mini-bar', 'aria-hidden': 'true' }, h('span', { style: `width:${pct}%` })));
 
   const openInput = () => { ui.amountFor = item.id; ctx.render(); };
   const plus = h('button', {
@@ -71,7 +101,35 @@ function quotaControls(row, ctx) {
   const cancelPress = () => clearTimeout(pressTimer);
   plus.addEventListener('pointerup', cancelPress);
   plus.addEventListener('pointerleave', cancelPress);
-  return [count, plus];
+  return { prog: count, act: plus };
+}
+
+// A weekly habit's dots (teal as ticked, all gold once met); a count for more than seven a week.
+function weekDots(doc, item, today) {
+  const { n } = item.repeat;
+  const ticks = doneBetween(doc, item.id, weekStart(today), addDays(today, 1));
+  const label = `${ticks} of ${n} this week`;
+  const met = ticks >= n;
+  if (!(Number.isInteger(n) && n >= 1 && n <= 7)) return h('span', { class: met ? 'met' : null, title: label }, `${ticks}/${n}`);
+  return h('span', { class: met ? 'pips met' : 'pips', title: label, role: 'img', 'aria-label': label },
+    pipState(ticks, n).map((on) => h('i', { class: on ? 'pip on' : 'pip' })));
+}
+
+// The progress cell: a streak, then a weekly habit's dots or a weekly target's count. Null when
+// there's none of those.
+function progressCell(row, ctx, quota) {
+  const doc = ctx.store.doc();
+  const today = ctx.store.today();
+  const { item } = row;
+  const parts = [];
+  if (item.type !== 'task') {
+    const s = streak(doc, item, today);
+    const text = streakText(item, s);
+    if (text) parts.push(h('span', { class: 'streak', title: `Best: ${s.best}` }, text));
+  }
+  if (item.repeat?.kind === 'perWeek') parts.push(weekDots(doc, item, today));
+  if (quota) parts.push(quota.prog);
+  return parts.length ? h('span', { class: 'prog' }, parts) : null;
 }
 
 function entriesList(row, ctx) {
@@ -94,27 +152,6 @@ function entriesList(row, ctx) {
   return h('li', { class: 'entries-row' }, h('ul', { class: 'entries' }, items));
 }
 
-function renderMeta(row, ctx) {
-  const doc = ctx.store.doc();
-  const today = ctx.store.today();
-  const { item } = row;
-  const meta = h('span', { class: 'meta' });
-  if (row.carriedFrom) meta.append(h('span', { class: 'carry' }, carryLabel(row.carriedFrom, today)));
-  if (SOURCE_NAMES[item.source]) meta.append(h('span', { class: 'by' }, `added by ${SOURCE_NAMES[item.source]}`));
-  if (item.area) meta.append(h('span', { class: 'tag' }, item.area));
-  if (item.type !== 'task') {
-    const s = streak(doc, item, today);
-    const text = streakText(item, s);
-    if (text) meta.append(h('span', { class: 'streak', title: `Best: ${s.best}` }, text));
-  }
-  if (item.repeat?.kind === 'perWeek') {
-    const ticks = doneBetween(doc, item.id, weekStart(today), addDays(today, 1));
-    meta.append(h('span', { class: ticks >= item.repeat.n ? 'met' : null }, `${ticks} of ${item.repeat.n} this week`));
-  }
-  if (row.kind === 'quota') meta.append(...quotaControls(row, ctx));
-  return meta;
-}
-
 // Every suggestion shows at the top of Today, whatever its date; one for a later day (tomorrow's
 // tasks from the check-in) says which day it's for.
 function renderSuggestion(row, ctx) {
@@ -124,28 +161,39 @@ function renderSuggestion(row, ctx) {
   return h('li', { class: 'row suggested', 'data-id': item.id },
     h('button', { class: 'accept', type: 'button', title: 'Add it', 'aria-label': `Accept ${item.title}`,
       onclick: () => store.acceptSuggestion('items', item.id) }, '✓'),
-    h('span', { class: 'title' }, item.title),
+    h('span', { class: 'title-cell' },
+      titleEl(item, null),
+      item.type === 'task' && item.date > today ? h('span', { class: 'for' }, forLabel(item.date, today)) : null),
     h('span', { class: 'meta' },
-      item.type === 'task' && item.date > today ? h('span', { class: 'for' }, forLabel(item.date, today)) : null,
-      h('span', { class: 'by' }, `suggested by ${SOURCE_NAMES[item.source] ?? item.source}`)),
-    h('button', { class: 'dismiss', type: 'button', title: 'Not for me', 'aria-label': `Dismiss ${item.title}`,
-      onclick: () => store.dismissSuggestion('items', item.id) }, '✕'));
+      sourceMark(item.source, 'suggested'),
+      item.area ? h('span', { class: 'tag' }, item.area) : null),
+    h('span', { class: 'act' },
+      h('button', { class: 'dismiss', type: 'button', title: 'Not for me', 'aria-label': `Dismiss ${item.title}`,
+        onclick: () => store.dismissSuggestion('items', item.id) }, '✕')));
 }
 
 function renderRow(row, ctx) {
   if (row.suggested) return renderSuggestion(row, ctx);
   const { store } = ctx;
   const { item } = row;
-  const li = h('li', { class: row.done ? 'row done' : 'row', 'data-id': item.id });
-  li.append(row.kind === 'quota'
-    ? h('span', { class: 'spacer' })
-    : h('input', { type: 'checkbox', checked: row.done, 'aria-label': `Done: ${item.title}`,
-      onchange: () => store.toggleDone(item.id, store.today()) }));
-  li.append(h('span', { class: 'title', onclick: () => ctx.openEditor({ map: 'items', id: item.id }) }, item.title));
-  li.append(renderMeta(row, ctx));
-  return li;
+  const quota = row.kind === 'quota' ? quotaCells(row, ctx) : null;
+  const cls = ['row', row.done && 'done', quota && 'quota'].filter(Boolean).join(' ');
+  return h('li', { class: cls, 'data-id': item.id },
+    quota
+      ? h('span', { class: 'spacer' })
+      : h('input', { type: 'checkbox', checked: row.done, 'aria-label': `Done: ${item.title}`,
+        onchange: () => store.toggleDone(item.id, store.today()) }),
+    h('span', { class: 'title-cell' },
+      titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
+      row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
+    h('span', { class: 'meta' },
+      sourceMark(item.source, 'added'),
+      item.area ? h('span', { class: 'tag' }, item.area) : null,
+      progressCell(row, ctx, quota)),
+    quota?.act ? h('span', { class: 'act' }, quota.act) : null);
 }
 
+// Dragging reorders within a row's own group: done or not, and the "This week" section or not.
 function enableDrag(li, row, ctx) {
   li.draggable = true;
   li.addEventListener('dragstart', (e) => {
@@ -163,9 +211,9 @@ function enableDrag(li, row, ctx) {
     if (!dragged || dragged === row.item.id) return;
     const draggedEl = [...document.querySelectorAll('#list li.row')].find((el) => el.dataset.id === dragged);
     if (!draggedEl) return;
-    const done = draggedEl.classList.contains('done');
+    const group = (el) => `${el.classList.contains('done')}/${el.classList.contains('quota')}`;
     const groupIds = [...document.querySelectorAll('#list li.row[draggable="true"]')]
-      .filter((el) => el.classList.contains('done') === done)
+      .filter((el) => group(el) === group(draggedEl))
       .map((el) => el.dataset.id);
     ctx.store.moveBefore(dragged, row.item.id, groupIds);
   });
@@ -178,13 +226,17 @@ export function renderToday(ctx) {
     list.replaceChildren(h('li', { class: 'empty' }, 'Nothing on today. Add a task below, or set up a habit.'));
     return;
   }
+  const { main, week } = splitRows(rows);
   const els = [];
-  for (const row of rows) {
+  const add = (row) => {
     const li = renderRow(row, ctx);
     if (!row.suggested) enableDrag(li, row, ctx);
     els.push(li);
     if (row.kind === 'quota' && ctx.ui.entriesFor === row.item.id) els.push(entriesList(row, ctx));
-  }
+  };
+  main.forEach(add);
+  if (week.length) els.push(h('li', { class: 'list-section' }, 'This week'));
+  week.forEach(add);
   list.replaceChildren(...els);
 }
 
