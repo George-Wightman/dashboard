@@ -4,7 +4,7 @@
 // deleted or missed, its notes) and `status`; `config` holds its settings, written by Claude or
 // seeded by the planner.
 
-import { weekday, shortWeekday, shortDate } from './dates.js';
+import { weekday, shortWeekday, shortDate, addDays } from './dates.js';
 
 export const CALENDAR_DEFAULTS = {
   hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
@@ -13,12 +13,27 @@ export const CALENDAR_DEFAULTS = {
   areaCalendars: { 'Job search': 'Application', 'Assessment centre': 'Application', Health: 'Gym', Challenger: 'Challenger' },
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
+  priorityAreas: [],
+  areaColors: {},
+  dayHours: {},
 };
 
+// Google Calendar's event colours, by the names George sees, and their ids in the API.
+export const COLOR_NAMES = {
+  Lavender: '1', Sage: '2', Grape: '3', Flamingo: '4', Banana: '5', Tangerine: '6',
+  Peacock: '7', Graphite: '8', Blueberry: '9', Basil: '10', Tomato: '11',
+};
+
+export const colorName = (id) => Object.keys(COLOR_NAMES).find((n) => COLOR_NAMES[n] === String(id)) ?? null;
+
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const pad = (n) => String(n).padStart(2, '0');
 const text = (v) => typeof v === 'string' && v.trim() !== '';
 const copy = (v) => JSON.parse(JSON.stringify(v));
+const norm = (s) => String(s ?? '').trim().toLowerCase();
+const realDay = (d) => typeof d === 'string' && DAY.test(d) && addDays(d, 0) === d;
 
 export function clockMinutes(hhmm) {
   const m = CLOCK.exec(String(hhmm ?? ''));
@@ -64,7 +79,44 @@ export const CONFIG_CHECKS = {
     if (!ok) throw new Error(`${field} should be a list like [{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]`);
     return v.map((l) => ({ habit: l.habit.trim(), calendar: l.calendar.trim(), title: l.title.trim() }));
   },
+  priorityAreas: (v, field) => {
+    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
+    return v.map((s) => s.trim());
+  },
+  areaColors: (v, field) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${field} should map each area to a colour, like {"Assessment centre": "Grape"}`);
+    const out = {};
+    const used = new Map();
+    for (const [area, name] of Object.entries(v)) {
+      const colour = Object.keys(COLOR_NAMES).find((n) => n.toLowerCase() === norm(name));
+      if (!text(area) || !colour) throw new Error(`${field}: "${name}" isn't one of Google's colours — ${Object.keys(COLOR_NAMES).join(', ')}`);
+      if (used.has(colour)) throw new Error(`${field} gives ${colour} to both ${used.get(colour)} and ${area.trim()} — each area needs its own colour`);
+      used.set(colour, area.trim());
+      out[area.trim()] = colour;
+    }
+    return out;
+  },
+  dayHours: (v, field) => {
+    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([d, h]) => realDay(d)
+      && Array.isArray(h) && h.length === 2 && clockMinutes(h[0]) != null && clockMinutes(h[1]) != null && clockMinutes(h[0]) < clockMinutes(h[1]));
+    if (!ok) throw new Error(`${field} should map a date to two times, like {"2026-09-18": ["09:00", "13:00"]}`);
+    return Object.fromEntries(Object.entries(v).map(([d, h]) => [d, [h[0], h[1]]]));
+  },
 };
+
+// Settings that change one key at a time: a key set to null is removed; the rest are kept.
+export const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours'];
+
+export function mergeSetting(field, current, value) {
+  if (!MERGED_SETTINGS.includes(field) || !value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = { ...(current ?? {}) };
+  for (const [key, v] of Object.entries(value)) {
+    const had = Object.keys(out).find((k) => norm(k) === norm(key));
+    if (had !== undefined) delete out[had];
+    if (v !== null) out[key.trim()] = v;
+  }
+  return out;
+}
 
 export function checkConfigField(field, value) {
   const check = Object.hasOwn(CONFIG_CHECKS, field) ? CONFIG_CHECKS[field] : null;
@@ -89,6 +141,90 @@ export function readPlannerConfig(doc) {
     }
   }
   return { config, problems };
+}
+
+// ---- Time off, priority, the brief (Claude's controls) -----------------------------------------
+
+// Time off: `off:<start day>` records in the calendar map — whole days (start and end both dates,
+// end included) or a stretch of hours (both YYYY-MM-DDTHH:MM, end not included) — covering `areas`,
+// or everything when that's empty. Cancelled ones are archived.
+export function timeOff(doc) {
+  return Object.values(doc?.calendar ?? {})
+    .filter((r) => r.status === 'active' && String(r.id).startsWith('off:'))
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+}
+
+const wholeDays = (off) => DAY.test(off.start ?? '') && DAY.test(off.end ?? '');
+const inScope = (off, area) => !off.areas?.length || off.areas.some((a) => norm(a) === norm(area));
+
+export const offCovers = (off, day) => wholeDays(off) && off.start <= day && day <= off.end;
+
+// Whether an item is excused on a day: whole-day time off covering its area.
+export function excused(doc, item, day, offs = timeOff(doc)) {
+  return offs.some((o) => offCovers(o, day) && inScope(o, item.area));
+}
+
+function localMs(stamp) {
+  const [d, t = '00:00'] = stamp.split('T');
+  const [y, m, dd] = d.split('-').map(Number);
+  const [h, min] = t.split(':').map(Number);
+  return new Date(y, m - 1, dd, h, min).getTime();
+}
+
+// The stretches of hours off that touch a day, in milliseconds.
+export function offWindows(doc, day, offs = timeOff(doc)) {
+  const from = localMs(day);
+  const to = localMs(addDays(day, 1));
+  return offs
+    .filter((o) => STAMP.test(o.start ?? '') && STAMP.test(o.end ?? ''))
+    .map((o) => ({ start: localMs(o.start), end: localMs(o.end), areas: o.areas ?? [] }))
+    .filter((w) => w.start < to && w.end > from);
+}
+
+// The line Today shows on a day with time off: 'Time off — Maya leaves for Austria · Job search'.
+export function offLine(doc, day) {
+  const parts = [];
+  for (const o of timeOff(doc)) {
+    const hours = offWindows(doc, day, [o]).length > 0;
+    if (!hours && !offCovers(o, day)) continue;
+    const areas = o.areas?.length ? ` · ${o.areas.join(', ')}` : '';
+    const when = hours ? ` · ${o.start.slice(11)}–${o.end.slice(11)}` : '';
+    parts.push(`${o.reason || 'Time off'}${areas}${when}`);
+  }
+  return parts.length ? `Time off — ${parts.join('; ')}` : null;
+}
+
+// Time off as Claude's tool writes it, checked: plain English when it's wrong.
+export function checkTimeOff({ start, end, areas = [], reason = '' } = {}) {
+  const s = String(start ?? '').trim();
+  const e = String(end ?? start ?? '').trim();
+  const days = realDay(s) && realDay(e);
+  const stamp = (v) => STAMP.test(v) && realDay(v.slice(0, 10)) && clockMinutes(v.slice(11)) != null;
+  const hours = stamp(s) && stamp(e);
+  if (!days && !hours) throw new Error('Time off needs start and end as dates (YYYY-MM-DD), or both as a date and time (YYYY-MM-DDTHH:MM)');
+  if (days ? e < s : e <= s) throw new Error('Time off has to end after it starts');
+  if (!Array.isArray(areas) || !areas.every(text)) throw new Error('areas should be a list of area names, or left out for everything');
+  const why = String(reason ?? '').trim();
+  if (why.length > 200) throw new Error('The reason can be at most 200 characters');
+  return { start: s, end: e, areas: areas.map((a) => a.trim()), reason: why };
+}
+
+export function nextOffId(doc, start) {
+  const day = String(start).slice(0, 10);
+  let id = `off:${day}`;
+  for (let n = 0; doc?.calendar?.[id]; n++) id = `off:${day}${String.fromCharCode(98 + n)}`;
+  return id;
+}
+
+// A priority: the item says so, or its area is one of the planner's priority areas.
+export function isPriority(doc, item, config = readPlannerConfig(doc).config) {
+  return item.priority === true || config.priorityAreas.some((a) => norm(a) === norm(item.area));
+}
+
+// Claude's brief for a day (a journal record, kind 'brief').
+export function briefFor(doc, day) {
+  const rec = doc?.journal?.[`brief:${day}`];
+  return rec && rec.status === 'active' && rec.text ? rec.text : null;
 }
 
 export const dayRecordId = (day) => `day:${weekday(day)}`;

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'df56db20';
+var PLANNER_BUILD = '32670544';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -296,7 +296,7 @@ const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-const APP_VERSION = 'dash-v7';
+const APP_VERSION = 'dash-v8';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -682,12 +682,23 @@ function checkLength(v) {
   return v;
 }
 
+const NOTES_MAX = 1000;
+
+// A task's, habit's, target's or goal's notes: text, trimmed, at most NOTES_MAX characters.
+function checkNotes(v) {
+  if (v == null) return '';
+  if (typeof v !== 'string') throw new Error('Notes should be text');
+  const t = v.trim();
+  if (t.length > NOTES_MAX) throw new Error(`Notes can be at most ${NOTES_MAX} characters`);
+  return t;
+}
+
 function checkClock(v) {
   if (v == null || v === '') return null;
   if (typeof v !== 'string' || parseClock(v) !== v) throw new Error('A time should look like 14:00');
   return v;
 }
-return { parseAmount, formatAmount, formatProgress, LENGTH_MIN, LENGTH_MAX, parseLength, parseClock, splitTaskInput, checkLength, checkClock };
+return { parseAmount, formatAmount, formatProgress, LENGTH_MIN, LENGTH_MAX, parseLength, parseClock, splitTaskInput, checkLength, NOTES_MAX, checkNotes, checkClock };
 })();
 
 // ---- js/data.js
@@ -700,7 +711,7 @@ const { MAPS, emptyDoc, stableStringify, isDoc, journalId } = __js_doc;
 const { mergeDocs } = __js_merge;
 const { FLAG_TEXT_MAX, capContext } = __js_flags;
 const { CHANGE_KEEP_DAYS, canUndo } = __js_changes;
-const { checkLength, checkClock } = __js_parse;
+const { checkLength, checkClock, checkNotes } = __js_parse;
 
 const DATA_KEY = 'dash_data';
 const SETTINGS_KEY = 'dash_settings';
@@ -713,6 +724,7 @@ const ITEM_TYPES = ['task', 'habit', 'quota'];
 const JOURNAL_FIELDS = {
   checkin: { questions: [], answers: [], feedback: '', tomorrowIds: [], model: '' },
   digest: { summary: '', wins: [], slipped: [], focus: '', model: '' },
+  brief: { text: '' },
 };
 
 function readJson(storage, key) {
@@ -828,6 +840,12 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
       if (fields.type !== 'task') throw new Error('Only a task has a time');
       out.time = checkClock(fields.time);
     }
+    if (fields.notes !== undefined) out.notes = checkNotes(fields.notes);
+    if (fields.priority !== undefined) {
+      if (typeof fields.priority !== 'boolean') throw new Error('Priority is true or false');
+      if (fields.type !== 'task' && fields.type !== 'habit') throw new Error('Only a task or a habit can be a priority');
+      out.priority = fields.priority;
+    }
     return out;
   }
 
@@ -857,7 +875,9 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   function goalFields(fields) {
     const title = requireTitle(fields.title, 'A goal');
     const defaults = { targetDate: null, target: null, unit: 'count', unitLabel: '', order: nextOrder('goals') };
-    return { ...defaults, ...fields, title };
+    const out = { ...defaults, ...fields, title };
+    if (fields.notes !== undefined) out.notes = checkNotes(fields.notes);
+    return out;
   }
 
   function addGoal(fields) {
@@ -874,7 +894,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // check-in per day and one digest per week, whichever device writes it. Creates the record, or
   // overwrites just the content fields given on the existing one (so saving the answers keeps
   // the questions). Content is copied in, never shared with the caller.
-  function saveJournal(record) {
+  function saveJournal(record, source = 'gemini') {
     const kind = record?.kind;
     const fields = JOURNAL_FIELDS[kind];
     if (!fields) throw new Error(`Unknown journal kind ${kind}`);
@@ -890,7 +910,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
       if (record[key] !== undefined) content[key] = structuredClone(record[key]);
     }
     const existing = doc.journal[id];
-    if (!existing) return create('journal', { source: 'gemini', ...structuredClone(fields), ...content, id, kind, day });
+    if (!existing) return create('journal', { source, ...structuredClone(fields), ...content, id, kind, day });
     doc.journal[id] = { ...existing, ...content, id, kind, day, updated: stamp() };
     commit('local');
     return doc.journal[id];
@@ -1338,7 +1358,7 @@ const __js_calendar = (() => {
 // deleted or missed, its notes) and `status`; `config` holds its settings, written by Claude or
 // seeded by the planner.
 
-const { weekday, shortWeekday, shortDate } = __js_dates;
+const { weekday, shortWeekday, shortDate, addDays } = __js_dates;
 
 const CALENDAR_DEFAULTS = {
   hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
@@ -1347,12 +1367,27 @@ const CALENDAR_DEFAULTS = {
   areaCalendars: { 'Job search': 'Application', 'Assessment centre': 'Application', Health: 'Gym', Challenger: 'Challenger' },
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
+  priorityAreas: [],
+  areaColors: {},
+  dayHours: {},
 };
 
+// Google Calendar's event colours, by the names George sees, and their ids in the API.
+const COLOR_NAMES = {
+  Lavender: '1', Sage: '2', Grape: '3', Flamingo: '4', Banana: '5', Tangerine: '6',
+  Peacock: '7', Graphite: '8', Blueberry: '9', Basil: '10', Tomato: '11',
+};
+
+const colorName = (id) => Object.keys(COLOR_NAMES).find((n) => COLOR_NAMES[n] === String(id)) ?? null;
+
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const pad = (n) => String(n).padStart(2, '0');
 const text = (v) => typeof v === 'string' && v.trim() !== '';
 const copy = (v) => JSON.parse(JSON.stringify(v));
+const norm = (s) => String(s ?? '').trim().toLowerCase();
+const realDay = (d) => typeof d === 'string' && DAY.test(d) && addDays(d, 0) === d;
 
 function clockMinutes(hhmm) {
   const m = CLOCK.exec(String(hhmm ?? ''));
@@ -1398,7 +1433,44 @@ const CONFIG_CHECKS = {
     if (!ok) throw new Error(`${field} should be a list like [{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]`);
     return v.map((l) => ({ habit: l.habit.trim(), calendar: l.calendar.trim(), title: l.title.trim() }));
   },
+  priorityAreas: (v, field) => {
+    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
+    return v.map((s) => s.trim());
+  },
+  areaColors: (v, field) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${field} should map each area to a colour, like {"Assessment centre": "Grape"}`);
+    const out = {};
+    const used = new Map();
+    for (const [area, name] of Object.entries(v)) {
+      const colour = Object.keys(COLOR_NAMES).find((n) => n.toLowerCase() === norm(name));
+      if (!text(area) || !colour) throw new Error(`${field}: "${name}" isn't one of Google's colours — ${Object.keys(COLOR_NAMES).join(', ')}`);
+      if (used.has(colour)) throw new Error(`${field} gives ${colour} to both ${used.get(colour)} and ${area.trim()} — each area needs its own colour`);
+      used.set(colour, area.trim());
+      out[area.trim()] = colour;
+    }
+    return out;
+  },
+  dayHours: (v, field) => {
+    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([d, h]) => realDay(d)
+      && Array.isArray(h) && h.length === 2 && clockMinutes(h[0]) != null && clockMinutes(h[1]) != null && clockMinutes(h[0]) < clockMinutes(h[1]));
+    if (!ok) throw new Error(`${field} should map a date to two times, like {"2026-09-18": ["09:00", "13:00"]}`);
+    return Object.fromEntries(Object.entries(v).map(([d, h]) => [d, [h[0], h[1]]]));
+  },
 };
+
+// Settings that change one key at a time: a key set to null is removed; the rest are kept.
+const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours'];
+
+function mergeSetting(field, current, value) {
+  if (!MERGED_SETTINGS.includes(field) || !value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = { ...(current ?? {}) };
+  for (const [key, v] of Object.entries(value)) {
+    const had = Object.keys(out).find((k) => norm(k) === norm(key));
+    if (had !== undefined) delete out[had];
+    if (v !== null) out[key.trim()] = v;
+  }
+  return out;
+}
 
 function checkConfigField(field, value) {
   const check = Object.hasOwn(CONFIG_CHECKS, field) ? CONFIG_CHECKS[field] : null;
@@ -1423,6 +1495,90 @@ function readPlannerConfig(doc) {
     }
   }
   return { config, problems };
+}
+
+// ---- Time off, priority, the brief (Claude's controls) -----------------------------------------
+
+// Time off: `off:<start day>` records in the calendar map — whole days (start and end both dates,
+// end included) or a stretch of hours (both YYYY-MM-DDTHH:MM, end not included) — covering `areas`,
+// or everything when that's empty. Cancelled ones are archived.
+function timeOff(doc) {
+  return Object.values(doc?.calendar ?? {})
+    .filter((r) => r.status === 'active' && String(r.id).startsWith('off:'))
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+}
+
+const wholeDays = (off) => DAY.test(off.start ?? '') && DAY.test(off.end ?? '');
+const inScope = (off, area) => !off.areas?.length || off.areas.some((a) => norm(a) === norm(area));
+
+const offCovers = (off, day) => wholeDays(off) && off.start <= day && day <= off.end;
+
+// Whether an item is excused on a day: whole-day time off covering its area.
+function excused(doc, item, day, offs = timeOff(doc)) {
+  return offs.some((o) => offCovers(o, day) && inScope(o, item.area));
+}
+
+function localMs(stamp) {
+  const [d, t = '00:00'] = stamp.split('T');
+  const [y, m, dd] = d.split('-').map(Number);
+  const [h, min] = t.split(':').map(Number);
+  return new Date(y, m - 1, dd, h, min).getTime();
+}
+
+// The stretches of hours off that touch a day, in milliseconds.
+function offWindows(doc, day, offs = timeOff(doc)) {
+  const from = localMs(day);
+  const to = localMs(addDays(day, 1));
+  return offs
+    .filter((o) => STAMP.test(o.start ?? '') && STAMP.test(o.end ?? ''))
+    .map((o) => ({ start: localMs(o.start), end: localMs(o.end), areas: o.areas ?? [] }))
+    .filter((w) => w.start < to && w.end > from);
+}
+
+// The line Today shows on a day with time off: 'Time off — Maya leaves for Austria · Job search'.
+function offLine(doc, day) {
+  const parts = [];
+  for (const o of timeOff(doc)) {
+    const hours = offWindows(doc, day, [o]).length > 0;
+    if (!hours && !offCovers(o, day)) continue;
+    const areas = o.areas?.length ? ` · ${o.areas.join(', ')}` : '';
+    const when = hours ? ` · ${o.start.slice(11)}–${o.end.slice(11)}` : '';
+    parts.push(`${o.reason || 'Time off'}${areas}${when}`);
+  }
+  return parts.length ? `Time off — ${parts.join('; ')}` : null;
+}
+
+// Time off as Claude's tool writes it, checked: plain English when it's wrong.
+function checkTimeOff({ start, end, areas = [], reason = '' } = {}) {
+  const s = String(start ?? '').trim();
+  const e = String(end ?? start ?? '').trim();
+  const days = realDay(s) && realDay(e);
+  const stamp = (v) => STAMP.test(v) && realDay(v.slice(0, 10)) && clockMinutes(v.slice(11)) != null;
+  const hours = stamp(s) && stamp(e);
+  if (!days && !hours) throw new Error('Time off needs start and end as dates (YYYY-MM-DD), or both as a date and time (YYYY-MM-DDTHH:MM)');
+  if (days ? e < s : e <= s) throw new Error('Time off has to end after it starts');
+  if (!Array.isArray(areas) || !areas.every(text)) throw new Error('areas should be a list of area names, or left out for everything');
+  const why = String(reason ?? '').trim();
+  if (why.length > 200) throw new Error('The reason can be at most 200 characters');
+  return { start: s, end: e, areas: areas.map((a) => a.trim()), reason: why };
+}
+
+function nextOffId(doc, start) {
+  const day = String(start).slice(0, 10);
+  let id = `off:${day}`;
+  for (let n = 0; doc?.calendar?.[id]; n++) id = `off:${day}${String.fromCharCode(98 + n)}`;
+  return id;
+}
+
+// A priority: the item says so, or its area is one of the planner's priority areas.
+function isPriority(doc, item, config = readPlannerConfig(doc).config) {
+  return item.priority === true || config.priorityAreas.some((a) => norm(a) === norm(item.area));
+}
+
+// Claude's brief for a day (a journal record, kind 'brief').
+function briefFor(doc, day) {
+  const rec = doc?.journal?.[`brief:${day}`];
+  return rec && rec.status === 'active' && rec.text ? rec.text : null;
 }
 
 const dayRecordId = (day) => `day:${weekday(day)}`;
@@ -1506,7 +1662,7 @@ function plannerSummary(doc, now) {
   lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
   return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
 }
-return { CALENDAR_DEFAULTS, clockMinutes, CONFIG_CHECKS, checkConfigField, readPlannerConfig, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
+return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, nextOffId, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
 })();
 
 // ---- js/gemini.js
@@ -1865,6 +2021,7 @@ const __js_schedule = (() => {
 // What's on a day, and the numbers derived from it. Pure: a document and a day in, values out.
 
 const { addDays, weekday, weekStart, dayOfMonth, daysInMonth } = __js_dates;
+const { timeOff, excused, offCovers } = __js_calendar;
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -1924,11 +2081,13 @@ function taskRow(doc, item, day, idx) {
   };
 }
 
-// The tasks and habits that count on a day — what the header and the history measure.
-function rowsForDay(doc, day, idx = doneIndex(doc)) {
+// The tasks and habits that count on a day — what the header and the history measure. Anything
+// excused by time off (js/calendar.js) isn't on it; a task dated then carries to the next day.
+function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = [];
   for (const item of values(doc.items)) {
     if (!countsOn(item, day)) continue;
+    if (offs.length && excused(doc, item, day, offs)) continue;
     if (item.type === 'task') {
       const row = taskRow(doc, item, day, idx);
       if (row) rows.push(row);
@@ -1980,9 +2139,11 @@ function runs(outcomes) {
 function occurrenceStreak(doc, item, today) {
   const idx = doneIndex(doc);
   const ticked = doneDays(doc, item.id, idx);
+  const offs = timeOff(doc);
   const outcomes = [];
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
+    if (offs.length && excused(doc, item, day, offs)) continue; // time off: neither kept nor broken
     const ok = ticked.has(day);
     if (day === today && !ok) continue; // today isn't over yet
     outcomes.push(ok);
@@ -2026,19 +2187,22 @@ function streak(doc, item, today) {
 
 // ---- Completion, history, goals --------------------------------------------------------------
 
-function dayCompletion(doc, day, idx = doneIndex(doc)) {
-  const rows = rowsForDay(doc, day, idx);
+function dayCompletion(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
+  const rows = rowsForDay(doc, day, idx, offs);
   return { done: rows.filter((r) => r.done).length, total: rows.length };
 }
 
-// The current week and the two before it, Monday first: 21 cells.
+// The current week and the two before it, Monday first: 21 cells. A day of time off for
+// everything carries `off`, its reason, instead of reading as 0/0.
 function history(doc, today) {
   const idx = doneIndex(doc);
+  const offs = timeOff(doc);
   const start = addDays(weekStart(today), -14);
   return Array.from({ length: 21 }, (_, i) => {
     const day = addDays(start, i);
     if (day > today) return { day, future: true, done: 0, total: 0 };
-    return { day, future: false, ...dayCompletion(doc, day, idx) };
+    const off = offs.find((o) => offCovers(o, day) && !o.areas?.length);
+    return { day, future: false, ...dayCompletion(doc, day, idx, offs), ...(off ? { off: off.reason || 'Time off' } : {}) };
   });
 }
 

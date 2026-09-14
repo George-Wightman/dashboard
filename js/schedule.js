@@ -1,6 +1,7 @@
 // What's on a day, and the numbers derived from it. Pure: a document and a day in, values out.
 
 import { addDays, weekday, weekStart, dayOfMonth, daysInMonth } from './dates.js';
+import { timeOff, excused, offCovers } from './calendar.js';
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -60,11 +61,13 @@ function taskRow(doc, item, day, idx) {
   };
 }
 
-// The tasks and habits that count on a day — what the header and the history measure.
-export function rowsForDay(doc, day, idx = doneIndex(doc)) {
+// The tasks and habits that count on a day — what the header and the history measure. Anything
+// excused by time off (js/calendar.js) isn't on it; a task dated then carries to the next day.
+export function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = [];
   for (const item of values(doc.items)) {
     if (!countsOn(item, day)) continue;
+    if (offs.length && excused(doc, item, day, offs)) continue;
     if (item.type === 'task') {
       const row = taskRow(doc, item, day, idx);
       if (row) rows.push(row);
@@ -116,9 +119,11 @@ function runs(outcomes) {
 function occurrenceStreak(doc, item, today) {
   const idx = doneIndex(doc);
   const ticked = doneDays(doc, item.id, idx);
+  const offs = timeOff(doc);
   const outcomes = [];
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
+    if (offs.length && excused(doc, item, day, offs)) continue; // time off: neither kept nor broken
     const ok = ticked.has(day);
     if (day === today && !ok) continue; // today isn't over yet
     outcomes.push(ok);
@@ -162,19 +167,22 @@ export function streak(doc, item, today) {
 
 // ---- Completion, history, goals --------------------------------------------------------------
 
-export function dayCompletion(doc, day, idx = doneIndex(doc)) {
-  const rows = rowsForDay(doc, day, idx);
+export function dayCompletion(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
+  const rows = rowsForDay(doc, day, idx, offs);
   return { done: rows.filter((r) => r.done).length, total: rows.length };
 }
 
-// The current week and the two before it, Monday first: 21 cells.
+// The current week and the two before it, Monday first: 21 cells. A day of time off for
+// everything carries `off`, its reason, instead of reading as 0/0.
 export function history(doc, today) {
   const idx = doneIndex(doc);
+  const offs = timeOff(doc);
   const start = addDays(weekStart(today), -14);
   return Array.from({ length: 21 }, (_, i) => {
     const day = addDays(start, i);
     if (day > today) return { day, future: true, done: 0, total: 0 };
-    return { day, future: false, ...dayCompletion(doc, day, idx) };
+    const off = offs.find((o) => offCovers(o, day) && !o.areas?.length);
+    return { day, future: false, ...dayCompletion(doc, day, idx, offs), ...(off ? { off: off.reason || 'Time off' } : {}) };
   });
 }
 

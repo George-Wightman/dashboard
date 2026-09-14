@@ -78,6 +78,17 @@ export function checkLength(v) {
   return v;
 }
 
+export const NOTES_MAX = 1000;
+
+// A task's, habit's, target's or goal's notes: text, trimmed, at most NOTES_MAX characters.
+export function checkNotes(v) {
+  if (v == null) return '';
+  if (typeof v !== 'string') throw new Error('Notes should be text');
+  const t = v.trim();
+  if (t.length > NOTES_MAX) throw new Error(`Notes can be at most ${NOTES_MAX} characters`);
+  return t;
+}
+
 export function checkClock(v) {
   if (v == null || v === '') return null;
   if (typeof v !== 'string' || parseClock(v) !== v) throw new Error('A time should look like 14:00');

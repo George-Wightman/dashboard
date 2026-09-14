@@ -6,7 +6,7 @@ import { MAPS, emptyDoc, stableStringify, isDoc, journalId } from './doc.js';
 import { mergeDocs } from './merge.js';
 import { FLAG_TEXT_MAX, capContext } from './flags.js';
 import { CHANGE_KEEP_DAYS, canUndo } from './changes.js';
-import { checkLength, checkClock } from './parse.js';
+import { checkLength, checkClock, checkNotes } from './parse.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -19,6 +19,7 @@ const ITEM_TYPES = ['task', 'habit', 'quota'];
 const JOURNAL_FIELDS = {
   checkin: { questions: [], answers: [], feedback: '', tomorrowIds: [], model: '' },
   digest: { summary: '', wins: [], slipped: [], focus: '', model: '' },
+  brief: { text: '' },
 };
 
 function readJson(storage, key) {
@@ -134,6 +135,12 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       if (fields.type !== 'task') throw new Error('Only a task has a time');
       out.time = checkClock(fields.time);
     }
+    if (fields.notes !== undefined) out.notes = checkNotes(fields.notes);
+    if (fields.priority !== undefined) {
+      if (typeof fields.priority !== 'boolean') throw new Error('Priority is true or false');
+      if (fields.type !== 'task' && fields.type !== 'habit') throw new Error('Only a task or a habit can be a priority');
+      out.priority = fields.priority;
+    }
     return out;
   }
 
@@ -163,7 +170,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   function goalFields(fields) {
     const title = requireTitle(fields.title, 'A goal');
     const defaults = { targetDate: null, target: null, unit: 'count', unitLabel: '', order: nextOrder('goals') };
-    return { ...defaults, ...fields, title };
+    const out = { ...defaults, ...fields, title };
+    if (fields.notes !== undefined) out.notes = checkNotes(fields.notes);
+    return out;
   }
 
   function addGoal(fields) {
@@ -180,7 +189,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // check-in per day and one digest per week, whichever device writes it. Creates the record, or
   // overwrites just the content fields given on the existing one (so saving the answers keeps
   // the questions). Content is copied in, never shared with the caller.
-  function saveJournal(record) {
+  function saveJournal(record, source = 'gemini') {
     const kind = record?.kind;
     const fields = JOURNAL_FIELDS[kind];
     if (!fields) throw new Error(`Unknown journal kind ${kind}`);
@@ -196,7 +205,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       if (record[key] !== undefined) content[key] = structuredClone(record[key]);
     }
     const existing = doc.journal[id];
-    if (!existing) return create('journal', { source: 'gemini', ...structuredClone(fields), ...content, id, kind, day });
+    if (!existing) return create('journal', { source, ...structuredClone(fields), ...content, id, kind, day });
     doc.journal[id] = { ...existing, ...content, id, kind, day, updated: stamp() };
     commit('local');
     return doc.journal[id];

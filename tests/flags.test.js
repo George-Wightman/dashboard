@@ -290,7 +290,7 @@ test('flagSyncLine: the three lines at the foot of the panel', () => {
 
 test('the last successful sync is kept on the device, and failures never throw', () => {
   assert.equal(LAST_SYNCED_KEY, 'dash_last_synced');
-  assert.equal(APP_VERSION, 'dash-v7');
+  assert.equal(APP_VERSION, 'dash-v8');
   const storage = new MemoryStorage();
   assert.equal(readLastSynced(storage), null);
   assert.equal(writeLastSynced(storage, '2026-09-12T17:04:00.000Z'), true);
