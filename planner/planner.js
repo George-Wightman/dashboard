@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9415c60d';
+var PLANNER_BUILD = 'bdf61684';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -3127,7 +3127,14 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       const s = earliestFit(b.minutes * MINUTE, win, [...taken, ...offBusy(d, b.area)], gap);
       if (s != null) { take(b, s); continue; }
       const next = addDays(d, 1);
-      if (next <= lastDay) {
+      // Carrying is right for a task — it still needs doing. A habit that repeats already has its own
+      // instance on the next day, so carrying it there booked two and left this day with none: one
+      // reading habit drifted a day at a time until it appeared twice on a Sunday and not at all on
+      // the Friday. A habit that doesn't fit is simply missed that day.
+      const allHabits = b.items.length > 0 && b.items.every((id) => items[id]?.type === 'habit');
+      if (allHabits) {
+        if (exactDay(d) && !(d === today && todayClosed)) note(`Couldn't fit ${b.base}${onDay(d)}`);
+      } else if (next <= lastDay) {
         overflow.push({ ...b, carried: true });
         if (exactDay(d) && !(d === today && todayClosed)) note(`Couldn't fit ${b.base}${onDay(d)} — moved to ${shortWeekday(next)}`);
       } else {

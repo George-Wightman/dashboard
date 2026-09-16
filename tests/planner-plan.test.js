@@ -285,3 +285,18 @@ test('a block that slipped to the next day does not let that day book a second o
   const onSat = cal.mine().filter((e) => e.start.dateTime.startsWith(SAT) && /Read ten pages/.test(e.summary));
   assert.equal(onSat.length, 1, 'one reading block on the day it landed, not two');
 });
+
+test('a daily habit that will not fit is missed, not carried into the next day', () => {
+  // Carrying is right for a task: it still needs doing. A habit that repeats daily already has an
+  // instance tomorrow, so carrying booked two there and left today with none — which is how one
+  // reading habit ended up twice on a Sunday and not at all on the Friday.
+  const doc = fixture({ items: [
+    { id: 'reading', type: 'habit', title: 'Read ten pages', area: 'Reading', repeat: { kind: 'daily' }, minutes: 20, order: 1 },
+  ] });
+  const cal = new FakeCalendar([ev(WORK, 'Signify all day', TUE, '09:00', '19:00')]);
+  const r = step(cal, doc, now(TUE, '08:00'));
+  const onWed = cal.mine().filter((e) => e.start.dateTime.startsWith(WED) && /Read ten pages/.test(e.summary));
+  assert.equal(onWed.length, 1, "Wednesday gets its own instance and only its own");
+  assert.equal(cal.mine().filter((e) => e.start.dateTime.startsWith(TUE)).length, 0, 'nothing fitted on Tuesday');
+  assert.ok(r.days[TUE]?.notes?.some((n) => /Read ten pages/.test(n)), 'and it says so');
+});
