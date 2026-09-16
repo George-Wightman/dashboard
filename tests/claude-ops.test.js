@@ -207,3 +207,12 @@ test('directing: notes and priority, time off, the brief, one-key planner settin
     'Changed the planner\'s settings: areaColors → {"Assessment centre":"grape"}, priorityAreas → Assessment centre');
   assert.deepEqual(s.doc().calendar.config.areaColors, { 'Assessment centre': 'Grape' });
 });
+
+test('a flag over the cap is refused with the limit named, and nothing is written', () => {
+  const s = fresh();
+  assert.throws(() => runOp(s, { op: 'flag', text: 'x'.repeat(1001) }), /at most 1000 characters/);
+  assert.throws(() => runOp(s, { op: 'flag', text: 'x'.repeat(1001) }), /use handoff instead/);
+  assert.equal(Object.keys(s.doc().flags).length, 0, 'refused, not written and cut');
+  assert.match(runOp(s, { op: 'flag', text: 'x'.repeat(1000) }), /^Flagged "x+…" · #rec-1$/);
+  assert.equal(s.doc().flags['rec-1'].text.length, 1000, 'right on the cap is kept whole');
+});

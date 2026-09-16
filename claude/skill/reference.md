@@ -169,7 +169,9 @@ Turn a suggestion down: `{"op": "dismiss", "id": "…"}`. On a suggested goal it
 everything proposed with it.
 
 ### `flag`
-Note something to change in the app itself: `{"op": "flag", "text": "…"}`.
+Leave a note George himself will read: `{"op": "flag", "text": "…"}`. At most 1000 characters, and it
+is refused rather than cut if it's longer. Anything meant for whoever maintains the app — and
+anything that needs more room than that — is a `handoff`.
 
 ### `handoff`
 Tell whoever maintains the app something about the app itself:

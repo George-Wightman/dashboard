@@ -9,6 +9,7 @@ import {
   checkConfigField, readPlannerConfig, mergeSetting, MERGED_SETTINGS, plannerStatus, COLOR_NAMES, checkTimeOff, nextOffId, offText,
 } from '../js/calendar.js';
 import { gymConfig, gymHabitId } from '../js/gym.js';
+import { FLAG_TEXT_MAX } from '../js/flags.js';
 import { GUIDE_MAX } from '../js/talk.js';
 import { weekStart } from '../js/dates.js';
 import { resolveId, shortId } from './ids.js';
@@ -383,6 +384,11 @@ function dismiss(store, op) {
 function flag(store, op) {
   const text = str(op.text);
   if (!text) throw new Error('A flag needs text');
+  // addFlag slices silently at the cap, which cut two long notes off mid-sentence in September
+  // before anyone read them. brief and guide both refuse rather than cut; so does this.
+  if (text.length > FLAG_TEXT_MAX) {
+    throw new Error(`A flag can be at most ${FLAG_TEXT_MAX} characters — for anything longer, and for anything meant for whoever maintains the app, use handoff instead: it has no limit`);
+  }
   const rec = store.addFlag(text, null, CLAUDE);
   return tagged(`Flagged ${q(rec.text)}`, rec.id);
 }
