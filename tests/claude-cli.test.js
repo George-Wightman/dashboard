@@ -250,3 +250,29 @@ test('help points at the index and at the live reference', async () => {
   assert.match(text, /what you want to do to the command that does it/);
   assert.match(text, /bash run\.sh reference/);
 });
+
+test('an unknown field is said out loud, the op still lands, and the note reaches the trail', async () => {
+  const files = repoFiles();
+  const remote = new FakeGitHub();
+  const r = await run(['apply'], { files, remote, stdin: JSON.stringify({ op: 'task', title: 'Gym', length: '2h' }) });
+  assert.equal(r.code, 0);
+  assert.match(r.text, /Added task "Gym"/);
+  assert.match(r.text, /"length" isn't a field on task/);
+  assert.equal(remote.puts, 1, 'the op still landed');
+  assert.match(files.raw.get('handoffs/trail.md'), /isn't a field on task/);
+});
+
+test("a plan's task warns about the length and area a plan drops", async () => {
+  const r = await run(['apply'], {
+    stdin: JSON.stringify({ op: 'plan', tasks: [{ title: 'Read the pack', date: 'today', minutes: '2h', area: 'Job search' }] }),
+  });
+  assert.equal(r.code, 0);
+  assert.match(r.text, /Suggested plan/);
+  assert.match(r.text, /"minutes" isn't a field on a plan's task/);
+  assert.match(r.text, /"area" isn't a field on a plan's task/);
+});
+
+test('an op with only fields it reads says nothing extra', async () => {
+  const r = await run(['apply'], { stdin: JSON.stringify({ op: 'task', title: 'Gym', minutes: '2h' }) });
+  assert.equal(r.text, 'Added task "Gym" for today (2h) · #n1\nSaved to GitHub — the laptop and phone pick it up at their next sync.');
+});

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeStore } from './helpers.js';
-import { OPS, UNLOGGED, runOp } from '../claude/ops.js';
+import { OPS, UNLOGGED, runOp, fieldWarnings } from '../claude/ops.js';
 import { diffDocs } from '../js/changes.js';
 
 // ids rec-1, rec-2, …; the helpers' clock makes today Thursday 10 Sep 2026.
@@ -215,4 +215,47 @@ test('a flag over the cap is refused with the limit named, and nothing is writte
   assert.equal(Object.keys(s.doc().flags).length, 0, 'refused, not written and cut');
   assert.match(runOp(s, { op: 'flag', text: 'x'.repeat(1000) }), /^Flagged "x+…" · #rec-1$/);
   assert.equal(s.doc().flags['rec-1'].text.length, 1000, 'right on the cap is kept whole');
+});
+
+test('fieldWarnings: a field the op really reads is silent', () => {
+  assert.deepEqual(fieldWarnings({ op: 'task', title: 'x', minutes: '2h', area: 'Job', suggest: true }), []);
+  assert.deepEqual(fieldWarnings({ op: 'off', start: 'today', areas: ['Job'], reason: 'x' }), []);
+  assert.deepEqual(fieldWarnings({ op: 'handoff', title: 'x', text: 'y' }), []);
+});
+
+test('fieldWarnings: an unknown field says so and names what the op does take', () => {
+  const [note] = fieldWarnings({ op: 'task', title: 'x', length: '2h' });
+  assert.match(note, /"length" isn't a field on task/);
+  assert.match(note, /ignored/);
+  assert.match(note, /title, date, area, goal, minutes, time, notes, priority, suggest/);
+});
+
+test("fieldWarnings: a plan's task warns on the fields a plan silently drops", () => {
+  const notes = fieldWarnings({ op: 'plan', tasks: [{ title: 'x', date: 'today', minutes: '2h', area: 'Job' }] });
+  assert.equal(notes.length, 2);
+  assert.match(notes.join(' '), /"minutes" isn't a field on a plan's task/);
+  assert.match(notes.join(' '), /"area" isn't a field on a plan's task/);
+  assert.match(notes.join(' '), /takes: title, date/);
+});
+
+test("fieldWarnings: a plan's goal, habits and targets are checked against what they read", () => {
+  assert.deepEqual(fieldWarnings({ op: 'plan', goal: { title: 'g', targetDate: 'x', why: 'y' } }), []);
+  const [habit] = fieldWarnings({ op: 'plan', habits: [{ title: 'h', repeat: {}, minutes: '20m' }] });
+  assert.match(habit, /"minutes" isn't a field on a plan's habit/);
+  const [target] = fieldWarnings({ op: 'plan', targets: [{ title: 't', target: 5, area: 'Job' }] });
+  assert.match(target, /"area" isn't a field on a plan's target/);
+});
+
+test('fieldWarnings: ops that check their own fields are left alone, and so is anything odd', () => {
+  assert.deepEqual(fieldWarnings({ op: 'planner', hours: ['09:00', '17:00'] }), []);
+  assert.deepEqual(fieldWarnings({ op: 'gym', cardioQuota: 'Cardio' }), []);
+  assert.deepEqual(fieldWarnings({ op: 'fly', anything: 1 }), []);
+  assert.deepEqual(fieldWarnings(null), []);
+  assert.deepEqual(fieldWarnings({ op: 'plan', tasks: 'not a list' }), []);
+});
+
+test('an op with an unknown field still does its job', () => {
+  const s = fresh();
+  assert.equal(runOp(s, { op: 'task', title: 'Gym', length: '2h' }), 'Added task "Gym" for today · #rec-1');
+  assert.equal(s.doc().items['rec-1'].minutes, undefined, 'the field really was dropped');
 });

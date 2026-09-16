@@ -66,7 +66,8 @@ again.
   the exact JSON, what came back, and what you expected. Read `handoffs` first so you don't report
   something already waiting.
 - **Never claim a change that didn't land.** If the tool reports a failure, say so in one line, with
-  its reason.
+  its reason. The same goes for a *Note:* about a field it ignored — that part didn't happen, so
+  send it again properly rather than reporting it as done.
 - Don't read the dashboard on every message — when it's relevant, or before a change.
 - The look, the widget layout, settings and keys stay on each device; they aren't in the data.
 

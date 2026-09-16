@@ -6,7 +6,7 @@ import { readConfig } from './config.js';
 import { openSession } from './session.js';
 import { makeClient as githubClient } from './github.js';
 import { READS } from './read.js';
-import { OPS, UNLOGGED, runOp, readHandoff } from './ops.js';
+import { OPS, UNLOGGED, runOp, readHandoff, fieldWarnings } from './ops.js';
 import { createFileStore } from './files.js';
 import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
 import { scrubText, APP_VERSION } from '../js/flags.js';
@@ -169,10 +169,17 @@ export async function main({
     // Every op runs in memory first; one failure and nothing is pushed.
     const lines = [];
     const handoffs = [];
+    const notes = [];
     for (const [i, op] of ops.entries()) {
       try {
         lines.push(session.record((s) => runOp(s, op), { log: !UNLOGGED.has(op?.op) }).summary);
         if (op?.op === 'handoff') handoffs.push(readHandoff(op));
+        // A field the op never read is a thing George asked for that didn't happen, so it is said
+        // out loud and kept, even though the op itself went through.
+        for (const note of fieldWarnings(op)) {
+          lines.push(note);
+          notes.push([`apply op ${i + 1} of ${ops.length}: ${JSON.stringify(op)}`, note]);
+        }
       } catch (e) {
         await trail(`apply op ${i + 1} of ${ops.length}: ${JSON.stringify(op)}`, e.message);
         say(`Nothing was changed. Op ${i + 1} of ${ops.length} (${op?.op ?? '?'}) failed: ${e.message}`);
@@ -184,6 +191,7 @@ export async function main({
       say(`Nothing was saved: ${result.error}`);
       return finish(2);
     }
+    for (const [what, note] of notes) await trail(what, note);
     lines.forEach(say);
     if (ops.length > handoffs.length) {
       say(result.pushed ? 'Saved to GitHub — the laptop and phone pick it up at their next sync.' : 'Nothing needed changing.');

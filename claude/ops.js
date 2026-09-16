@@ -561,6 +561,68 @@ function gym(store, op) {
   return `Changed the gym settings: ${said.join(', ')}`;
 }
 
+// What each op actually reads. A key that isn't here is dropped without a word, which is the worst
+// thing that can happen to a model working from a half-remembered shape: it reports a length it
+// never set and George never finds out. planner and gym check their own fields and say so
+// themselves, so they are deliberately not listed here.
+export const FIELDS = {
+  task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest'],
+  habit: ['title', 'repeat', 'area', 'goal', 'minutes', 'notes', 'priority', 'suggest'],
+  target: ['title', 'target', 'unit', 'unitLabel', 'area', 'goal', 'notes', 'suggest'],
+  goal: ['title', 'targetDate', 'why', 'milestones', 'notes', 'suggest'],
+  milestone: ['goal', 'title', 'suggest'],
+  plan: ['goal', 'milestones', 'tasks', 'habits', 'targets'],
+  done: ['id', 'day'],
+  undone: ['id', 'day'],
+  log: ['id', 'amount', 'day', 'note'],
+  edit: ['id', 'set'],
+  archive: ['id'],
+  accept: ['id'],
+  dismiss: ['id'],
+  flag: ['text'],
+  handoff: ['title', 'text'],
+  undo: ['change', 'id'],
+  off: ['start', 'end', 'areas', 'reason', 'cancel'],
+  brief: ['text', 'day'],
+  guide: ['text', 'week'],
+};
+
+// A plan's parts read far less than the standalone ops they look like: a plan's task is a title and
+// a date, nothing else. That trap is worth naming rather than smoothing over — SKILL.md asks for an
+// area and a length on every task, and plan is what it recommends for exactly the jobs where that
+// matters, so following the instructions silently loses what the instructions asked for.
+const PLAN_FIELDS = {
+  goal: ['title', 'targetDate', 'why'],
+  tasks: ['title', 'date'],
+  habits: ['title', 'repeat'],
+  targets: ['title', 'target', 'unit', 'unitLabel'],
+};
+
+const noteFor = (key, what, allowed) => `Note: ${JSON.stringify(key)} isn't a field on ${what} — ignored. ${what} takes: ${allowed.join(', ')}.`;
+
+const unknownIn = (obj, fields, what, out) => {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+  for (const key of Object.keys(obj)) if (key !== 'op' && !fields.includes(key)) out.push(noteFor(key, what, fields));
+};
+
+// Warnings, never refusals: an op that works today must go on working. The note is what turns a
+// silent wrong success into something a model can act on.
+export function fieldWarnings(op) {
+  if (!op || typeof op !== 'object' || Array.isArray(op)) return [];
+  const allowed = FIELDS[op.op];
+  if (!allowed) return [];
+  const out = [];
+  unknownIn(op, allowed, op.op, out);
+  if (op.op === 'plan') {
+    for (const [part, fields] of Object.entries(PLAN_FIELDS)) {
+      const members = part === 'goal' ? [op.goal] : (Array.isArray(op[part]) ? op[part] : []);
+      const what = `a plan's ${part === 'goal' ? 'goal' : part.replace(/s$/, '')}`;
+      for (const m of members) unknownIn(m, fields, what, out);
+    }
+  }
+  return out;
+}
+
 export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),

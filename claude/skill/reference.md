@@ -103,6 +103,11 @@ settings.
 Every op is an object with `"op"`. Add `"suggest": true` to `task`, `habit`, `target`, `goal` or
 `milestone` to make it a suggestion instead of live.
 
+An op handed a field it doesn't have says so and carries on without it. **Read those notes** — they
+mean something you asked for didn't happen, and George won't know unless you tell him or send it
+again properly. `plan`'s parts take much less than the ops they resemble: a plan's task is a title
+and a date only, so give it a length and an area with `edit` afterwards.
+
 ### `task`
 `{"op": "task", "title": "…", "date": "2026-09-18", "area": "Job", "goal": "<goal id>"}` — only
 `title` is required; `date` defaults to today. For the calendar: `"minutes": "2h"` — its length, 5
