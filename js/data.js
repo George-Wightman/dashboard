@@ -140,7 +140,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const out = { ...defaults, ...fields, title };
     if (fields.minutes !== undefined) out.minutes = checkLength(fields.minutes);
     if (fields.time !== undefined && fields.time !== null && fields.time !== '') {
-      if (fields.type !== 'task') throw new Error('Only a task has a time');
+      if (fields.type === 'quota') throw new Error('A weekly target has no time');
       out.time = checkClock(fields.time);
     }
     if (fields.notes !== undefined) out.notes = checkNotes(fields.notes);

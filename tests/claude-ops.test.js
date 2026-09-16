@@ -163,9 +163,9 @@ test('lengths, times, and the planner settings', () => {
   assert.equal(runOp(s, { op: 'habit', title: 'Read', minutes: 20 }), 'Added habit "Read" (every day, 20m) · #rec-2');
   assert.throws(() => runOp(s, { op: 'task', title: 'x', minutes: 'ages' }), /minutes needs a length from 5m to 12h/);
   assert.throws(() => runOp(s, { op: 'task', title: 'x', time: '2pm' }), /time needs a time of day like "14:00"/);
-  assert.throws(() => runOp(s, { op: 'habit', title: 'x', time: '09:00' }), /Only a task has a time/);
+  assert.equal(runOp(s, { op: 'habit', title: 'x', time: '09:00' }), 'Added habit "x" (every day, at 09:00) · #rec-3');
   assert.equal(runOp(s, { op: 'edit', id: 'rec-1', set: { minutes: '90m', time: null } }), 'Edited task "Draft cover letter": minutes → 1.5h, time → none');
-  assert.throws(() => runOp(s, { op: 'edit', id: 'rec-2', set: { time: '10:00' } }), /Only a task has a time/);
+  assert.match(runOp(s, { op: 'edit', id: 'rec-2', set: { time: '10:00' } }), /time → 10:00/);
   assert.equal(runOp(s, { op: 'planner', hours: ['08:30', '18:00'], gapMinutes: 10 }), "Changed the planner's settings: hours → 08:30–18:00, gapMinutes → 10");
   const config = s.doc().calendar.config;
   assert.deepEqual([config.hours, config.gapMinutes, config.days, config.source], [['08:30', '18:00'], 10, 7, 'claude']);
@@ -258,4 +258,17 @@ test('an op with an unknown field still does its job', () => {
   const s = fresh();
   assert.equal(runOp(s, { op: 'task', title: 'Gym', length: '2h' }), 'Added task "Gym" for today · #rec-1');
   assert.equal(s.doc().items['rec-1'].minutes, undefined, 'the field really was dropped');
+});
+
+test('a habit can have a set time, on the way in and on an edit', () => {
+  const s = fresh();
+  assert.equal(runOp(s, { op: 'habit', title: 'Hebrew', minutes: '45m', time: '09:30' }),
+    'Added habit "Hebrew" (every day, 45m at 09:30) · #rec-1');
+  assert.equal(s.doc().items['rec-1'].time, '09:30');
+  assert.equal(runOp(s, { op: 'habit', title: 'Read' }), 'Added habit "Read" (every day) · #rec-2');
+  assert.match(runOp(s, { op: 'edit', id: 'rec-2', set: { time: '21:00' } }), /time → 21:00/);
+  assert.equal(s.doc().items['rec-2'].time, '21:00');
+  assert.match(runOp(s, { op: 'edit', id: 'rec-2', set: { time: null } }), /time → none/);
+  assert.equal(s.doc().items['rec-2'].time ?? null, null, 'cleared');
+  assert.throws(() => runOp(s, { op: 'habit', title: 'x', time: 'half nine' }), /time needs a time of day/);
 });

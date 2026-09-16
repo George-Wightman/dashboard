@@ -120,7 +120,10 @@ booked first, starred.
 `{"op": "habit", "title": "…", "repeat": {…}}` — `repeat` defaults to every day. Shapes:
 `{"kind": "daily"}` · `{"kind": "weekdays", "days": [1, 3, 5]}` (1 = Mon … 7 = Sun) ·
 `{"kind": "perWeek", "n": 3}` · `{"kind": "weekly", "day": 5}` · `{"kind": "monthly", "date": 1}`.
-Also `area`, `goal`, `minutes` (its length, as for a task), `notes` and `priority`.
+Also `area`, `goal`, `minutes` (its length, as for a task), `notes` and `priority`, and `"time":
+"09:30"` — a set time of day, which books it at that time on every day it's due rather than letting
+the planner slot it in. A habit linked to its own calendar events (`habitEvents` in the planner's
+settings) ignores `time`: those events are already its sessions.
 
 ### `target`
 A weekly target. `{"op": "target", "title": "Applications", "target": 5, "unitLabel": "applications"}`
@@ -156,7 +159,7 @@ An amount on a weekly target, or on a goal measured by a number:
 ### `edit`
 `{"op": "edit", "id": "…", "set": {"title": "…", "date": "…"}}`. Editable — tasks: `title, date,
 area, goalId, order, minutes, time, notes, priority`; habits: `title, area, goalId, repeat, order,
-minutes, notes, priority` (`null` clears a length or time); weekly targets: `title, area,
+minutes, time, notes, priority` (`null` clears a length or time); weekly targets: `title, area,
 goalId, target, unitLabel, order, notes`; goals: `title, targetDate, target, unitLabel, why, order, notes`
 (`target: null` measures by milestones); milestones: `title, done, goalId, order`. A weekly target's
 unit can't change — archive it and add a new one.

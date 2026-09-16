@@ -119,6 +119,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       if (r.kind === 'perWeek') rows.push(field('Times a week', input('repeat.n', r.n, { type: 'number', min: 1, max: 7 })));
       if (r.kind === 'weekly') rows.push(field('Day', select('repeat.day', r.day, WEEKDAYS.map((n, i) => [i + 1, n]))));
       if (r.kind === 'monthly') rows.push(field('Day of the month', input('repeat.date', r.date, { type: 'number', min: 1, max: 31 })));
+      rows.push(field('Time (optional)', input('time', draft.time, { type: 'time' })));
       rows.push(lengthField());
       return rows;
     }
@@ -211,7 +212,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       if (text && minutes == null) throw new Error('Length: try 45m, 2h or 1h30 (5 minutes to 12 hours).');
       fields.minutes = minutes;
     }
-    if (draft.type === 'task') fields.time = draft.time || null;
+    if (draft.type === 'task' || draft.type === 'habit') fields.time = draft.time || null;
     fields.notes = String(draft.notes ?? '').trim();
     if (fields.notes.length > 1000) throw new Error('Notes can be at most 1000 characters.');
     return fields;

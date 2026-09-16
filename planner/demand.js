@@ -20,19 +20,34 @@ export function evenPicks(list, k) {
   return Array.from({ length: k }, (_, i) => list[Math.floor((i * list.length) / k)]);
 }
 
-// Tasks with a set time: a fixed event on their date, for their length (not on time off).
-export function fixedTasks({ doc, days, config }) {
+// Anything with a set time: a fixed event where it belongs, for its length (not on time off). A task
+// sits on its own date; a habit repeats, so it takes one on every day it's due and isn't already
+// ticked. A habit linked to its own calendar events (habitEvents) is left alone — those events are
+// its sessions, and a second fixed block would just compete with them.
+export function fixedTasks({ doc, days, config, links = [] }) {
   const offs = timeOff(doc);
-  return values(doc.items)
-    .filter((i) => i.type === 'task' && i.status === 'active' && i.time && days.includes(i.date) && !excused(doc, i, i.date, offs))
-    .sort(byOrder)
-    .map((i) => {
-      const start = at(i.date, i.time).getTime();
-      return {
-        key: `${i.date}|fixed|${i.id}`, itemId: i.id, day: i.date, title: i.title, area: String(i.area ?? '').trim(),
-        start, end: start + (i.minutes ?? config.defaultMinutes) * MINUTE,
-      };
-    });
+  const idx = doneIndex(doc);
+  const linked = new Set(links.map((l) => l.habitId));
+  const out = [];
+  const place = (i, day) => {
+    const start = at(day, i.time).getTime();
+    return {
+      key: `${day}|fixed|${i.id}`, itemId: i.id, day, title: i.title, area: String(i.area ?? '').trim(),
+      start, end: start + (i.minutes ?? config.defaultMinutes) * MINUTE,
+    };
+  };
+  for (const i of values(doc.items).filter((x) => x.status === 'active' && x.time).sort(byOrder)) {
+    if (i.type === 'task') {
+      if (days.includes(i.date) && !excused(doc, i, i.date, offs)) out.push(place(i, i.date));
+    } else if (i.type === 'habit' && !linked.has(i.id)) {
+      const ticked = doneDays(doc, i.id, idx);
+      for (const d of days) {
+        if (ticked.has(d) || excused(doc, i, d, offs) || !isHabitDue(doc, i, d, idx)) continue;
+        out.push(place(i, d));
+      }
+    }
+  }
+  return out;
 }
 
 // One area's entries on one day as blocks of at most maxBlockMinutes: tasks packed in order, a task
@@ -161,7 +176,7 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
       if (i.type === 'task' && !i.time) {
         if (doneDays(doc, i.id, idx).size) continue;
         if (dueDay(i) === d) add(i, i.date < d);
-      } else if (i.type === 'habit' && !linked.has(i.id)) {
+      } else if (i.type === 'habit' && !linked.has(i.id) && !i.time) {
         if (doneDays(doc, i.id, idx).has(d) || off(i, d)) continue;
         const due = i.repeat?.kind === 'perWeek' ? perWeekDays.get(i.id)?.has(d) : isHabitDue(doc, i, d, idx);
         if (due) add(i, false);

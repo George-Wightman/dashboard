@@ -112,6 +112,7 @@ test('items take a length and, for a task, a time — checked', () => {
   assert.equal(s.addItem({ type: 'habit', title: 'Read', minutes: 20 }).minutes, 20);
   assert.throws(() => s.addItem({ type: 'task', title: 'x', minutes: 3 }), /A length should be from 5 minutes to 12 hours/);
   assert.throws(() => s.addItem({ type: 'task', title: 'x', time: '25:00' }), /A time should look like 14:00/);
-  assert.throws(() => s.addItem({ type: 'habit', title: 'x', time: '09:00' }), /Only a task has a time/);
+  assert.equal(s.addItem({ type: 'habit', title: 'x', time: '09:00' }).time, '09:00');
+  assert.throws(() => s.addItem({ type: 'quota', title: 'x', target: 3, time: '09:00' }), /A weekly target has no time/);
   assert.equal(s.addItem({ type: 'task', title: 'plain' }).minutes, undefined);
 });

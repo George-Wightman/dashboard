@@ -79,7 +79,8 @@ today and tomorrow and rough (`~`, pale) further out. It moves blocks off new sh
 when he ticks. **Don't book blocks for dashboard tasks yourself.** Give the planner what it needs:
 
 - `minutes` on anything longer than half an hour (`"2h"`, `"90m"`), and `time` when it happens at a
-  set time (`"14:00"`) — an interview, the assessment centre day.
+  set time (`"14:00"`) — an interview, the assessment centre day. A habit takes a `time` too, and
+  then it's booked at that time on every day it's due instead of being slotted in.
 - An `area` on every task, so similar ones share a block (reuse the areas already in `list`).
 - A date on each task — spread a week's work over its days rather than piling it on one.
 

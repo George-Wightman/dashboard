@@ -240,7 +240,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   }
 
   // ---- The planner's own events -----------------------------------------------------------------
-  const fixedWanted = new Map(fixedTasks({ doc, days, config }).map((f) => [f.key, f]));
+  const fixedWanted = new Map(fixedTasks({ doc, days, config, links }).map((f) => [f.key, f]));
   for (const ev of timed.filter((e) => e.mine)) {
     const key = ev.props[P.key] ?? '';
     const kd = key.split('|')[0] || localDay(ev.start);

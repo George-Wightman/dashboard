@@ -117,3 +117,39 @@ test('fixedTasks: a task with a time, on its date, for its length', () => {
     start: at('2026-09-16', '09:30').getTime(), end: at('2026-09-16', '16:00').getTime(),
   }]);
 });
+
+test('a habit with a set time is a fixed event on every day it is due', () => {
+  const doc = fixture({ items: [
+    { id: 'heb', type: 'habit', title: 'Hebrew', area: 'Hebrew', repeat: { kind: 'daily' }, minutes: 45, time: '09:30' },
+    { id: 'gym', type: 'habit', title: 'Gym', area: 'Health', repeat: { kind: 'weekdays', days: [1, 3, 5] }, time: '18:00' },
+  ] });
+  const days = ['2026-09-15', '2026-09-16', '2026-09-17'];
+  const fixed = fixedTasks({ doc, days, config: { defaultMinutes: 30 }, links: [] });
+  const hebrew = fixed.filter((f) => f.itemId === 'heb');
+  assert.equal(hebrew.length, 3, 'a daily habit is fixed on each day');
+  assert.equal(new Date(hebrew[0].start).getHours(), 9);
+  assert.equal((hebrew[0].end - hebrew[0].start) / 60000, 45);
+  const gym = fixed.filter((f) => f.itemId === 'gym').map((f) => f.day);
+  assert.deepEqual(gym, ['2026-09-16'], 'only the weekdays it repeats on');
+});
+
+test('a habit linked to its own calendar events is not also booked at a set time', () => {
+  const doc = fixture({ items: [
+    { id: 'heb', type: 'habit', title: 'Hebrew', area: 'Hebrew', repeat: { kind: 'daily' }, time: '09:30' },
+  ] });
+  const fixed = fixedTasks({
+    doc, days: ['2026-09-15'], config: { defaultMinutes: 30 }, links: [{ habitId: 'heb', calendarId: 'c', title: 'Learn Hebrew', area: 'Hebrew' }],
+  });
+  assert.deepEqual(fixed, [], 'the link already gives it a real event');
+});
+
+test('a habit already ticked, or on time off, is not booked at its set time', () => {
+  const doc = fixture({
+    items: [{ id: 'heb', type: 'habit', title: 'Hebrew', repeat: { kind: 'daily' }, time: '09:30' }],
+    logs: [done('heb', '2026-09-15')],
+  });
+  doc.calendar = { 'off:2026-09-16': { id: 'off:2026-09-16', status: 'active', start: '2026-09-16', end: '2026-09-16', areas: [], reason: 'away', source: 'claude' } };
+  const days = ['2026-09-15', '2026-09-16', '2026-09-17'];
+  const fixed = fixedTasks({ doc, days, config: { defaultMinutes: 30 }, links: [] });
+  assert.deepEqual(fixed.map((f) => f.day), ['2026-09-17']);
+});

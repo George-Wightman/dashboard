@@ -141,17 +141,18 @@ function task(store, op) {
 }
 
 function habit(store, op) {
-  if (op.time != null && op.time !== '') throw new Error('Only a task has a time');
   const minutes = lengthOf(op.minutes);
+  const time = clockOf(op.time);
   const notes = notesOf(op.notes);
   const priority = priorityOf(op.priority, 'habit');
   const rec = store.addItem({
     type: 'habit', title: title(op.title, 'A habit'), repeat: checkRepeat(op.repeat),
     area: str(op.area), goalId: goalOf(store, op.goal), status: statusOf(op), source: CLAUDE,
-    ...(minutes ? { minutes } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
+    ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
   });
   const length = rec.minutes ? `, ${formatAmount(rec.minutes, 'minutes')}` : '';
-  return tagged(`${verb(op)} habit ${q(rec.title)} (${repeatText(rec.repeat)}${length})${rec.priority ? ' ★' : ''}`, rec.id);
+  const when = rec.time ? `${rec.minutes ? '' : ','} at ${rec.time}` : '';
+  return tagged(`${verb(op)} habit ${q(rec.title)} (${repeatText(rec.repeat)}${length}${when})${rec.priority ? ' ★' : ''}`, rec.id);
 }
 
 function target(store, op) {
@@ -271,7 +272,7 @@ const EDITABLE = {
     unitLabel: (v, rec) => { onlyFor('quota', 'Only a weekly target has a unit label')(rec); return str(v); },
     order: (v) => checkOrder(v),
     minutes: (v, rec) => { if (rec.type === 'quota') throw new Error('A weekly target has no length'); return lengthOf(v); },
-    time: (v, rec) => { onlyFor('task', 'Only a task has a time')(rec); return clockOf(v); },
+    time: (v, rec) => { if (rec.type === 'quota') throw new Error('A weekly target has no time'); return clockOf(v); },
     notes: (v) => checkNotes(v),
     priority: (v, rec) => (v == null ? false : priorityOf(v, rec.type)),
   },
@@ -567,7 +568,7 @@ function gym(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest'],
-  habit: ['title', 'repeat', 'area', 'goal', 'minutes', 'notes', 'priority', 'suggest'],
+  habit: ['title', 'repeat', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest'],
   target: ['title', 'target', 'unit', 'unitLabel', 'area', 'goal', 'notes', 'suggest'],
   goal: ['title', 'targetDate', 'why', 'milestones', 'notes', 'suggest'],
   milestone: ['goal', 'title', 'suggest'],
