@@ -175,3 +175,16 @@ test('with a fortnight horizon the near week keeps its records, and the far week
   for (const d of dates) assert.ok(d >= TUE && d < '2026-09-22', `${d} is inside the seven days the app reads`);
   assert.equal(doc.calendar['day:2'].day, TUE, "today's own record survives the run");
 });
+
+test('the planner writes down which calendars George has, and which it watches', async () => {
+  const { repo, planner } = setup();
+  assert.equal(await planner.run(), 'ok');
+  const status = repo.doc().calendar.status;
+  assert.ok(Array.isArray(status.calendars), 'the list is on the status record');
+  const byName = Object.fromEntries(status.calendars.map((c) => [c.name, c]));
+  assert.ok(byName.Family, 'a calendar it ignores is still listed, so nobody goes looking for it');
+  assert.equal(byName.Family.watched, false);
+  assert.equal(byName['Gym '].watched, true, 'the name is exactly as Google gives it, trailing space and all');
+  assert.equal(status.calendars.filter((c) => c.primary).length, 1, 'exactly one is the primary');
+  assert.equal(byName.Tasks.primary, true);
+});

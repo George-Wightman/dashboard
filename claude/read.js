@@ -125,6 +125,14 @@ function plannerRead(doc, day) {
   out.push(`  priorityAreas: ${config.priorityAreas.join(', ') || 'none'} · areaColors: ${Object.entries(config.areaColors).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'}`);
   out.push(`  dayHours: ${Object.entries(config.dayHours).map(([d, [f, t]]) => `${d} ${f}–${t}`).join(', ') || 'none'}`);
   out.push(`  Colours George's calendars take (not for areas): ${s?.takenColors?.length ? s.takenColors.join(', ') : 'not known until the planner runs'}`);
+  // George's calendars by name, because without them anyone looking at his calendar from outside the
+  // dashboard has to guess what they're called — and guessing one out of seven once had a whole
+  // session concluding the planner was broken when it was working perfectly well.
+  if (s?.calendars?.length) {
+    const named = s.calendars.map((c) => `${c.name.trim()}${c.primary ? ' (main)' : ''}${c.watched ? '' : ' — ignored'}`);
+    out.push(`  George's calendars: ${named.join(' · ')}`);
+    out.push("  Those are the names Google knows them by. Read them all before deciding what's on his calendar; one of them is not the picture.");
+  }
   for (const p of problems) out.push(`  ! ${p}`);
   const notes = plannerNotes(doc, day);
   out.push(notes.length ? 'Its notes today:' : 'No notes from it today.', ...notes.map((n) => `  ${n}`));

@@ -5,6 +5,7 @@ import { inflateRawSync } from 'node:zlib';
 import { zipFiles } from '../claude/zip.js';
 import { buildSkill, docsHash, PLACEHOLDER, SKILL_FILES } from '../claude/build-skill.mjs';
 import { OPS } from '../claude/ops.js';
+import { PLAYBOOKS } from '../claude/cli.js';
 import { READS } from '../claude/read.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -113,4 +114,21 @@ test('run.sh compares the docs it was built with against the clone, and passes b
   assert.ok(sh.includes('older than the tool'), 'says so when they differ');
   assert.ok(sh.includes('--build'), 'passes the live hash to the tool');
   assert.ok(sh.includes('--reference'), 'tells the tool where the current reference is');
+});
+
+test('every playbook the tool offers exists, and the docs send people to them', () => {
+  const ref = read('claude/skill/reference.md');
+  const skill = read('claude/skill/SKILL.md');
+  for (const topic of PLAYBOOKS) {
+    const body = read(`claude/skill/playbooks/${topic}.md`);
+    assert.match(body, /^# Playbook: /m, `${topic} reads as a playbook`);
+    assert.ok(ref.includes(`reference ${topic}`), `reference.md points at ${topic}`);
+    assert.ok(skill.includes(`reference ${topic}`), `SKILL.md points at ${topic}`);
+  }
+});
+
+test("SKILL.md tells Claude to keep its hands off George's calendar", () => {
+  const skill = read('claude/skill/SKILL.md');
+  assert.match(skill, /no booking, no editing, no deleting/);
+  assert.match(skill, /reading one of them tells you\s+nothing/);
 });

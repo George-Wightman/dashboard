@@ -38,8 +38,14 @@ Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `
 Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.
 
-**Not sure which?** The table at the top of `reference.md` — *to do this → run this* — maps what you
-want to do to the command that does it. Start there rather than reading the whole file.
+**Three jobs have a playbook, and they are the three that go wrong most. Read it before you start:**
+
+    bash run.sh reference calendar    # anything touching his Google Calendar
+    bash run.sh reference planning    # "plan my week", or any reshuffle
+    bash run.sh reference gym         # his training
+
+**Not sure which command?** The table at the top of `reference.md` — *to do this → run this* — maps
+what you want to do to the command that does it. Start there rather than reading the whole file.
 
 Ids show as `#a1b2c3d4`; pass them without the `#`. Dates are `YYYY-MM-DD`, `today`, `tomorrow` or
 `yesterday`. If `apply` fails, **nothing** was changed: fix the op it names and send the whole batch
@@ -76,7 +82,12 @@ again.
 A planner — a Google Apps Script in George's account — books the dashboard into his Google Calendar
 every 10 minutes: each day's tasks grouped by area into blocks, around his fixed events, exact for
 today and tomorrow and rough (`~`, pale) further out. It moves blocks off new shifts and trims them
-when he ticks. **Don't book blocks for dashboard tasks yourself.** Give the planner what it needs:
+when he ticks. **Don't touch his Google Calendar yourself** — no booking, no editing, no deleting, no retitling, not
+his own events and not the planner's blocks. A change made by hand doesn't appear in `changes`, so
+George can neither see it nor undo it. He has several calendars and reading one of them tells you
+nothing: `planner` names them all. Read `bash run.sh reference calendar` before you go near it.
+
+Give the planner what it needs instead:
 
 - `minutes` on anything longer than half an hour (`"2h"`, `"90m"`), and `time` when it happens at a
   set time (`"14:00"`) — an interview, the assessment centre day. A habit takes a `time` too, and

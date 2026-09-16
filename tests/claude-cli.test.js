@@ -276,3 +276,28 @@ test('an op with only fields it reads says nothing extra', async () => {
   const r = await run(['apply'], { stdin: JSON.stringify({ op: 'task', title: 'Gym', minutes: '2h' }) });
   assert.equal(r.text, 'Added task "Gym" for today (2h) · #n1\nSaved to GitHub — the laptop and phone pick it up at their next sync.');
 });
+
+test('reference with a topic prints that playbook, from beside the live reference', async () => {
+  const r = await main({
+    argv: ['--config', 'config.json', '--reference', 'live/claude/skill/reference.md', 'reference', 'calendar'],
+    readText: (path) => (path === 'live/claude/skill/playbooks/calendar.md' ? '# Playbook: calendar\nread planner first\n' : CONFIG),
+    readStdin: async () => '', makeClient: () => new FakeGitHub(), now: MORNING, newId: ids('n'), env: {},
+  });
+  assert.equal(r.code, 0);
+  assert.match(r.text, /read planner first/);
+});
+
+test('an unknown topic names the ones there are', async () => {
+  const r = await main({
+    argv: ['--config', 'config.json', '--reference', 'live/reference.md', 'reference', 'hebrew'],
+    readText: () => CONFIG, readStdin: async () => '', makeClient: () => new FakeGitHub(), now: MORNING, newId: ids('n'), env: {},
+  });
+  assert.equal(r.code, 1);
+  assert.match(r.text, /no playbook for "hebrew"/);
+  assert.match(r.text, /calendar, planning, gym/);
+});
+
+test('help says to read the playbook before the calendar, the week, or training', async () => {
+  const { text } = await run(['help']);
+  assert.match(text, /reference <calendar\|planning\|gym>/);
+});

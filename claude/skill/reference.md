@@ -25,6 +25,13 @@ Pick the row, not the whole file. The detail for each command is below.
 | Tell the app's developer something | `handoffs` | `handoff` |
 | Leave a note George will read | `flags` | `flag` |
 
+Three jobs have a playbook of their own, and they are the three that go wrong most. Read the playbook
+**first**, before any of the reads above:
+
+    bash run.sh reference calendar    # anything touching his Google Calendar
+    bash run.sh reference planning    # "plan my week", or any reshuffle
+    bash run.sh reference gym         # his training
+
 If a command the tool mentions isn't in this file, this copy is older than the tool: run
 `bash run.sh reference` for the current one.
 
@@ -88,9 +95,15 @@ planner booked for the next seven days (`~` marks a rough time).
 What needs you: tasks with no length, tasks carried over 3 days or more, weekly targets behind pace,
 and what the planner couldn't fit or use. Fix what you can; tell George the rest.
 
-### `reference`
-This file, from the live tool rather than the copy in this folder. Read it whenever the tool mentions
-an op or a read you don't recognise, and whenever run.sh says these docs are older than the tool.
+### `reference [topic]`
+With no topic: this file, from the live tool rather than the copy in this folder. Read it whenever the
+tool mentions an op or a read you don't recognise, and whenever run.sh says these docs are older than
+the tool.
+
+With a topic — `calendar`, `planning` or `gym` — a short playbook for that job: which read to run
+first, what to change, and what never to touch. **Read the playbook before you start**, not after
+something has gone wrong. Each is a page, and each exists because a session got that job badly wrong
+without it.
 
 ### `gym`
 Training from Hevy: whether it's connected (and any problem), each key lift (estimated 1RM, last top

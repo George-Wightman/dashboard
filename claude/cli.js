@@ -11,12 +11,17 @@ import { createFileStore } from './files.js';
 import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
 import { scrubText, APP_VERSION } from '../js/flags.js';
 
+// Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
+// what never to touch. Served from the clone like the reference, so they can't go stale.
+export const PLAYBOOKS = ['calendar', 'planning', 'gym'];
+
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym · reference · handoffs · handoff <name>',
+  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym · reference [topic] · handoffs · handoff <name>',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
-  'Not sure which? The table at the top of reference.md maps what you want to do to the command that does it — `bash run.sh reference` prints the current one.',
+  'Not sure which? `bash run.sh reference` prints the current reference, whose first table maps what you want to do to the command that does it.',
+  `Before anything to do with his calendar, planning his week, or training, read the playbook first: bash run.sh reference <${PLAYBOOKS.join('|')}>.`,
 ].join('\n');
 
 function parseOps(text) {
@@ -64,16 +69,25 @@ export async function main({
       return finish(command ? 0 : 1);
     }
 
-    // The reference from the clone, not from this folder — the whole point is that it can't go stale.
+    // The reference and the playbooks from the clone, not from this folder — the whole point is that
+    // they can't go stale. With a topic it's that playbook; without one, the reference itself.
     if (command === 'reference') {
       if (!referencePath) {
         say("This copy of the tool wasn't told where the current reference is — run it through run.sh.");
         return finish(1);
       }
+      const topic = rest.join(' ').trim().toLowerCase();
+      if (topic && !PLAYBOOKS.includes(topic)) {
+        say(`There's no playbook for ${JSON.stringify(topic)} — there is one for ${PLAYBOOKS.join(', ')}. Plain \`reference\` prints the whole thing.`);
+        return finish(1);
+      }
+      const path = topic
+        ? `${referencePath.slice(0, referencePath.lastIndexOf('/') + 1)}playbooks/${topic}.md`
+        : referencePath;
       try {
-        say(readText(referencePath));
+        say(readText(path));
       } catch {
-        say(`Can't read the current reference (${referencePath})`);
+        say(topic ? `Can't read the ${topic} playbook (${path})` : `Can't read the current reference (${path})`);
         return finish(1);
       }
       return finish(0);

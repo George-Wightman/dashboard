@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '59c88ea4';
+var PLANNER_BUILD = '9415c60d';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -3898,13 +3898,21 @@ function createPlanner({
   }
 
   // The planner's status for the dashboard, at most hourly unless something in it changed. It
-  // carries the colours George's calendars take, so Claude's tool can refuse a clashing area colour.
-  function heartbeat(store, t, lastError, takenColors = []) {
+  // carries the colours George's calendars take, so Claude's tool can refuse a clashing area colour,
+  // and the calendars themselves — the planner sees them every ten minutes, and without them written
+  // down anyone reading the dashboard has to guess what George's calendars are even called. A whole
+  // session once decided the planner was broken after looking at one calendar out of seven.
+  const calendarList = (cals, watchedIds) => cals
+    .map((c) => ({ name: String(c.name), watched: watchedIds.has(c.id), primary: !!c.primary }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+  function heartbeat(store, t, lastError, takenColors = [], calendars = []) {
     const prev = plannerStatus(store.doc());
+    const same = JSON.stringify(prev?.calendars ?? []) === JSON.stringify(calendars);
     const due = !prev || !prev.lastRun || prev.lastError !== lastError || prev.version !== version || prev.paused
-      || (prev.takenColors ?? []).join() !== takenColors.join()
+      || (prev.takenColors ?? []).join() !== takenColors.join() || !same
       || t.getTime() - Date.parse(prev.lastRun) > HEARTBEAT_MS;
-    if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors });
+    if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars });
   }
 
   async function run(e) {
@@ -3945,7 +3953,7 @@ function createPlanner({
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
-      heartbeat(store, t, problem ? clean(problem) : null, result.takenColors ?? []);
+      heartbeat(store, t, problem ? clean(problem) : null, result.takenColors ?? [], calendarList(cals, new Set(watched.map((c) => c.id))));
       drop('LAST_ERROR');
       if (session.changed()) {
         const pushed = await syncOnce({ store, client: session.client });

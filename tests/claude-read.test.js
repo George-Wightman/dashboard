@@ -196,3 +196,21 @@ test("directing in the reads: the brief, time off, ★ and notes on today; atten
   assert.match(attn, /^Needs attention:$/m);
   assert.match(attn, /^ {2}"Update CV" has carried over since Thu 10 Sep$/m);
 });
+
+test('the planner read names every calendar George has, and which one is the main', () => {
+  const doc = fixture({});
+  doc.calendar = {
+    status: {
+      id: 'status', status: 'active', source: 'planner', lastRun: '2026-09-15T07:00:00.000Z', version: 'b1',
+      takenColors: ['Basil'],
+      calendars: [
+        { name: 'Application ', watched: true, primary: false },
+        { name: 'Family', watched: false, primary: false },
+        { name: 'Tasks', watched: true, primary: true },
+      ],
+    },
+  };
+  const out = READS.planner(doc, '2026-09-15');
+  assert.match(out, /George's calendars: Application · Family — ignored · Tasks \(main\)/);
+  assert.match(out, /one of them is not the picture/);
+});
