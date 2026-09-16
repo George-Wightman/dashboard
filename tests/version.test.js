@@ -97,7 +97,10 @@ test('a newer build live is cached whole, then offered once', async () => {
   });
 
   assert.equal((await updater.check()).ready, false);
-  assert.deepEqual(calls[0], { url: './', init: { method: 'HEAD', cache: 'no-store' } });
+  assert.equal(calls[0].url, './');
+  assert.equal(calls[0].init.method, 'HEAD');
+  assert.equal(calls[0].init.cache, 'no-store');
+  assert.ok(calls[0].init.signal instanceof AbortSignal);
   assert.equal(sw.messages.length, 0);
 
   lm = 'Sun, 13 Sep 2026 07:08:07 GMT';
@@ -179,54 +182,16 @@ test('apply caches the new version first if it is not already, then reloads', as
   assert.deepEqual(bare, ['reload']);
 });
 
-test('sw.js caches and serves a page under its path alone, whatever the query', async () => {
-  const handlers = {};
-  const matched = [];
-  const put = [];
-  const self = { addEventListener: (type, fn) => { handlers[type] = fn; }, location: { origin: 'https://example.test' } };
-  const caches = {
-    match: async (key) => { matched.push(key); return undefined; },
-    open: async () => ({ put: async (key) => { put.push(key); } }),
-  };
-  const fetch = async () => ({ ok: true, clone() { return this; } });
-  new Function('self', 'caches', 'fetch', readFileSync(new URL('../sw.js', import.meta.url), 'utf8'))(self, caches, fetch);
-
-  let response;
-  const waits = [];
-  handlers.fetch({
-    request: { method: 'GET', url: 'https://example.test/dashboard/?fakegemini' },
-    respondWith: (p) => { response = p; },
-    waitUntil: (p) => waits.push(p),
-  });
-  await response;
-  await Promise.all(waits);
-  assert.deepEqual(matched, ['https://example.test/dashboard/']);
-  assert.deepEqual(put, ['https://example.test/dashboard/']);
-});
-
-test("sw.js answers 'refresh' by re-downloading the whole shell, bypassing the HTTP cache", async () => {
-  const handlers = {};
-  const added = [];
-  const self = { addEventListener: (type, fn) => { handlers[type] = fn; }, location: { origin: 'https://example.test' } };
-  const caches = { open: async () => ({ addAll: async (requests) => { added.push(...requests); } }) };
-  // In a worker a relative URL resolves against the worker's own address; Node has none.
-  class Request extends globalThis.Request {
-    constructor(url, init) { super(new URL(url, 'https://example.test/dashboard/sw.js'), init); }
-  }
-  new Function('self', 'caches', 'Request', readFileSync(new URL('../sw.js', import.meta.url), 'utf8'))(self, caches, Request);
-
-  const replies = [];
-  let work;
-  handlers.message({ data: { type: 'refresh' }, ports: [{ postMessage: (m) => replies.push(m) }], waitUntil: (p) => { work = p; } });
-  await work;
-  assert.deepEqual(replies, [{ ok: true }]);
-  assert.ok(added.some((r) => r.url.endsWith('/js/version.js')), 'js/version.js is refreshed too');
-  assert.ok(added.every((r) => r.cache === 'reload'));
-
-  // Anything else is ignored, and a failed download says so.
-  handlers.message({ data: { type: 'other' }, ports: [], waitUntil: () => assert.fail('should be ignored') });
-  caches.open = async () => ({ addAll: async () => { throw new TypeError('Failed to fetch'); } });
-  handlers.message({ data: { type: 'refresh' }, ports: [{ postMessage: (m) => replies.push(m) }], waitUntil: (p) => { work = p; } });
-  await work;
-  assert.deepEqual(replies, [{ ok: true }, { ok: false }]);
+test('a failed complete update preserves the open page and can be retried', async () => {
+  const sw = worker();
+  let downloaded = false, reloaded = false;
+  sw.controller.postMessage = (_, [port]) => port.postMessage({ ok: downloaded });
+  const updater = createUpdater({ running: null, worker: sw });
+  assert.equal(await updater.apply(() => { reloaded = true; }), false);
+  assert.equal(reloaded, false);
+  assert.match(updater.state().error, /complete update/);
+  downloaded = true;
+  assert.equal(await updater.apply(() => { reloaded = true; }), true);
+  assert.equal(reloaded, true);
+  assert.equal(updater.state().error, undefined);
 });

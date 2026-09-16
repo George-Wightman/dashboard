@@ -5,7 +5,7 @@ import { askGemini, talkGemini, geminiKeys, hebrewKeys } from './gemini.js';
 import { longDate, weekStart } from './dates.js';
 import { dayCompletion } from './schedule.js';
 import { digestDue } from './coach.js';
-import { createGitHubClient, syncOnce, createSyncScheduler } from './sync.js';
+import { createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents } from './sync.js';
 import { renderToday, initAddBox } from './ui/today.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
@@ -169,6 +169,7 @@ function renderHeader() {
   warning.hidden = !problem;
   warning.textContent = problem ?? '';
   document.getElementById('update-ready').hidden = !updater.state().ready;
+  document.getElementById('update-ready').title = updater.state().error ?? 'Reload into the downloaded update';
 
   // Under the date: Claude's brief, the Coach's question when one is waiting, any time off today,
   // then the planner's latest notes — each hidden with × for the rest of the day on this device.
@@ -269,8 +270,10 @@ async function runSync() {
       ? { state: 'ok', at: new Date(), error: null }
       : { state: 'failing', error: result.error });
     if (result.ok) writeLastSynced(localStorage, started);
+    return result;
   } catch (e) {
     Object.assign(sync, { state: 'failing', error: e.message });
+    return { ok: false, error: e.message };
   } finally {
     renderHeader();
   }
@@ -347,8 +350,9 @@ function maybeOpenMoment() {
 // Each sync pass (on open, on focus, after a change) is followed by the digest check and the
 // Coach's moment, so what another device already wrote has been pulled in before deciding.
 const scheduler = createSyncScheduler({
-  run: async () => { await runSync(); maybeWriteDigest(); maybeOpenMoment(); },
+  run: async () => { const result = await runSync(); maybeWriteDigest(); maybeOpenMoment(); return result; },
   canRun,
+  canPoll: () => ctx.syncOn() && !document.hidden && navigator.onLine !== false,
 });
 
 // The app sits open all day: when the logical day changes, rebuild.
@@ -375,7 +379,10 @@ function wake() {
 }
 
 store.subscribe((reason) => {
-  render();
+  // A request may have started before typing began. Gate the redraw when it
+  // finishes too; the saved data can safely advance while an input stays put.
+  if (reason === 'sync' && !canRun()) { renderHeader(); whenIdle().then(render); }
+  else render();
   if (reason === 'local') scheduler.changed();
   // A local change has just re-rendered anyway (the edit panel is never re-rendered from here),
   // so this is a safe moment to absorb a held other-window save rather than losing it.
@@ -425,7 +432,7 @@ window.addEventListener('storage', (e) => {
   if (e.key !== DATA_KEY || !e.newValue) return;
   // Same hold-back as the sync scheduler: absorbing another window's save must not wipe
   // something half-typed either, so queue it and let it through once a sync is allowed to run.
-  if (!canRun()) { pendingStored = e.newValue; scheduler.changed(); return; }
+  if (!canRun()) { pendingStored = mergeStoredEvents(pendingStored, e.newValue); scheduler.changed(); return; }
   store.absorbStored(e.newValue);
 });
 // Once a minute: roll over to a new day, open the Coach's moment when one arrives, and repaint
@@ -437,10 +444,12 @@ setInterval(() => {
   maybeOpenMoment();
   if (talkNow(ctx) !== shownTalk && !typing()) render();
   if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });
+  scheduler.poll().catch(() => {});
 }, 60000);
 
 applyLook();
 store.pruneTalks(TALK_KEEP_DAYS);
+store.pruneChanges();
 render();
 scheduler.now();
 

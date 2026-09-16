@@ -138,8 +138,22 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     return out;
   };
 
-  const listed = raw.filter((e) => watchedIds.has(e.calendarId)).map((e) => normEvent(e, e.calendarId));
-  const present = new Set(listed.map((e) => e.id));
+  const candidates = raw.filter((e) => watchedIds.has(e.calendarId)).map((e) => normEvent(e, e.calendarId));
+  // A retry after an ambiguous Calendar response can leave two owned events with
+  // one planning key. Prefer the user's placement, then the exact replacement.
+  const duplicates = [];
+  const owned = new Map();
+  for (const ev of candidates.filter((e) => e.mine && e.props[P.key]).sort((a, b) =>
+    Number(movedByGeorge(b)) - Number(movedByGeorge(a))
+      || Number(a.props[P.state] === 'rough') - Number(b.props[P.state] === 'rough')
+      || a.id.localeCompare(b.id))) {
+    const key = ev.props[P.key];
+    if (owned.has(key)) duplicates.push(ev);
+    else owned.set(key, ev);
+  }
+  const duplicateSet = new Set(duplicates);
+  const listed = candidates.filter((e) => !duplicateSet.has(e));
+  const present = new Set(candidates.map((e) => e.id));
   const timed = listed.filter((e) => !e.cancelled && !e.allDay && e.start && e.end);
   // All-day events used to be skipped outright, so a day George had marked "no work" the obvious way
   // was invisible and the planner booked straight through it. Anything all-day and busy on a watched
@@ -185,7 +199,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     }
   }
   const keep = new Map();
-  const actions = [];
+  const actions = duplicates.map((ev) => ({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }));
   const record = (d, b) => rec(d).blocks.push({
     key: b.key, eventId: b.eventId, calendarId: b.calendarId, calendar: calName(b.calendarId), title: b.title,
     start: iso(b.start), end: iso(b.end), state: b.state, items: b.items,
@@ -197,7 +211,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const toRough = body.extendedProperties.private[P.state] === 'rough';
     if ((ev.props[P.state] === 'rough' && !toRough) || (ev.colorId && body.colorId === undefined)) {
       actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
-      actions.push({ op: 'insert', calendarId: ev.calendarId, key, body });
+      actions.push({ op: 'insert', calendarId: ev.calendarId, key, body, afterDelete: ev.id });
       return null;
     }
     if (!sameAs(ev, body)) actions.push({ op: 'patch', calendarId: ev.calendarId, eventId: ev.id, body });
@@ -490,7 +504,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       }
     } else {
       if (ex) actions.push({ op: 'delete', calendarId: ex.calendarId, eventId: ex.id });
-      actions.push({ op: 'insert', calendarId: cal.id, key: b.key, body });
+      actions.push({ op: 'insert', calendarId: cal.id, key: b.key, body, ...(ex ? { afterDelete: ex.id, afterDeleteCalendar: ex.calendarId } : {}) });
     }
     record(day, { key: b.key, eventId, calendarId: cal.id, title, start, end, state, items: b.items });
   }

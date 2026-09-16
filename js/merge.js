@@ -1,8 +1,9 @@
-// Merging two copies of the document. Pure and deterministic: whichever device runs it, in
-// whichever order, and however many times, the result is the same. Every quick-add is its own
-// record and nothing is hard-deleted, so "later updated wins, per record" is the only rule.
+// Deterministic merge: edited records carry per-field versions; older records
+// retain their whole-record timestamp semantics. Every quick-add is independent,
+// and removals remain tombstones so offline devices cannot resurrect them.
 
 import { MAPS, stableStringify } from './doc.js';
+import { mergeRecord } from './record.js';
 
 export function pickWinner(a, b) {
   // A non-string `updated` (a malformed sync, a stray number) isn't a comparable timestamp —
@@ -44,7 +45,7 @@ function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
     // null and absent are both "nothing there", but not the same nothing: `x ?? y` alone picks
     // whichever side happens to be undefined, which is order-dependent when one side is null and
     // the other absent. Prefer null over absent, in both orders, when neither side has a record.
-    if (x != null && y != null) map[id] = pickWinner(x, y);
+    if (x != null && y != null) map[id] = normalise ? mergeRecord(x, y, pickWinner) : pickWinner(x, y);
     else if (x == null && y == null) map[id] = x === undefined ? y : x;
     else map[id] = x ?? y;
   }

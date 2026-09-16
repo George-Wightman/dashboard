@@ -135,6 +135,8 @@ today?", "log 45m of Hebrew", "tick off the CV task".
 `claude/dash.mjs`, a small command-line tool built on the app's own modules: it reads `data.json`
 from `dashboard-sync`, makes the change through the same store and merge, logs it, and writes it
 back — to the laptop and the phone, Claude is just a third device. Changes appear at their next sync.
+Visible, idle devices check for changes periodically, with longer waits after failures. Sync
+requests time out rather than leaving the app permanently stuck on “syncing”.
 
 **Setting it up (once).**
 
@@ -217,6 +219,10 @@ time. ⚙ → Claude → *Gym* says how it's going.
 
 A push reaches every device on its own, with no version number to bump:
 
+Before publishing source changes, run `npm run build` and `npm test`, and include the generated
+`planner/planner.js` and `release.json` in the same release. The manifest contains hashes of every
+offline asset; a missing or mismatched file prevents that release from replacing the working copy.
+
 - **The header says so.** The app checks the site when it opens, whenever you come back to it,
   and every ten minutes while it's on screen. When a newer version is published it downloads all
   of it in the background, then shows **Update ready · reload** in the header. Nothing reloads by
@@ -229,6 +235,8 @@ A push reaches every device on its own, with no version number to bump:
 It works from the date GitHub Pages stamps on every file when it publishes, compared with the
 date on the copy this device is running (`js/version.js`). The GitHub key is never used for this;
 the commit list comes from the public `dashboard` repo.
+Open pages keep using their original complete release until navigation. Cache cleanup is limited
+to dashboard caches, so other apps on the same origin keep their offline files.
 
 ## Morning steps (one-off setup, about 10 minutes)
 
@@ -263,15 +271,18 @@ its own. Use ⚙ → *Export backup* there and *Import backup…* on the site.
 ## Running it locally
 
 ```
+npm run build
 python -m http.server 8080
 ```
 
 Then open http://localhost:8080/. For sample data, open http://localhost:8080/dev/seed.html?replace
 (this only works on localhost).
 
-After changing code, reload **twice** — the offline cache serves the old copy once while it
-fetches the new one. (The update offer only notices a change to `index.html` locally, because
-`python -m http.server` dates each file separately; on GitHub Pages every push redates them all.)
+While editing locally, select **Application → Service workers → Bypass for network** in Chrome
+or Edge DevTools, then reload after changes. This avoids serving a previously installed release.
+Rebuild before testing offline behaviour; `npm run test:browser` uses a fresh browser profile for
+that. The normal update offer only notices a change to `index.html` locally, because Python dates
+each file separately; GitHub Pages redates every file on deployment.
 
 ## Tests
 
@@ -289,9 +300,19 @@ context and cap (`js/flags.js`) are fully covered too. The Claude tool is tested
 fake GitHub: every read and op, all-or-nothing batches, London time on a UTC machine, Undo's rules,
 and the key never appearing in its output.
 
+Reliability tests also cover independent concurrent edits, conversation merging, malformed data,
+request timeouts, interrupted calendar changes, Script Property limits, and complete offline
+releases. CI runs `npm test` on pushes and pull requests, including generated-file freshness checks.
+
+For browser checks, make Playwright available (or set `PLAYWRIGHT_MODULE` to its installed package
+directory), then run `npm run test:browser`. Set `BROWSER_CHANNEL=msedge` to use installed Edge;
+otherwise it uses Playwright's Chromium. This creates an isolated local server and browser profile,
+blocks external requests, and checks editing, cross-tab updates, offline saves and recovery.
+
 ## How it's built
 
-Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependencies.
+Plain HTML, CSS and JavaScript modules, with no framework or runtime dependencies. A small build
+script bundles the Apps Script planner and generates the offline release manifest.
 
 | File | Job |
 |---|---|
@@ -299,7 +320,7 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependen
 | `js/parse.js` | `45m` / `1.5h` parsing and display |
 | `js/doc.js`, `js/data.js` | The document and the store (`localStorage`) |
 | `js/schedule.js` | What's on a day, carry-over, streaks, weekly totals, history, goal progress |
-| `js/merge.js` | Merging two copies — commutative, idempotent, never loses anything |
+| `js/merge.js`, `js/record.js` | Merging copies with per-field versions and conversation-message tombstones |
 | `js/sync.js` | GitHub read/merge/write with retry, and the sync timer |
 | `js/gemini.js` | The Gemini client: lite model first, fallbacks and retries, plain-English errors |
 | `js/coach.js` | What the coach tells Gemini, a week's numbers, the prompts, and the reply checks |
@@ -312,7 +333,7 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework, no dependen
 | `claude/` | The command-line tool and the skill Claude runs (`npm run build-skill` zips the skill) |
 | `planner/` | The calendar planner: a pure planning core (`plan.js` and its parts), the Apps Script side (`gas.js`), bundled by `npm run build-planner` into `planner/planner.js`, which the loader in `planner/apps-script/` fetches |
 | `js/ui/*.js`, `js/app.js` | The screen |
-| `sw.js`, `manifest.webmanifest` | Offline and install |
+| `sw.js`, `release.json`, `manifest.webmanifest` | Complete, hash-checked offline releases and install |
 
 Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, `journal` (the coach's
 check-ins and weekly digests), `flags` (notes of something to change), `changes` (what Claude
@@ -322,6 +343,17 @@ hard-deleted. Records are archived or tombstoned, so a sync can't bring back som
 another device. Settings (repo, access key, day start, Gemini key, check-in hour, look) stay on
 each device and are never synced, and so do the widget arrangement (`dash_layout`) and the last
 successful sync time (`dash_last_synced`).
+
+Edits to different top-level fields merge independently. Concurrent edits to the same field use
+timestamp order with a deterministic tie-break; nested objects and most arrays are one field.
+Conversations merge individual messages and retain deletion markers until pruning. Reload all
+devices after upgrading: older writers still use whole-record timestamps.
+
+Imports and remote documents are validated before application. If local data is damaged, the
+store recovers valid records, also consults `dash_data_previous`, and attempts to preserve the
+original under `dash_data_corrupt`; a visible warning reports recovery. The previous-copy backup
+is best effort and yields space to the main document when storage is full. Exported backups
+remain useful for recovering earlier history.
 
 ## Roadmap
 

@@ -94,16 +94,16 @@ test('staleSince and plannerSummary: quiet while it runs, a warning once it stop
 
 test('putCalendar: creates, leaves unchanged content alone, replaces changed content', () => {
   const s = makeStore();
-  const one = s.putCalendar('status', { lastRun: 'x', lastError: null });
+  const one = s.putCalendar('status', { lastRun: '2026-09-16T08:00:00.000Z', lastError: null });
   assert.equal(one.changed, true);
   assert.equal(s.doc().calendar.status.source, 'planner');
   const stamp = s.doc().calendar.status.updated;
-  assert.equal(s.putCalendar('status', { lastRun: 'x', lastError: null }).changed, false);
+  assert.equal(s.putCalendar('status', { lastRun: '2026-09-16T08:00:00.000Z', lastError: null }).changed, false);
   assert.equal(s.doc().calendar.status.updated, stamp);
   const two = s.putCalendar('config', { hours: ['08:00', '18:00'] }, 'claude');
   assert.equal(two.rec.source, 'claude');
-  assert.equal(s.putCalendar('status', { lastRun: 'y', lastError: null }).changed, true);
-  assert.equal(s.doc().calendar.status.lastRun, 'y');
+  assert.equal(s.putCalendar('status', { lastRun: '2026-09-16T09:00:00.000Z', lastError: null }).changed, true);
+  assert.equal(s.doc().calendar.status.lastRun, '2026-09-16T09:00:00.000Z');
 });
 
 test('items take a length and, for a task, a time — checked', () => {

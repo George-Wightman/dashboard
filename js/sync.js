@@ -21,13 +21,29 @@ export function decodeBase64(b64) {
   return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
 }
 
-export function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args) => globalThis.fetch(...args) }) {
+export function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
   const url = `${API}/repos/${repo}/contents/${path}`;
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
+
+  // Bound the entire operation, including body reads. Race as well as abort:
+  // a suspended connection (or an adapter ignoring abort) must release sync.
+  async function bounded(operation) {
+    if (typeof timers.setTimeout !== 'function') return operation(undefined); // Apps Script uses synchronous UrlFetchApp
+    const abort = typeof AbortController === 'function' ? new AbortController() : null;
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = timers.setTimeout(() => {
+        reject(new Error('GitHub sync timed out — will retry'));
+        abort?.abort();
+      }, timeoutMs);
+    });
+    try { return await Promise.race([operation(abort?.signal), deadline]); }
+    finally { timers.clearTimeout(timer); }
+  }
 
   async function failure(res) {
     let message = '';
@@ -49,24 +65,25 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
   }
 
   return {
-    async get() {
-      const res = await fetch(url, { headers, cache: 'no-store' });
+    get: () => bounded(async (signal) => {
+      const res = await fetch(url, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
       if (res.status === 404) return null;
       if (!res.ok) throw await explain(res, repo, 'get');
       const body = await res.json();
       // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead.
       if (!body.content || body.encoding === 'none') {
-        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store' });
+        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
         if (!blobRes.ok) throw await explain(blobRes, repo, 'get');
         const blob = await blobRes.json();
         return { doc: JSON.parse(decodeBase64(blob.content)), sha: body.sha };
       }
       return { doc: JSON.parse(decodeBase64(body.content)), sha: body.sha };
-    },
+    }),
 
-    async put(doc, sha) {
+    put: (doc, sha) => bounded(async (signal) => {
       const res = await fetch(url, {
         method: 'PUT',
+        ...(signal ? { signal } : {}),
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'sync', content: encodeBase64(JSON.stringify(doc)), ...(sha ? { sha } : {}) }),
       });
@@ -78,7 +95,7 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
       }
       if (!res.ok) throw await explain(res, repo, 'put');
       return (await res.json()).content.sha;
-    },
+    }),
   };
 }
 
@@ -100,7 +117,8 @@ export async function syncOnce({ store, client, maxAttempts = 3 }) {
     } catch (e) {
       return { ok: false, error: `Merge failed: ${e.message}` };
     }
-    store.replaceDoc(merged);
+    try { store.replaceDoc(merged); }
+    catch (e) { return { ok: false, error: `Couldn't apply sync: ${e.message}` }; }
     if (remote && sameDoc(merged, remote.doc)) return { ok: true, pushed: false };
 
     try {
@@ -113,25 +131,39 @@ export async function syncOnce({ store, client, maxAttempts = 3 }) {
   return { ok: false, error: 'Another device kept writing at the same moment — will retry next time' };
 }
 
-export function createSyncScheduler({ run, canRun = () => true, debounceMs = 5000, timers = globalThis }) {
+export function createSyncScheduler({ run, canRun = () => true, canPoll = () => true, debounceMs = 5000,
+  pollMs = 60000, maxPollMs = 600000, clock = Date.now, timers = globalThis }) {
   let timer = null;
   let running = false;
   let again = false;
+  let current = null;
+  let failures = 0;
+  let nextPoll = clock() + pollMs;
 
   function schedule() {
     if (timer) timers.clearTimeout(timer);
-    timer = timers.setTimeout(now, debounceMs);
+    timer = timers.setTimeout(() => now().catch(() => {}), debounceMs);
   }
 
   async function now() {
     if (timer) { timers.clearTimeout(timer); timer = null; }
     if (!canRun()) { schedule(); return; }
-    if (running) { again = true; return; }
+    if (running) { again = true; return current; }
     running = true;
+    let finish;
+    current = new Promise((resolve) => { finish = resolve; });
     try {
-      await run();
+      const result = await run();
+      failures = result?.ok === false ? failures + 1 : 0;
+      return result;
+    } catch (e) {
+      failures++;
+      throw e;
     } finally {
+      nextPoll = clock() + Math.min(maxPollMs, pollMs * 2 ** Math.min(failures, 10));
       running = false;
+      finish();
+      current = null;
       if (again) { again = false; now().catch(() => {}); }
     }
   }
@@ -141,5 +173,19 @@ export function createSyncScheduler({ run, canRun = () => true, debounceMs = 500
     return now();
   }
 
-  return { now, changed: schedule, flush };
+  function poll() {
+    if (!running && clock() >= nextPoll && canPoll() && canRun()) return now();
+    return Promise.resolve();
+  }
+
+  return { now, changed: schedule, flush, poll };
+}
+
+export function mergeStoredEvents(previous, incoming) {
+  try {
+    const next = JSON.parse(incoming);
+    if (!isDoc(next)) return previous;
+    const prev = previous ? JSON.parse(previous) : null;
+    return JSON.stringify(mergeDocs(isDoc(prev) ? prev : null, next));
+  } catch { return previous; }
 }

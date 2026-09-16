@@ -199,7 +199,7 @@ test('the records: a slot for talks and entries, the guide under its Monday, old
   assert.throws(() => store.saveJournal({ kind: 'talk', day: THU, slot: 'noon' }), /needs a slot/);
   assert.throws(() => store.saveJournal({ kind: 'guide', day: THU, text: 'x' }), /A guide is filed under its week's Monday/);
   assert.equal(store.saveJournal({ kind: 'entry', day: THU, slot: 'own-2', text: 'x' }).id, 'entry:2026-09-17:own-2');
-  store.saveJournal({ kind: 'talk', day: '2026-08-10', slot: 'evening', messages: [{ who: 'george', text: 'old', at: 'x' }] });
+  store.saveJournal({ kind: 'talk', day: '2026-08-10', slot: 'evening', messages: [{ who: 'george', text: 'old', at: '2026-09-17T09:00:00.000Z' }] });
   assert.equal(store.pruneTalks(30), 1);
   const old = store.doc().journal['talk:2026-08-10:evening'];
   assert.deepEqual([old.messages, old.pruned], [[], true]);
@@ -290,7 +290,7 @@ test("finish: the entry is saved at once, its handoffs become the Coach's flags,
 
 test("Finish: Gemini is asked for the entry with only finish to call; if it can't, his own words are kept", async () => {
   const { store, now } = coachStore();
-  const talk = (day) => store.saveJournal({ kind: 'talk', day, slot: 'own-1', messages: [{ who: 'george', text: 'Gym was good', at: 'x' }, { who: 'coach', text: 'Nice.', at: 'y' }] });
+  const talk = (day) => store.saveJournal({ kind: 'talk', day, slot: 'own-1', messages: [{ who: 'george', text: 'Gym was good', at: '2026-09-17T09:00:00.000Z' }, { who: 'coach', text: 'Nice.', at: '2026-09-17T09:01:00.000Z' }] });
   talk(THU);
   let opts;
   const ctx = flowCtx(store, now, async (o) => { opts = o; o.run('finish', { feeling: 'up', text: 'Good gym session.' }); return { text: 'Saved.', calls: [], model: 'm' }; });
@@ -301,7 +301,7 @@ test("Finish: Gemini is asked for the entry with only finish to call; if it can'
   assert.equal(entryOf(store.doc(), THU, 'own-1').text, 'Good gym session.');
 
   const other = coachStore();
-  other.store.saveJournal({ kind: 'talk', day: THU, slot: 'own-1', messages: [{ who: 'george', text: 'Gym was good', at: 'x' }] });
+  other.store.saveJournal({ kind: 'talk', day: THU, slot: 'own-1', messages: [{ who: 'george', text: 'Gym was good', at: '2026-09-17T09:00:00.000Z' }] });
   const failing = flowCtx(other.store, other.now, async () => { throw new GeminiError('failed'); });
   failing.ui.coach.talk = 'own-1';
   await finishTalk(failing);
@@ -333,7 +333,7 @@ test("a moment's opener: earlier conversations wrapped up first; the plain line 
   const raced = coachStore('09:30');
   let called = false;
   const rctx = flowCtx(raced.store, raced.now, async () => { called = true; return { text: 'x', calls: [], model: 'm' }; });
-  rctx.syncNow = async () => raced.store.saveJournal({ kind: 'talk', day: THU, slot: 'morning', messages: [{ who: 'coach', text: 'From the phone', at: 'x' }] });
+  rctx.syncNow = async () => raced.store.saveJournal({ kind: 'talk', day: THU, slot: 'morning', messages: [{ who: 'coach', text: 'From the phone', at: '2026-09-17T09:00:00.000Z' }] });
   await openMoment(rctx, 'morning');
   assert.equal(called, false, "another device's opener arrived in the sync: nothing asked, nothing written");
   assert.equal(talkOf(raced.store.doc(), THU, 'morning').messages[0].text, 'From the phone');
@@ -348,8 +348,8 @@ test("Claude: the guide op, entries in the journal read, a day's conversations i
   assert.throws(() => runOp(store, { op: 'guide', text: 'x'.repeat(601) }), /at most 600 characters/);
   store.saveJournal({
     kind: 'talk', day: THU, slot: 'morning', done: true, handoffs: ['Drop Friday'],
-    messages: [{ who: 'coach', text: 'Morning — plan?', at: 'x' }, { who: 'george', text: 'CV first', at: 'y' },
-      { who: 'coach', text: 'Moved it.', at: 'z', did: [{ text: 'Moved "Update CV" to today', change: null }] }],
+    messages: [{ who: 'coach', text: 'Morning — plan?', at: '2026-09-17T09:00:00.000Z' }, { who: 'george', text: 'CV first', at: '2026-09-17T09:01:00.000Z' },
+      { who: 'coach', text: 'Moved it.', at: '2026-09-17T09:02:00.000Z', did: [{ text: 'Moved "Update CV" to today', change: null }] }],
   });
   store.saveJournal({ kind: 'entry', day: THU, slot: 'morning', feeling: 'keen', text: 'Wants the CV done by noon.', pointers: ['Mornings are best'], forClaude: ['Drop Friday'] });
   const journal = READS.journal(store.doc(), THU);

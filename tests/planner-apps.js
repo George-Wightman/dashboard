@@ -47,7 +47,11 @@ export function appsScript({ cal, repo, props = {}, gemini = null, lockFree = tr
   const map = new Map(Object.entries(props));
   const scriptProps = {
     getProperty: (k) => (map.has(k) ? map.get(k) : null),
-    setProperty: (k, v) => { map.set(k, String(v)); return scriptProps; },
+    setProperty: (k, v) => {
+      if (Buffer.byteLength(String(v), 'utf8') > 9 * 1024) throw new Error('Property value exceeds 9 KB');
+      map.set(k, String(v));
+      return scriptProps;
+    },
     deleteProperty: (k) => { map.delete(k); return scriptProps; },
   };
   const UrlFetchApp = {

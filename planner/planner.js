@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'bdf61684';
+var PLANNER_BUILD = 'b7f2cd40';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -173,16 +173,128 @@ function journalId(kind, day) {
 }
 
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const unsafe = (k) => ['__proto__', 'prototype', 'constructor'].includes(k);
+const string = (v) => typeof v === 'string';
+const strings = (v) => Array.isArray(v) && v.every(string);
+const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+const day = (v) => string(v) && /^\d{4}-\d{2}-\d{2}$/.test(v)
+  && Number.isFinite(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+const timestamp = (v) => string(v) && /^\d{4}-\d{2}-\d{2}T/.test(v) && Number.isFinite(Date.parse(v));
+const clock = (v) => string(v) && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
 
-// A real dashboard document: a plain object with a numeric schema, an items map, and any of the
-// other known maps either absent or themselves plain objects (never arrays). A document saved
-// before the journal, the flags or the change log existed has none of them and is still a real
-// document.
+// Reject dangerous property names and pathological nesting before recursive readers
+// or object-map writes see data from an import, another device, or an integration.
+function safeJson(v, depth = 0) {
+  if (depth > 40) return false;
+  if (v == null || string(v) || typeof v === 'boolean') return true;
+  if (typeof v === 'number') return finite(v);
+  if (Array.isArray(v)) return v.every((x) => safeJson(x, depth + 1));
+  return isPlainObject(v) && Object.entries(v).every(([k, x]) => !unsafe(k) && safeJson(x, depth + 1));
+}
+
+function recordProblem(map, id, r) {
+  if (!MAPS.includes(map) || !string(id) || !id || unsafe(id) || !isPlainObject(r)) return 'Invalid record';
+  if (!safeJson(r)) return 'Invalid record data';
+  if (r.id !== id) return 'Record ID does not match its map key';
+  const optional = (key, test, nullable = false) => r[key] === undefined || (nullable && r[key] === null) || test(r[key]);
+  if (!optional('status', (v) => ['active', 'archived', 'suggested', 'dismissed'].includes(v))) return 'Invalid status';
+  for (const key of ['created', 'archivedOn']) if (!optional(key, day, true)) return `Invalid ${key} day`;
+  if (!optional('updated', timestamp)) return 'Invalid updated timestamp';
+  for (const key of ['title', 'source', 'area', 'unitLabel']) if (!optional(key, string)) return `Invalid ${key}`;
+  if (map !== 'calendar' && !optional('notes', string)) return 'Invalid notes';
+  for (const key of ['order', 'target', 'amount', 'minutes']) if (!optional(key, finite, true)) return `Invalid ${key}`;
+  if (!optional('time', (v) => v === '' || clock(v), true)) return 'Invalid time';
+  if (!optional('priority', (v) => typeof v === 'boolean')) return 'Invalid priority';
+  if (r._sync !== undefined) {
+    const m = r._sync;
+    if (!isPlainObject(m) || !timestamp(m.version) || !isPlainObject(m.fields)
+      || !Object.values(m.fields).every((v) => v === '' || timestamp(v))) return 'Invalid field versions';
+    if (m.resetMessages !== undefined && m.resetMessages !== '' && !timestamp(m.resetMessages)) return 'Invalid conversation reset';
+    if (m.messages !== undefined) {
+      if (!isPlainObject(m.messages)) return 'Invalid conversation versions';
+      for (const [text, v] of Object.entries(m.messages)) {
+        let message;
+        try { message = JSON.parse(text); } catch { return 'Invalid conversation version'; }
+        if (!validMessage(message) || !isPlainObject(v) || !timestamp(v.at) || !Number.isInteger(v.order)
+          || typeof v.deleted !== 'boolean') return 'Invalid conversation version';
+      }
+    }
+  }
+  if (['items', 'goals', 'milestones'].includes(map) && (!string(r.title) || !r.title.trim())) return 'A record needs a title';
+  if (map === 'items') {
+    if (!['task', 'habit', 'quota'].includes(r.type)) return 'Invalid item type';
+    if (r.type === 'task' && !day(r.date)) return 'A task needs a real date';
+    if (r.type === 'quota' && !(finite(r.target) && r.target > 0)) return 'A quota needs a positive target';
+    if (r.minutes != null && (!Number.isInteger(r.minutes) || r.minutes < 5 || r.minutes > 720)) return 'A length is from 5 minutes to 12 hours';
+    if (r.type === 'habit' && r.repeat !== undefined) {
+      const p = r.repeat;
+      if (!isPlainObject(p)) return 'Invalid habit repeat';
+      const integer = (n, lo, hi) => Number.isInteger(n) && n >= lo && n <= hi;
+      if (!(p.kind === 'daily' || (p.kind === 'weekly' && integer(p.day, 1, 7))
+        || (p.kind === 'monthly' && integer(p.date, 1, 31)) || (p.kind === 'perWeek' && integer(p.n, 1, 7))
+        || (p.kind === 'weekdays' && Array.isArray(p.days) && p.days.length > 0 && p.days.every((d) => integer(d, 1, 7))))) return 'Invalid habit repeat';
+    }
+  }
+  if (map === 'goals' && !optional('targetDate', (v) => v === '' || day(v), true)) return 'Invalid goal date';
+  if (map === 'logs') {
+    if (!['done', 'amount', 'skip'].includes(r.kind) || !day(r.day)) return 'Invalid log';
+    if (r.kind === 'amount' && !(finite(r.amount) && r.amount > 0)) return 'Invalid logged amount';
+  }
+  if (map === 'journal') {
+    if (!['checkin', 'digest', 'brief', 'talk', 'entry', 'guide'].includes(r.kind) || !day(r.day)) return 'Invalid journal record';
+    for (const key of ['questions', 'answers', 'tomorrowIds', 'wins', 'slipped', 'handoffs', 'pointers', 'forClaude', 'flagIds']) {
+      if (!optional(key, strings)) return `Invalid ${key}`;
+    }
+    for (const key of ['feedback', 'summary', 'focus', 'model', 'text', 'feeling', 'slot']) if (!optional(key, string)) return `Invalid ${key}`;
+    if (!optional('messages', (v) => Array.isArray(v) && v.every(validMessage))) return 'Invalid conversation messages';
+  }
+  if (map === 'flags' && !string(r.text)) return 'Invalid flag text';
+  if (map === 'changes') {
+    if (!string(r.summary) || !Array.isArray(r.edits) || !r.edits.every((e) => isPlainObject(e)
+      && MAPS.includes(e.map) && e.map !== 'changes' && string(e.id) && !unsafe(e.id)
+      && (e.before == null || isPlainObject(e.before)) && (e.after == null || isPlainObject(e.after)))) return 'Invalid change log';
+  }
+  if (map === 'calendar') {
+    for (const key of ['notes', 'skipped', 'takenColors']) if (!optional(key, strings)) return `Invalid calendar ${key}`;
+    if (!optional('missed', (v) => Array.isArray(v) && v.every((x) => isPlainObject(x) && string(x.itemId)))) return 'Invalid missed items';
+    if (!optional('blocks', (v) => Array.isArray(v) && v.every((b) => isPlainObject(b)
+      && string(b.key) && timestamp(b.start) && timestamp(b.end) && strings(b.items)))) return 'Invalid calendar blocks';
+    if (!optional('day', day) || !optional('lastRun', timestamp, true)) return 'Invalid calendar date';
+    if (!optional('calendars', (v) => Array.isArray(v) && v.every((c) => isPlainObject(c) && string(c.name)))) return 'Invalid calendar list';
+  }
+  if (map === 'gym' && id.startsWith('w:')) {
+    if (!day(r.day) || !timestamp(r.start) || !timestamp(r.end) || !Array.isArray(r.exercises)
+      || !r.exercises.every((e) => isPlainObject(e) && string(e.name)
+        && (e.best == null || Array.isArray(e.best)) && (e.sets == null || Array.isArray(e.sets)))) return 'Invalid workout';
+  }
+  return null;
+}
+
+function validMessage(m) {
+  return isPlainObject(m) && ['george', 'coach'].includes(m.who) && string(m.text) && (m.at === undefined || timestamp(m.at))
+    && (m.did === undefined || (Array.isArray(m.did) && m.did.every((d) => isPlainObject(d) && string(d.text))));
+}
+
+// Supported schema, safe JSON, and valid records in every known map. Older
+// documents may omit maps introduced later; unsupported schemas are not guessed at.
 function isDoc(value) {
   if (!isPlainObject(value)) return false;
-  if (typeof value.schema !== 'number') return false;
+  if (value.schema !== 1 || !safeJson(value)) return false;
   if (!isPlainObject(value.items)) return false;
-  return MAPS.filter((k) => k !== 'items').every((k) => value[k] === undefined || isPlainObject(value[k]));
+  return MAPS.every((k) => value[k] === undefined || (isPlainObject(value[k])
+    && Object.entries(value[k]).every(([id, r]) => !recordProblem(k, id, r))));
+}
+
+// Recovery retains valid records from a damaged local document; callers preserve
+// the entire original separately. Remote/import data is rejected as a unit instead.
+function recoverDoc(value) {
+  const recovered = emptyDoc();
+  if (!isPlainObject(value) || value.schema !== 1) return recovered;
+  for (const map of MAPS) {
+    if (!isPlainObject(value[map])) continue;
+    for (const [id, r] of Object.entries(value[map])) if (!recordProblem(map, id, r)) recovered[map][id] = r;
+  }
+  return recovered;
 }
 
 // JSON with object keys sorted at every depth, so two equal documents always serialise the same.
@@ -194,16 +306,111 @@ function stableStringify(value) {
   }
   return JSON.stringify(value) ?? 'null';
 }
-return { MAPS, emptyDoc, journalId, isDoc, stableStringify };
+return { MAPS, emptyDoc, journalId, recordProblem, isDoc, recoverDoc, stableStringify };
+})();
+
+// ---- js/record.js
+const __js_record = (() => {
+// Field versions let independent edits converge without replacing the whole record.
+// A legacy writer changes `updated` without updating the marker: treat that record
+// as a whole-record edit, rather than trusting stale field metadata.
+const { stableStringify } = __js_doc;
+
+const keysOf = (r) => Object.keys(r ?? {}).filter((k) => k !== 'updated' && k !== '_sync');
+const stampOf = (r) => typeof r?.updated === 'string' ? r.updated : '';
+const same = (a, b) => stableStringify(a) === stableStringify(b);
+const validMeta = (r) => !!r?._sync && r._sync.version === r.updated && r._sync.fields && typeof r._sync.fields === 'object';
+
+function metadata(rec) {
+  const fields = Object.fromEntries(keysOf(rec).map((k) => [k, stampOf(rec)]));
+  return validMeta(rec) ? { ...rec._sync, fields: { ...fields, ...rec._sync.fields } } : { version: stampOf(rec), fields };
+}
+
+function messageVersions(rec, meta) {
+  if (meta.messages) return meta.messages;
+  return Object.fromEntries((rec.messages ?? []).map((m, order) => [stableStringify(m), { at: stampOf(rec), order, deleted: false }]));
+}
+
+function messagesFrom(meta) {
+  return Object.entries(meta.messages ?? {}).filter(([, v]) => !v.deleted && v.at > (meta.resetMessages ?? ''))
+    .sort(([a, x], [b, y]) => x.at.localeCompare(y.at) || x.order - y.order || a.localeCompare(b))
+    .map(([text]) => JSON.parse(text));
+}
+
+function reviseRecord(before, next, time) {
+  const previous = Date.parse(before?.updated ?? '');
+  const updated = new Date(Math.max(Date.parse(time), Number.isFinite(previous) ? previous + 1 : 0)).toISOString();
+  if (!before) return { ...next, updated };
+  const meta = metadata(before);
+  for (const key of new Set([...keysOf(before), ...keysOf(next)])) {
+    if (!same(before[key], next[key])) meta.fields[key] = updated;
+  }
+  meta.version = updated;
+  const out = { ...next, updated, _sync: meta };
+  if (next.kind === 'talk') {
+    meta.messages = { ...messageVersions(before, metadata(before)) };
+    if (next.pruned && !next.messages?.length) {
+      meta.messages = {};
+      meta.resetMessages = updated;
+    } else {
+      const wanted = new Map((next.messages ?? []).map((m, i) => [stableStringify(m), i]));
+      for (const [text, v] of Object.entries(meta.messages)) {
+        if (!wanted.has(text) && !v.deleted) meta.messages[text] = { ...v, at: updated, deleted: true };
+      }
+      for (const [text, order] of wanted) {
+        if (!meta.messages[text] || meta.messages[text].deleted) meta.messages[text] = { at: updated, order, deleted: false };
+      }
+      out.messages = messagesFrom(meta);
+    }
+  }
+  return out;
+}
+
+function mergeRecord(a, b, fallback) {
+  if (!validMeta(a) && !validMeta(b)) return fallback(a, b);
+  const am = metadata(a), bm = metadata(b);
+  const updated = stampOf(a) > stampOf(b) ? stampOf(a) : stampOf(b);
+  const out = { updated };
+  const meta = { version: updated, fields: {} };
+  for (const key of new Set([...keysOf(a), ...keysOf(b), ...Object.keys(am.fields), ...Object.keys(bm.fields)])) {
+    const at = am.fields[key] ?? '', bt = bm.fields[key] ?? '';
+    const winner = at > bt ? a : bt > at ? b
+      : stableStringify([Object.hasOwn(a, key), a[key]]) >= stableStringify([Object.hasOwn(b, key), b[key]]) ? a : b;
+    if (winner[key] !== undefined) out[key] = winner[key];
+    meta.fields[key] = at > bt ? at : bt;
+  }
+  if (out.kind === 'talk') {
+    meta.resetMessages = [am.resetMessages ?? '', bm.resetMessages ?? ''].sort().at(-1);
+    const av = messageVersions(a, am), bv = messageVersions(b, bm);
+    meta.messages = {};
+    for (const text of new Set([...Object.keys(av), ...Object.keys(bv)])) {
+      const x = av[text], y = bv[text];
+      const v = !x ? y : !y ? x : x.at > y.at ? x : y.at > x.at ? y
+        : stableStringify(x) >= stableStringify(y) ? x : y;
+      if (v.at > meta.resetMessages) meta.messages[text] = v;
+    }
+    out.messages = messagesFrom(meta);
+  }
+  out._sync = meta;
+  return out;
+}
+
+function recordContent(rec) {
+  if (!rec) return rec;
+  const { _sync, ...content } = rec;
+  return content;
+}
+return { reviseRecord, mergeRecord, recordContent };
 })();
 
 // ---- js/merge.js
 const __js_merge = (() => {
-// Merging two copies of the document. Pure and deterministic: whichever device runs it, in
-// whichever order, and however many times, the result is the same. Every quick-add is its own
-// record and nothing is hard-deleted, so "later updated wins, per record" is the only rule.
+// Deterministic merge: edited records carry per-field versions; older records
+// retain their whole-record timestamp semantics. Every quick-add is independent,
+// and removals remain tombstones so offline devices cannot resurrect them.
 
 const { MAPS, stableStringify } = __js_doc;
+const { mergeRecord } = __js_record;
 
 function pickWinner(a, b) {
   // A non-string `updated` (a malformed sync, a stray number) isn't a comparable timestamp —
@@ -245,7 +452,7 @@ function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
     // null and absent are both "nothing there", but not the same nothing: `x ?? y` alone picks
     // whichever side happens to be undefined, which is order-dependent when one side is null and
     // the other absent. Prefer null over absent, in both orders, when neither side has a record.
-    if (x != null && y != null) map[id] = pickWinner(x, y);
+    if (x != null && y != null) map[id] = normalise ? mergeRecord(x, y, pickWinner) : pickWinner(x, y);
     else if (x == null && y == null) map[id] = x === undefined ? y : x;
     else map[id] = x ?? y;
   }
@@ -296,7 +503,7 @@ const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-const APP_VERSION = 'dash-v9';
+const APP_VERSION = 'today-dashboard-v10';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -534,7 +741,7 @@ function diffDocs(before, after) {
 // The fields that differ between two versions of a record, `updated` aside.
 function fieldChanges(before, after) {
   const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])]
-    .filter((k) => k !== 'updated').sort();
+    .filter((k) => k !== 'updated' && k !== '_sync').sort();
   return keys
     .filter((k) => stableStringify(before?.[k] ?? null) !== stableStringify(after?.[k] ?? null))
     .map((k) => ({ field: k, from: before?.[k] ?? null, to: after?.[k] ?? null }));
@@ -708,15 +915,17 @@ const __js_data = (() => {
 // stamps `updated`, saves, and tells listeners why it changed.
 
 const { logicalDay, addDays, weekStart } = __js_dates;
-const { MAPS, emptyDoc, stableStringify, isDoc, journalId } = __js_doc;
+const { MAPS, emptyDoc, stableStringify, isDoc, journalId, recordProblem, recoverDoc } = __js_doc;
 const { mergeDocs } = __js_merge;
 const { FLAG_TEXT_MAX, capContext } = __js_flags;
 const { CHANGE_KEEP_DAYS, canUndo } = __js_changes;
 const { checkLength, checkClock, checkNotes } = __js_parse;
+const { reviseRecord, recordContent } = __js_record;
 
 const DATA_KEY = 'dash_data';
 const SETTINGS_KEY = 'dash_settings';
 const CORRUPT_KEY = 'dash_data_corrupt';
+const BACKUP_KEY = 'dash_data_previous';
 const DEFAULT_SETTINGS = { token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto' };
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
@@ -760,16 +969,22 @@ function loadDoc(storage) {
     return { doc: emptyDoc(), error: "Saved data couldn't be read on this device, so it started empty." };
   }
   if (!raw) return { doc: emptyDoc(), error: null };
+  let recovered = emptyDoc();
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { doc: withMaps(parsed), error: null };
+    if (isDoc(parsed)) return { doc: mergeDocs(parsed, null), error: null };
+    recovered = recoverDoc(parsed);
   } catch {
     // fall through to setting it aside
   }
-  try { storage.setItem(CORRUPT_KEY, raw); } catch { /* nothing more can be done */ }
+  let preserved = false;
+  try { storage.setItem(CORRUPT_KEY, raw); preserved = true; } catch { /* report the failed recovery copy */ }
+  const backup = readJson(storage, BACKUP_KEY);
+  recovered = mergeDocs(recovered, isDoc(backup) ? backup : null);
   return {
-    doc: emptyDoc(),
-    error: "Saved data couldn't be read on this device, so it started empty.",
+    doc: recovered,
+    error: "Some saved data couldn't be read. Valid records were recovered; " + (preserved
+      ? 'the original was set aside on this device.' : 'the original could not be copied. Export a backup before making more changes.'),
   };
 }
 
@@ -784,7 +999,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   let doc = loaded.doc;
   let settings = { ...DEFAULT_SETTINGS, ...(readJson(storage, SETTINGS_KEY) ?? {}) };
   const loadError = loaded.error;
-  let saveError = null;
+  const saveErrors = new Map();
   const listeners = new Set();
 
   const stamp = () => now().toISOString();
@@ -793,16 +1008,31 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
 
   function save(key, value) {
     try {
-      storage.setItem(key, JSON.stringify(value));
-      saveError = null;
+      const raw = JSON.stringify(value);
+      try { storage.setItem(key, raw); } catch (e) {
+        // Recovery copies must never prevent saving the primary document.
+        if (key !== DATA_KEY || !(e?.name === 'QuotaExceededError' || e?.code === 22 || e?.code === 1014)
+          || storage.getItem(BACKUP_KEY) === null) throw e;
+        storage.removeItem(BACKUP_KEY);
+        storage.setItem(key, raw);
+      }
+      saveErrors.delete(key);
     } catch (e) {
-      saveError = e?.message || String(e);
+      saveErrors.set(key, e?.message || String(e));
     }
   }
 
   function commit(reason) {
     save(DATA_KEY, doc);
     notify(reason);
+  }
+
+  function writeRecord(map, id, next) {
+    const rec = reviseRecord(doc[map][id], next, stamp());
+    const problem = recordProblem(map, id, rec);
+    if (problem) throw new Error(problem);
+    doc[map][id] = rec;
+    return rec;
   }
 
   // Writes a record into the document without saving, for callers that write several records
@@ -814,8 +1044,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
       id: fields.id ?? newId(),
       updated: stamp(),
     };
-    doc[map][rec.id] = rec;
-    return rec;
+    return writeRecord(map, rec.id, rec);
   }
 
   function create(map, fields) {
@@ -827,12 +1056,12 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   function patch(map, id, changes) {
     const rec = doc[map][id];
     if (!rec) throw new Error(`No ${map} record ${id}`);
-    doc[map][id] = { ...rec, ...changes, id, updated: stamp() };
+    writeRecord(map, id, { ...rec, ...changes, id });
     commit('local');
     return doc[map][id];
   }
 
-  const nextOrder = (map) => Math.max(0, ...Object.values(doc[map]).map((r) => r.order ?? 0)) + 1;
+  const nextOrder = (map) => Object.values(doc[map]).reduce((max, r) => Math.max(max, r.order ?? 0), 0) + 1;
 
   // An item's fields, checked and with the defaults filled in. Nothing is written.
   function itemFields(fields) {
@@ -855,6 +1084,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
       if (fields.type !== 'task' && fields.type !== 'habit') throw new Error('Only a task or a habit can be a priority');
       out.priority = fields.priority;
     }
+    const problem = recordProblem('items', fields.id ?? 'check', { ...out, id: fields.id ?? 'check' });
+    if (problem) throw new Error(problem);
     return out;
   }
 
@@ -866,8 +1097,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     const existing = Object.values(doc.logs).filter((l) =>
       l.itemId === itemId && l.kind === 'done' && l.day === day && l.status === 'active');
     if (existing.length) {
-      const t = stamp();
-      for (const rec of existing) doc.logs[rec.id] = { ...rec, status: 'archived', updated: t };
+      for (const rec of existing) writeRecord('logs', rec.id, { ...rec, status: 'archived' });
       commit('local');
       return;
     }
@@ -882,11 +1112,11 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // Conversations older than TALK_KEEP_DAYS lose their messages; their journal entries stay.
   function pruneTalks(keepDays = 30) {
     const cutoff = addDays(today(), -keepDays);
-    const t = stamp();
     let n = 0;
     for (const [id, r] of Object.entries(doc.journal)) {
-      if (r.kind !== 'talk' || !(r.day < cutoff) || !r.messages?.length) continue;
-      doc.journal[id] = { ...r, messages: [], pruned: true, updated: t };
+      if (r.kind !== 'talk' || !(r.day < cutoff)
+        || (!r.messages?.length && !Object.keys(r._sync?.messages ?? {}).length)) continue;
+      writeRecord('journal', id, { ...r, messages: [], pruned: true });
       n++;
     }
     if (n) commit('local');
@@ -905,6 +1135,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     const defaults = { targetDate: null, target: null, unit: 'count', unitLabel: '', order: nextOrder('goals') };
     const out = { ...defaults, ...fields, title };
     if (fields.notes !== undefined) out.notes = checkNotes(fields.notes);
+    const problem = recordProblem('goals', fields.id ?? 'check', { ...out, id: fields.id ?? 'check' });
+    if (problem) throw new Error(problem);
     return out;
   }
 
@@ -943,7 +1175,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     }
     const existing = doc.journal[id];
     if (!existing) return create('journal', { source, ...structuredClone(fields), ...content, id, kind, day });
-    doc.journal[id] = { ...existing, ...content, id, kind, day, updated: stamp() };
+    writeRecord('journal', id, { ...existing, ...content, id, kind, day });
     commit('local');
     return doc.journal[id];
   }
@@ -989,9 +1221,9 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     const goal = doc.goals[goalId];
     if (!goal) throw new Error(`No goals record ${goalId}`);
     const live = { status: 'active', created: today(), updated: stamp() };
-    if (goal.status === 'suggested') doc.goals[goalId] = { ...goal, ...live };
+    if (goal.status === 'suggested') writeRecord('goals', goalId, { ...goal, ...live });
     for (const [id, m] of Object.entries(doc.milestones)) {
-      if (m.goalId === goalId && m.status === 'suggested') doc.milestones[id] = { ...m, ...live };
+      if (m.goalId === goalId && m.status === 'suggested') writeRecord('milestones', id, { ...m, ...live });
     }
     commit('local');
     return doc.goals[goalId];
@@ -1003,10 +1235,10 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     const goal = doc.goals[goalId];
     if (!goal) throw new Error(`No goals record ${goalId}`);
     const gone = { status: 'dismissed', updated: stamp() };
-    if (goal.status === 'suggested') doc.goals[goalId] = { ...goal, ...gone };
+    if (goal.status === 'suggested') writeRecord('goals', goalId, { ...goal, ...gone });
     for (const map of ['milestones', 'items']) {
       for (const [id, rec] of Object.entries(doc[map])) {
-        if (rec.goalId === goalId && rec.status === 'suggested') doc[map][id] = { ...rec, ...gone };
+        if (rec.goalId === goalId && rec.status === 'suggested') writeRecord(map, id, { ...rec, ...gone });
       }
     }
     commit('local');
@@ -1056,17 +1288,17 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     const skipped = [];
     for (const edit of change.edits) {
       const current = doc[edit.map]?.[edit.id];
-      if (!current || stableStringify(current) !== stableStringify(edit.after)) {
+      if (!current || stableStringify(recordContent(current)) !== stableStringify(recordContent(edit.after))) {
         skipped.push(edit);
         continue;
       }
-      doc[edit.map][edit.id] = edit.before
-        ? { ...structuredClone(edit.before), updated: t }
-        : { ...current, status: edit.map === 'logs' ? 'archived' : 'dismissed', updated: t };
+      writeRecord(edit.map, edit.id, edit.before
+        ? structuredClone(edit.before)
+        : { ...current, status: edit.map === 'logs' ? 'archived' : 'dismissed' });
       undone.push(edit);
     }
     if (!undone.length) return { undone, skipped, already: false };
-    doc.changes[changeId] = { ...change, undoneAt: t, undoneBy: by, updated: t };
+    writeRecord('changes', changeId, { ...change, undoneAt: t, undoneBy: by });
     commit('local');
     return { undone, skipped, already: false };
   }
@@ -1075,12 +1307,11 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // they can no longer be undone), so the synced file doesn't grow for ever. Returns how many.
   function pruneChanges() {
     const cutoff = new Date(now().getTime() - CHANGE_KEEP_DAYS * 86400000).toISOString();
-    const t = stamp();
     let n = 0;
     for (const [id, c] of Object.entries(doc.changes)) {
       if (c.pruned || !(c.at < cutoff)) continue;
       const edits = (c.edits ?? []).map((e) => ({ map: e.map, id: e.id, before: null, after: null }));
-      doc.changes[id] = { ...c, edits, pruned: true, updated: t };
+      writeRecord('changes', id, { ...c, edits, pruned: true });
       n++;
     }
     if (n) commit('local');
@@ -1096,7 +1327,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
       const same = existing.source === source
         && Object.keys(content).every((k) => stableStringify(existing[k]) === stableStringify(content[k]));
       if (same) return { rec: existing, changed: false };
-      doc[map][id] = { ...existing, ...content, id, source, updated: stamp() };
+      writeRecord(map, id, { ...existing, ...content, id, source });
       commit('local');
       return { rec: doc[map][id], changed: true };
     }
@@ -1147,17 +1378,19 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     // midpoint strictly between them: either way, renumber the whole group.
     const base = Math.min(...groupIds.map(orderOf));
     const renumbered = [...list.slice(0, t), id, ...list.slice(t)];
-    const t2 = stamp();
     for (let i = 0; i < renumbered.length; i++) {
       const rid = renumbered[i];
       const order = base + i;
-      if (orderOf(rid) !== order) doc.items[rid] = { ...doc.items[rid], order, updated: t2 };
+      if (orderOf(rid) !== order) writeRecord('items', rid, { ...doc.items[rid], order });
     }
     commit('local');
   }
 
   function replaceDoc(next, reason = 'sync') {
+    if (!isDoc(next)) throw new Error("That isn't a valid dashboard document");
     if (stableStringify(next) === stableStringify(doc)) return;
+    // Best-effort recovery point before external data replaces the working copy.
+    try { storage.setItem(BACKUP_KEY, JSON.stringify(doc)); } catch { /* keep the working copy */ }
     doc = withMaps(next);
     commit(reason);
   }
@@ -1198,7 +1431,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     doc: () => doc,
     settings: () => settings,
     today,
-    saveError: () => saveError,
+    saveError: () => [...saveErrors.values()].join('; ') || null,
     loadError: () => loadError,
     subscribe(fn) {
       listeners.add(fn);
@@ -1250,7 +1483,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     importJson,
   };
 }
-return { DATA_KEY, SETTINGS_KEY, CORRUPT_KEY, DEFAULT_SETTINGS, createStore };
+return { DATA_KEY, SETTINGS_KEY, CORRUPT_KEY, BACKUP_KEY, DEFAULT_SETTINGS, createStore };
 })();
 
 // ---- js/sync.js
@@ -1278,13 +1511,29 @@ function decodeBase64(b64) {
   return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
 }
 
-function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args) => globalThis.fetch(...args) }) {
+function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
   const url = `${API}/repos/${repo}/contents/${path}`;
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
+
+  // Bound the entire operation, including body reads. Race as well as abort:
+  // a suspended connection (or an adapter ignoring abort) must release sync.
+  async function bounded(operation) {
+    if (typeof timers.setTimeout !== 'function') return operation(undefined); // Apps Script uses synchronous UrlFetchApp
+    const abort = typeof AbortController === 'function' ? new AbortController() : null;
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = timers.setTimeout(() => {
+        reject(new Error('GitHub sync timed out — will retry'));
+        abort?.abort();
+      }, timeoutMs);
+    });
+    try { return await Promise.race([operation(abort?.signal), deadline]); }
+    finally { timers.clearTimeout(timer); }
+  }
 
   async function failure(res) {
     let message = '';
@@ -1306,24 +1555,25 @@ function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args)
   }
 
   return {
-    async get() {
-      const res = await fetch(url, { headers, cache: 'no-store' });
+    get: () => bounded(async (signal) => {
+      const res = await fetch(url, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
       if (res.status === 404) return null;
       if (!res.ok) throw await explain(res, repo, 'get');
       const body = await res.json();
       // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead.
       if (!body.content || body.encoding === 'none') {
-        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store' });
+        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
         if (!blobRes.ok) throw await explain(blobRes, repo, 'get');
         const blob = await blobRes.json();
         return { doc: JSON.parse(decodeBase64(blob.content)), sha: body.sha };
       }
       return { doc: JSON.parse(decodeBase64(body.content)), sha: body.sha };
-    },
+    }),
 
-    async put(doc, sha) {
+    put: (doc, sha) => bounded(async (signal) => {
       const res = await fetch(url, {
         method: 'PUT',
+        ...(signal ? { signal } : {}),
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'sync', content: encodeBase64(JSON.stringify(doc)), ...(sha ? { sha } : {}) }),
       });
@@ -1335,7 +1585,7 @@ function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args)
       }
       if (!res.ok) throw await explain(res, repo, 'put');
       return (await res.json()).content.sha;
-    },
+    }),
   };
 }
 
@@ -1357,7 +1607,8 @@ async function syncOnce({ store, client, maxAttempts = 3 }) {
     } catch (e) {
       return { ok: false, error: `Merge failed: ${e.message}` };
     }
-    store.replaceDoc(merged);
+    try { store.replaceDoc(merged); }
+    catch (e) { return { ok: false, error: `Couldn't apply sync: ${e.message}` }; }
     if (remote && sameDoc(merged, remote.doc)) return { ok: true, pushed: false };
 
     try {
@@ -1370,25 +1621,39 @@ async function syncOnce({ store, client, maxAttempts = 3 }) {
   return { ok: false, error: 'Another device kept writing at the same moment — will retry next time' };
 }
 
-function createSyncScheduler({ run, canRun = () => true, debounceMs = 5000, timers = globalThis }) {
+function createSyncScheduler({ run, canRun = () => true, canPoll = () => true, debounceMs = 5000,
+  pollMs = 60000, maxPollMs = 600000, clock = Date.now, timers = globalThis }) {
   let timer = null;
   let running = false;
   let again = false;
+  let current = null;
+  let failures = 0;
+  let nextPoll = clock() + pollMs;
 
   function schedule() {
     if (timer) timers.clearTimeout(timer);
-    timer = timers.setTimeout(now, debounceMs);
+    timer = timers.setTimeout(() => now().catch(() => {}), debounceMs);
   }
 
   async function now() {
     if (timer) { timers.clearTimeout(timer); timer = null; }
     if (!canRun()) { schedule(); return; }
-    if (running) { again = true; return; }
+    if (running) { again = true; return current; }
     running = true;
+    let finish;
+    current = new Promise((resolve) => { finish = resolve; });
     try {
-      await run();
+      const result = await run();
+      failures = result?.ok === false ? failures + 1 : 0;
+      return result;
+    } catch (e) {
+      failures++;
+      throw e;
     } finally {
+      nextPoll = clock() + Math.min(maxPollMs, pollMs * 2 ** Math.min(failures, 10));
       running = false;
+      finish();
+      current = null;
       if (again) { again = false; now().catch(() => {}); }
     }
   }
@@ -1398,9 +1663,23 @@ function createSyncScheduler({ run, canRun = () => true, debounceMs = 5000, time
     return now();
   }
 
-  return { now, changed: schedule, flush };
+  function poll() {
+    if (!running && clock() >= nextPoll && canPoll() && canRun()) return now();
+    return Promise.resolve();
+  }
+
+  return { now, changed: schedule, flush, poll };
 }
-return { ConflictError, encodeBase64, decodeBase64, createGitHubClient, syncOnce, createSyncScheduler };
+
+function mergeStoredEvents(previous, incoming) {
+  try {
+    const next = JSON.parse(incoming);
+    if (!isDoc(next)) return previous;
+    const prev = previous ? JSON.parse(previous) : null;
+    return JSON.stringify(mergeDocs(isDoc(prev) ? prev : null, next));
+  } catch { return previous; }
+}
+return { ConflictError, encodeBase64, decodeBase64, createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents };
 })();
 
 // ---- js/calendar.js
@@ -2812,8 +3091,22 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     return out;
   };
 
-  const listed = raw.filter((e) => watchedIds.has(e.calendarId)).map((e) => normEvent(e, e.calendarId));
-  const present = new Set(listed.map((e) => e.id));
+  const candidates = raw.filter((e) => watchedIds.has(e.calendarId)).map((e) => normEvent(e, e.calendarId));
+  // A retry after an ambiguous Calendar response can leave two owned events with
+  // one planning key. Prefer the user's placement, then the exact replacement.
+  const duplicates = [];
+  const owned = new Map();
+  for (const ev of candidates.filter((e) => e.mine && e.props[P.key]).sort((a, b) =>
+    Number(movedByGeorge(b)) - Number(movedByGeorge(a))
+      || Number(a.props[P.state] === 'rough') - Number(b.props[P.state] === 'rough')
+      || a.id.localeCompare(b.id))) {
+    const key = ev.props[P.key];
+    if (owned.has(key)) duplicates.push(ev);
+    else owned.set(key, ev);
+  }
+  const duplicateSet = new Set(duplicates);
+  const listed = candidates.filter((e) => !duplicateSet.has(e));
+  const present = new Set(candidates.map((e) => e.id));
   const timed = listed.filter((e) => !e.cancelled && !e.allDay && e.start && e.end);
   // All-day events used to be skipped outright, so a day George had marked "no work" the obvious way
   // was invisible and the planner booked straight through it. Anything all-day and busy on a watched
@@ -2859,7 +3152,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     }
   }
   const keep = new Map();
-  const actions = [];
+  const actions = duplicates.map((ev) => ({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }));
   const record = (d, b) => rec(d).blocks.push({
     key: b.key, eventId: b.eventId, calendarId: b.calendarId, calendar: calName(b.calendarId), title: b.title,
     start: iso(b.start), end: iso(b.end), state: b.state, items: b.items,
@@ -2871,7 +3164,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     const toRough = body.extendedProperties.private[P.state] === 'rough';
     if ((ev.props[P.state] === 'rough' && !toRough) || (ev.colorId && body.colorId === undefined)) {
       actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
-      actions.push({ op: 'insert', calendarId: ev.calendarId, key, body });
+      actions.push({ op: 'insert', calendarId: ev.calendarId, key, body, afterDelete: ev.id });
       return null;
     }
     if (!sameAs(ev, body)) actions.push({ op: 'patch', calendarId: ev.calendarId, eventId: ev.id, body });
@@ -3164,7 +3457,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       }
     } else {
       if (ex) actions.push({ op: 'delete', calendarId: ex.calendarId, eventId: ex.id });
-      actions.push({ op: 'insert', calendarId: cal.id, key: b.key, body });
+      actions.push({ op: 'insert', calendarId: cal.id, key: b.key, body, ...(ex ? { afterDelete: ex.id, afterDeleteCalendar: ex.calendarId } : {}) });
     }
     record(day, { key: b.key, eventId, calendarId: cal.id, title, start, end, state, items: b.items });
   }
@@ -3744,6 +4037,75 @@ async function syncHevy({
 return { HEVY, BACKFILL_PAGES, syncHevy };
 })();
 
+// ---- planner/properties.js
+const __planner_properties = (() => {
+// Script Properties allow 9 KB per value. Publish a chunk manifest only after every
+// chunk is written, so an interrupted save leaves the previous generation readable.
+const CHUNK_BYTES = 8000;
+const MAX_BYTES = 180000;
+const bytes = (s) => new TextEncoder().encode(s).length;
+
+function propertyParts(value) {
+  const text = JSON.stringify(value);
+  if (bytes(text) > MAX_BYTES) throw new Error('Planner memory is too large to save safely');
+  const parts = [];
+  let part = '', size = 0;
+  for (const char of text) {
+    // Apps Script's TextEncoder shim calls Utilities.newBlob; avoid invoking
+    // a service once per character when splitting an entire planning window.
+    const cp = char.codePointAt(0);
+    const n = cp <= 0x7f ? 1 : cp <= 0x7ff ? 2 : cp <= 0xffff ? 3 : 4;
+    if (size + n > CHUNK_BYTES) { parts.push(part); part = ''; size = 0; }
+    part += char;
+    size += n;
+  }
+  parts.push(part);
+  return parts;
+}
+
+function manifest(raw) {
+  const v = raw ? JSON.parse(raw) : null;
+  return v?.chunked === 1 && ['a', 'b'].includes(v.bank) && Number.isInteger(v.parts) && v.parts > 0 && v.parts < 100 ? v : null;
+}
+
+function readProperty(props, name, fallback = {}) {
+  const raw = props.getProperty(name);
+  if (!raw) return fallback;
+  const m = manifest(raw);
+  if (!m) return JSON.parse(raw); // migrate the original single-property format on write
+  let text = '';
+  for (let i = 0; i < m.parts; i++) {
+    const part = props.getProperty(`${name}:${m.bank}:${i}`);
+    if (part == null) throw new Error(`Planner memory ${name} is incomplete`);
+    text += part;
+  }
+  return JSON.parse(text);
+}
+
+function writeProperty(props, name, value) {
+  const parts = propertyParts(value);
+  const previous = manifest(props.getProperty(name));
+  const bank = previous?.bank === 'a' ? 'b' : 'a';
+  if (parts.length === 1) props.setProperty(name, parts[0]);
+  else {
+    for (let i = 0; i < parts.length; i++) props.setProperty(`${name}:${bank}:${i}`, parts[i]);
+    props.setProperty(name, JSON.stringify({ chunked: 1, bank, parts: parts.length }));
+  }
+  if (previous) {
+    for (let i = 0; i < previous.parts; i++) {
+      try { props.deleteProperty(`${name}:${previous.bank}:${i}`); } catch { /* published; cleanup can wait */ }
+    }
+  }
+}
+
+function deleteProperty(props, name) {
+  const previous = manifest(props.getProperty(name));
+  props.deleteProperty(name);
+  if (previous) for (let i = 0; i < previous.parts; i++) props.deleteProperty(`${name}:${previous.bank}:${i}`);
+}
+return { propertyParts, readProperty, writeProperty, deleteProperty };
+})();
+
 // ---- planner/gas.js
 const __planner_gas = (() => {
 // The planner inside Google Apps Script. George's calendars come through the Calendar advanced
@@ -3764,6 +4126,7 @@ const { P } = __planner_events;
 const { at } = __planner_time;
 const { tagPrompt, readArea } = __planner_tag;
 const { syncHevy } = __planner_hevy;
+const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner_properties;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -3865,7 +4228,7 @@ function createPlanner({
     const active = Object.values(store.doc().items ?? {}).filter((i) => i.status === 'active');
     const areas = [...new Set(active.map((i) => String(i.area ?? '').trim()).filter(Boolean))].sort();
     if (!areas.length) return;
-    const asked = JSON.parse(get('TAGGED') || '{}');
+    const asked = readProperty(props(), 'TAGGED');
     const last = addDays(logicalDay(t, dayStartHour()), 6);
     const todo = active
       .filter((i) => i.type === 'task' && !String(i.area ?? '').trim() && i.date <= last && !Object.hasOwn(asked, i.id))
@@ -3877,7 +4240,7 @@ function createPlanner({
       if (area) store.updateItem(item.id, { area });
     }
     const live = new Set(active.map((i) => i.id));
-    put('TAGGED', JSON.stringify(Object.fromEntries(Object.entries(asked).filter(([id]) => live.has(id)))));
+    writeProperty(props(), 'TAGGED', Object.fromEntries(Object.entries(asked).filter(([id]) => live.has(id)).slice(-500)));
   }
 
   // Hevy first, so a workout's tick is planned around in the same run. With no HEVY_KEY it's
@@ -3889,19 +4252,51 @@ function createPlanner({
     if (s.lastError) log(`Hevy: ${s.lastError}`);
   }
 
-  function apply(actions) {
+  function apply(actions, events) {
     const byKey = {};
     const errors = [];
+    const eventKey = (calendarId, id) => `${calendarId}|${id}`;
+    const actual = new Map(events.map((e) => [eventKey(e.calendarId, e.id), e]));
+    const deleted = new Set();
     for (const a of actions) {
+      if (a.afterDelete && !deleted.has(eventKey(a.afterDeleteCalendar ?? a.calendarId, a.afterDelete))) continue;
       try {
-        if (a.op === 'insert') byKey[a.key] = Calendar.Events.insert(a.body, a.calendarId).id;
-        else if (a.op === 'patch') Calendar.Events.patch(a.body, a.calendarId, a.eventId);
-        else Calendar.Events.remove(a.calendarId, a.eventId);
+        if (a.op === 'insert') {
+          const event = Calendar.Events.insert(a.body, a.calendarId);
+          byKey[a.key] = event.id;
+          actual.set(eventKey(a.calendarId, event.id), { ...a.body, ...event, calendarId: a.calendarId });
+        } else if (a.op === 'patch') {
+          const event = Calendar.Events.patch(a.body, a.calendarId, a.eventId);
+          const key = eventKey(a.calendarId, a.eventId);
+          actual.set(key, { ...actual.get(key), ...a.body, ...event, calendarId: a.calendarId });
+        } else {
+          Calendar.Events.remove(a.calendarId, a.eventId);
+          const key = eventKey(a.calendarId, a.eventId);
+          deleted.add(key);
+          actual.delete(key);
+        }
       } catch (err) {
         errors.push(`${a.op} "${a.body?.summary ?? a.eventId}": ${err?.message ?? err}`);
       }
     }
-    return { byKey, errors };
+    return { byKey, errors, actual: [...actual.values()] };
+  }
+
+  // Publish only confirmed calendar state, including an old block whose deletion failed.
+  function confirmedDays(planned, actual, cals) {
+    const days = Object.fromEntries(Object.entries(planned).map(([d, rec]) => [d, { ...rec, blocks: [] }]));
+    for (const ev of actual) {
+      const p = ev.extendedProperties?.private;
+      if (p?.[P.mine] !== '1' || !ev.start?.dateTime || !ev.end?.dateTime) continue;
+      const day = logicalDay(new Date(ev.start.dateTime), 0);
+      if (!days[day]) continue;
+      days[day].blocks.push({ key: p[P.key], eventId: ev.id, calendarId: ev.calendarId,
+        calendar: cals.find((c) => c.id === ev.calendarId)?.name ?? '', title: ev.summary ?? '',
+        start: new Date(ev.start.dateTime).toISOString(), end: new Date(ev.end.dateTime).toISOString(),
+        state: p[P.state], items: String(p[P.items] ?? '').split(',').filter(Boolean) });
+    }
+    for (const rec of Object.values(days)) rec.blocks.sort((a, b) => a.start.localeCompare(b.start) || a.key.localeCompare(b.key));
+    return days;
   }
 
   // The planner's status for the dashboard, at most hourly unless something in it changed. It
@@ -3941,11 +4336,13 @@ function createPlanner({
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),
-        memory: JSON.parse(get('DAYS') || '{}'),
+        memory: readProperty(props(), 'DAYS'),
       });
-      const { byKey, errors } = apply(result.actions);
-      const days = fillIds(result.days, byKey);
-      put('DAYS', JSON.stringify(days));
+      // Check the storage budget before mutating Calendar; reserve room for Google's event IDs.
+      propertyParts(fillIds(result.days, Object.fromEntries(result.actions.filter((a) => a.key).map((a) => [a.key, 'x'.repeat(128)]))));
+      const { errors, actual } = apply(result.actions, events);
+      const days = confirmedDays(result.days, actual, cals);
+      writeProperty(props(), 'DAYS', days);
       if (result.actions.length) put('LAST_WRITE', now().getTime());
       // Day records are keyed by weekday (day:1 … day:7) and everything that reads them — the app's
       // list, the Coach, Claude's week — looks seven days at most. Writing a longer plan into them
@@ -4044,7 +4441,7 @@ function createPlanner({
         log(`Couldn't remove "${ev.summary}": ${err?.message ?? err}`);
       }
     }
-    drop('DAYS');
+    deleteProperty(props(), 'DAYS');
     return `Removed ${n} planned block${n === 1 ? '' : 's'} and paused the planner. Run resume() to start again.`;
   }
 

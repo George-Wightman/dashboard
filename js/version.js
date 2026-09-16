@@ -93,6 +93,7 @@ export function createUpdater({ running, fetch = globalThis.fetch, worker = null
   let cached = null;
   let checkedAt = -Infinity;
   let pending = null;
+  let error = null;
   const behind = () => !!(running && live && live > running && !(cached && cached >= live));
 
   // Ask the service worker to cache the new version (sw.js's 'refresh'). With no worker in
@@ -110,12 +111,17 @@ export function createUpdater({ running, fetch = globalThis.fetch, worker = null
   }
 
   async function run() {
+    const abort = new AbortController();
+    let timer;
     try {
-      const res = await fetch('./', { method: 'HEAD', cache: 'no-store' });
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => { reject(new Error('Update check timed out')); abort.abort(); }, 10000);
+      });
+      const res = await Promise.race([fetch('./', { method: 'HEAD', cache: 'no-store', signal: abort.signal }), deadline]);
       live = res.ok ? lastModifiedOf(res.headers.get('last-modified')) : null;
     } catch {
       live = null;
-    }
+    } finally { clearTimeout(timer); }
     if (behind()) {
       const build = live;
       if (await refresh()) {
@@ -127,7 +133,7 @@ export function createUpdater({ running, fetch = globalThis.fetch, worker = null
   }
 
   function state() {
-    return { running, live, ready: cached !== null };
+    return { running, live, ready: cached !== null, ...(error ? { error } : {}) };
   }
 
   return {
@@ -142,8 +148,14 @@ export function createUpdater({ running, fetch = globalThis.fetch, worker = null
     },
     // Reload into the new version, making sure the newest seen is cached first.
     async apply(reload) {
-      if (cached === null || behind()) await refresh();
+      error = null;
+      if ((cached === null || behind()) && !await refresh()) {
+        error = 'Could not download the complete update. Reconnect and try again.';
+        onReady();
+        return false;
+      }
       reload();
+      return true;
     },
   };
 }

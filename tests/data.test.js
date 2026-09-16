@@ -266,7 +266,7 @@ test('listeners get a reason; identical replaceDoc is silent', () => {
   store.addItem({ type: 'task', title: 'A' });
   const copy = JSON.parse(JSON.stringify(store.doc()));
   store.replaceDoc(copy);
-  copy.items.extra = { id: 'extra', type: 'task', title: 'From sync', status: 'active' };
+  copy.items.extra = { id: 'extra', type: 'task', title: 'From sync', status: 'active', date: store.today() };
   store.replaceDoc(copy);
   store.updateSettings({ repo: 'George-Wightman/dashboard-sync' });
   off();

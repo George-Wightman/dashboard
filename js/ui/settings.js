@@ -15,7 +15,12 @@ import { claudePanel, claudeSummary } from './claude.js';
 function versionSection(ctx) {
   const line = h('p', { class: 'version-line' }, 'Checking for a newer version…');
   const reload = h('div', { class: 'buttons', hidden: true },
-    h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.applyUpdate() }, 'Reload to update'));
+    h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+      if (await ctx.applyUpdate() === false) {
+        line.textContent = ctx.updater.state().error;
+        line.className = 'version-line error';
+      }
+    } }, 'Reload to update'));
   const list = h('ul');
   const changes = h('details', { class: 'changes', hidden: true }, h('summary', {}, 'Recent changes'), list,
     h('a', { href: HISTORY_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Full history on GitHub ↗'));
@@ -23,7 +28,8 @@ function versionSection(ctx) {
   Promise.all([ctx.updater.check({ gap: 0 }), recentChanges().catch(() => null)]).then(([state, commits]) => {
     if (!line.isConnected) return;
     const status = versionStatus({ ...state, newest: commits?.[0]?.date ?? null, online: navigator.onLine });
-    line.textContent = status.text;
+    line.textContent = state.error || (status.kind === 'update' && !state.ready
+      ? 'A newer version is available, but its complete download has not finished. Try Reload to update.' : status.text);
     line.className = `version-line ${status.kind}`;
     reload.hidden = status.kind !== 'update';
     if (!commits?.length) return;

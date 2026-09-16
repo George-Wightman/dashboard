@@ -31,7 +31,7 @@ export function diffDocs(before, after) {
 // The fields that differ between two versions of a record, `updated` aside.
 export function fieldChanges(before, after) {
   const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])]
-    .filter((k) => k !== 'updated').sort();
+    .filter((k) => k !== 'updated' && k !== '_sync').sort();
   return keys
     .filter((k) => stableStringify(before?.[k] ?? null) !== stableStringify(after?.[k] ?? null))
     .map((k) => ({ field: k, from: before?.[k] ?? null, to: after?.[k] ?? null }));

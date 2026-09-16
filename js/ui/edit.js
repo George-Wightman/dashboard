@@ -3,6 +3,14 @@
 import { h } from './dom.js';
 import { weekday } from '../dates.js';
 import { parseLength, formatAmount } from '../parse.js';
+import { stableStringify } from '../doc.js';
+
+// Save only the fields changed in this form. A remote update may have reached
+// the store while the user was still editing the original snapshot.
+export function editedFields(initial, next) {
+  return Object.fromEntries(Object.entries(next).filter(([key, value]) =>
+    stableStringify(initial[key]) !== stableStringify(value)));
+}
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TYPES = [['task', 'Task — one-off'], ['habit', 'Habit — repeats'], ['quota', 'Weekly target — an amount']];
@@ -235,10 +243,10 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
     try {
       if (map === 'goals') {
         const fields = goalFields(title);
-        if (existing) store.updateGoal(existing.id, fields); else store.addGoal(fields);
+        if (existing) store.updateGoal(existing.id, editedFields(initialFields, fields)); else store.addGoal(fields);
       } else {
         const fields = itemFields(title);
-        if (existing) store.updateItem(existing.id, fields); else store.addItem(fields);
+        if (existing) store.updateItem(existing.id, editedFields(initialFields, fields)); else store.addItem(fields);
       }
     } catch (e) {
       return fail(e.message);
@@ -251,6 +259,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
     close();
   }
 
+  const initialFields = existing ? (map === 'goals' ? goalFields(existing.title) : itemFields(existing.title)) : null;
   ui.editorDirty = false;
   document.addEventListener('keydown', onKey);
   ui.closeEditor = close;

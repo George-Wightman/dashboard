@@ -16,6 +16,7 @@ import { P } from './events.js';
 import { at } from './time.js';
 import { tagPrompt, readArea } from './tag.js';
 import { syncHevy } from './hevy.js';
+import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -117,7 +118,7 @@ export function createPlanner({
     const active = Object.values(store.doc().items ?? {}).filter((i) => i.status === 'active');
     const areas = [...new Set(active.map((i) => String(i.area ?? '').trim()).filter(Boolean))].sort();
     if (!areas.length) return;
-    const asked = JSON.parse(get('TAGGED') || '{}');
+    const asked = readProperty(props(), 'TAGGED');
     const last = addDays(logicalDay(t, dayStartHour()), 6);
     const todo = active
       .filter((i) => i.type === 'task' && !String(i.area ?? '').trim() && i.date <= last && !Object.hasOwn(asked, i.id))
@@ -129,7 +130,7 @@ export function createPlanner({
       if (area) store.updateItem(item.id, { area });
     }
     const live = new Set(active.map((i) => i.id));
-    put('TAGGED', JSON.stringify(Object.fromEntries(Object.entries(asked).filter(([id]) => live.has(id)))));
+    writeProperty(props(), 'TAGGED', Object.fromEntries(Object.entries(asked).filter(([id]) => live.has(id)).slice(-500)));
   }
 
   // Hevy first, so a workout's tick is planned around in the same run. With no HEVY_KEY it's
@@ -141,19 +142,51 @@ export function createPlanner({
     if (s.lastError) log(`Hevy: ${s.lastError}`);
   }
 
-  function apply(actions) {
+  function apply(actions, events) {
     const byKey = {};
     const errors = [];
+    const eventKey = (calendarId, id) => `${calendarId}|${id}`;
+    const actual = new Map(events.map((e) => [eventKey(e.calendarId, e.id), e]));
+    const deleted = new Set();
     for (const a of actions) {
+      if (a.afterDelete && !deleted.has(eventKey(a.afterDeleteCalendar ?? a.calendarId, a.afterDelete))) continue;
       try {
-        if (a.op === 'insert') byKey[a.key] = Calendar.Events.insert(a.body, a.calendarId).id;
-        else if (a.op === 'patch') Calendar.Events.patch(a.body, a.calendarId, a.eventId);
-        else Calendar.Events.remove(a.calendarId, a.eventId);
+        if (a.op === 'insert') {
+          const event = Calendar.Events.insert(a.body, a.calendarId);
+          byKey[a.key] = event.id;
+          actual.set(eventKey(a.calendarId, event.id), { ...a.body, ...event, calendarId: a.calendarId });
+        } else if (a.op === 'patch') {
+          const event = Calendar.Events.patch(a.body, a.calendarId, a.eventId);
+          const key = eventKey(a.calendarId, a.eventId);
+          actual.set(key, { ...actual.get(key), ...a.body, ...event, calendarId: a.calendarId });
+        } else {
+          Calendar.Events.remove(a.calendarId, a.eventId);
+          const key = eventKey(a.calendarId, a.eventId);
+          deleted.add(key);
+          actual.delete(key);
+        }
       } catch (err) {
         errors.push(`${a.op} "${a.body?.summary ?? a.eventId}": ${err?.message ?? err}`);
       }
     }
-    return { byKey, errors };
+    return { byKey, errors, actual: [...actual.values()] };
+  }
+
+  // Publish only confirmed calendar state, including an old block whose deletion failed.
+  function confirmedDays(planned, actual, cals) {
+    const days = Object.fromEntries(Object.entries(planned).map(([d, rec]) => [d, { ...rec, blocks: [] }]));
+    for (const ev of actual) {
+      const p = ev.extendedProperties?.private;
+      if (p?.[P.mine] !== '1' || !ev.start?.dateTime || !ev.end?.dateTime) continue;
+      const day = logicalDay(new Date(ev.start.dateTime), 0);
+      if (!days[day]) continue;
+      days[day].blocks.push({ key: p[P.key], eventId: ev.id, calendarId: ev.calendarId,
+        calendar: cals.find((c) => c.id === ev.calendarId)?.name ?? '', title: ev.summary ?? '',
+        start: new Date(ev.start.dateTime).toISOString(), end: new Date(ev.end.dateTime).toISOString(),
+        state: p[P.state], items: String(p[P.items] ?? '').split(',').filter(Boolean) });
+    }
+    for (const rec of Object.values(days)) rec.blocks.sort((a, b) => a.start.localeCompare(b.start) || a.key.localeCompare(b.key));
+    return days;
   }
 
   // The planner's status for the dashboard, at most hourly unless something in it changed. It
@@ -193,11 +226,13 @@ export function createPlanner({
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),
-        memory: JSON.parse(get('DAYS') || '{}'),
+        memory: readProperty(props(), 'DAYS'),
       });
-      const { byKey, errors } = apply(result.actions);
-      const days = fillIds(result.days, byKey);
-      put('DAYS', JSON.stringify(days));
+      // Check the storage budget before mutating Calendar; reserve room for Google's event IDs.
+      propertyParts(fillIds(result.days, Object.fromEntries(result.actions.filter((a) => a.key).map((a) => [a.key, 'x'.repeat(128)]))));
+      const { errors, actual } = apply(result.actions, events);
+      const days = confirmedDays(result.days, actual, cals);
+      writeProperty(props(), 'DAYS', days);
       if (result.actions.length) put('LAST_WRITE', now().getTime());
       // Day records are keyed by weekday (day:1 … day:7) and everything that reads them — the app's
       // list, the Coach, Claude's week — looks seven days at most. Writing a longer plan into them
@@ -296,7 +331,7 @@ export function createPlanner({
         log(`Couldn't remove "${ev.summary}": ${err?.message ?? err}`);
       }
     }
-    drop('DAYS');
+    deleteProperty(props(), 'DAYS');
     return `Removed ${n} planned block${n === 1 ? '' : 's'} and paused the planner. Run resume() to start again.`;
   }
 

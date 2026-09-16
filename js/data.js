@@ -2,15 +2,17 @@
 // stamps `updated`, saves, and tells listeners why it changed.
 
 import { logicalDay, addDays, weekStart } from './dates.js';
-import { MAPS, emptyDoc, stableStringify, isDoc, journalId } from './doc.js';
+import { MAPS, emptyDoc, stableStringify, isDoc, journalId, recordProblem, recoverDoc } from './doc.js';
 import { mergeDocs } from './merge.js';
 import { FLAG_TEXT_MAX, capContext } from './flags.js';
 import { CHANGE_KEEP_DAYS, canUndo } from './changes.js';
 import { checkLength, checkClock, checkNotes } from './parse.js';
+import { reviseRecord, recordContent } from './record.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
 export const CORRUPT_KEY = 'dash_data_corrupt';
+export const BACKUP_KEY = 'dash_data_previous';
 export const DEFAULT_SETTINGS = { token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto' };
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
@@ -54,16 +56,22 @@ function loadDoc(storage) {
     return { doc: emptyDoc(), error: "Saved data couldn't be read on this device, so it started empty." };
   }
   if (!raw) return { doc: emptyDoc(), error: null };
+  let recovered = emptyDoc();
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { doc: withMaps(parsed), error: null };
+    if (isDoc(parsed)) return { doc: mergeDocs(parsed, null), error: null };
+    recovered = recoverDoc(parsed);
   } catch {
     // fall through to setting it aside
   }
-  try { storage.setItem(CORRUPT_KEY, raw); } catch { /* nothing more can be done */ }
+  let preserved = false;
+  try { storage.setItem(CORRUPT_KEY, raw); preserved = true; } catch { /* report the failed recovery copy */ }
+  const backup = readJson(storage, BACKUP_KEY);
+  recovered = mergeDocs(recovered, isDoc(backup) ? backup : null);
   return {
-    doc: emptyDoc(),
-    error: "Saved data couldn't be read on this device, so it started empty.",
+    doc: recovered,
+    error: "Some saved data couldn't be read. Valid records were recovered; " + (preserved
+      ? 'the original was set aside on this device.' : 'the original could not be copied. Export a backup before making more changes.'),
   };
 }
 
@@ -78,7 +86,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   let doc = loaded.doc;
   let settings = { ...DEFAULT_SETTINGS, ...(readJson(storage, SETTINGS_KEY) ?? {}) };
   const loadError = loaded.error;
-  let saveError = null;
+  const saveErrors = new Map();
   const listeners = new Set();
 
   const stamp = () => now().toISOString();
@@ -87,16 +95,31 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
 
   function save(key, value) {
     try {
-      storage.setItem(key, JSON.stringify(value));
-      saveError = null;
+      const raw = JSON.stringify(value);
+      try { storage.setItem(key, raw); } catch (e) {
+        // Recovery copies must never prevent saving the primary document.
+        if (key !== DATA_KEY || !(e?.name === 'QuotaExceededError' || e?.code === 22 || e?.code === 1014)
+          || storage.getItem(BACKUP_KEY) === null) throw e;
+        storage.removeItem(BACKUP_KEY);
+        storage.setItem(key, raw);
+      }
+      saveErrors.delete(key);
     } catch (e) {
-      saveError = e?.message || String(e);
+      saveErrors.set(key, e?.message || String(e));
     }
   }
 
   function commit(reason) {
     save(DATA_KEY, doc);
     notify(reason);
+  }
+
+  function writeRecord(map, id, next) {
+    const rec = reviseRecord(doc[map][id], next, stamp());
+    const problem = recordProblem(map, id, rec);
+    if (problem) throw new Error(problem);
+    doc[map][id] = rec;
+    return rec;
   }
 
   // Writes a record into the document without saving, for callers that write several records
@@ -108,8 +131,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       id: fields.id ?? newId(),
       updated: stamp(),
     };
-    doc[map][rec.id] = rec;
-    return rec;
+    return writeRecord(map, rec.id, rec);
   }
 
   function create(map, fields) {
@@ -121,12 +143,12 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   function patch(map, id, changes) {
     const rec = doc[map][id];
     if (!rec) throw new Error(`No ${map} record ${id}`);
-    doc[map][id] = { ...rec, ...changes, id, updated: stamp() };
+    writeRecord(map, id, { ...rec, ...changes, id });
     commit('local');
     return doc[map][id];
   }
 
-  const nextOrder = (map) => Math.max(0, ...Object.values(doc[map]).map((r) => r.order ?? 0)) + 1;
+  const nextOrder = (map) => Object.values(doc[map]).reduce((max, r) => Math.max(max, r.order ?? 0), 0) + 1;
 
   // An item's fields, checked and with the defaults filled in. Nothing is written.
   function itemFields(fields) {
@@ -149,6 +171,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       if (fields.type !== 'task' && fields.type !== 'habit') throw new Error('Only a task or a habit can be a priority');
       out.priority = fields.priority;
     }
+    const problem = recordProblem('items', fields.id ?? 'check', { ...out, id: fields.id ?? 'check' });
+    if (problem) throw new Error(problem);
     return out;
   }
 
@@ -160,8 +184,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const existing = Object.values(doc.logs).filter((l) =>
       l.itemId === itemId && l.kind === 'done' && l.day === day && l.status === 'active');
     if (existing.length) {
-      const t = stamp();
-      for (const rec of existing) doc.logs[rec.id] = { ...rec, status: 'archived', updated: t };
+      for (const rec of existing) writeRecord('logs', rec.id, { ...rec, status: 'archived' });
       commit('local');
       return;
     }
@@ -176,11 +199,11 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // Conversations older than TALK_KEEP_DAYS lose their messages; their journal entries stay.
   function pruneTalks(keepDays = 30) {
     const cutoff = addDays(today(), -keepDays);
-    const t = stamp();
     let n = 0;
     for (const [id, r] of Object.entries(doc.journal)) {
-      if (r.kind !== 'talk' || !(r.day < cutoff) || !r.messages?.length) continue;
-      doc.journal[id] = { ...r, messages: [], pruned: true, updated: t };
+      if (r.kind !== 'talk' || !(r.day < cutoff)
+        || (!r.messages?.length && !Object.keys(r._sync?.messages ?? {}).length)) continue;
+      writeRecord('journal', id, { ...r, messages: [], pruned: true });
       n++;
     }
     if (n) commit('local');
@@ -199,6 +222,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const defaults = { targetDate: null, target: null, unit: 'count', unitLabel: '', order: nextOrder('goals') };
     const out = { ...defaults, ...fields, title };
     if (fields.notes !== undefined) out.notes = checkNotes(fields.notes);
+    const problem = recordProblem('goals', fields.id ?? 'check', { ...out, id: fields.id ?? 'check' });
+    if (problem) throw new Error(problem);
     return out;
   }
 
@@ -237,7 +262,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     }
     const existing = doc.journal[id];
     if (!existing) return create('journal', { source, ...structuredClone(fields), ...content, id, kind, day });
-    doc.journal[id] = { ...existing, ...content, id, kind, day, updated: stamp() };
+    writeRecord('journal', id, { ...existing, ...content, id, kind, day });
     commit('local');
     return doc.journal[id];
   }
@@ -283,9 +308,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const goal = doc.goals[goalId];
     if (!goal) throw new Error(`No goals record ${goalId}`);
     const live = { status: 'active', created: today(), updated: stamp() };
-    if (goal.status === 'suggested') doc.goals[goalId] = { ...goal, ...live };
+    if (goal.status === 'suggested') writeRecord('goals', goalId, { ...goal, ...live });
     for (const [id, m] of Object.entries(doc.milestones)) {
-      if (m.goalId === goalId && m.status === 'suggested') doc.milestones[id] = { ...m, ...live };
+      if (m.goalId === goalId && m.status === 'suggested') writeRecord('milestones', id, { ...m, ...live });
     }
     commit('local');
     return doc.goals[goalId];
@@ -297,10 +322,10 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const goal = doc.goals[goalId];
     if (!goal) throw new Error(`No goals record ${goalId}`);
     const gone = { status: 'dismissed', updated: stamp() };
-    if (goal.status === 'suggested') doc.goals[goalId] = { ...goal, ...gone };
+    if (goal.status === 'suggested') writeRecord('goals', goalId, { ...goal, ...gone });
     for (const map of ['milestones', 'items']) {
       for (const [id, rec] of Object.entries(doc[map])) {
-        if (rec.goalId === goalId && rec.status === 'suggested') doc[map][id] = { ...rec, ...gone };
+        if (rec.goalId === goalId && rec.status === 'suggested') writeRecord(map, id, { ...rec, ...gone });
       }
     }
     commit('local');
@@ -350,17 +375,17 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const skipped = [];
     for (const edit of change.edits) {
       const current = doc[edit.map]?.[edit.id];
-      if (!current || stableStringify(current) !== stableStringify(edit.after)) {
+      if (!current || stableStringify(recordContent(current)) !== stableStringify(recordContent(edit.after))) {
         skipped.push(edit);
         continue;
       }
-      doc[edit.map][edit.id] = edit.before
-        ? { ...structuredClone(edit.before), updated: t }
-        : { ...current, status: edit.map === 'logs' ? 'archived' : 'dismissed', updated: t };
+      writeRecord(edit.map, edit.id, edit.before
+        ? structuredClone(edit.before)
+        : { ...current, status: edit.map === 'logs' ? 'archived' : 'dismissed' });
       undone.push(edit);
     }
     if (!undone.length) return { undone, skipped, already: false };
-    doc.changes[changeId] = { ...change, undoneAt: t, undoneBy: by, updated: t };
+    writeRecord('changes', changeId, { ...change, undoneAt: t, undoneBy: by });
     commit('local');
     return { undone, skipped, already: false };
   }
@@ -369,12 +394,11 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // they can no longer be undone), so the synced file doesn't grow for ever. Returns how many.
   function pruneChanges() {
     const cutoff = new Date(now().getTime() - CHANGE_KEEP_DAYS * 86400000).toISOString();
-    const t = stamp();
     let n = 0;
     for (const [id, c] of Object.entries(doc.changes)) {
       if (c.pruned || !(c.at < cutoff)) continue;
       const edits = (c.edits ?? []).map((e) => ({ map: e.map, id: e.id, before: null, after: null }));
-      doc.changes[id] = { ...c, edits, pruned: true, updated: t };
+      writeRecord('changes', id, { ...c, edits, pruned: true });
       n++;
     }
     if (n) commit('local');
@@ -390,7 +414,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       const same = existing.source === source
         && Object.keys(content).every((k) => stableStringify(existing[k]) === stableStringify(content[k]));
       if (same) return { rec: existing, changed: false };
-      doc[map][id] = { ...existing, ...content, id, source, updated: stamp() };
+      writeRecord(map, id, { ...existing, ...content, id, source });
       commit('local');
       return { rec: doc[map][id], changed: true };
     }
@@ -441,17 +465,19 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     // midpoint strictly between them: either way, renumber the whole group.
     const base = Math.min(...groupIds.map(orderOf));
     const renumbered = [...list.slice(0, t), id, ...list.slice(t)];
-    const t2 = stamp();
     for (let i = 0; i < renumbered.length; i++) {
       const rid = renumbered[i];
       const order = base + i;
-      if (orderOf(rid) !== order) doc.items[rid] = { ...doc.items[rid], order, updated: t2 };
+      if (orderOf(rid) !== order) writeRecord('items', rid, { ...doc.items[rid], order });
     }
     commit('local');
   }
 
   function replaceDoc(next, reason = 'sync') {
+    if (!isDoc(next)) throw new Error("That isn't a valid dashboard document");
     if (stableStringify(next) === stableStringify(doc)) return;
+    // Best-effort recovery point before external data replaces the working copy.
+    try { storage.setItem(BACKUP_KEY, JSON.stringify(doc)); } catch { /* keep the working copy */ }
     doc = withMaps(next);
     commit(reason);
   }
@@ -492,7 +518,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     doc: () => doc,
     settings: () => settings,
     today,
-    saveError: () => saveError,
+    saveError: () => [...saveErrors.values()].join('; ') || null,
     loadError: () => loadError,
     subscribe(fn) {
       listeners.add(fn);
