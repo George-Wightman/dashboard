@@ -262,3 +262,26 @@ test('an all-day event over several days holds all of them', () => {
   assert.deepEqual(booked.filter((s) => s.startsWith(WED)), []);
   assert.deepEqual(booked.filter((s) => s.startsWith(THU)), []);
 });
+
+test('a block that slipped to the next day does not let that day book a second one', () => {
+  // A block the planner moved off its own day keeps the key it was made with, so `settle` used to
+  // cover the day the *key* named rather than the day the block actually sits on. The day it landed
+  // on never learned it was booked, and booked the same habit again.
+  const doc = fixture({ items: [
+    { id: 'reading', type: 'habit', title: 'Read ten pages', area: 'Reading', repeat: { kind: 'daily' }, minutes: 20, order: 1 },
+  ] });
+  const FRI = '2026-09-18';
+  const SAT = '2026-09-19';
+  // Made for Friday, dragged onto Saturday: dashAt still says Friday, so the planner treats it as
+  // George's and leaves it where he put it.
+  const slipped = ev(MAIN, '~ Read ten pages', SAT, '16:30', '16:50', {
+    extendedProperties: { private: {
+      dash: '1', dashKey: `${FRI}|reading|0`, dashItems: 'reading', dashTitle: 'Read ten pages', dashState: 'rough',
+      dashAt: `${at(FRI, '16:30').toISOString()}/${at(FRI, '16:50').toISOString()}`,
+    } },
+  });
+  const cal = new FakeCalendar([slipped]);
+  step(cal, doc, now(TUE, '08:00'));
+  const onSat = cal.mine().filter((e) => e.start.dateTime.startsWith(SAT) && /Read ten pages/.test(e.summary));
+  assert.equal(onSat.length, 1, 'one reading block on the day it landed, not two');
+});

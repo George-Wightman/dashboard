@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '876858aa';
+var PLANNER_BUILD = '145b4a73';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2913,10 +2913,15 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), nextState, calendars.find((c) => c.id === ev.calendarId));
       const body = blockBody({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
       const eventId = emit(ev, body, key);
+      const landed = localDay(new Date(span.start));
       busy(span.start, span.end, title);
-      cover(kd, coverIds);
+      // Cover the day the block is actually on, not the day its key names. A block George drags to
+      // the next day keeps the key it was made with; covering the key's day told the wrong day it
+      // was booked, so the day it landed on booked the same thing again and the day it left lost its
+      // own. The key stays claimed on its original day so a replacement there gets a fresh one.
+      cover(landed, coverIds);
       useKey(kd, key);
-      record(localDay(new Date(span.start)), { key, eventId, calendarId: ev.calendarId, title, start: span.start, end: span.end, state: nextState, items: ids });
+      record(landed, { key, eventId, calendarId: ev.calendarId, title, start: span.start, end: span.end, state: nextState, items: ids });
     };
 
     if (HISTORY.has(state)) {
