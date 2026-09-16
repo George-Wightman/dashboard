@@ -191,7 +191,15 @@ export function createPlanner({
       const days = fillIds(result.days, byKey);
       put('DAYS', JSON.stringify(days));
       if (result.actions.length) put('LAST_WRITE', now().getTime());
-      for (const [day, rec] of Object.entries(days)) if (day >= today) store.putCalendar(dayRecordId(day), rec);
+      // Day records are keyed by weekday (day:1 … day:7) and everything that reads them — the app's
+      // list, the Coach, Claude's week — looks seven days at most. Writing a longer plan into them
+      // put two dates in every slot and the second week won, so the days that actually matter read
+      // as nothing booked. The planner's own memory is the DAYS property, not these, so keeping them
+      // to the week costs it nothing.
+      const lastRecorded = addDays(today, 7);
+      for (const [day, rec] of Object.entries(days)) {
+        if (day >= today && day < lastRecorded) store.putCalendar(dayRecordId(day), rec);
+      }
       if (!doc.calendar?.config) store.putCalendar('config', JSON.parse(JSON.stringify(CALENDAR_DEFAULTS)));
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`

@@ -4,6 +4,7 @@ import { createPlanner } from '../planner/gas.js';
 import { installShims } from '../planner/shims.js';
 import { tagPrompt, readArea } from '../planner/tag.js';
 import { at } from '../planner/time.js';
+import { CALENDAR_DEFAULTS } from '../js/calendar.js';
 import { fixture } from './helpers.js';
 import { FakeCalendar, ev, MAIN, GYM, WORK } from './planner-fakes.js';
 import { FakeRepo, fakeUtilities, appsScript } from './planner-apps.js';
@@ -14,7 +15,7 @@ const TUE = '2026-09-15';
 const TOKEN = 'ghp_dummy_token_1234567890';
 const KEYS = { GITHUB_TOKEN: TOKEN, SYNC_REPO: 'o/r' };
 
-function setup({ props = KEYS, items, clock = at(TUE, '08:00'), ...rest } = {}) {
+function setup({ props = KEYS, items, clock = at(TUE, '08:00'), calendarConfig, ...rest } = {}) {
   const doc = fixture({ items: items ?? [
     { id: 'hebrew', type: 'habit', title: 'Hebrew - app plus Duolingo', area: 'Hebrew', repeat: { kind: 'daily' } },
     { id: 'chase', type: 'task', title: 'Chase the GSS outcome', area: 'Job search', date: TUE, order: 1 },
@@ -25,6 +26,7 @@ function setup({ props = KEYS, items, clock = at(TUE, '08:00'), ...rest } = {}) 
     ev(GYM, 'Gym', TUE, '11:00', '13:00'),
     ev(WORK, 'Signify', TUE, '14:00', '16:00'),
   ]);
+  if (calendarConfig) doc.calendar = { ...(doc.calendar ?? {}), config: { ...CALENDAR_DEFAULTS, ...calendarConfig, status: 'active', id: 'config' } };
   const repo = new FakeRepo(doc);
   let t = clock;
   const env = appsScript({ cal, repo, props, now: () => t, ...rest });
@@ -155,4 +157,21 @@ test('tagging: an untagged task gets an area from Gemini, asked once', async () 
   await planner.run();
   assert.equal(asked, 1);
   assert.ok(env.calls.every((c) => !c.url.includes('gm-dummy') || c.url.startsWith('https://generativelanguage.googleapis.com/')));
+});
+
+test('with a fortnight horizon the near week keeps its records, and the far week cannot clobber them', async () => {
+  // Day records are keyed by weekday (day:1 … day:7), so a 14-day plan writes two dates into every
+  // slot and the second week used to win — leaving the app, the Coach and Claude reading an empty
+  // calendar for the days that actually matter.
+  const items = [
+    { id: 'daily', type: 'habit', title: 'Read ten pages', area: 'Reading', repeat: { kind: 'daily' } },
+  ];
+  const { repo, planner } = setup({ items, calendarConfig: { days: 14 } });
+  assert.equal(await planner.run(), 'ok');
+  const doc = repo.doc();
+  const slots = Object.keys(doc.calendar).filter((k) => k.startsWith('day:'));
+  const dates = slots.map((k) => doc.calendar[k].day).sort();
+  assert.equal(new Set(dates).size, dates.length, 'no two records share a weekday slot');
+  for (const d of dates) assert.ok(d >= TUE && d < '2026-09-22', `${d} is inside the seven days the app reads`);
+  assert.equal(doc.calendar['day:2'].day, TUE, "today's own record survives the run");
 });
