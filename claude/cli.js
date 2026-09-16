@@ -16,6 +16,7 @@ export const USAGE = [
   'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym · reference · handoffs · handoff <name>',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
+  'Not sure which? The table at the top of reference.md maps what you want to do to the command that does it — `bash run.sh reference` prints the current one.',
 ].join('\n');
 
 function parseOps(text) {

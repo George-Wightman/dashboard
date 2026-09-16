@@ -244,3 +244,9 @@ test('the trail keeps its last 200 lines and no more', async () => {
   assert.equal(lines.length, 200);
   assert.match(lines.at(-1), /Unknown command "fly"/);
 });
+
+test('help points at the index and at the live reference', async () => {
+  const { text } = await run(['help']);
+  assert.match(text, /what you want to do to the command that does it/);
+  assert.match(text, /bash run\.sh reference/);
+});

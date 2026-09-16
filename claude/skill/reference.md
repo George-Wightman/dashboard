@@ -4,6 +4,30 @@ Run from this skill's folder: `bash run.sh <read> [argument]`, or `bash run.sh a
 quoted heredoc (`<<'EOF'` … `EOF`). Ids are what the tool shows after `#` (any unique start of at
 least 4 characters works). Dates: `YYYY-MM-DD`, `today`, `tomorrow`, `yesterday`.
 
+## To do this → run this
+
+Pick the row, not the whole file. The detail for each command is below.
+
+| You want to | Read | Then change with |
+| --- | --- | --- |
+| See what's on today | `today` | `done`, `log` |
+| Find something by name | `find <words>` | — |
+| See everything coming up | `list` | `task`, `edit` |
+| Give a task a length or a set time | `list` | `edit` with `minutes` / `time` |
+| Put the detail behind a short title | `list` | `edit` with `notes` |
+| Mark a day, or some hours, off | `planner` | `off` |
+| Write the line at the top of George's day | `today` | `brief` |
+| Break a big job into stages | `goals` | `plan` |
+| See what needs you | `attention` | `edit`, `off`, `brief` |
+| Check his training | `gym` | `gym` settings, the Gym habit's `notes` |
+| See how he's been | `journal`, `talk <day>` | `guide` |
+| Change how the calendar books | `planner` | `planner` |
+| Tell the app's developer something | `handoffs` | `handoff` |
+| Leave a note George will read | `flags` | `flag` |
+
+If a command the tool mentions isn't in this file, this copy is older than the tool: run
+`bash run.sh reference` for the current one.
+
 ## Reads
 
 ### `today`

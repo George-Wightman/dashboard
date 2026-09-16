@@ -38,6 +38,9 @@ Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `
 Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.
 
+**Not sure which?** The table at the top of `reference.md` — *to do this → run this* — maps what you
+want to do to the command that does it. Start there rather than reading the whole file.
+
 Ids show as `#a1b2c3d4`; pass them without the `#`. Dates are `YYYY-MM-DD`, `today`, `tomorrow` or
 `yesterday`. If `apply` fails, **nothing** was changed: fix the op it names and send the whole batch
 again.
