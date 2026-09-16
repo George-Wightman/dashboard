@@ -8,7 +8,7 @@ import { makeClient as githubClient } from './github.js';
 import { READS } from './read.js';
 import { OPS, UNLOGGED, runOp, readHandoff } from './ops.js';
 import { createFileStore } from './files.js';
-import { handoffPath, handoffFile, handoffList, pickHandoff } from './handoff.js';
+import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
 import { scrubText, APP_VERSION } from '../js/flags.js';
 
 export const USAGE = [
@@ -95,6 +95,20 @@ export async function main({
     secrets = [config.token];
     const files = makeFiles({ token: config.token, repo: config.repo });
 
+    // What the tool refused, kept in the repo. A weaker model can't be relied on to notice it should
+    // report anything, so the tool records its own stumbles: four goes at an op that doesn't exist
+    // are worth seeing even when the chat that made them never said a word about it.
+    //
+    // Recording one must never make it worse. A trail that won't write is silent, and whoever
+    // stumbled gets exactly the error they would have got anyway.
+    const trail = async (what, error) => {
+      try {
+        const existing = await files.read(TRAIL_PATH);
+        const line = scrubText(trailLine({ at: now(), build, what, error }), secrets);
+        await files.write(TRAIL_PATH, pruneTrail(`${existing?.text ?? ''}\n${line}`), 'trail');
+      } catch { /* never fatal, never mentioned */ }
+    };
+
     // Handoffs are files in the repo rather than part of the document, so they are answered here
     // rather than through READS, which only ever see the document.
     if (command === 'handoffs' || command === 'handoff') {
@@ -114,6 +128,7 @@ export async function main({
     env.TZ = config.timeZone;
 
     if (command !== 'apply' && !Object.hasOwn(READS, command)) {
+      await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
       return finish(1);
@@ -158,6 +173,7 @@ export async function main({
         lines.push(session.record((s) => runOp(s, op), { log: !UNLOGGED.has(op?.op) }).summary);
         if (op?.op === 'handoff') handoffs.push(readHandoff(op));
       } catch (e) {
+        await trail(`apply op ${i + 1} of ${ops.length}: ${JSON.stringify(op)}`, e.message);
         say(`Nothing was changed. Op ${i + 1} of ${ops.length} (${op?.op ?? '?'}) failed: ${e.message}`);
         return finish(1);
       }

@@ -194,3 +194,53 @@ test('handoff prints one in full, and says when the name matches nothing', async
   assert.equal(missing.code, 2);
   assert.match(missing.text, /No handoff starts with/);
 });
+
+test('a failed op is recorded in the trail, and still nothing is saved', async () => {
+  const files = repoFiles();
+  const remote = new FakeGitHub();
+  const r = await run(['apply', '--build', 'abc1234'], { files, remote, stdin: JSON.stringify({ op: 'dayOff', date: 'today' }) });
+  assert.equal(r.code, 1);
+  assert.match(r.text, /Unknown op "dayOff"/);
+  assert.equal(remote.puts, 0, 'apply is still all-or-nothing');
+  const trail = files.raw.get('handoffs/trail.md');
+  assert.match(trail, /dayOff/);
+  assert.match(trail, /abc1234/);
+});
+
+test('an unknown command is recorded too', async () => {
+  const files = repoFiles();
+  await run(['fly'], { files });
+  assert.match(files.raw.get('handoffs/trail.md'), /Unknown command "fly"/);
+});
+
+test('a clean op and a read leave the trail alone', async () => {
+  const files = repoFiles();
+  await run(['apply'], { files, stdin: JSON.stringify({ op: 'task', title: 'Email Sarah' }) });
+  await run(['today'], { files });
+  assert.equal(files.raw.has('handoffs/trail.md'), false);
+});
+
+test('the key never reaches the trail, not even inside a rejected op', async () => {
+  const files = repoFiles();
+  await run(['apply'], { files, stdin: JSON.stringify({ op: 'nope', text: KEY }) });
+  const trail = files.raw.get('handoffs/trail.md');
+  assert.ok(trail.includes('[hidden]'));
+  assert.ok(!trail.includes(KEY));
+});
+
+test('a trail that will not write leaves the original error exactly as it was', async () => {
+  const broken = repoFiles();
+  broken.read = async () => { throw new Error('GitHub 500'); };
+  const r = await run(['apply'], { files: broken, stdin: JSON.stringify({ op: 'dayOff' }) });
+  assert.equal(r.code, 1);
+  assert.equal(r.text, 'Nothing was changed. Op 1 of 1 (dayOff) failed: Unknown op "dayOff" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide');
+  assert.doesNotMatch(r.text, /trail/i);
+});
+
+test('the trail keeps its last 200 lines and no more', async () => {
+  const files = repoFiles({ 'handoffs/trail.md': Array.from({ length: 250 }, (_, i) => `old ${i}`).join('\n') });
+  await run(['fly'], { files });
+  const lines = files.raw.get('handoffs/trail.md').split('\n').filter(Boolean);
+  assert.equal(lines.length, 200);
+  assert.match(lines.at(-1), /Unknown command "fly"/);
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handoffPath, handoffFile, handoffList, pickHandoff, slug } from '../claude/handoff.js';
+import { handoffPath, handoffFile, handoffList, pickHandoff, slug, trailLine, pruneTrail } from '../claude/handoff.js';
 
 const AT = new Date('2026-09-16T08:14:00.000Z');
 
@@ -57,4 +57,27 @@ test('a handoff is picked by any unique start of its name', () => {
   assert.throws(() => pickHandoff(files, '2026-09'), /matches 2 handoffs/);
   assert.throws(() => pickHandoff(files, 'nope'), /No handoff/);
   assert.throws(() => pickHandoff(files, ''), /needs the name/);
+});
+
+test('a trail line carries when, the build, what was tried and what came back — on one line', () => {
+  const line = trailLine({ at: AT, build: 'abc1234', what: '{"op":"dayOff",\n "date":"x"}', error: 'Unknown op "dayOff"' });
+  assert.match(line, /2026-09-16T08:14/);
+  assert.match(line, /abc1234/);
+  assert.match(line, /dayOff/);
+  assert.ok(!line.includes('\n'), 'a trail that wraps is a trail nobody reads');
+});
+
+test('a very long op and a very long error are clipped, not dropped', () => {
+  const line = trailLine({ at: AT, build: 'x', what: 'w'.repeat(900), error: 'e'.repeat(900) });
+  assert.ok(line.length < 700);
+  assert.match(line, /w{300}/);
+  assert.match(line, /e{300}/);
+});
+
+test('the trail keeps only its last lines, and blank ones never count', () => {
+  const text = `${Array.from({ length: 250 }, (_, i) => `line ${i}`).join('\n')}\n\n`;
+  const out = pruneTrail(text, 200).split('\n').filter(Boolean);
+  assert.equal(out.length, 200);
+  assert.equal(out.at(-1), 'line 249');
+  assert.equal(out[0], 'line 50');
 });
