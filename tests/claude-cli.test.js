@@ -5,16 +5,25 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { main, USAGE } from '../claude/cli.js';
-import { FakeGitHub, ids, fixture } from './helpers.js';
+import { createFileStore } from '../claude/files.js';
+import { FakeGitHub, ids, fixture, fakeApi } from './helpers.js';
 
 const KEY = 'github_pat_TESTKEY0123456789abcdef';
 const CONFIG = JSON.stringify({ token: KEY, repo: 'George-Wightman/dashboard-sync', dayStartHour: 4, timeZone: 'Europe/London' });
 const MORNING = () => new Date('2026-09-13T08:00:00Z'); // Sunday, 09:00 in London
 
-function run(argv, { remote = new FakeGitHub(), stdin = '', now = MORNING, config = CONFIG, env = {} } = {}) {
+// The sync repo's other files, in memory, so the handoffs and the trail can be read back.
+function repoFiles(initial = {}) {
+  const api = fakeApi(initial);
+  const store = createFileStore({ token: 'x', repo: 'o/r', fetch: api });
+  store.raw = api.files;
+  return store;
+}
+
+function run(argv, { remote = new FakeGitHub(), stdin = '', now = MORNING, config = CONFIG, env = {}, files = repoFiles() } = {}) {
   return main({
     argv: ['--config', 'config.json', ...argv], readText: () => config, readStdin: async () => stdin,
-    makeClient: () => remote, now, newId: ids('n'), env,
+    makeClient: () => remote, makeFiles: () => files, now, newId: ids('n'), env,
   });
 }
 
@@ -26,7 +35,7 @@ test('usage: no config, help, and an unknown command', async () => {
   const unknown = await run(['fly']);
   assert.equal(unknown.code, 1);
   assert.match(unknown.text, /^Unknown command "fly"\./);
-  assert.match(USAGE, /Ops: task · habit · target · goal · milestone · plan · done · undone · log · edit · archive · accept · dismiss · flag · undo · planner · off · brief/);
+  assert.match(USAGE, /Ops: task · habit · target · goal · milestone · plan · done · undone · log · edit · archive · accept · dismiss · flag · handoff · undo · planner · off · brief/);
 });
 
 test('a bad config is a sentence, not a stack trace', async () => {
@@ -139,4 +148,49 @@ test('--build is taken and changes nothing else about a read', async () => {
   const r = await run(['today', '--build', 'abc1234']);
   assert.equal(r.code, 0);
   assert.match(r.text, /^Today is Sunday 13 September/);
+});
+
+test('a handoff of 5000 characters is written whole, and nothing is cut', async () => {
+  const files = repoFiles();
+  const text = `${'y'.repeat(5000)}
+and a line after it`;
+  const r = await run(['apply', '--build', 'abc1234'], {
+    files, stdin: JSON.stringify({ op: 'handoff', title: 'Stale docs', text }),
+  });
+  assert.equal(r.code, 0);
+  assert.match(r.text, /Written to handoffs\/2026-09-13-0800-stale-docs\.md/);
+  assert.match(r.text, new RegExp(`${text.length} characters, none of them cut`));
+  const written = files.raw.get('handoffs/2026-09-13-0800-stale-docs.md');
+  assert.ok(written.endsWith(`${text}\n`), 'the text is there in full');
+  assert.match(written, /\ntool: abc1234\n/);
+});
+
+test('a handoff changes nothing in the document, so nothing is pushed', async () => {
+  const remote = new FakeGitHub();
+  await run(['apply'], { remote, stdin: JSON.stringify({ op: 'handoff', title: 'A note', text: 'body' }) });
+  assert.equal(remote.puts, 0);
+});
+
+test('a handoff needs a title and text, and says which is missing', async () => {
+  const bad = await run(['apply'], { stdin: JSON.stringify({ op: 'handoff', text: 'body' }) });
+  assert.equal(bad.code, 1);
+  assert.match(bad.text, /A handoff needs a title/);
+  const empty = await run(['apply'], { stdin: JSON.stringify({ op: 'handoff', title: 'x' }) });
+  assert.match(empty.text, /no length limit/);
+});
+
+test('handoffs lists what is open, and says plainly when there is nothing', async () => {
+  assert.match((await run(['handoffs'])).text, /No open handoffs/);
+  const files = repoFiles({ 'handoffs/2026-09-16-0814-stale-docs.md': 'body', 'handoffs/trail.md': 'a line' });
+  const listed = await run(['handoffs'], { files });
+  assert.match(listed.text, /2026-09-16-0814-stale-docs\.md/);
+  assert.doesNotMatch(listed.text, /trail/);
+});
+
+test('handoff prints one in full, and says when the name matches nothing', async () => {
+  const files = repoFiles({ 'handoffs/2026-09-16-0814-stale-docs.md': 'the whole story' });
+  assert.match((await run(['handoff', '2026-09-16'], { files })).text, /the whole story/);
+  const missing = await run(['handoff', 'nope'], { files });
+  assert.equal(missing.code, 2);
+  assert.match(missing.text, /No handoff starts with/);
 });

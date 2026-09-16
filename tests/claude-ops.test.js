@@ -12,10 +12,10 @@ test("runOp refuses what isn't an op", () => {
   const s = fresh();
   assert.throws(() => runOp(s, null), /Each op is an object/);
   assert.throws(() => runOp(s, { op: 'fly' }),
-    /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, undo, planner, off, brief/);
+    /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief/);
   assert.throws(() => runOp(s, { op: 'toString' }), /Unknown op "toString"/);
-  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'undo', 'planner', 'off', 'brief', 'gym', 'guide']);
-  assert.deepEqual([...UNLOGGED], ['undo']);
+  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'handoff', 'undo', 'planner', 'off', 'brief', 'gym', 'guide']);
+  assert.deepEqual([...UNLOGGED], ['undo', 'handoff']);
 });
 
 test('task: active and from Claude by default, a suggestion when asked, checked before anything is written', () => {

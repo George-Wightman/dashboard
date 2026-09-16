@@ -387,6 +387,22 @@ function flag(store, op) {
   return tagged(`Flagged ${q(rec.text)}`, rec.id);
 }
 
+// A handoff is written to its own file rather than the document, so nothing is capped and nothing
+// merges. Both this op and cli.js read the op through here, so the two can't drift apart: the op
+// checks it and says so, cli.js takes the same values and does the write once every op has run.
+export function readHandoff(op) {
+  const title = str(op.title);
+  if (!title) throw new Error('A handoff needs a title');
+  const text = str(op.text);
+  if (!text) throw new Error('A handoff needs text — and there is no length limit on it, so put the whole story in');
+  return { title, text };
+}
+
+function handoff(store, op) {
+  const { title } = readHandoff(op);
+  return `Handoff ${q(title)}`;
+}
+
 function undo(store, op) {
   const { id, rec } = resolveId(store.doc(), op.change ?? op.id, ['changes']);
   return `${undoLine(store.undoChange(id, CLAUDE))} (${rec.summary})`;
@@ -543,11 +559,12 @@ export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
-  log, edit, archive, accept, dismiss, flag, undo, planner, off, brief, gym, guide,
+  log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide,
 };
 
-// undo marks the change it undoes rather than being logged as a change of its own.
-export const UNLOGGED = new Set(['undo']);
+// undo marks the change it undoes rather than being logged as a change of its own; a handoff
+// changes no record at all, so there is nothing for George to see or undo.
+export const UNLOGGED = new Set(['undo', 'handoff']);
 
 export function runOp(store, op) {
   if (!op || typeof op !== 'object' || Array.isArray(op)) throw new Error('Each op is an object like {"op": "task", "title": "…"}');

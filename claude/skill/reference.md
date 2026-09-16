@@ -44,6 +44,13 @@ stay.
 ### `flags`
 Open flags — notes George made about something to change in the app.
 
+### `handoffs`
+Handoffs still open — what you or an earlier chat told whoever maintains the app, and nobody has
+dealt with yet. Read this before writing one, so the same fault isn't reported three chats running.
+
+### `handoff <name>`
+One handoff in full, by any unique start of the name `handoffs` shows.
+
 ### `changes [n]`
 Your own last n changes (10 by default), with their ids for `undo`.
 
@@ -139,6 +146,17 @@ everything proposed with it.
 
 ### `flag`
 Note something to change in the app itself: `{"op": "flag", "text": "…"}`.
+
+### `handoff`
+Tell whoever maintains the app something about the app itself:
+`{"op": "handoff", "title": "Stale docs", "text": "…"}`. **There is no length limit on `text`** — put
+the whole thing in: what you were trying to do, the exact JSON you sent, what the tool said back,
+what you expected instead, and what you had to do in the end. It becomes its own file in the sync
+repo, so nothing is clipped and none of it reaches George's list.
+
+Use this rather than `flag` for anything aimed at the app's developer. `flag` is for notes George
+himself will read, and it's capped at 1000 characters. Check `handoffs` first: if it's already there,
+don't write it again.
 
 ### `undo`
 Undo one of your own changes, by the id `changes` shows: `{"op": "undo", "change": "…"}`. Anything

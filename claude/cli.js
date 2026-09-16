@@ -6,12 +6,14 @@ import { readConfig } from './config.js';
 import { openSession } from './session.js';
 import { makeClient as githubClient } from './github.js';
 import { READS } from './read.js';
-import { OPS, UNLOGGED, runOp } from './ops.js';
-import { scrubText } from '../js/flags.js';
+import { OPS, UNLOGGED, runOp, readHandoff } from './ops.js';
+import { createFileStore } from './files.js';
+import { handoffPath, handoffFile, handoffList, pickHandoff } from './handoff.js';
+import { scrubText, APP_VERSION } from '../js/flags.js';
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym · reference',
+  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym · reference · handoffs · handoff <name>',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
 ].join('\n');
@@ -29,7 +31,8 @@ function parseOps(text) {
 }
 
 export async function main({
-  argv, readText, readStdin, makeClient = githubClient, now = () => new Date(), newId, env = process.env,
+  argv, readText, readStdin, makeClient = githubClient, makeFiles = createFileStore,
+  now = () => new Date(), newId, env = process.env,
 }) {
   const out = [];
   let secrets = [];
@@ -90,6 +93,23 @@ export async function main({
       return finish(1);
     }
     secrets = [config.token];
+    const files = makeFiles({ token: config.token, repo: config.repo });
+
+    // Handoffs are files in the repo rather than part of the document, so they are answered here
+    // rather than through READS, which only ever see the document.
+    if (command === 'handoffs' || command === 'handoff') {
+      try {
+        const open = await files.list('handoffs');
+        if (command === 'handoffs') { say(handoffList(open)); return finish(0); }
+        const file = pickHandoff(open, rest.join(' '));
+        const body = await files.read(file.path);
+        say(body ? body.text : `Can't read ${file.name}`);
+        return finish(0);
+      } catch (e) {
+        say(`Couldn't reach the handoffs: ${e.message}`);
+        return finish(2);
+      }
+    }
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
@@ -132,9 +152,11 @@ export async function main({
 
     // Every op runs in memory first; one failure and nothing is pushed.
     const lines = [];
+    const handoffs = [];
     for (const [i, op] of ops.entries()) {
       try {
         lines.push(session.record((s) => runOp(s, op), { log: !UNLOGGED.has(op?.op) }).summary);
+        if (op?.op === 'handoff') handoffs.push(readHandoff(op));
       } catch (e) {
         say(`Nothing was changed. Op ${i + 1} of ${ops.length} (${op?.op ?? '?'}) failed: ${e.message}`);
         return finish(1);
@@ -146,7 +168,23 @@ export async function main({
       return finish(2);
     }
     lines.forEach(say);
-    say(result.pushed ? 'Saved to GitHub — the laptop and phone pick it up at their next sync.' : 'Nothing needed changing.');
+    if (ops.length > handoffs.length) {
+      say(result.pushed ? 'Saved to GitHub — the laptop and phone pick it up at their next sync.' : 'Nothing needed changing.');
+    }
+    // Handoffs go last, and each on its own: a file that won't write is worth a line of its own
+    // rather than losing the ops that did land.
+    for (const h of handoffs) {
+      const at = now();
+      const path = handoffPath(at, h.title);
+      try {
+        const body = handoffFile({ at, by: 'claude', build, app: APP_VERSION, title: h.title, text: h.text });
+        await files.write(path, body, `handoff: ${h.title}`);
+        say(`Written to ${path} — ${h.text.length} characters, none of them cut.`);
+      } catch (e) {
+        say(`The handoff ${JSON.stringify(h.title)} couldn't be written: ${e.message}`);
+        return finish(2);
+      }
+    }
     return finish(0);
   } catch (e) {
     say(`Something went wrong in the dashboard tool: ${e?.message ?? e}`);

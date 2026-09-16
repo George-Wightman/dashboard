@@ -1,44 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createFileStore } from '../claude/files.js';
-
-// A GitHub Contents API in memory: paths to text, a sha per path, and a directory listing for any
-// prefix that has files directly under it — the shapes the store actually depends on.
-export function fakeApi(initial = {}) {
-  const files = new Map(Object.entries(initial));
-  let n = 0;
-  const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
-  const api = async (url, opts = {}) => {
-    const path = decodeURIComponent(String(url).split('/contents/')[1].split('?')[0]);
-    const method = opts.method ?? 'GET';
-    if (method === 'GET') {
-      if (files.has(path)) {
-        return { ok: true, status: 200, json: async () => ({ content: b64(files.get(path)), sha: `sha-${path}`, encoding: 'base64' }) };
-      }
-      const under = [...files.keys()].filter((p) => p.startsWith(`${path}/`) && !p.slice(path.length + 1).includes('/'));
-      if (under.length) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => under.map((p) => ({ name: p.split('/').pop(), path: p, size: files.get(p).length, type: 'file' })),
-        };
-      }
-      return { ok: false, status: 404, json: async () => ({ message: 'Not Found' }) };
-    }
-    if (method === 'PUT') {
-      const body = JSON.parse(opts.body);
-      files.set(path, Buffer.from(body.content, 'base64').toString('utf8'));
-      return { ok: true, status: 200, json: async () => ({ content: { sha: `sha${++n}` } }) };
-    }
-    if (method === 'DELETE') {
-      files.delete(path);
-      return { ok: true, status: 200, json: async () => ({}) };
-    }
-    throw new Error(`unexpected ${method}`);
-  };
-  api.files = files;
-  return api;
-}
+import { fakeApi } from './helpers.js';
 
 const store = (initial) => {
   const fetch = fakeApi(initial);

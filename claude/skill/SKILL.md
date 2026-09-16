@@ -34,8 +34,8 @@ are safe. Several ops in one `apply` are one sync:
     EOF
 
 Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `log`, `edit`,
-`archive`, `accept`, `dismiss`, `flag`, `undo`, `planner`, `off`, `brief`, `gym`, `guide`. Every
-field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
+`archive`, `accept`, `dismiss`, `flag`, `handoff`, `undo`, `planner`, `off`, `brief`, `gym`, `guide`.
+Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.
 
 Ids show as `#a1b2c3d4`; pass them without the `#`. Dates are `YYYY-MM-DD`, `today`, `tomorrow` or
@@ -56,6 +56,12 @@ again.
   never on a guessed title.
 - **Ask only when you genuinely can't tell** which item or which day George means (two tasks match
   "the CV one").
+- **Surprised by the tool → write a handoff.** If a read or an op did something you didn't expect, or
+  you couldn't find a way to do something that ought to exist, say so:
+  `{"op": "handoff", "title": "…", "text": "…"}`. **No length limit** — don't summarise it down, the
+  detail is the whole point and a short handoff is usually the useless kind. Put in what you tried,
+  the exact JSON, what came back, and what you expected. Read `handoffs` first so you don't report
+  something already waiting.
 - **Never claim a change that didn't land.** If the tool reports a failure, say so in one line, with
   its reason.
 - Don't read the dashboard on every message — when it's relevant, or before a change.
