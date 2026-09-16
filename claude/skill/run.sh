@@ -32,4 +32,21 @@ else
   fi
 fi
 
-NODE_USE_ENV_PROXY=1 exec node "$APP/claude/dash.mjs" --config "$HERE/config.json" "$@"
+# The docs in this folder were stamped when the zip was built; the clone is whatever is current. When
+# they differ, this folder is behind the tool — which is otherwise completely invisible, and is what
+# sent four sessions chasing features that were already there.
+DOCS="$APP/claude/skill"
+LIVE=""
+if [ -f "$DOCS/SKILL.md" ] && [ -f "$DOCS/reference.md" ]; then
+  LIVE="$(node --input-type=module -e "
+    import { readFileSync } from 'node:fs';
+    const { docsHash } = await import('file://$APP/claude/build-skill.mjs');
+    process.stdout.write(docsHash(readFileSync('$DOCS/SKILL.md', 'utf8'), readFileSync('$DOCS/reference.md', 'utf8')));
+  " 2>/dev/null)" || LIVE=""
+fi
+MINE="$(cat "$HERE/build.txt" 2>/dev/null)" || MINE=""
+if [ -n "$LIVE" ] && [ "$LIVE" != "$MINE" ]; then
+  echo "The docs in this skill folder are older than the tool. Run \`bash run.sh reference\` for the current one."
+fi
+
+NODE_USE_ENV_PROXY=1 exec node "$APP/claude/dash.mjs" --config "$HERE/config.json"   --build "${LIVE:-unknown}" --reference "$DOCS/reference.md" "$@"

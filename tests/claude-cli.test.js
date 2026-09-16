@@ -107,3 +107,36 @@ test('dash.mjs runs main and exits with its code', () => {
   assert.equal(r.status, 1);
   assert.match(r.stdout, /^Missing --config/);
 });
+
+test('reference prints the current reference, from wherever run.sh says it is', async () => {
+  const REF = '# Dashboard tool reference\n\nthe live one\n';
+  const r = await main({
+    argv: ['--config', 'config.json', '--reference', 'live/reference.md', 'reference'],
+    readText: (path) => (path === 'live/reference.md' ? REF : CONFIG),
+    readStdin: async () => '', makeClient: () => new FakeGitHub(), now: MORNING, newId: ids('n'), env: {},
+  });
+  assert.equal(r.code, 0);
+  assert.equal(r.text, REF);
+});
+
+test("reference says so plainly when it can't be read", async () => {
+  const r = await main({
+    argv: ['--config', 'config.json', '--reference', 'gone.md', 'reference'],
+    readText: (path) => { if (path === 'gone.md') throw new Error('ENOENT'); return CONFIG; },
+    readStdin: async () => '', makeClient: () => new FakeGitHub(), now: MORNING, newId: ids('n'), env: {},
+  });
+  assert.equal(r.code, 1);
+  assert.match(r.text, /^Can't read the current reference/);
+});
+
+test('reference without run.sh to point the way says what is missing', async () => {
+  const r = await run(['reference']);
+  assert.equal(r.code, 1);
+  assert.match(r.text, /wasn't told where the current reference is/);
+});
+
+test('--build is taken and changes nothing else about a read', async () => {
+  const r = await run(['today', '--build', 'abc1234']);
+  assert.equal(r.code, 0);
+  assert.match(r.text, /^Today is Sunday 13 September/);
+});

@@ -18,8 +18,12 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
     bash <skill folder>/run.sh today
 
 **Reads:** `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`, `history`,
-`journal`, `talk <day>`, `flags`, `changes`, `planner`, `attention`, `gym`. Each starts with today's
-date — work other dates out from it.
+`journal`, `talk <day>`, `flags`, `changes`, `planner`, `attention`, `gym`, `reference`. Each starts
+with today's date — work other dates out from it.
+
+If the tool names an op or a read that isn't in your `reference.md`, your copy is older than the
+tool: run `bash run.sh reference` for the current one and work from that. run.sh says so itself when
+it notices.
 
 **Changes** go in one `apply`, as JSON on a quoted heredoc, so apostrophes, quotes and `$` in titles
 are safe. Several ops in one `apply` are one sync:

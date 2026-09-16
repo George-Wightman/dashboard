@@ -57,6 +57,10 @@ planner booked for the next seven days (`~` marks a rough time).
 What needs you: tasks with no length, tasks carried over 3 days or more, weekly targets behind pace,
 and what the planner couldn't fit or use. Fix what you can; tell George the rest.
 
+### `reference`
+This file, from the live tool rather than the copy in this folder. Read it whenever the tool mentions
+an op or a read you don't recognise, and whenever run.sh says these docs are older than the tool.
+
 ### `gym`
 Training from Hevy: whether it's connected (and any problem), each key lift (estimated 1RM, last top
 set, last PR, pace in kg a week over 8 weeks, its target and roughly when it'll be reached), cardio

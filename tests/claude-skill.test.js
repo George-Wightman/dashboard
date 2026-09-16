@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { inflateRawSync } from 'node:zlib';
 import { zipFiles } from '../claude/zip.js';
-import { buildSkill, PLACEHOLDER, SKILL_FILES } from '../claude/build-skill.mjs';
+import { buildSkill, docsHash, PLACEHOLDER, SKILL_FILES } from '../claude/build-skill.mjs';
 import { OPS } from '../claude/ops.js';
 import { READS } from '../claude/read.js';
 
@@ -42,10 +42,10 @@ test('zipFiles writes a zip that reads back, names, modes and all', () => {
 
 test('buildSkill puts the three skill files and the config under dashboard/', () => {
   const files = unzip(buildSkill({ configText: CONFIG }));
-  assert.deepEqual(files.map((f) => f.name), ['dashboard/SKILL.md', 'dashboard/reference.md', 'dashboard/run.sh', 'dashboard/config.json']);
+  assert.deepEqual(files.map((f) => f.name), ['dashboard/SKILL.md', 'dashboard/reference.md', 'dashboard/run.sh', 'dashboard/build.txt', 'dashboard/config.json']);
   assert.equal(files[2].mode, 0o755);
-  assert.equal(files[3].mode, 0o600);
-  assert.equal(files[3].data.toString(), CONFIG);
+  assert.equal(files[4].mode, 0o600);
+  assert.equal(files[4].data.toString(), CONFIG);
   assert.equal(files[0].data.toString(), read('claude/skill/SKILL.md'));
   assert.deepEqual(SKILL_FILES, ['SKILL.md', 'reference.md', 'run.sh']);
 });
@@ -81,7 +81,8 @@ test("run.sh fetches the public app, checks Node, and runs the tool with the ski
   assert.match(sh, /^#!\/usr\/bin\/env bash\n/);
   assert.ok(sh.includes('URL=https://github.com/George-Wightman/dashboard.git'));
   assert.ok(sh.includes('APP=/tmp/dashboard'));
-  assert.ok(sh.includes('NODE_USE_ENV_PROXY=1 exec node "$APP/claude/dash.mjs" --config "$HERE/config.json" "$@"'));
+  assert.ok(sh.includes('NODE_USE_ENV_PROXY=1 exec node "$APP/claude/dash.mjs" --config "$HERE/config.json"'));
+  assert.ok(sh.includes('"$@"'));
   assert.ok(sh.includes('Settings → Capabilities'));
   assert.doesNotMatch(sh, /\r/);
   assert.doesNotMatch(sh, /github_pat_|ghp_/);
@@ -90,4 +91,26 @@ test("run.sh fetches the public app, checks Node, and runs the tool with the ski
 test('the key never enters the repo; the build has a script', () => {
   assert.match(read('.gitignore'), /^claude\/skill\/config\.json$/m);
   assert.match(read('package.json'), /"build-skill": "node claude\/build-skill\.mjs"/);
+});
+
+test('docsHash is stable, and changes when either doc changes', () => {
+  const a = docsHash('skill', 'reference');
+  assert.equal(a, docsHash('skill', 'reference'));
+  assert.notEqual(a, docsHash('skill', 'reference changed'));
+  assert.notEqual(a, docsHash('skill changed', 'reference'));
+});
+
+test('the zip carries build.txt: the hash of the docs it shipped', () => {
+  const files = unzip(buildSkill({ configText: CONFIG }));
+  const stamp = files.find((f) => f.name === 'dashboard/build.txt');
+  assert.ok(stamp, 'build.txt is in the zip');
+  assert.equal(stamp.data.toString(), docsHash(read('claude/skill/SKILL.md'), read('claude/skill/reference.md')));
+});
+
+test('run.sh compares the docs it was built with against the clone, and passes both on', () => {
+  const sh = read('claude/skill/run.sh');
+  assert.ok(sh.includes('build.txt'), 'reads the stamp it shipped with');
+  assert.ok(sh.includes('older than the tool'), 'says so when they differ');
+  assert.ok(sh.includes('--build'), 'passes the live hash to the tool');
+  assert.ok(sh.includes('--reference'), 'tells the tool where the current reference is');
 });

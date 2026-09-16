@@ -163,10 +163,21 @@ The model sees the field did not land and can correct it on the next call. And a
 use the trail says which keys Sonnet actually fumbles, making the hard-reject version an informed
 change rather than a guess.
 
-`plan` carries nested objects — `tasks`, `habits`, `targets`, each with their own shapes. Its nested
-members are checked against the same lists as the standalone ops they mirror. Where a shape has no
-obvious owner, it is left unchecked rather than guessed at: a wrong warning is worse than none,
-because it teaches the model to ignore the notes.
+`plan` carries nested objects — `goal`, `tasks`, `habits`, `targets` — and they are the sharpest case
+of this, not an afterthought. Its nested shapes accept **much less** than the standalone ops they
+resemble: a nested task reads only `title` and `date` (`claude/ops.js:205`), a nested habit only
+`title` and `repeat`, a nested target only `title`, `target`, `unit` and `unitLabel`, and the goal
+only `title`, `targetDate` and `why`. Everything else is dropped without a word.
+
+That matters because SKILL.md tells Claude to put an `area` on every task and `minutes` on anything
+over half an hour, so the planner can group and place it — and `plan` is what SKILL.md recommends for
+exactly the bigger jobs where that guidance applies. A model following the instructions loses the
+fields the instructions demand, and nothing says so. The nested lists are therefore checked against
+what the nested shapes **actually read**, not against their standalone namesakes. Warning on
+`minutes` inside a plan's task is correct and is the most useful warning in this section.
+
+Where a shape has no clear owner, it is left unchecked rather than guessed at: a wrong warning is
+worse than none, because it teaches the model to ignore the notes.
 
 ## 5. The task index
 
@@ -215,7 +226,8 @@ touching the real repo.
   it is not, without changing anything else the command does.
 - **Field warnings** — a known field is silent; an unknown one warns, names the op's real fields, and
   leaves the record unchanged in every other respect; the op still succeeds; the warning reaches the
-  trail. `plan`'s nested members warn on their own unknown keys.
+  trail. `plan`'s nested members warn against what they actually read: `minutes` and `area` on a
+  plan's task warn, while `title` and `date` stay silent.
 - **All-day events** — an all-day busy event on a watched calendar blocks its day; a `free` one does
   not; one on an ignored calendar does not; a timed event keeps behaving as it does today.
 - **`flag`** — text over the cap is rejected with the limit named, and nothing is written.

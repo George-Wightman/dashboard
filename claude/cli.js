@@ -11,7 +11,7 @@ import { scrubText } from '../js/flags.js';
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym',
+  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags · changes [n] · planner · attention · gym · reference',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
 ].join('\n');
@@ -45,10 +45,34 @@ export async function main({
       return finish(1);
     }
     const [, configPath] = args.splice(at, 2);
+    // run.sh knows two things the tool can't work out for itself: which build of the docs the clone
+    // holds, and where that clone's reference.md is. Run without them — the tests, a local checkout —
+    // the tool simply says so rather than pretending.
+    const takeFlag = (name) => {
+      const i = args.indexOf(name);
+      return i === -1 || !args[i + 1] ? null : args.splice(i, 2)[1];
+    };
+    const build = takeFlag('--build') ?? 'unknown';
+    const referencePath = takeFlag('--reference');
     const [command, ...rest] = args;
     if (!command || command === 'help') {
       say(USAGE);
       return finish(command ? 0 : 1);
+    }
+
+    // The reference from the clone, not from this folder — the whole point is that it can't go stale.
+    if (command === 'reference') {
+      if (!referencePath) {
+        say("This copy of the tool wasn't told where the current reference is — run it through run.sh.");
+        return finish(1);
+      }
+      try {
+        say(readText(referencePath));
+      } catch {
+        say(`Can't read the current reference (${referencePath})`);
+        return finish(1);
+      }
+      return finish(0);
     }
 
     let text;
