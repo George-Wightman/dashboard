@@ -21,6 +21,9 @@ export function normEvent(raw, calendarId) {
     start: allDay ? null : when(raw.start?.dateTime),
     end: allDay ? null : when(raw.end?.dateTime),
     allDay,
+    // An all-day event has no times, so its days come from the raw dates. Google's end date is the
+    // morning after the last day, so it is exclusive.
+    dates: allDay ? { from: raw.start?.date ?? null, to: raw.end?.date ?? raw.start?.date ?? null } : null,
     free: raw.transparency === 'transparent',
     others: (raw.attendees ?? []).filter((a) => !a.self && !a.resource).length,
     cancelled: raw.status === 'cancelled',

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'dd5720a8';
+var PLANNER_BUILD = 'ecb78903';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2066,6 +2066,9 @@ function normEvent(raw, calendarId) {
     start: allDay ? null : when(raw.start?.dateTime),
     end: allDay ? null : when(raw.end?.dateTime),
     allDay,
+    // An all-day event has no times, so its days come from the raw dates. Google's end date is the
+    // morning after the last day, so it is exclusive.
+    dates: allDay ? { from: raw.start?.date ?? null, to: raw.end?.date ?? raw.start?.date ?? null } : null,
     free: raw.transparency === 'transparent',
     others: (raw.attendees ?? []).filter((a) => !a.self && !a.resource).length,
     cancelled: raw.status === 'cancelled',
@@ -2797,6 +2800,10 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   const listed = raw.filter((e) => watchedIds.has(e.calendarId)).map((e) => normEvent(e, e.calendarId));
   const present = new Set(listed.map((e) => e.id));
   const timed = listed.filter((e) => !e.cancelled && !e.allDay && e.start && e.end);
+  // All-day events used to be skipped outright, so a day George had marked "no work" the obvious way
+  // was invisible and the planner booked straight through it. Anything all-day and busy on a watched
+  // calendar now holds the days it covers; the ignore list is what keeps Holidays and Family out.
+  const allDayBusy = listed.filter((e) => e.allDay && !e.cancelled && !e.free && e.dates?.from);
 
   // A task counts as done from the day it's ticked; a habit only on the day ticked. `at` is the
   // latest tick's time, when the log has one; `span` is when it actually happened, from a tick that
@@ -2828,6 +2835,14 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   const useKey = (d, k) => { const s = usedKeys.get(d) ?? new Set(); s.add(k); usedKeys.set(d, s); };
   const hard = [];
   const busy = (start, end, title) => hard.push({ start, end, title });
+  // A day George has blocked out wholesale, held from midnight to midnight so nothing can be slipped
+  // into either end of it.
+  for (const ev of allDayBusy) {
+    const last = ev.dates.to && ev.dates.to > ev.dates.from ? ev.dates.to : addDays(ev.dates.from, 1);
+    for (let d = ev.dates.from; d < last; d = addDays(d, 1)) {
+      busy(at(d, '00:00').getTime(), at(addDays(d, 1), '00:00').getTime(), ev.title || 'all day');
+    }
+  }
   const keep = new Map();
   const actions = [];
   const record = (d, b) => rec(d).blocks.push({

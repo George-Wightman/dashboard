@@ -108,3 +108,8 @@ export function step(cal, doc, now, memory = {}) {
   const byKey = cal.apply(r.actions);
   return { ...r, days: fillIds(r.days, byKey) };
 }
+
+// An all-day event, the way Google gives one: dates rather than times, and an end the morning after.
+export function allDayEv(calendarId, title, from, to, extra = {}) {
+  return { calendarId, summary: title, start: { date: from }, end: { date: to }, ...extra };
+}

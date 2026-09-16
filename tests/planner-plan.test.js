@@ -4,7 +4,7 @@ import { blockTitle } from '../planner/plan.js';
 import { at } from '../planner/time.js';
 import { clockLabel } from '../js/calendar.js';
 import { fixture, done } from './helpers.js';
-import { FakeCalendar, ev, step, MAIN, APP, GYM, WORK, FAMILY } from './planner-fakes.js';
+import { FakeCalendar, ev, allDayEv, step, MAIN, APP, GYM, WORK, FAMILY } from './planner-fakes.js';
 
 process.env.TZ = 'Europe/London';
 
@@ -229,4 +229,36 @@ test('the clocks going back: nine o\'clock is nine o\'clock on both sides', () =
   const starts = Object.fromEntries(inserts(r).map((a) => [a.body.summary, a.body.start.dateTime]));
   assert.deepEqual(starts, { Before: '2026-10-24T08:00:00.000Z', After: '2026-10-25T09:00:00.000Z' });
   assert.ok(inserts(r).every((a) => a.calendarId === MAIN));
+});
+
+test('an all-day event George marked busy keeps the planner off that day', () => {
+  const { doc, cal } = tuesday();
+  cal.add(allDayEv(MAIN, 'No work', WED, THU));
+  const r = step(cal, doc, now(TUE, '08:00'));
+  assert.deepEqual(summaries(cal).filter((s) => s.startsWith(WED)), [], 'nothing booked on the day off');
+  assert.ok(summaries(cal).some((s) => s.startsWith(TUE)), 'the rest of the week is untouched');
+  assert.ok(inserts(r).length > 0);
+});
+
+test('an all-day event marked free is not a day off', () => {
+  const { doc, cal } = tuesday();
+  cal.add(allDayEv(MAIN, 'Payday', WED, THU, { transparency: 'transparent' }));
+  step(cal, doc, now(TUE, '08:00'));
+  assert.ok(summaries(cal).some((s) => s.startsWith(WED)), 'a free marker blocks nothing');
+});
+
+test('an all-day event on a calendar the planner ignores is not a day off', () => {
+  const { doc, cal } = tuesday();
+  cal.add(allDayEv(FAMILY, 'Grandma visiting', WED, THU));
+  step(cal, doc, now(TUE, '08:00'));
+  assert.ok(summaries(cal).some((s) => s.startsWith(WED)), 'an ignored calendar stays ignored');
+});
+
+test('an all-day event over several days holds all of them', () => {
+  const { doc, cal } = tuesday();
+  cal.add(allDayEv(MAIN, 'Away', WED, '2026-09-18'));
+  step(cal, doc, now(TUE, '08:00'));
+  const booked = summaries(cal);
+  assert.deepEqual(booked.filter((s) => s.startsWith(WED)), []);
+  assert.deepEqual(booked.filter((s) => s.startsWith(THU)), []);
 });
