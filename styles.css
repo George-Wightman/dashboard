@@ -332,7 +332,7 @@ button.link.update-ready { color: var(--accent); }
 .entry-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .collapse-btn {
   width: 1.25rem; height: 1.25rem; padding: 0; line-height: 1; font-size: .85rem; color: var(--muted);
-  background: transparent; border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); border-radius: .2rem; cursor: pointer;
   display: flex; align-items: center; justify-content: center; flex: none;
 }
 .collapse-btn:hover { background: var(--border); }
