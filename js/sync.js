@@ -21,6 +21,15 @@ export function decodeBase64(b64) {
   return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
 }
 
+// A 401/403 is usually the key, but a sandbox's egress proxy can answer 403 for a private repo it
+// hasn't been told to allow, and blaming the key then sends everyone off to replace a working one.
+export function accessError(repo, message = '') {
+  if (/for this session|add_repo/i.test(message)) {
+    return new Error(`The network this chat runs in is blocking ${repo} — the key was never checked. It said: ${message}`);
+  }
+  return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}`);
+}
+
 export function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
   const url = `${API}/repos/${repo}/contents/${path}`;
   const headers = {
@@ -56,7 +65,9 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
   // see the repo at all). Everything else keeps GitHub's own message.
   async function explain(res, repo, where) {
     if (res.status === 401 || res.status === 403) {
-      return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}`);
+      let message = '';
+      try { message = (await res.json())?.message ?? ''; } catch { /* no body */ }
+      return accessError(repo, message);
     }
     if (res.status === 404 && where === 'put') {
       return new Error(`GitHub can't see ${repo} with this key — check the repo name, and that the key was given access to that repo`);

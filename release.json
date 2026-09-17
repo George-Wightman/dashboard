@@ -1,9 +1,9 @@
 {
-  "id": "9bba32364816d513a0b5f5c3b9f7a343c7a878acda81b574852bab089b70b21b",
+  "id": "adcae50074a8ae4a24e6af1d5042566cfdec07aadfd54319d63ae6ee5309940b",
   "files": {
     "./": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
     "index.html": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
-    "styles.css": "546cfd655703f78d21934fcfab18d794a5b3eb8acbc8f219f2a147bd96311316",
+    "styles.css": "abfce0b8f7f120acf809dbbb384de1c7baa542ac8989101d9f3d83210dbed1e1",
     "manifest.webmanifest": "58f74b20448e1d6278a03a86d28062713b0ba50ef3b2aafe3e4af83a80e0e954",
     "icons/icon.svg": "ed047463e6d4922fd9c4f21dbedf11b9e4b5cdc3b471b5a4bffcd63dca624754",
     "icons/icon-192.png": "8e7e849913dea81b5333285f54b427c3be4d5de5a20fa90ca0cc99de7dd1db04",
@@ -16,7 +16,7 @@
     "js/schedule.js": "e0b124477ae88af0f97f9304441160b99810ed7376d646445762889f0e3b3828",
     "js/record.js": "d0a4966d6a67e55c5cbaba36f687962b4e99cdf639a74ba68ce7a13804d2f084",
     "js/merge.js": "d829d0ffc0843bd4048a1f5781bedb1ea07e254708f4605caf41107b1e3bbe87",
-    "js/sync.js": "cd621c20763829f76d38733ce12510cf22fc22547972ab95f5e18b495dc4142f",
+    "js/sync.js": "462dbc0fbed2e8c62ab76d4c1cb58bdc498c687c683b838971430745fb54389a",
     "js/gemini.js": "74ad2c7dcb220b945cc1180840648cb9edcc7221725462bdda1daad7dfeaef61",
     "js/coach.js": "ed4d71b99b8d8bde680d4de362e14117a57887013ea57c929192d601c2710de6",
     "js/look.js": "f1828f6793e0c9e2837c6df88c4b4bef4de77cca8582b3856dad945dc206f7ea",

@@ -3,7 +3,7 @@
 // can list a directory. Same repo, same key, same API — but nothing here touches the document, so a
 // handoff can be any length, never takes part in the merge, and can't collide with George's phone.
 
-import { encodeBase64, decodeBase64 } from '../js/sync.js';
+import { encodeBase64, decodeBase64, accessError } from '../js/sync.js';
 
 const API = 'https://api.github.com';
 
@@ -20,9 +20,7 @@ export function createFileStore({ token, repo, fetch = (...args) => globalThis.f
   async function fail(res, path) {
     let message = '';
     try { message = (await res.json())?.message ?? ''; } catch { /* no body */ }
-    if (res.status === 401 || res.status === 403) {
-      return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}`);
-    }
+    if (res.status === 401 || res.status === 403) return accessError(repo, message);
     return new Error(`GitHub ${res.status} on ${path}${message ? `: ${message}` : ''}`);
   }
 

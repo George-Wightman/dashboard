@@ -93,6 +93,14 @@ test('client.get: 401 or 403 explain the access key, naming the repo', async () 
   await assert.rejects(forbidden.get(), /refused the access key/);
 });
 
+test('client: a sandbox proxy blocking the repo is not blamed on the key', async () => {
+  const message = 'GitHub access to this repository is not enabled for this session. Use add_repo to request access.';
+  const blocked = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(403, { message }) });
+  await assert.rejects(blocked.get(), (e) => /network this chat runs in is blocking o\/r/.test(e.message)
+    && !/refused the access key/.test(e.message) && e.message.includes(message));
+  await assert.rejects(blocked.put({}, 'x'), /blocking o\/r/);
+});
+
 test('client.put: 401 or 403 explain the access key; 404 explains the repo is not visible', async () => {
   const forbidden = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(403, { message: 'Forbidden' }) });
   await assert.rejects(forbidden.put({}, 'x'), /refused the access key/);

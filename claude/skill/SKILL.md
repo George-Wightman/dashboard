@@ -182,6 +182,10 @@ sessions. He's training for more cardio while still progressing his squat and be
 
 - "Can't reach GitHub from this sandbox" → George should check claude.ai → Settings → Capabilities:
   code execution on, and network access allowed.
+- "The network this chat runs in is blocking George-Wightman/dashboard-sync" → the key is fine; this
+  chat's sandbox only lets public GitHub repos through. Don't tell George to replace the key, and
+  don't route around the proxy. Tell him the private sync repo has to be allowed for this chat's
+  environment, or to use a chat where the skill ran before.
 - "GitHub refused the access key" → the skill's key has expired or been revoked. George makes a new
   one, puts it in `~/.dashboard-skill/config.json` on his laptop, runs `npm run build-skill`, and
   uploads the new zip.

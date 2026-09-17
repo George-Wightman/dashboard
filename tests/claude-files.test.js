@@ -49,3 +49,11 @@ test('a refused key reads as a sentence about the key, not a status code', async
   });
   await assert.rejects(() => files.list('handoffs'), /refused the access key/);
 });
+
+test('a sandbox proxy block says so, with its own words, instead of blaming the key', async () => {
+  const message = 'GitHub access to this repository is not enabled for this session. Use add_repo to request access.';
+  const files = createFileStore({
+    token: 't', repo: 'o/r', fetch: async () => ({ ok: false, status: 403, json: async () => ({ message }) }),
+  });
+  await assert.rejects(() => files.list('handoffs'), (e) => /blocking o\/r/.test(e.message) && e.message.includes(message));
+});
