@@ -333,7 +333,9 @@ function renderEntry(ctx, e) {
   return h('div', { class: 'entry' },
     h('div', { class: 'entry-head' },
       h('strong', {}, 'Journal'),
-      link(collapsed ? 'Show' : 'Minimise', toggle)),
+      h('button', {
+        class: 'collapse-btn', type: 'button', 'aria-label': collapsed ? 'Show the journal entry' : 'Minimise the journal entry', onclick: toggle,
+      }, collapsed ? '+' : '−')),
     collapsed ? null : h('p', { class: 'entry-text' }, e.text),
     collapsed || !e.pointers?.length ? null : h('ul', {}, e.pointers.map((p) => h('li', {}, p))),
     collapsed ? null : (e.forClaude ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)),
@@ -406,9 +408,7 @@ export function renderTalk(ctx, where = 'panel') {
     entry ? renderEntry(ctx, entry) : null,
     BUSY[c.talkBusy] ? h('p', { class: 'muted', role: 'status' }, BUSY[c.talkBusy]) : null,
     c.talkError ? h('p', { class: 'error', role: 'status' }, c.talkError) : null,
-    talk?.done
-      ? h('p', { class: 'muted' }, link('Talk again', () => startTalk(ctx)))
-      : renderBox(ctx, where, talk));
+    talk?.done ? null : renderBox(ctx, where, talk));
 }
 
 // On a phone: the conversation as a sheet over the page, redrawn with the page (js/app.js's render).
