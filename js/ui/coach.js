@@ -332,7 +332,7 @@ function renderEntry(ctx, e) {
   };
   return h('div', { class: 'entry' },
     h('div', { class: 'entry-head' },
-      h('strong', {}, 'Journal'), e.feeling ? h('span', { class: 'muted' }, ` · ${e.feeling}`) : null,
+      h('strong', {}, 'Journal'),
       link(collapsed ? 'Show' : 'Minimise', toggle)),
     collapsed ? null : h('p', { class: 'entry-text' }, e.text),
     collapsed || !e.pointers?.length ? null : h('ul', {}, e.pointers.map((p) => h('li', {}, p))),
@@ -407,7 +407,7 @@ export function renderTalk(ctx, where = 'panel') {
     BUSY[c.talkBusy] ? h('p', { class: 'muted', role: 'status' }, BUSY[c.talkBusy]) : null,
     c.talkError ? h('p', { class: 'error', role: 'status' }, c.talkError) : null,
     talk?.done
-      ? h('p', { class: 'muted' }, 'This conversation is finished · ', link('Talk again', () => startTalk(ctx)))
+      ? h('p', { class: 'muted' }, link('Talk again', () => startTalk(ctx)))
       : renderBox(ctx, where, talk));
 }
 

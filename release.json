@@ -1,5 +1,5 @@
 {
-  "id": "6373cf84e0728d952e81055fb321db3449f2e045e15b8e8a2c9a0471d77d4ec8",
+  "id": "660457ddaf65ac1b95c95d8f6f2dff1aa9fe768063d8e68ef9260dd13dca8bd5",
   "files": {
     "./": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
     "index.html": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
@@ -37,7 +37,7 @@
     "js/ui/side.js": "5367b4e79eeb1f82e55b4dd7f9c9ea3d405a22cbf709a62cb46290aa7d20334e",
     "js/ui/edit.js": "15dbe102aeca484fb1855068c724e32677b5e57bd73d30a7f5cb371b9cfbcf40",
     "js/ui/settings.js": "564421b3e583ef8de9d0e24ff5efc448a87c72d3acca42481aadbb25195d1f07",
-    "js/ui/coach.js": "2be7c666fa194c2be388b695d4ea148351966026efa351c74c76f1d09ea32c93",
+    "js/ui/coach.js": "3c4b8e1e0bb11bc8662216d3992187afd4f135a1ce65911ec6a5360031cc3e97",
     "js/ui/widgets.js": "8c13a0b59961dedb284e17208a6dc21818f5c1f5a9706a6fc459dc77660f770b",
     "js/ui/flags.js": "b8f49fc589e3c4b8d79cd0b9c64ee661fadd970e16ca780af1f5dc0055cdfbb3",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
