@@ -14,10 +14,11 @@ const H = 44;
 const PAD = 4;
 const round = (n) => Math.round(n * 10) / 10;
 
-function svg(tag, attrs = {}, ...children) {
+// An SVG element (js/ui/training.js draws with it too).
+export function svg(tag, attrs = {}, ...children) {
   const el = document.createElementNS(SVG, tag);
   for (const [k, v] of Object.entries(attrs)) if (v != null) el.setAttribute(k, String(v));
-  for (const c of children.flat()) if (c) el.append(c);
+  for (const c of children.flat(Infinity)) if (c) el.append(c);
   return el;
 }
 

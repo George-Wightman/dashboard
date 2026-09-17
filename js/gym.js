@@ -304,6 +304,75 @@ export function sessionLine(doc, w, config = gymConfig(doc)) {
 
 export const dayLines = (doc, day) => workoutsOn(doc, day).map((w) => sessionLine(doc, w));
 
+// ---- Muscles and cardio over time (the Muscles and Cardio trend widgets) ----------------------
+
+// Broad groups, the way they're trained together, in the order the radar goes round (clockwise
+// from the top). Hevy's primary muscle for an exercise decides its group; forearms go with
+// biceps, traps with back, calves with quads. Cardio, full body and "other" count for none.
+export const MUSCLE_GROUPS = Object.freeze([
+  { name: 'Chest', muscles: ['chest'] },
+  { name: 'Shoulders', muscles: ['shoulders', 'neck'] },
+  { name: 'Triceps', muscles: ['triceps'] },
+  { name: 'Biceps', muscles: ['biceps', 'forearms'] },
+  { name: 'Back', muscles: ['lats', 'upper_back', 'lower_back', 'traps'] },
+  { name: 'Core', muscles: ['abdominals'] },
+  { name: 'Glutes & hams', muscles: ['glutes', 'hamstrings', 'abductors', 'adductors'] },
+  { name: 'Quads', muscles: ['quadriceps', 'calves'] },
+].map((g) => Object.freeze({ name: g.name, muscles: Object.freeze(g.muscles) })));
+
+const GROUP_OF = new Map(MUSCLE_GROUPS.flatMap((g) => g.muscles.map((m) => [m, g.name])));
+export const muscleGroupOf = (muscle) => GROUP_OF.get(norm(muscle)) ?? null;
+
+// Each non-cardio exercise done by `today` as [day, group, working sets]; exercises whose
+// template the app hasn't been sent, or whose muscle has no group, are left out.
+function groupSets(doc, today) {
+  const templates = templatesOf(doc);
+  const out = [];
+  for (const w of workouts(doc)) {
+    if (w.day > today) continue;
+    for (const e of w.exercises ?? []) {
+      if (e.kind === 'cardio') continue;
+      const group = muscleGroupOf(templates[e.tpl]?.[2]);
+      if (group && Number(e.n) > 0) out.push([w.day, group, Number(e.n)]);
+    }
+  }
+  return out;
+}
+
+// Working sets per group over the 7 days ending `today`, in MUSCLE_GROUPS order.
+export function muscleWeek(doc, today) {
+  const from = addDays(today, -6);
+  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, 0]));
+  for (const [day, group, n] of groupSets(doc, today)) if (day >= from) sets.set(group, sets.get(group) + n);
+  return MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) }));
+}
+
+// The `count` groups longest since a working set: days since, or null for never (those first).
+export function longestRested(doc, today, count = 3) {
+  const last = new Map();
+  for (const [day, group] of groupSets(doc, today)) if (!(last.get(group) >= day)) last.set(group, day);
+  const rest = MUSCLE_GROUPS.map((g, i) => ({ i, name: g.name, days: last.has(g.name) ? daysBetween(last.get(g.name), today) : null }));
+  rest.sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.i - b.i);
+  return rest.slice(0, count).map(({ name, days }) => ({ name, days }));
+}
+
+// Cardio minutes for each of the `count` weeks up to this one (so far), oldest first. With a
+// cardio target they're its weekly totals, as the Gym panel shows; without, Hevy's minutes.
+export function cardioWeeks(doc, today, config = gymConfig(doc), count = 8) {
+  const quota = cardioQuotaId(doc, config);
+  const list = workouts(doc);
+  const thisWeek = weekStart(today);
+  const weeks = Array.from({ length: count }, (_, i) => {
+    const monday = addDays(thisWeek, 7 * (i - count + 1));
+    const last = monday === thisWeek ? today : addDays(monday, 6);
+    const minutes = quota
+      ? weekTotal(doc, quota, monday)
+      : list.filter((w) => w.day >= monday && w.day <= last).reduce((m, w) => m + cardioOf(w).minutes, 0);
+    return { monday, minutes: Math.round(minutes), current: monday === thisWeek };
+  });
+  return { weeks, target: quota ? Number(doc.items[quota].target) : null };
+}
+
 // A week's training in a line, for the Coach and the digest: sessions, cardio, key lifts.
 export function trainingWeek(doc, day, config = gymConfig(doc)) {
   const start = weekStart(day);

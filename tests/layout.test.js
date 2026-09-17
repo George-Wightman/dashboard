@@ -7,7 +7,7 @@ import {
 import { MemoryStorage, FullStorage } from './helpers.js';
 
 const IDS = ['coach', 'week', 'goals', 'history'];
-const ALL = [...IDS, 'gym']; // every widget the default arrangement places
+const ALL = [...IDS, 'gym', 'muscles', 'cardio']; // every widget the default arrangement places
 const L = (columns, hidden = []) => ({ v: 2, columns, hidden });
 
 // Freezes a layout all the way down, so a function that changes its input throws.
@@ -25,9 +25,9 @@ function assertEachOnce(layout, ids = IDS) {
 
 // ---- the default and normalizeLayout ------------------------------------------------------------
 
-test('the default arrangement: Coach and Goals, then Last 3 weeks and Gym; This week hidden', () => {
+test('the default arrangement: Coach, Goals, Muscles and Cardio trend, then Last 3 weeks and Gym; This week hidden', () => {
   assert.equal(LAYOUT_KEY, 'dash_layout');
-  assert.deepEqual(DEFAULT_LAYOUT, { v: 2, columns: [['coach', 'goals'], ['history', 'gym']], hidden: ['week'] });
+  assert.deepEqual(DEFAULT_LAYOUT, { v: 2, columns: [['coach', 'goals', 'muscles', 'cardio'], ['history', 'gym']], hidden: ['week'] });
   assert.throws(() => DEFAULT_LAYOUT.columns[0].push('x'), TypeError);
   assert.throws(() => { DEFAULT_LAYOUT.hidden = ['coach']; }, TypeError);
 });
@@ -36,7 +36,7 @@ test('normalizeLayout of the default is a fresh copy of it', () => {
   const out = normalizeLayout(DEFAULT_LAYOUT, ALL);
   assert.deepEqual(out, DEFAULT_LAYOUT);
   out.columns[0].push('extra');
-  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['coach', 'goals']);
+  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['coach', 'goals', 'muscles', 'cardio']);
 });
 
 test('unreadable saved data gives the default', () => {
@@ -84,12 +84,12 @@ test('visibleColumns: two columns side by side, or one list, never the hidden on
   const layout = L([['coach', 'week'], ['goals']], ['history']);
   assert.deepEqual(visibleColumns(layout, 2), [['coach', 'week'], ['goals']]);
   assert.deepEqual(visibleColumns(layout, 1), [['coach', 'week', 'goals']]);
-  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['coach', 'goals', 'history', 'gym']]);
+  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['coach', 'goals', 'muscles', 'cardio', 'history', 'gym']]);
   // hidden ids stay out even if a hand-edited layout still has them in a column
   assert.deepEqual(visibleColumns(L([['coach', 'history'], ['week']], ['history']), 2), [['coach'], ['week']]);
   const out = visibleColumns(DEFAULT_LAYOUT, 2);
   out[0].push('x');
-  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['coach', 'goals']);
+  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['coach', 'goals', 'muscles', 'cardio']);
 });
 
 // ---- moveWidget --------------------------------------------------------------------------------

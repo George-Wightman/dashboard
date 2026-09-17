@@ -11,6 +11,7 @@ import { h } from './dom.js';
 import { renderCoach } from './coach.js';
 import { renderWeek, renderGoals, renderHistory, keptFocus, restoreFocus } from './side.js';
 import { renderGym } from './gym.js';
+import { renderMuscles, renderCardioTrend } from './training.js';
 import { visibleColumns, moveWidget, nudgeWidget, hideWidget, showWidget } from '../layout.js';
 
 // The registry. A widget's render(ctx) returns its element, or null when it has nothing to show
@@ -23,6 +24,8 @@ export const WIDGETS = [
   { id: 'goals', title: 'Goals', render: renderGoals },
   { id: 'history', title: 'Last 3 weeks', render: renderHistory },
   { id: 'gym', title: 'Gym', render: renderGym },
+  { id: 'muscles', title: 'Muscles', render: renderMuscles },
+  { id: 'cardio', title: 'Cardio trend', render: renderCardioTrend },
 ];
 export const WIDGET_IDS = WIDGETS.map((w) => w.id);
 const BY_ID = new Map(WIDGETS.map((w) => [w.id, w]));

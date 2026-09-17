@@ -94,13 +94,14 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   .top { flex-wrap: wrap; }
 }
 
-/* The list (js/ui/today.js): a grid of six columns — tick, title, source logo, tag, progress, + —
-   with every row a subgrid of it, so logos, tags and counts line up down the page. The title takes
-   what's left and ends in "…" rather than wrapping. A row's .meta is display: contents, so its
-   logo, tag and progress are cells of the row; under 760px (below) they become a second line.
+/* The list (js/ui/today.js): a grid of four columns — tick, main, progress, + — with every row a
+   subgrid of it, so counts and + line up down the page. A row's .main holds the title, from the
+   left, ending in "…" rather than wrapping, and its .meta (logo and tag) packed to the right. A row
+   with no progress lets .main run on over the empty cells (.no-prog, .bare). Under 760px (below)
+   the logo, tag and progress become a second line.
    Weekly targets sit at the foot, under a "This week" heading. */
 .list {
-  display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) repeat(4, auto); column-gap: .75rem;
+  display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) repeat(2, auto); column-gap: .75rem;
   list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
 }
 @media (min-width: 1100px) {
@@ -111,9 +112,12 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   min-height: 2.35rem; padding: .3rem .9rem; border-top: 1px solid var(--border);
 }
 .row:first-child, .list-section + .row { border-top: 0; }
-.row > *, .row .meta > * { grid-row: 1; }
+.row > * { grid-row: 1; }
 .row > :first-child { grid-column: 1; justify-self: center; }
-.row .title-cell { grid-column: 2; display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
+.row .main { grid-column: 2; display: flex; align-items: center; gap: .75rem; min-width: 0; }
+.row.no-prog .main { grid-column: 2 / 4; }
+.row.bare .main { grid-column: 2 / -1; }
+.row .title-cell { flex: 1 1 auto; display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
 .row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .row .carry, .row .for { flex: none; font-size: .8rem; }
 .row .time { flex: none; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -123,11 +127,10 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .row .via { flex: none; font-size: .75rem; color: var(--muted); white-space: nowrap; }
 .gym-line { grid-column: 1 / -1; padding: 0 .9rem .5rem 3rem; font-size: .8rem; color: var(--muted); }
 .note-row { grid-column: 1 / -1; padding: .1rem .9rem .55rem 3rem; font-size: .8rem; color: var(--muted); white-space: pre-wrap; }
-.row .meta { display: contents; font-size: .8rem; color: var(--muted); }
-.row .src, .row .by { grid-column: 3; }
-.row .tag { grid-column: 4; justify-self: start; white-space: nowrap; }
-.row .prog { grid-column: 5; display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
-.row .act { grid-column: 6; display: flex; }
+.row .meta { flex: none; display: flex; align-items: center; gap: .75rem; font-size: .8rem; color: var(--muted); }
+.row .tag { white-space: nowrap; }
+.row .prog { grid-column: 3; display: flex; align-items: center; gap: .5rem; white-space: nowrap; font-size: .8rem; color: var(--muted); }
+.row .act { grid-column: 4; display: flex; }
 .row.done { opacity: .7; }
 .row.done .title { color: var(--muted); text-decoration: line-through; }
 .row.suggested { opacity: .65; border-left: 3px dashed var(--accent); }
@@ -172,12 +175,14 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 @media (max-width: 759px) {
   .list { display: block; }
   .row { grid-template-columns: 1.4rem minmax(0, 1fr) auto; column-gap: .75rem; row-gap: .2rem; }
-  .row .title-cell { display: block; }
+  .row .main { display: contents; }
+  .row .title-cell { grid-column: 2; grid-row: 1; display: block; }
   .row .title { white-space: normal; overflow-wrap: anywhere; }
   .row .carry, .row .for, .row .via { margin-left: .5rem; }
   .row .time, .row .star { margin-right: .35rem; }
-  .row .meta { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; grid-column: 2; grid-row: 2; }
-  .row .meta:empty { display: none; }
+  .row .meta { flex-wrap: wrap; gap: .5rem; grid-column: 2; grid-row: 2; justify-self: start; }
+  .row .prog { grid-column: 2; grid-row: 2; justify-self: end; }
+  .row .act { grid-column: 3; }
   .row .meta > * { grid-column: auto; grid-row: auto; }
   .row .act { grid-column: 3; grid-row: 1; }
 }
@@ -257,6 +262,31 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .spark .dot.pr { fill: var(--gold); }
 .gym-today { margin-top: .8rem; padding-top: .6rem; font-size: .85rem; border-top: 1px solid var(--border); }
 .gym-today p { margin: .15rem 0 0; color: var(--muted); }
+
+/* Muscles and Cardio trend (js/ui/training.js): a radar of sets per muscle group, the groups
+   longest rested, and eight weeks of cardio as bars against the target. */
+.muscles h2 .count, .cardio-trend h2 .count { font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.radar { display: block; width: 100%; height: auto; overflow: visible; }
+.radar .ring { fill: none; stroke: var(--border); stroke-width: 1; }
+.radar .axis { stroke: var(--border); stroke-width: 1; }
+.radar .shape { fill: var(--accent); fill-opacity: .18; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.radar .dot { fill: var(--accent); }
+.radar .label { font-size: .6875rem; fill: var(--ink); dominant-baseline: middle; }
+.radar .label.none { fill: var(--muted); }
+.radar .label .n { fill: var(--muted); font-variant-numeric: tabular-nums; }
+.radar .scale { font-size: .5625rem; fill: var(--muted); }
+.rested { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .9rem; margin-top: .4rem; font-size: .8rem; }
+.rested .rest { color: var(--muted); }
+.rested .rest strong { color: var(--ink); font-weight: 500; }
+.cardio-bars { display: block; width: 100%; height: auto; overflow: visible; }
+.cardio-bars .bar { fill: var(--accent); }
+.cardio-bars .bar.current { fill: var(--lvl2); }
+.cardio-bars .bar.met { fill: var(--gold); }
+.cardio-bars .base { stroke: var(--border); stroke-width: 1; }
+.cardio-bars .target { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.cardio-bars .val { font-size: .5625rem; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.cardio-bars .wk { font-size: .5625rem; fill: var(--muted); }
+.cardio-trend .gym-note { margin-bottom: 0; }
 
 /* Edit panel */
 .editor {
@@ -345,12 +375,12 @@ button.link.update-ready { color: var(--accent); }
 .coach-sheet { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; padding: 1rem; color: var(--ink); background: var(--bg); border: 0; }
 .sheet-head { display: flex; justify-content: space-between; align-items: baseline; }
 
-.coach details {
+.coach details, .digest {
   margin-bottom: .5rem; padding: .5rem .75rem; font-size: .9rem;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
 }
-.coach summary { cursor: pointer; font-weight: 500; }
-.coach details p { margin: .5rem 0 0; }
+.coach summary, .digest summary { cursor: pointer; font-weight: 500; }
+.coach details p, .digest p { margin: .5rem 0 0; }
 .coach .feedback-text { white-space: pre-line; }
 
 /* Shape with AI, and the suggested goal it makes */
@@ -370,10 +400,11 @@ button.link.update-ready { color: var(--accent); }
 .goal .plan-note { margin-top: .35rem; font-size: .8rem; }
 .row .for { color: var(--accent); font-weight: 500; }
 
-/* Last week's digest */
-.coach .digest-summary { white-space: pre-line; }
-.coach .digest strong { font-weight: 600; }
-.coach .digest-write { margin-top: .5rem; }
+/* Last week's digest, under Last 3 weeks */
+.digest { margin: .75rem 0 0; }
+.digest-summary { white-space: pre-line; }
+.digest strong { font-weight: 600; }
+.digest-write { margin-top: .75rem; font-size: .9rem; }
 
 /* Arrange mode (js/ui/widgets.js): today's list stays put and dims, each widget gets a dashed
    frame with a grip (or ↑ ↓ on touch and in the one-column view), and hidden widgets wait below

@@ -80,6 +80,8 @@
     rec('gym', { id: 'templates', source: 'hevy', list: {
       SQ: ['Squat (Barbell)', 'weight_reps', 'quadriceps'], BP: ['Bench Press (Barbell)', 'weight_reps', 'chest'],
       ROW: ['Bent Over Row (Barbell)', 'weight_reps', 'upper_back'], WK: ['Walking', 'duration', 'cardio'], TM: ['Treadmill', 'distance_duration', 'cardio'],
+      RDL: ['Romanian Deadlift (Barbell)', 'weight_reps', 'hamstrings'], LAT: ['Lateral Raise (Dumbbell)', 'weight_reps', 'shoulders'],
+      CURL: ['Bicep Curl (Dumbbell)', 'weight_reps', 'biceps'],
     } });
     const clock = (day, hh, mm = 0) => new Date(`${day}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`).toISOString();
     const halfKg = (n) => Math.round(n * 2) / 2;
@@ -90,8 +92,11 @@
     });
     for (let k = 16; k >= 1; k--) {
       const day = ago(k * 3 + 1);
-      if (k % 2) workout(`legs${k}`, day, 'Legs A', 18, 62, [liftEx('Squat (Barbell)', 'SQ', halfKg(85 + (16 - k) * 1.25), 5), liftEx('Bent Over Row (Barbell)', 'ROW', 60, 10)]);
-      else workout(`upper${k}`, day, 'Upper A', 18, 55, [liftEx('Bench Press (Barbell)', 'BP', halfKg(70 + (16 - k) * 0.6), 6), walk(10)]);
+      if (k % 2) workout(`legs${k}`, day, 'Legs A', 18, 62, [liftEx('Squat (Barbell)', 'SQ', halfKg(85 + (16 - k) * 1.25), 5), liftEx('Bent Over Row (Barbell)', 'ROW', 60, 10), liftEx('Romanian Deadlift (Barbell)', 'RDL', 70, 8)]);
+      else {
+        workout(`upper${k}`, day, 'Upper A', 18, 55, [liftEx('Bench Press (Barbell)', 'BP', halfKg(70 + (16 - k) * 0.6), 6), liftEx('Lateral Raise (Dumbbell)', 'LAT', 10, 12), walk(10 + 5 * (k % 5))]);
+        rec('logs', { itemId: cardioTarget.id, goalId: null, kind: 'amount', amount: 10 + 5 * (k % 5), day, at: `${day}T19:00:00.000Z`, note: 'Upper A', source: 'hevy' });
+      }
     }
     const run = workout('run1', ago(2), 'Run', 7, 22, [{ name: 'Treadmill', tpl: 'TM', kind: 'cardio', n: 1, minutes: 22, km: 3.4 }]);
     const now = workout('today1', today, 'Upper A', 7, 58, [liftEx('Bench Press (Barbell)', 'BP', 80, 6), walk(15)]);
