@@ -1,6 +1,7 @@
 // The list: everything on today, one row each, and the add box beneath it. Every row fills the
-// list's six columns — tick, title, source logo, tag, progress, + — so they line up down the page
-// (styles.css). Weekly targets sit at the foot, under "This week".
+// list's four columns — tick, the title with its logo and tag, progress, + — so counts line up
+// down the page (styles.css). The title starts from the left and the logo and tag sit at the
+// right; a row with no progress or + lets them run on to the edge. Weekly targets sit at the foot, under "This week".
 
 import { h } from './dom.js';
 import { todayRows, streak, doneBetween } from '../schedule.js';
@@ -161,18 +162,23 @@ function renderSuggestion(row, ctx) {
   const { store } = ctx;
   const { item } = row;
   const today = store.today();
-  return h('li', { class: 'row suggested', 'data-id': item.id },
+  return h('li', { class: 'row suggested no-prog', 'data-id': item.id },
     h('button', { class: 'accept', type: 'button', title: 'Add it', 'aria-label': `Accept ${item.title}`,
       onclick: () => store.acceptSuggestion('items', item.id) }, '✓'),
-    h('span', { class: 'title-cell' },
-      titleEl(item, null),
-      item.type === 'task' && item.date > today ? h('span', { class: 'for' }, forLabel(item.date, today)) : null),
-    h('span', { class: 'meta' },
-      sourceMark(item.source, 'suggested'),
-      item.area ? h('span', { class: 'tag' }, item.area) : null),
+    mainCell(
+      h('span', { class: 'title-cell' },
+        titleEl(item, null),
+        item.type === 'task' && item.date > today ? h('span', { class: 'for' }, forLabel(item.date, today)) : null),
+      sourceMark(item.source, 'suggested'), item.area),
     h('span', { class: 'act' },
       h('button', { class: 'dismiss', type: 'button', title: 'Not for me', 'aria-label': `Dismiss ${item.title}`,
         onclick: () => store.dismissSuggestion('items', item.id) }, '✕')));
+}
+
+// A row's second cell: the title (from the left), then its logo and tag (at the right).
+function mainCell(titleCell, mark, area) {
+  const meta = mark || area ? h('span', { class: 'meta' }, mark, area ? h('span', { class: 'tag' }, area) : null) : null;
+  return h('span', { class: 'main' }, titleCell, meta);
 }
 
 // A row's notes mark: tap (or hover) to open the note under the row, as a weekly target opens its
@@ -191,7 +197,9 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
   const { store } = ctx;
   const { item } = row;
   const quota = row.kind === 'quota' && !row.blocked ? quotaCells(row, ctx) : null;
-  const cls = ['row', row.done && 'done', quota && 'quota'].filter(Boolean).join(' ');
+  const prog = progressCell(row, ctx, quota);
+  const act = quota?.act ? h('span', { class: 'act' }, quota.act) : null;
+  const cls = ['row', row.done && 'done', quota && 'quota', !prog && 'no-prog', !prog && !act && 'bare'].filter(Boolean).join(' ');
   return h('li', { class: cls, 'data-id': item.id },
     quota
       ? h('span', { class: 'spacer' })
@@ -201,7 +209,7 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
           try { store.toggleDone(item.id, store.today()); }
           catch (error) { ctx.ui.taskError = error.message; ctx.render(); }
         } }),
-    h('span', { class: 'title-cell' },
+    mainCell(h('span', { class: 'title-cell' },
       slot ? h('span', { class: 'time', title: `${clockLabel(slot.start)}–${clockLabel(slot.end)} in your calendar` }, clockLabel(slot.start)) : null,
       star ? h('span', { class: 'star', title: 'A priority', role: 'img', 'aria-label': 'A priority' }, '★') : null,
       titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
@@ -210,11 +218,9 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
       row.blocked ? h('span', { class: 'carry', title: row.blocked.join('; ') }, 'Waiting') : null,
       item.details?.deadline ? h('span', { class: 'carry', title: 'Target deadline (does not reschedule automatically)' }, `by ${item.details.deadline}`) : null,
       row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
-    h('span', { class: 'meta' },
-      sourceMark(item.source, 'added'),
-      item.area ? h('span', { class: 'tag' }, item.area) : null,
-      progressCell(row, ctx, quota)),
-    quota?.act ? h('span', { class: 'act' }, quota.act) : null);
+    sourceMark(item.source, 'added'), item.area),
+    prog,
+    act);
 }
 
 // Dragging reorders within a row's own group: done or not, and the "This week" section or not.

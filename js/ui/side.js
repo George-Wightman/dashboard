@@ -8,7 +8,7 @@ import { shortDate, shortWeekday } from '../dates.js';
 import { offLine } from '../calendar.js';
 import { dayLines } from '../gym.js';
 import { SOURCE_NAMES } from './sources.js';
-import { renderShapeBox } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
+import { renderShapeBox, renderDigest } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 import { proposedItems, proposalLine } from '../coach.js';
 
 const values = (map) => Object.values(map ?? {});
@@ -209,6 +209,8 @@ export function renderHistory(ctx) {
     }));
   const section = h('section', { class: 'panel' }, h('h2', {}, 'Last 3 weeks'), grid);
   if (ui.historyDay) section.append(renderDayDetail(ctx, ui.historyDay));
+  const digest = renderDigest(ctx);
+  if (digest) section.append(digest);
   return section;
 }
 

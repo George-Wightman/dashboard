@@ -1,5 +1,5 @@
 // The Coach panel: a conversation with the Coach (js/talk.js says when it opens one and what it's
-// told, js/coach-tools.js what it may do), goal shaping under Goals, and last week's digest. Every
+// told, js/coach-tools.js what it may do), goal shaping under Goals, and last week's digest (shown under Last 3 weeks). Every
 // Gemini request runs in the background: the panel says "Thinking…", the rest of the page keeps
 // working, and a failure is one line of text, never a dialog. What George types lives in
 // ctx.ui.coach, so a re-render (a sync landing, a tick on the left) never loses it. On a phone the
@@ -437,8 +437,7 @@ export function renderCoach(ctx) {
     h('h2', {}, 'Coach',
       ctx.coach.fake ? h('span', { class: 'fake' }, `fake · ${ctx.coach.fake}`) : null,
       ctx.coach.keys().length ? h('span', { class: 'panel-links' }, link('Talk', () => startTalk(ctx))) : null),
-    renderTalk(ctx, 'panel'),
-    renderDigest(ctx));
+    renderTalk(ctx, 'panel'));
 }
 
 // ---- Shape a goal -----------------------------------------------------------------------------
@@ -534,8 +533,9 @@ export async function writeDigest(ctx, { quiet = false } = {}) {
 }
 
 // The collapsed "Last week" line once the digest exists; before that, the link to write it (only
-// with a key, and only for a week that had anything in it).
-function renderDigest(ctx) {
+// with a key, and only for a week that had anything in it). It sits under Last 3 weeks
+// (js/ui/side.js), with the other looking-back.
+export function renderDigest(ctx) {
   const { store, ui } = ctx;
   const c = ui.coach;
   const doc = store.doc();

@@ -19,7 +19,8 @@ test('sourceLabel: the words behind a row\'s logo', () => {
 });
 
 test('the logos are drawn in the app\'s own colour, never the companies\'', () => {
-  assert.deepEqual(Object.keys(LOGOS), ['claude', 'gemini', 'workflow']);
+  // every known source has a logo, so a row never falls back to words
+  assert.deepEqual(Object.keys(LOGOS).sort(), Object.keys(SOURCE_NAMES).sort());
   for (const svg of Object.values(LOGOS)) {
     assert.match(svg, /^<svg viewBox="0 0 24 24" aria-hidden="true"/);
     assert.match(svg, /currentColor/);
@@ -51,11 +52,13 @@ test('compactProgress: the count a weekly target shows in its row', () => {
   assert.equal(compactProgress(0, 300, 'minutes'), '0/5h');
 });
 
-test('the list lines up: a grid of six columns, each row a subgrid, one-line titles', () => {
+test('the list lines up: a grid of four columns, each row a subgrid, one-line titles', () => {
   const css = read('styles.css');
-  assert.match(css, /\.list \{[^}]*display: grid; grid-template-columns: 1\.4rem minmax\(0, 1fr\) repeat\(4, auto\);/);
+  assert.match(css, /\.list \{[^}]*display: grid; grid-template-columns: 1\.4rem minmax\(0, 1fr\) repeat\(2, auto\);/);
   assert.match(css, /\.row \{[^}]*grid-template-columns: subgrid;/);
-  assert.match(css, /\.row \.meta \{ display: contents;/);
+  // the logo and tag sit at the right of the title's cell, not in columns of their own
+  assert.match(css, /\.row \.meta \{ flex: none;/);
+  assert.match(css, /\.row\.bare \.main \{ grid-column: 2 \/ -1; \}/);
   assert.match(css, /\.row \.title \{[^}]*text-overflow: ellipsis; white-space: nowrap;/);
   assert.doesNotMatch(read('js/ui/today.js'), /added by \$\{/);
 });
