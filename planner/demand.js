@@ -9,6 +9,8 @@ import { timeOff, excused } from '../js/calendar.js';
 import { at, MINUTE } from './time.js';
 import { norm } from './calendars.js';
 
+import { blockers } from '../js/workflow.js';
+
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 const ceil15 = (n) => Math.ceil(n / 15) * 15;
@@ -38,11 +40,11 @@ export function fixedTasks({ doc, days, config, links = [] }) {
   };
   for (const i of values(doc.items).filter((x) => x.status === 'active' && x.time).sort(byOrder)) {
     if (i.type === 'task') {
-      if (days.includes(i.date) && !excused(doc, i, i.date, offs)) out.push(place(i, i.date));
+      if (days.includes(i.date) && !excused(doc, i, i.date, offs) && !blockers(doc, i, i.date).length) out.push(place(i, i.date));
     } else if (i.type === 'habit' && !linked.has(i.id)) {
       const ticked = doneDays(doc, i.id, idx);
       for (const d of days) {
-        if (ticked.has(d) || excused(doc, i, d, offs) || !isHabitDue(doc, i, d, idx)) continue;
+        if (ticked.has(d) || excused(doc, i, d, offs) || blockers(doc, i, d).length || !isHabitDue(doc, i, d, idx)) continue;
         out.push(place(i, d));
       }
     }
@@ -102,7 +104,7 @@ function parts(entries, share, name, config) {
 export function demand({ doc, today, days, config, links, covered = new Map(), usedKeys = new Map(), todayClosed = false }) {
   const idx = doneIndex(doc);
   const offs = timeOff(doc);
-  const off = (item, d) => offs.length > 0 && excused(doc, item, d, offs);
+  const off = (item, d) => blockers(doc, item, d).length > 0 || (offs.length > 0 && excused(doc, item, d, offs));
   const linked = new Set(links.map((l) => l.habitId));
   const linkedAreas = new Set(links.map((l) => norm(l.area)).filter(Boolean));
   const active = values(doc.items).filter((i) => i.status === 'active').sort(byOrder);

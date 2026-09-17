@@ -89,8 +89,43 @@ try {
   await page.locator('#editor').getByLabel('Title', { exact: true }).fill('Edited on mobile');
   await page.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByText('Edited on mobile', { exact: true }).waitFor();
+  // Configure advanced controls through the same store used by Claude; then
+  // exercise George's actual completion and goal-review UI without any API calls.
+  await page.evaluate(async () => {
+    const { createStore } = await import('./js/data.js');
+    const store = createStore({ storage: localStorage });
+    const goal = store.addGoal({ title: 'Goal review regression' });
+    const item = store.addItem({ id: 'browser-outcome', title: 'Report practice result', type: 'task', goalId: goal.id });
+    store.setDetails('items', item.id, { successCriteria: 'Record an honest result', outcomeForm: [
+      { key: 'ready', label: 'Ready for the next stage?', type: 'boolean', required: true },
+    ] });
+    store.saveRule({ title: 'Review after practice', enabled: true, definition: { sourceId: item.id, match: 'all',
+      conditions: [{ field: 'ready', op: 'eq', value: true }], actions: [{ type: 'review', goalId: goal.id }] } });
+    store.addItem({ id: 'browser-dependent', title: 'Next stage waits', type: 'task', details: { dependsOn: [item.id] } });
+  });
+  await page.reload();
+  assert.equal(await page.getByRole('checkbox', { name: 'Done: Next stage waits', exact: true }).isDisabled(), true);
+  await page.getByText('Report practice result', { exact: true }).click();
+  await page.locator('#editor').getByText('More options', { exact: true }).click();
+  await page.locator('#editor').getByLabel('Context', { exact: true }).fill('Quiet desk');
+  await page.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Done: Report practice result', exact: true }).click();
+  await page.locator('#editor').getByLabel('Ready for the next stage?', { exact: true }).selectOption('true');
+  if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT, fullPage: true });
+  await page.locator('#editor').getByRole('button', { name: 'Save outcome and complete' }).click();
+  assert.equal(await page.getByRole('checkbox', { name: 'Done: Next stage waits', exact: true }).isDisabled(), false);
+  await page.evaluate(async () => {
+    const { createStore } = await import('./js/data.js');
+    const { processWorkflows } = await import('./js/workflow.js');
+    processWorkflows(createStore({ storage: localStorage }));
+  });
+  await page.reload();
+  await page.getByText('Goal review regression', { exact: true }).click();
+  await page.getByText('Queued for the planner. Its Gemini key must be configured.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Review progress with AI' }).isDisabled(), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
   assert.deepEqual(errors, []);
-  console.log('Browser checks passed: startup, edit, concurrent cross-tab fields, cache isolation, offline reload/write, corrupt-data recovery, mobile layout and editing.');
+  console.log('Browser checks passed: startup, concurrent editing, offline recovery, mobile layout, advanced details, outcome completion, dependency unlocking and queued goal review.');
 } finally {
   await browser?.close();
   await new Promise((r) => server.close(r));

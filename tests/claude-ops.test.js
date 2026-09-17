@@ -14,7 +14,7 @@ test("runOp refuses what isn't an op", () => {
   assert.throws(() => runOp(s, { op: 'fly' }),
     /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief/);
   assert.throws(() => runOp(s, { op: 'toString' }), /Unknown op "toString"/);
-  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'handoff', 'undo', 'planner', 'off', 'brief', 'gym', 'guide']);
+  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'handoff', 'undo', 'planner', 'off', 'brief', 'gym', 'guide', 'details', 'rule', 'report', 'review']);
   assert.deepEqual([...UNLOGGED], ['undo', 'handoff']);
 });
 
@@ -230,20 +230,17 @@ test('fieldWarnings: an unknown field says so and names what the op does take', 
   assert.match(note, /title, date, area, goal, minutes, time, notes, priority, suggest/);
 });
 
-test("fieldWarnings: a plan's task warns on the fields a plan silently drops", () => {
+test("fieldWarnings: a plan retains its task's detailed controls", () => {
   const notes = fieldWarnings({ op: 'plan', tasks: [{ title: 'x', date: 'today', minutes: '2h', area: 'Job' }] });
-  assert.equal(notes.length, 2);
-  assert.match(notes.join(' '), /"minutes" isn't a field on a plan's task/);
-  assert.match(notes.join(' '), /"area" isn't a field on a plan's task/);
-  assert.match(notes.join(' '), /takes: title, date/);
+  assert.deepEqual(notes, []);
 });
 
 test("fieldWarnings: a plan's goal, habits and targets are checked against what they read", () => {
   assert.deepEqual(fieldWarnings({ op: 'plan', goal: { title: 'g', targetDate: 'x', why: 'y' } }), []);
-  const [habit] = fieldWarnings({ op: 'plan', habits: [{ title: 'h', repeat: {}, minutes: '20m' }] });
-  assert.match(habit, /"minutes" isn't a field on a plan's habit/);
-  const [target] = fieldWarnings({ op: 'plan', targets: [{ title: 't', target: 5, area: 'Job' }] });
-  assert.match(target, /"area" isn't a field on a plan's target/);
+  assert.deepEqual(fieldWarnings({ op: 'plan', habits: [{ title: 'h', repeat: {}, minutes: '20m' }] }), []);
+  assert.deepEqual(fieldWarnings({ op: 'plan', targets: [{ title: 't', target: 5, area: 'Job' }] }), []);
+  const [note] = fieldWarnings({ op: 'plan', tasks: [{ title: 't', magic: true }] });
+  assert.match(note, /"magic" isn't a field/);
 });
 
 test('fieldWarnings: ops that check their own fields are left alone, and so is anything odd', () => {

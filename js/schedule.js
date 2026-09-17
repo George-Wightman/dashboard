@@ -2,6 +2,7 @@
 
 import { addDays, weekday, weekStart, dayOfMonth, daysInMonth } from './dates.js';
 import { timeOff, excused, offCovers } from './calendar.js';
+import { blockers, completedBefore } from './workflow.js';
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -72,9 +73,12 @@ function taskRow(doc, item, day, idx) {
 // excused by time off (js/calendar.js) isn't on it; a task dated then carries to the next day.
 export function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = [];
+  let completed = null;
   const skipped = skipSet(doc);
   for (const item of values(doc.items)) {
     if (!countsOn(item, day)) continue;
+    if (item.details?.dependsOn?.length) completed ??= completedBefore(doc, day);
+    if (blockers(doc, item, day, completed).length) continue;
     if (offs.length && excused(doc, item, day, offs)) continue;
     if (skipped.has(`${item.id}|${day}`)) continue;
     if (item.type === 'task') {
@@ -99,18 +103,22 @@ export function weekTotal(doc, id, day) {
 // Everything on Today, in display order.
 export function todayRows(doc, today) {
   const idx = doneIndex(doc);
+  const completed = values(doc.items).some((i) => i.details?.dependsOn?.length) ? completedBefore(doc, today) : null;
   const suggestions = values(doc.items)
     .filter((item) => item.status === 'suggested')
     .map((item) => ({ item, kind: item.type, done: false, carriedFrom: null, suggested: true }))
     .sort(byOrder);
   const quotas = values(doc.items)
-    .filter((item) => item.type === 'quota' && item.status === 'active' && countsOn(item, today))
+    .filter((item) => item.type === 'quota' && item.status === 'active' && countsOn(item, today) && !blockers(doc, item, today, completed).length)
     .map((item) => {
       const total = weekTotal(doc, item.id, today);
       return { item, kind: 'quota', done: total >= item.target, carriedFrom: null, suggested: false, total };
     });
   const rows = [...rowsForDay(doc, today, idx).filter((r) => r.item.status === 'active'), ...quotas].sort(byOrder);
-  return [...suggestions, ...rows.filter((r) => !r.done), ...rows.filter((r) => r.done)];
+  const waiting = values(doc.items).filter((i) => i.status === 'active' && countsOn(i, today)
+    && (i.type !== 'task' || (i.date <= today && !idx.get(i.id)?.size)) && blockers(doc, i, today, completed).length)
+    .map((item) => ({ item, kind: item.type, done: false, suggested: false, blocked: blockers(doc, item, today, completed), carriedFrom: null }));
+  return [...suggestions, ...rows.filter((r) => !r.done), ...rows.filter((r) => r.done), ...waiting];
 }
 
 // ---- Streaks --------------------------------------------------------------------------------

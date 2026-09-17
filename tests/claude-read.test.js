@@ -84,7 +84,7 @@ test('the wording helpers', () => {
 test("every read starts with the date and the day's count", () => {
   assert.equal(header(doc(), TODAY), 'Today is Sunday 13 September (2026-09-13) · 1 of 4 done');
   for (const [name, read] of Object.entries(READS)) {
-    assert.match(read(doc(), TODAY, name === 'day' || name === 'talk' ? 'today' : 'cv'), /^Today is Sunday 13 September/, name);
+    assert.match(read(doc(), TODAY, name === 'inspect' ? '' : name === 'day' || name === 'talk' ? 'today' : 'cv'), /^Today is Sunday 13 September/, name);
   }
 });
 

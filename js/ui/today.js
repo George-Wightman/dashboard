@@ -9,6 +9,7 @@ import { formatProgress, formatAmount, parseAmount, splitTaskInput } from '../pa
 import { SOURCE_NAMES, sourceMark } from './sources.js';
 import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
+import { openOutcome } from './outcome.js';
 
 // Today's rows as the list shows them: everything else first (suggestions stay on top), then the
 // weekly targets for the "This week" section, each part in todayRows' order.
@@ -189,19 +190,25 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
   if (row.suggested) return renderSuggestion(row, ctx);
   const { store } = ctx;
   const { item } = row;
-  const quota = row.kind === 'quota' ? quotaCells(row, ctx) : null;
+  const quota = row.kind === 'quota' && !row.blocked ? quotaCells(row, ctx) : null;
   const cls = ['row', row.done && 'done', quota && 'quota'].filter(Boolean).join(' ');
   return h('li', { class: cls, 'data-id': item.id },
     quota
       ? h('span', { class: 'spacer' })
-      : h('input', { type: 'checkbox', checked: row.done, 'aria-label': `Done: ${item.title}`,
-        onchange: () => store.toggleDone(item.id, store.today()) }),
+      : h('input', { type: 'checkbox', checked: row.done, disabled: !!row.blocked, 'aria-label': `Done: ${item.title}`,
+        onchange: (e) => {
+          if (!row.done && item.details?.outcomeForm?.length) { e.target.checked = false; openOutcome(ctx, item.id, true); return; }
+          try { store.toggleDone(item.id, store.today()); }
+          catch (error) { ctx.ui.taskError = error.message; ctx.render(); }
+        } }),
     h('span', { class: 'title-cell' },
       slot ? h('span', { class: 'time', title: `${clockLabel(slot.start)}–${clockLabel(slot.end)} in your calendar` }, clockLabel(slot.start)) : null,
       star ? h('span', { class: 'star', title: 'A priority', role: 'img', 'aria-label': 'A priority' }, '★') : null,
       titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
       via?.from && via?.at ? h('span', { class: 'via', title: 'Ticked by your Hevy workout' }, `via Hevy · ${clockLabel(via.from)}–${clockLabel(via.at)}`) : null,
       item.notes ? noteMark(item, ctx) : null,
+      row.blocked ? h('span', { class: 'carry', title: row.blocked.join('; ') }, 'Waiting') : null,
+      item.details?.deadline ? h('span', { class: 'carry', title: 'Target deadline (does not reschedule automatically)' }, `by ${item.details.deadline}`) : null,
       row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
     h('span', { class: 'meta' },
       sourceMark(item.source, 'added'),
@@ -250,13 +257,15 @@ export function renderToday(ctx) {
   const today = ctx.store.today();
   const gymId = gymHabitId(doc);
   const els = [];
+  if (ctx.ui.taskError) els.push(h('li', { class: 'note-row error', role: 'alert' }, ctx.ui.taskError,
+    h('button', { class: 'link', type: 'button', onclick: () => { ctx.ui.taskError = null; ctx.render(); } }, 'Dismiss')));
   const add = (row) => {
     const slot = row.suggested ? null : slots.get(row.item.id) ?? null;
     const isGym = !row.suggested && row.item.id === gymId;
     const li = renderRow(row, ctx, slot, !row.suggested && row.kind !== 'quota' && isPriority(doc, row.item, config),
       isGym ? hevyTick(doc, gymId, today) : null);
     // A row with a time follows the day's order, so only the others can be dragged.
-    if (!row.suggested && !slot) enableDrag(li, row, ctx);
+    if (!row.suggested && !slot && !row.blocked) enableDrag(li, row, ctx);
     els.push(li);
     if (isGym) for (const line of dayLines(doc, today)) els.push(h('li', { class: 'gym-line' }, line));
     if (row.item.notes && ctx.ui.noteFor === row.item.id) els.push(h('li', { class: 'note-row' }, row.item.notes));

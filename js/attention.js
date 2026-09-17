@@ -6,6 +6,7 @@ import { doneIndex, doneDays, weekTotal } from './schedule.js';
 import { addDays, weekday, shortWeekday, shortDate } from './dates.js';
 import { readPlannerConfig, plannerNotes } from './calendar.js';
 import { formatProgress } from './parse.js';
+import { blockers } from './workflow.js';
 
 const quote = (t, n = 60) => `"${t.length > n ? `${t.slice(0, n - 1)}…` : t}"`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -39,6 +40,10 @@ export function attention(doc, today) {
   }
 
   for (const p of problems) lines.push(`Planner: ${p}`);
+  if (doc.calendar?.['review-status']?.lastError) lines.push(doc.calendar['review-status'].lastError);
+  for (const item of items.filter((i) => open(i) && i.details?.deadline < today).slice(0, 5)) lines.push(`${quote(item.title)} is past its target deadline ${item.details.deadline}`);
+  for (const item of items.filter((i) => open(i) && i.date <= today && blockers(doc, i, today).length).slice(0, 5)) lines.push(`${quote(item.title)}: ${blockers(doc, item, today).join('; ')}`);
+  for (const run of Object.values(doc.workflowRuns ?? {}).filter((r) => r.result === 'failed').sort((a, b) => b.updated.localeCompare(a.updated)).slice(0, 3)) lines.push(`Rule needs attention: ${doc.rules?.[run.ruleId]?.title ?? run.ruleId} — ${run.error}`);
   for (const n of plannerNotes(doc, today)) if (!n.startsWith('Moved ')) lines.push(`Planner: ${n}`);
   return lines;
 }

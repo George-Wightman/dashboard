@@ -233,7 +233,7 @@ test('a trail that will not write leaves the original error exactly as it was', 
   broken.read = async () => { throw new Error('GitHub 500'); };
   const r = await run(['apply'], { files: broken, stdin: JSON.stringify({ op: 'dayOff' }) });
   assert.equal(r.code, 1);
-  assert.equal(r.text, 'Nothing was changed. Op 1 of 1 (dayOff) failed: Unknown op "dayOff" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide');
+  assert.equal(r.text, 'Nothing was changed. Op 1 of 1 (dayOff) failed: Unknown op "dayOff" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide, details, rule, report, review');
   assert.doesNotMatch(r.text, /trail/i);
 });
 
@@ -262,14 +262,19 @@ test('an unknown field is said out loud, the op still lands, and the note reache
   assert.match(files.raw.get('handoffs/trail.md'), /isn't a field on task/);
 });
 
-test("a plan's task warns about the length and area a plan drops", async () => {
+test("a plan's task retains its length, area and link to the goal", async () => {
+  const remote = new FakeGitHub();
   const r = await run(['apply'], {
-    stdin: JSON.stringify({ op: 'plan', tasks: [{ title: 'Read the pack', date: 'today', minutes: '2h', area: 'Job search' }] }),
+    remote, stdin: JSON.stringify({ op: 'plan', goal: { title: 'Interview readiness' }, tasks: [{ title: 'Read the pack', date: 'today', minutes: '2h', area: 'Job search' }] }),
   });
   assert.equal(r.code, 0);
   assert.match(r.text, /Suggested plan/);
-  assert.match(r.text, /"minutes" isn't a field on a plan's task/);
-  assert.match(r.text, /"area" isn't a field on a plan's task/);
+  assert.doesNotMatch(r.text, /isn't a field/);
+  const doc = (await remote.get()).doc;
+  const task = Object.values(doc.items)[0];
+  assert.equal(task.minutes, 120);
+  assert.equal(task.area, 'Job search');
+  assert.equal(task.goalId, Object.keys(doc.goals)[0]);
 });
 
 test('an op with only fields it reads says nothing extra', async () => {

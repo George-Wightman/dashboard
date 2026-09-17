@@ -83,6 +83,14 @@ function renderGoalBody(goal, progress, ctx) {
   if (linked.length) body.append(h('div', { class: 'muted', style: 'margin-top:.5rem' }, `Linked: ${linked.map((i) => i.title).join(' · ')}`));
   body.append(h('div', { style: 'margin-top:.5rem' },
     h('button', { class: 'link', type: 'button', onclick: () => ctx.openEditor({ map: 'goals', id: goal.id }) }, 'Edit goal')));
+  const review = Object.values(store.doc().reviews ?? {}).filter((r) => r.goalId === goal.id && r.status === 'active').sort((a, b) => b.day.localeCompare(a.day))[0];
+  const labels = { on_track: 'On track', at_risk: 'Needs attention', insufficient_evidence: 'Not enough evidence yet' };
+  if (review) body.append(h('div', { class: 'goal-review' }, h('strong', {}, `Review · ${review.day}`),
+    h('p', {}, review.result.state === 'complete' ? `${labels[review.result.direction]}: ${review.result.summary}`
+      : review.result.message ?? (review.result.state === 'pending' ? 'Queued for the planner. Its Gemini key must be configured.' : review.result.state))));
+  body.append(h('button', { class: 'link', type: 'button', disabled: review?.day === store.today(),
+    title: 'Uses the planner’s Gemini API. At most one review per goal per day; suggested tasks wait for your acceptance.',
+    onclick: () => store.requestReview(goal.id) }, 'Review progress with AI'));
   return body;
 }
 

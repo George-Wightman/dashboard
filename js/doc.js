@@ -1,9 +1,11 @@
 // The shape of the synced document, shared by the store and the merge.
 
-export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym'];
+import { WORKFLOW_MAPS, checkDetails, workflowRecordProblem } from './workflow.js';
+
+export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', ...WORKFLOW_MAPS];
 
 export function emptyDoc() {
-  return { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {}, calendar: {}, gym: {} };
+  return { schema: 1, ...Object.fromEntries(MAPS.map((map) => [map, {}])) };
 }
 
 // One check-in per logical day and one digest per week (filed under that week's Monday), on
@@ -36,6 +38,13 @@ function safeJson(v, depth = 0) {
 export function recordProblem(map, id, r) {
   if (!MAPS.includes(map) || !string(id) || !id || unsafe(id) || !isPlainObject(r)) return 'Invalid record';
   if (!safeJson(r)) return 'Invalid record data';
+  if (r.details !== undefined) {
+    try { checkDetails(r.details); } catch (e) { return e.message; }
+  }
+  if (WORKFLOW_MAPS.includes(map)) {
+    const problem = workflowRecordProblem(map, r);
+    if (problem) return problem;
+  }
   if (r.id !== id) return 'Record ID does not match its map key';
   const optional = (key, test, nullable = false) => r[key] === undefined || (nullable && r[key] === null) || test(r[key]);
   if (!optional('status', (v) => ['active', 'archived', 'suggested', 'dismissed'].includes(v))) return 'Invalid status';

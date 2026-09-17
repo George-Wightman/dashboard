@@ -5,9 +5,10 @@ import { logicalDay, addDays, weekStart } from './dates.js';
 import { MAPS, emptyDoc, stableStringify, isDoc, journalId, recordProblem, recoverDoc } from './doc.js';
 import { mergeDocs } from './merge.js';
 import { FLAG_TEXT_MAX, capContext } from './flags.js';
-import { CHANGE_KEEP_DAYS, canUndo } from './changes.js';
+import { CHANGE_KEEP_DAYS, canUndo, diffDocs } from './changes.js';
 import { checkLength, checkClock, checkNotes } from './parse.js';
 import { reviseRecord, recordContent } from './record.js';
+import { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } from './workflow.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -88,6 +89,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   const loadError = loaded.error;
   const saveErrors = new Map();
   const listeners = new Set();
+  let transactionDepth = 0;
 
   const stamp = () => now().toISOString();
   const today = () => logicalDay(now(), settings.dayStartHour);
@@ -110,6 +112,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   }
 
   function commit(reason) {
+    if (transactionDepth) return;
     save(DATA_KEY, doc);
     notify(reason);
   }
@@ -118,6 +121,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const rec = reviseRecord(doc[map][id], next, stamp());
     const problem = recordProblem(map, id, rec);
     if (problem) throw new Error(problem);
+    if (map === 'items' && next.details) checkDetailLinks(doc, id, next.details);
     doc[map][id] = rec;
     return rec;
   }
@@ -188,7 +192,87 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
       commit('local');
       return;
     }
+    const item = doc.items[itemId];
+    if (item?.details?.outcomeForm?.length) throw new Error('Report the outcome to complete this item');
+    checkCompletion(item, day);
     return create('logs', { itemId, goalId: null, kind: 'done', day, at: stamp(), note: '', source });
+  }
+
+  function checkCompletion(item, day) {
+    if (!item) throw new Error('Item not found');
+    const reasons = blockers(doc, item, day);
+    if (reasons.length) throw new Error(reasons.join('; '));
+    if (item.details?.requireChecklist && item.details.checklist?.some((c) => !c.done)) throw new Error('Complete the checklist first');
+  }
+
+  // Synchronous transactions publish once; an invalid action leaves no partial edits.
+  function transaction(fn, { summary, source = 'workflow' } = {}) {
+    const before = structuredClone(doc);
+    transactionDepth++;
+    let result;
+    try {
+      result = fn();
+      if (result?.then) throw new Error('Store transactions must be synchronous');
+      if (summary) {
+        const edits = diffDocs(before, doc).filter((e) => !['workflowRuns', 'reviews'].includes(e.map));
+        if (edits.length) addChange({ summary, edits, source });
+      }
+    } catch (e) { doc = before; throw e; }
+    finally { transactionDepth--; }
+    commit('local');
+    return result;
+  }
+
+  function putWorkflow(map, id, fields) {
+    if (!WORKFLOW_MAPS.includes(map)) throw new Error('Unknown workflow map');
+    return doc[map][id] ? patch(map, id, fields) : create(map, { source: 'workflow', ...fields, id });
+  }
+
+  function setDetails(map, id, changes) {
+    if (!['items', 'goals'].includes(map) || !doc[map][id]) throw new Error('Details need an existing item or goal');
+    const details = checkDetails({ ...doc[map][id].details, ...changes });
+    return patch(map, id, { details });
+  }
+
+  function saveRule({ id = newId(), title, enabled = false, definition }) {
+    checkRule(definition, doc);
+    if (Object.values(doc.rules).filter((r) => r.status === 'active' && r.enabled && r.id !== id).length >= 50 && enabled) throw new Error('At most 50 enabled rules');
+    const prior = Object.values(doc.outcomes).filter((o) => o.sourceId === definition.sourceId)
+      .reduce((latest, o) => Math.max(latest, Date.parse(o.at) + 1), 0);
+    const enabledAt = new Date(Math.max(Date.parse(stamp()), prior)).toISOString();
+    return putWorkflow('rules', id, { title, enabled, enabledAt, definition, status: 'active' });
+  }
+
+  function reportOutcome({ sourceId, answers, day = today(), complete = false, id = newId(), source = 'me' }) {
+    if (typeof complete !== 'boolean') throw new Error('complete must be boolean');
+    if (day > today()) throw new Error('An outcome cannot be reported for a future day');
+    const record = doc.items[sourceId] ?? doc.goals[sourceId];
+    if (!record || record.status !== 'active') throw new Error('Outcome needs an active item or goal');
+    if (!record.details?.outcomeForm?.length) throw new Error('Configure the outcome questions first');
+    const checked = checkAnswers(record.details.outcomeForm, answers);
+    if (doc.outcomes[id]) {
+      if (doc.outcomes[id].sourceId !== sourceId || stableStringify(doc.outcomes[id].answers) !== stableStringify(checked)
+        || doc.outcomes[id].day !== day || doc.outcomes[id].complete !== complete) throw new Error('This outcome ID was already used for a different report');
+      return doc.outcomes[id];
+    }
+    if (complete && (!doc.items[sourceId] || record.type === 'quota')) throw new Error('Only tasks and habits can be completed with an outcome');
+    if (complete) checkCompletion(record, day);
+    return transaction(() => {
+      const activated = Object.values(doc.rules).filter((r) => r.definition.sourceId === sourceId)
+        .reduce((latest, r) => Math.max(latest, Date.parse(r.enabledAt)), 0);
+      const at = new Date(Math.max(Date.parse(stamp()), activated)).toISOString();
+      const outcome = putWorkflow('outcomes', id, { sourceId, answers: checked, day, at, complete, source });
+      if (complete && !Object.values(doc.logs).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === sourceId && l.day === day)) {
+        create('logs', { id: `outcome:${id}`, itemId: sourceId, goalId: null, kind: 'done', day, at: stamp(), note: '', source });
+      }
+      return outcome;
+    });
+  }
+
+  function requestReview(goalId, reason = 'Requested goal review', day = today()) {
+    if (doc.goals[goalId]?.status !== 'active') throw new Error('Review needs an active goal');
+    const id = `review:${goalId}:${day}`;
+    return doc.reviews[id] ?? putWorkflow('reviews', id, { goalId, day, reason: String(reason).slice(0, 500), result: { state: 'pending' } });
   }
 
   // A habit let off for a day (the Coach's skip): excused like time off, so its streak is safe.
@@ -274,8 +358,10 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   function addPlan({ goal = null, milestones = [], habits = [], targets = [], tasks = [], source = 'gemini' } = {}) {
     if (milestones.length && !goal) throw new Error('Milestones need a goal');
     const suggested = { status: 'suggested', source };
+    const extras = (rec) => Object.fromEntries(['area', 'minutes', 'time', 'priority', 'notes', 'details']
+      .filter((key) => rec[key] !== undefined).map((key) => [key, rec[key]]));
     const goalRec = goal
-      ? goalFields({ title: goal.title, targetDate: goal.targetDate ?? null, why: goal.why ?? '', ...suggested })
+      ? goalFields({ ...extras(goal), title: goal.title, targetDate: goal.targetDate ?? null, why: goal.why ?? '', ...suggested })
       : null;
     const goalId = goalRec ? newId() : null;
     const firstMilestone = nextOrder('milestones');
@@ -285,21 +371,19 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     const firstItem = nextOrder('items');
     const itemRecs = [
       ...habits.map((h) => itemFields({
-        type: 'habit', title: h.title, repeat: h.repeat ?? { kind: 'daily' }, goalId, ...suggested,
+        ...extras(h), type: 'habit', title: h.title, repeat: h.repeat ?? { kind: 'daily' }, goalId, ...suggested,
       })),
       ...targets.map((t) => itemFields({
-        type: 'quota', title: t.title, target: t.target, unit: t.unit ?? 'count', unitLabel: t.unitLabel ?? '', goalId, ...suggested,
+        ...extras(t), type: 'quota', title: t.title, target: t.target, unit: t.unit ?? 'count', unitLabel: t.unitLabel ?? '', goalId, ...suggested,
       })),
-      ...tasks.map((t) => itemFields({ type: 'task', title: t.title, date: t.date ?? today(), goalId: null, ...suggested })),
+      ...tasks.map((t) => itemFields({ ...extras(t), type: 'task', title: t.title, date: t.date ?? today(), goalId, ...suggested })),
     ].map((fields, i) => ({ ...fields, order: firstItem + i }));
     if (!goalRec && !itemRecs.length) return { goal: null, milestones: [], items: [] };
-    const out = {
+    return transaction(() => ({
       goal: goalRec ? build('goals', { ...goalRec, id: goalId }) : null,
       milestones: milestoneRecs.map((fields) => build('milestones', fields)),
       items: itemRecs.map((fields) => build('items', fields)),
-    };
-    commit('local');
-    return out;
+    }));
   }
 
   // ✓ on a suggested goal: the goal and its still-suggested milestones go live from today. Its
@@ -562,6 +646,12 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     putCalendar,
     putGym,
     putLog,
+    transaction,
+    putWorkflow,
+    setDetails,
+    saveRule,
+    reportOutcome,
+    requestReview,
 
     replaceDoc,
     absorbStored,

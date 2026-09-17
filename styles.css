@@ -416,3 +416,11 @@ button.link.update-ready { color: var(--accent); }
 .change details { margin-top: .2rem; }
 .change-edits { margin: .25rem 0 .25rem 1rem; padding: 0; font-size: .85rem; color: var(--muted); }
 .claude-changes .link { margin-right: .75rem; }
+
+/* Optional advanced controls stay folded away from the everyday form. */
+.advanced-details { margin: .75rem 0; }
+.advanced-details summary { cursor: pointer; color: var(--muted); margin-bottom: .5rem; }
+.checklist-step { display: flex; align-items: center; gap: .5rem; margin: .4rem 0; }
+.checklist-step input { width: auto; flex: 0 0 auto; }
+.goal-review { margin-top: .75rem; font-size: .85rem; overflow-wrap: anywhere; }
+.goal-review p { margin: .3rem 0; }

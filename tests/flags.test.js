@@ -14,8 +14,8 @@ const bytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 // ---- the map -----------------------------------------------------------------------------------
 
 test('flags is a known map; documents from before it are still documents', () => {
-  assert.deepEqual(MAPS, ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym']);
-  assert.deepEqual(emptyDoc(), { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {}, calendar: {}, gym: {} });
+  assert.deepEqual(MAPS, ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', 'rules', 'outcomes', 'workflowRuns', 'reviews']);
+  assert.deepEqual(emptyDoc(), { schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {}, flags: {}, changes: {}, calendar: {}, gym: {}, rules: {}, outcomes: {}, workflowRuns: {}, reviews: {} });
   assert.equal(isDoc({ schema: 1, items: {}, goals: {}, milestones: {}, logs: {}, journal: {} }), true);
   assert.equal(isDoc({ schema: 1, items: {}, flags: {} }), true);
   assert.equal(isDoc({ schema: 1, items: {}, flags: [] }), false);

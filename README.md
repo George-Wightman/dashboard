@@ -91,6 +91,40 @@ http://localhost:8080/?fakegemini. Canned replies stand in for Google, no key is
 heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-second replies),
 `nokey`, `quota`, `down`, `offline`, `badkey` or `nonsense`.
 
+## Optional task controls and goal reviews
+
+Tasks and goals have a folded **More options** section in the editor. Add success criteria,
+availability dates, an advisory deadline, context, location or energy level without crowding the
+daily list. Claude can also configure tags, checklists, custom values and dependencies on existing
+one-off tasks. Waiting tasks stay visible but do not count in the day's completion total or receive
+new calendar bookings. Existing area, duration, time and priority controls still steer the planner.
+
+**AI goal reviews** are off by default. Expand a goal and choose **Review progress with AI** for
+one review, or set a review interval in its editor (0 disables future scheduling). The existing
+Apps Script planner needs `GEMINI_KEY` in its Script Properties; a key saved only in the browser
+does not configure the planner. Reviews use bounded evidence from the goal, its linked work and
+recent outcomes to assess direction. Their proposed tasks remain suggestions until accepted.
+There can be at most three unaccepted suggestions for a goal; reviews also avoid exact repeats of
+declined tasks. Completed goals stop generating scheduled review requests.
+
+Each goal can have one review request per logical day. The runner makes at most two goal-review
+API calls per run and six per day across goals. Other existing AI features have separate limits.
+A failed or interrupted call is not retried automatically; pending and failed states are visible.
+Reviews and rule processing follow the planner's ten-minute schedule and pause when it is paused.
+No live AI calls are made by tests.
+
+**Simple follow-ups**, when useful: Claude can attach a small outcome form to a task and a rule
+that creates a follow-up, reschedules an unfinished task, logs a reported amount, adds an attention
+note or requests a goal review. The completion checkbox then asks for the relevant answers. Rules
+use reported facts, have bounded actions, and cannot recursively generate more reports. Each
+rule/report pair runs once, and a failed action rolls back that rule. **Settings → Claude →
+Follow-up rules** lets you pause a rule. Open-ended practice planning stays in Claude.
+
+Claude discovers these controls with `capabilities`, reads one record with `inspect`, and can use
+`preview` to validate changes without saving. The focused `workflows` and `reviews` playbooks
+explain the boundaries. Plans now retain task durations, areas and advanced details, and their
+tasks link to the proposed goal. See [the implementation and expansion notes](docs/ai-controls-2026-09-17.md).
+
 ## Flags
 
 ⚑ in the header notes something to change — a bug, a rough edge, an idea — from inside the app,
@@ -324,6 +358,7 @@ script bundles the Apps Script planner and generates the offline release manifes
 | `js/sync.js` | GitHub read/merge/write with retry, and the sync timer |
 | `js/gemini.js` | The Gemini client: lite model first, fallbacks and retries, plain-English errors |
 | `js/coach.js` | What the coach tells Gemini, a week's numbers, the prompts, and the reply checks |
+| `js/workflow.js`, `js/goal-review.js`, `planner/reviews.js` | Optional task controls, conditional follow-ups, and bounded goal reviews |
 | `js/look.js` | Which look (Paper or Night) applies at a given moment |
 | `js/layout.js` | The widget arrangement: normalise, move, nudge, hide, show |
 | `js/flags.js` | A flag's captured context, its 4 KB cap, and the panel's readers |
@@ -338,7 +373,8 @@ script bundles the Apps Script planner and generates the offline release manifes
 Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, `journal` (the coach's
 check-ins and weekly digests), `flags` (notes of something to change), `changes` (what Claude
 has changed, for ⚙ and Undo) and `calendar` (the calendar planner's settings, its day-by-day
-bookings and its notes). Nothing is ever
+bookings and its notes). `rules`, `outcomes`, `workflowRuns` and `reviews` hold optional controls,
+reported facts and execution receipts. Nothing is ever
 hard-deleted. Records are archived or tombstoned, so a sync can't bring back something removed on
 another device. Settings (repo, access key, day start, Gemini key, check-in hour, look) stay on
 each device and are never synced, and so do the widget arrangement (`dash_layout`) and the last

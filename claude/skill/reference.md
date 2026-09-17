@@ -24,6 +24,12 @@ Pick the row, not the whole file. The detail for each command is below.
 | Change how the calendar books | `planner` | `planner` |
 | Tell the app's developer something | `handoffs` | `handoff` |
 | Leave a note George will read | `flags` | `flag` |
+| Discover supported controls without reading everything | `capabilities [topic|op]` | — |
+| Inspect one record's full controls | `inspect <id>` | `details`, `edit` |
+| Add readiness, checklist or success criteria | `capabilities details` | `details` |
+| Make a simple conditional follow-up | `reference workflows`, `workflows` | `rule`, `report` |
+| Review goal direction and suggest next steps | `reference reviews`, `inspect <goal-id>` | `review` |
+| Check a batch without writing | `preview` with the same JSON as apply | `apply` after checking the result |
 
 Three jobs have a playbook of their own, and they are the three that go wrong most. Read the playbook
 **first**, before any of the reads above:
@@ -36,6 +42,19 @@ If a command the tool mentions isn't in this file, this copy is older than the t
 `bash run.sh reference` for the current one.
 
 ## Reads
+
+### `capabilities [topic|op]`
+A compact, current capability index. Topics: `details`, `workflows`, `reviews`; an op name lists
+its accepted top-level fields. No dashboard or API request is needed for discovery.
+
+### `inspect <id>`
+One record, excluding merge metadata, plus its blockers and linked rules. Use this before changing
+advanced controls. Unlike the compact list, it shows the actual saved details.
+
+### `workflows`
+Enabled/paused rules, the ten most recent outcomes and rule runs, and ten recent goal reviews.
+Inspect a shown ID for the complete record. Queued is not completed; a review requires the
+existing Apps Script planner and its `GEMINI_KEY`.
 
 ### `today`
 Today's list: suggestions waiting for ✓/✕, then to do, then done. Tasks carried over from earlier
@@ -118,8 +137,8 @@ Every op is an object with `"op"`. Add `"suggest": true` to `task`, `habit`, `ta
 
 An op handed a field it doesn't have says so and carries on without it. **Read those notes** — they
 mean something you asked for didn't happen, and George won't know unless you tell him or send it
-again properly. `plan`'s parts take much less than the ops they resemble: a plan's task is a title
-and a date only, so give it a length and an area with `edit` afterwards.
+again properly. Use `preview` to reject ignored fields before writing. Plan entries retain area,
+notes and details; tasks and habits also retain minutes, time and priority, and link to the plan's goal.
 
 ### `task`
 `{"op": "task", "title": "…", "date": "2026-09-18", "area": "Job", "goal": "<goal id>"}` — only
@@ -246,3 +265,44 @@ towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 12
 1RM target in kg, one lift per op, `null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
 "Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts followed closely (Hevy's exercise names).
 `{"op": "gym", "habit": "Gym"}` — the habit a workout ticks (by id or the start of its title).
+
+## Optional advanced controls
+
+### `details`
+`{"op":"details","id":"<item-or-goal-id>","set":{"successCriteria":"Finish one timed exercise and record the score","tags":["assessment"]}}`.
+This merges the named detail fields. Arrays and nested objects replace that field as a unit.
+Fields: `tags` (up to 12), `context`, `location`, `energy` (`low|medium|high|""`), `successCriteria`,
+`notBefore`, `deadline`, `dependsOn` (up to 20 existing one-off task IDs), `checklist`
+(`[{"label":"Read instructions","done":false}]`, up to 20), `requireChecklist` (boolean),
+`outcomeForm` (see workflows playbook), `custom` (up to 20 lower_case keys with scalar values), and
+`reviewEveryDays` (goals only; 0 off, 1–90 days). Dates may be relative in this op.
+Only readiness and dependencies gate calendar booking. Deadline is advisory; context, location,
+energy, tags and custom fields inform planning, not hidden scheduler rules. Use an empty array/object
+to clear a collection, an empty string to clear text, or null to clear a date.
+Standalone `task`, `habit`, `target` and `goal` creation also accept a `details` object (absolute dates).
+Plan entries now retain area, notes and details; tasks/habits also retain minutes, time and priority.
+Tasks in a plan link to its goal, so progress reviews can see them.
+
+### `rule`
+`{"op":"rule","title":"Review after practice","enabled":true,"definition":{"sourceId":"<task-id>","match":"all","conditions":[{"field":"score","op":"lt","value":60}],"actions":[{"type":"review","goalId":"<goal-id>"}]}}`.
+Read `reference workflows`. Source must have the named outcome questions. New rules default to
+paused. To pause: `{"op":"rule","id":"<rule-id>","enabled":false}`. Edits and re-enabling apply
+to subsequent reports only; they do not replay earlier reports. Unknown fields are refused.
+
+### `report`
+`{"op":"report","id":"<task-id>","answers":{"score":55},"reported":true,"complete":true,"reportId":"<unique-request-id>"}`.
+Only report facts George supplied. Answers are checked against the configured form; no guesses.
+`complete` defaults false; true completes a task/habit after checking its dependencies/checklist.
+`day` defaults today. `reportId` is optional, but reuse the same ID if retrying an uncertain save:
+identical submissions are idempotent; a different answer with the same ID is refused.
+Reports do not call an API from the CLI; the planner evaluates enabled rules at its next run.
+
+### `review`
+`{"op":"review","id":"<goal-id>"}` queues a progress/direction review (at most one request per
+goal per logical day). Read `reference reviews`. It returns queued/completed status, not a claim
+that an API call already happened. For recurring review, use details.reviewEveryDays on the goal.
+
+### `preview`
+The same JSON input as apply, validated in memory, with human-readable intended changes. Does
+not save data, handoffs, diagnostic trails or issue AI calls. Unknown ignored fields fail preview.
+It does not simulate future conditional actions. Inspect the affected records after applying.

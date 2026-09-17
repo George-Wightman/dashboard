@@ -15,11 +15,11 @@ test('sourceLabel: the words behind a row\'s logo', () => {
   assert.equal(sourceLabel('someone'), null);
   // a suggestion always says who it's from
   assert.equal(sourceLabel('someone', 'suggested'), 'suggested by someone');
-  assert.deepEqual(Object.keys(SOURCE_NAMES), ['claude', 'gemini', 'hebrew', 'notion']);
+  assert.deepEqual(Object.keys(SOURCE_NAMES), ['claude', 'gemini', 'hebrew', 'notion', 'workflow']);
 });
 
 test('the logos are drawn in the app\'s own colour, never the companies\'', () => {
-  assert.deepEqual(Object.keys(LOGOS), ['claude', 'gemini']);
+  assert.deepEqual(Object.keys(LOGOS), ['claude', 'gemini', 'workflow']);
   for (const svg of Object.values(LOGOS)) {
     assert.match(svg, /^<svg viewBox="0 0 24 24" aria-hidden="true"/);
     assert.match(svg, /currentColor/);
@@ -64,7 +64,7 @@ test("the list shows today's times in the day's order; lengths and times in the 
   const today = read('js/ui/today.js');
   assert.match(today, /timedOrder\(main, slots\)/);
   assert.match(today, /splitTaskInput\(/);
-  assert.match(today, /if \(!row\.suggested && !slot\) enableDrag/);
+  assert.match(today, /if \(!row\.suggested && !slot && !row\.blocked\) enableDrag/);
   assert.match(read('styles.css'), /\.row \.time \{[^}]*font-variant-numeric: tabular-nums;/);
   const edit = read('js/ui/edit.js');
   assert.ok(edit.includes("field('Length (optional)'"), 'Length field');
@@ -96,5 +96,6 @@ test('offText and what Claude can do', async () => {
   assert.equal(offText({ start: '2026-09-16', end: '2026-09-17', areas: ['Job search'], reason: 'Maya leaves for Austria' }),
     'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search');
   assert.equal(offText({ start: '2026-09-18T13:00', end: '2026-09-18T19:00', areas: [], reason: '' }), 'Fri 18 Sep, 13:00–19:00 — Time off · everything');
-  assert.equal(CLAUDE_CAN.length, 10);
+  assert.ok(CLAUDE_CAN.some((line) => line.includes('dependencies')));
+  assert.ok(CLAUDE_CAN.some((line) => line.includes('goal reviews')));
 });

@@ -22,6 +22,8 @@ export const CLAUDE_CAN = [
   "See what needs attention: tasks with no length, what didn't fit, targets falling behind",
   'Read your Hevy training — lifts, PRs, pace and cardio — and set the Cardio target and lift targets with you',
   "Give the Coach a guide for the week, read your journal, and pick up what the Coach hands over",
+  'Set task readiness, dependencies, checklists and success criteria; configure simple follow-up rules',
+  'Request or schedule goal reviews that suggest a few next steps for you to accept',
 ];
 
 // The Gym section: the connection, then what Claude has set.
@@ -65,6 +67,17 @@ export function claudePanel(ctx) {
     ...Object.entries(config.areaColors).map(([area, colour]) => `${area} blocks are ${colour}`),
     ...Object.entries(config.dayHours).filter(([d]) => d >= today).map(([d, [from, to]]) => `${dayText(d)}: planning ${from}–${to}`),
   ];
+  const rules = Object.values(doc.rules ?? {}).filter((r) => r.status === 'active');
+  const ruleError = h('p', { class: 'error', role: 'alert' });
+  const followups = rules.length ? section('Follow-up rules', h('p', { class: 'note' }, 'Ask Claude to change the conditions. Turn a rule off here to pause future actions.'),
+    rules.map((rule) => h('label', { class: 'checklist-step' }, h('input', { type: 'checkbox', checked: rule.enabled,
+      'aria-label': `Enable rule: ${rule.title}`, onchange: (e) => {
+        try {
+          const latest = store.doc().rules[rule.id];
+          store.saveRule({ ...latest, enabled: e.target.checked });
+          ruleError.textContent = '';
+        } catch (error) { e.target.checked = !e.target.checked; ruleError.textContent = error.message; }
+      } }), rule.title)), ruleError) : null;
   return h('div', { class: 'claude-panel' },
     section("Today's brief",
       h('p', {}, briefFor(doc, today) ?? 'No brief for today yet.'),
@@ -76,6 +89,7 @@ export function claudePanel(ctx) {
     section('Priorities, colours and hours', lines(steering, 'Nothing set.')),
     section('Calendar planner', ...plannerSummary(doc, new Date()).lines.map((l) => h('p', { class: 'note' }, l))),
     section('Gym', lines(gymLines(doc, new Date()), '')),
+    followups,
     section('Needs attention', lines(attention(doc, today), 'Nothing right now.')),
     section('What Claude can do', lines(CLAUDE_CAN, '')),
     section('Changes', changesPanel(ctx)));

@@ -13,6 +13,20 @@ where he can see it and undo it.
 
 ## Running the tool
 
+For unfamiliar controls, use `capabilities` for the small topic index, then
+`capabilities details`, `capabilities workflows` or `capabilities reviews`. Read only the relevant
+topic, not every playbook. Use `inspect <id>` for one record, and `preview` with the proposed JSON
+before `apply` for complex changes. Preview makes no writes and no AI calls; copy its checked
+JSON to apply. It does not guarantee the data will stay unchanged between the two commands.
+
+Keep open-ended planning in this conversation. Do not build elaborate questionnaires or chains
+when a task and a conversation suffice. New controls are optional. `reference workflows` covers
+simple conditional follow-ups; `reference reviews` covers opt-in progress reviews. Ask for outcome
+answers only when they determine an action; never invent answers or interpret a missing log as
+failure. Automated reviews suggest at most three tasks and never accept them. Enable a recurring
+review only when George asks for ongoing review; otherwise assess the goal here or request one
+review when asked. Use a seven-day cadence unless his request calls for another interval.
+
 Everything goes through `run.sh` in this skill's folder (the folder this SKILL.md is in):
 
     bash <skill folder>/run.sh today
@@ -35,6 +49,7 @@ are safe. Several ops in one `apply` are one sync:
 
 Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `log`, `edit`,
 `archive`, `accept`, `dismiss`, `flag`, `handoff`, `undo`, `planner`, `off`, `brief`, `gym`, `guide`.
+Additional controls: `details`, `rule`, `report`, `review`; inspect their capabilities before use.
 Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.
 

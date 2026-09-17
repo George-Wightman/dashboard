@@ -17,6 +17,8 @@ import { at } from './time.js';
 import { tagPrompt, readArea } from './tag.js';
 import { syncHevy } from './hevy.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
+import { processWorkflows } from '../js/workflow.js';
+import { runGoalReviews } from './reviews.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -217,6 +219,24 @@ export function createPlanner({
       const session = await open();
       const { store } = session;
       await hevy(store);
+      processWorkflows(store);
+      const reviewKey = get('GEMINI_KEY');
+      try {
+        await runGoalReviews({ store, props: props(), request: reviewKey ? async ({ system, prompt }) => {
+        // One call, no fallback loop: the review budget counts actual requests.
+        const response = UrlFetchApp.fetch(`${ENDPOINT}/${MODELS[0]}:generateContent?key=${encodeURIComponent(reviewKey)}`, {
+          method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+          payload: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } }),
+        });
+        if (response.getResponseCode() !== 200) throw new Error('Goal review request failed');
+        return readReply(response.getContentText());
+        } : null });
+        if (store.doc().calendar['review-status']?.lastError) store.putCalendar('review-status', { lastError: null });
+      } catch (error) {
+        log(`Goal reviews paused: ${error?.message ?? error}`);
+        store.putCalendar('review-status', { lastError: 'Goal reviews could not run; calendar planning continues. Check the planner logs.' });
+      }
       tag(store, t);
       const doc = store.doc();
       const { config } = readPlannerConfig(doc);

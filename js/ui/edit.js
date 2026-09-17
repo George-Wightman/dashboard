@@ -4,6 +4,7 @@ import { h } from './dom.js';
 import { weekday } from '../dates.js';
 import { parseLength, formatAmount } from '../parse.js';
 import { stableStringify } from '../doc.js';
+import { openOutcome } from './outcome.js';
 
 // Save only the fields changed in this form. A remote update may have reached
 // the store while the user was still editing the original snapshot.
@@ -41,6 +42,8 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
   const today = store.today();
   const existing = id ? store.doc()[map][id] : null;
   const draft = existing ? structuredClone(existing) : defaultDraft(map, type, today);
+  const details = structuredClone(existing?.details ?? {});
+  const originalDetails = stableStringify(details);
   draft.repeat ??= { kind: 'daily' };
   draft.minutesText ??= draft.minutes ? formatAmount(draft.minutes, 'minutes') : '';
   draft.time ??= '';
@@ -178,8 +181,33 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
   function paint() {
     errorEl = h('div', { class: 'error', role: 'alert' });
     const form = h('form', { onsubmit: (e) => { e.preventDefault(); save(); } },
-      map === 'goals' ? goalForm() : itemForm(), errorEl, buttons());
+      map === 'goals' ? goalForm() : itemForm(), detailFields(), errorEl, buttons());
     panel.replaceChildren(form);
+  }
+
+  function detailFields() {
+    const input = (key, attrs = {}) => h('input', { value: details[key] ?? '', ...attrs, oninput: (e) => {
+      ui.editorDirty = true;
+      details[key] = attrs.type === 'number' ? Number(e.target.value) : e.target.value;
+      if (attrs.type === 'date' && !e.target.value) details[key] = null;
+    } });
+    const energy = h('select', { onchange: (e) => { ui.editorDirty = true; details.energy = e.target.value; } },
+      ['', 'low', 'medium', 'high'].map((value) => h('option', { value, selected: value === (details.energy ?? '') }, value || 'Any')));
+    return h('details', { class: 'advanced-details' }, h('summary', {}, 'More options'),
+      field('What success looks like', input('successCriteria', { maxlength: 1000 })),
+      map === 'items' ? [field('Available from', input('notBefore', { type: 'date' })),
+        field('Deadline (advisory)', input('deadline', { type: 'date' })),
+        field('Context', input('context', { maxlength: 1000, placeholder: 'e.g. quiet desk, phone call' })),
+        field('Location', input('location', { maxlength: 1000 })), field('Energy needed', energy)]
+        : [field('AI review every N days (0 = off)', input('reviewEveryDays', { type: 'number', min: 0, max: 90 })),
+          h('p', { class: 'note' }, 'Reviews send a bounded progress summary to Gemini through your planner, and suggest at most three tasks for acceptance.')],
+      details.dependsOn?.length ? h('p', { class: 'note' }, `Requires: ${details.dependsOn.map((id) => store.doc().items[id]?.title ?? id).join(', ')}`) : null,
+      (details.checklist ?? []).map((step, i) => h('label', { class: 'checklist-step' }, h('input', { type: 'checkbox', checked: step.done,
+        onchange: (e) => { ui.editorDirty = true; details.checklist[i].done = e.target.checked; } }), step.label)),
+      existing && details.outcomeForm?.length ? h('button', { class: 'link', type: 'button', onclick: () => {
+        if (ui.editorDirty) return fail('Save or cancel these edits before recording an outcome.');
+        openOutcome(ctx, existing.id);
+      } }, 'Record an outcome') : null);
   }
 
   function itemFields(title) {
@@ -243,9 +271,11 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
     try {
       if (map === 'goals') {
         const fields = goalFields(title);
+        if (stableStringify(details) !== originalDetails) fields.details = details;
         if (existing) store.updateGoal(existing.id, editedFields(initialFields, fields)); else store.addGoal(fields);
       } else {
         const fields = itemFields(title);
+        if (stableStringify(details) !== originalDetails) fields.details = details;
         if (existing) store.updateItem(existing.id, editedFields(initialFields, fields)); else store.addItem(fields);
       }
     } catch (e) {

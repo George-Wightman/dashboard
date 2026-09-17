@@ -14,6 +14,60 @@ import { GUIDE_MAX } from '../js/talk.js';
 import { weekStart } from '../js/dates.js';
 import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
+import { checkDetails } from '../js/workflow.js';
+
+const extraDetails = (op) => op.details === undefined ? {} : { details: checkDetails(op.details) };
+
+function planFields(op, type) {
+  const fields = { ...extraDetails(op), area: str(op.area) };
+  if (op.notes !== undefined) fields.notes = checkNotes(op.notes);
+  if (type !== 'quota') {
+    if (op.minutes !== undefined) fields.minutes = lengthOf(op.minutes);
+    if (op.time !== undefined) fields.time = clockOf(op.time);
+    if (op.priority !== undefined) fields.priority = priorityOf(op.priority, type);
+  }
+  return fields;
+}
+
+function details(store, op) {
+  const { map, id, rec } = resolveId(store.doc(), op.id, ['items', 'goals']);
+  if (!op.set || typeof op.set !== 'object' || Array.isArray(op.set)) throw new Error('details needs set: { field: value }');
+  const set = structuredClone(op.set);
+  if (set.dependsOn) set.dependsOn = set.dependsOn.map((ref) => resolveId(store.doc(), ref, ['items']).id);
+  for (const key of ['notBefore', 'deadline']) if (set[key]) set[key] = toDay(set[key], store.today());
+  if (map !== 'goals' && set.reviewEveryDays !== undefined) throw new Error('reviewEveryDays is a goal setting');
+  store.setDetails(map, id, set);
+  return `Updated details for ${q(rec.title)}`;
+}
+
+function rule(store, op) {
+  const previous = op.id ? resolveId(store.doc(), op.id, ['rules']).rec : null;
+  const definition = structuredClone(op.definition ?? previous?.definition);
+  if (!definition) throw new Error('rule needs definition');
+  definition.sourceId = resolveId(store.doc(), definition.sourceId, ['items', 'goals']).id;
+  if (Array.isArray(definition.actions)) for (const a of definition.actions) {
+    if (a.itemId) a.itemId = resolveId(store.doc(), a.itemId, ['items']).id;
+    if (a.targetId) a.targetId = resolveId(store.doc(), a.targetId, ['items', 'goals']).id;
+    if (a.goalId) a.goalId = resolveId(store.doc(), a.goalId, ['goals']).id;
+  }
+  const rec = store.saveRule({ ...(previous ? { id: previous.id } : {}), title: op.title ?? previous?.title,
+    enabled: op.enabled ?? previous?.enabled ?? false, definition });
+  return tagged(`${rec.enabled ? 'Enabled' : 'Paused'} rule ${q(rec.title)}; applies to new matching reports`, rec.id);
+}
+
+function report(store, op) {
+  if (op.reported !== true) throw new Error('report requires reported:true: use only answers George actually supplied, never infer them');
+  const { id, rec } = resolveId(store.doc(), op.id, ['items', 'goals']);
+  const outcome = store.reportOutcome({ sourceId: id, answers: op.answers, day: toDay(op.day ?? 'today', store.today()),
+    complete: op.complete ?? false, ...(op.reportId ? { id: op.reportId } : {}), source: CLAUDE });
+  return tagged(`Recorded outcome for ${q(rec.title)}; matching rules run on the next planner check`, outcome.id);
+}
+
+function review(store, op) {
+  const { id, rec } = resolveId(store.doc(), op.id, ['goals']);
+  const request = store.requestReview(id);
+  return tagged(`Goal review for ${q(rec.title)}: ${request.result.state}; uses the planner's Gemini key, suggests at most three tasks`, request.id);
+}
 
 const CLAUDE = 'claude';
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -134,6 +188,7 @@ function task(store, op) {
   const priority = priorityOf(op.priority, 'task');
   const rec = store.addItem({
     type: 'task', title: title(op.title, 'A task'), date: toDay(op.date ?? 'today', today),
+    ...extraDetails(op),
     area: str(op.area), goalId: goalOf(store, op.goal), status: statusOf(op), source: CLAUDE,
     ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
   });
@@ -147,6 +202,7 @@ function habit(store, op) {
   const priority = priorityOf(op.priority, 'habit');
   const rec = store.addItem({
     type: 'habit', title: title(op.title, 'A habit'), repeat: checkRepeat(op.repeat),
+    ...extraDetails(op),
     area: str(op.area), goalId: goalOf(store, op.goal), status: statusOf(op), source: CLAUDE,
     ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
   });
@@ -160,6 +216,7 @@ function target(store, op) {
   const notes = notesOf(op.notes);
   const rec = store.addItem({
     type: 'quota', title: title(op.title, 'A weekly target'), target: checkTarget(op.target, unit), unit,
+    ...extraDetails(op),
     unitLabel: unit === 'count' ? str(op.unitLabel) : '', area: str(op.area), goalId: goalOf(store, op.goal),
     status: statusOf(op), source: CLAUDE, ...(notes ? { notes } : {}),
   });
@@ -173,12 +230,12 @@ function goal(store, op) {
   const milestones = list(op.milestones, 'milestones').map((m) => title(m, 'A milestone'));
   const why = str(op.why);
   const count = milestones.length ? ` with ${plural(milestones.length, 'milestone')}` : '';
+  const notes = notesOf(op.notes);
   if (op.suggest) {
-    const out = store.addPlan({ goal: { title: t, targetDate, why }, milestones, source: CLAUDE });
+    const out = store.addPlan({ goal: { title: t, targetDate, why, ...extraDetails(op), ...(notes ? { notes } : {}) }, milestones, source: CLAUDE });
     return tagged(`Suggested goal ${q(t)}${count}`, out.goal.id);
   }
-  const notes = notesOf(op.notes);
-  const rec = store.addGoal({ title: t, targetDate, why, source: CLAUDE, ...(notes ? { notes } : {}) });
+  const rec = store.addGoal({ title: t, targetDate, why, ...extraDetails(op), source: CLAUDE, ...(notes ? { notes } : {}) });
   for (const m of milestones) store.addMilestone(rec.id, m, { source: CLAUDE });
   return tagged(`Added goal ${q(t)}${count}`, rec.id);
 }
@@ -197,14 +254,15 @@ function plan(store, op) {
     title: title(op.goal.title, "The plan's goal"),
     targetDate: op.goal.targetDate ? toDay(op.goal.targetDate, today) : null,
     why: str(op.goal.why),
+    ...extraDetails(op.goal), ...(op.goal.notes !== undefined ? { notes: checkNotes(op.goal.notes) } : {}),
   };
   const milestones = list(op.milestones, 'milestones').map((m) => title(m, 'A milestone'));
-  const habits = list(op.habits, 'habits').map((h) => ({ title: title(h.title, 'A habit'), repeat: checkRepeat(h.repeat) }));
+  const habits = list(op.habits, 'habits').map((h) => ({ title: title(h.title, 'A habit'), repeat: checkRepeat(h.repeat), ...planFields(h, 'habit') }));
   const targets = list(op.targets, 'targets').map((t) => {
     const unit = checkUnit(t.unit);
-    return { title: title(t.title, 'A weekly target'), target: checkTarget(t.target, unit), unit, unitLabel: unit === 'count' ? str(t.unitLabel) : '' };
+    return { title: title(t.title, 'A weekly target'), target: checkTarget(t.target, unit), unit, unitLabel: unit === 'count' ? str(t.unitLabel) : '', ...planFields(t, 'quota') };
   });
-  const tasks = list(op.tasks, 'tasks').map((t) => ({ title: title(t.title, 'A task'), date: toDay(t.date ?? 'today', today) }));
+  const tasks = list(op.tasks, 'tasks').map((t) => ({ title: title(t.title, 'A task'), date: toDay(t.date ?? 'today', today), ...planFields(t, 'task') }));
   if (!g && !habits.length && !targets.length && !tasks.length) {
     throw new Error('A plan needs a goal or at least one habit, target or task');
   }
@@ -567,10 +625,14 @@ function gym(store, op) {
 // never set and George never finds out. planner and gym check their own fields and say so
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
-  task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest'],
-  habit: ['title', 'repeat', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest'],
-  target: ['title', 'target', 'unit', 'unitLabel', 'area', 'goal', 'notes', 'suggest'],
-  goal: ['title', 'targetDate', 'why', 'milestones', 'notes', 'suggest'],
+  details: ['id', 'set'],
+  rule: ['id', 'title', 'enabled', 'definition'],
+  report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],
+  review: ['id'],
+  task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest', 'details'],
+  habit: ['title', 'repeat', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest', 'details'],
+  target: ['title', 'target', 'unit', 'unitLabel', 'area', 'goal', 'notes', 'suggest', 'details'],
+  goal: ['title', 'targetDate', 'why', 'milestones', 'notes', 'suggest', 'details'],
   milestone: ['goal', 'title', 'suggest'],
   plan: ['goal', 'milestones', 'tasks', 'habits', 'targets'],
   done: ['id', 'day'],
@@ -588,15 +650,12 @@ export const FIELDS = {
   guide: ['text', 'week'],
 };
 
-// A plan's parts read far less than the standalone ops they look like: a plan's task is a title and
-// a date, nothing else. That trap is worth naming rather than smoothing over — SKILL.md asks for an
-// area and a length on every task, and plan is what it recommends for exactly the jobs where that
-// matters, so following the instructions silently loses what the instructions asked for.
+// Plan entries retain the same practical controls as their standalone counterparts.
 const PLAN_FIELDS = {
-  goal: ['title', 'targetDate', 'why'],
-  tasks: ['title', 'date'],
-  habits: ['title', 'repeat'],
-  targets: ['title', 'target', 'unit', 'unitLabel'],
+  goal: ['title', 'targetDate', 'why', 'notes', 'details'],
+  tasks: ['title', 'date', 'area', 'minutes', 'time', 'notes', 'priority', 'details'],
+  habits: ['title', 'repeat', 'area', 'minutes', 'time', 'notes', 'priority', 'details'],
+  targets: ['title', 'target', 'unit', 'unitLabel', 'area', 'notes', 'details'],
 };
 
 const noteFor = (key, what, allowed) => `Note: ${JSON.stringify(key)} isn't a field on ${what} — ignored. ${what} takes: ${allowed.join(', ')}.`;
@@ -629,6 +688,7 @@ export const OPS = {
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
   log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide,
+  details, rule, report, review,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff
@@ -639,5 +699,9 @@ export function runOp(store, op) {
   if (!op || typeof op !== 'object' || Array.isArray(op)) throw new Error('Each op is an object like {"op": "task", "title": "…"}');
   const fn = Object.hasOwn(OPS, op.op) ? OPS[op.op] : null;
   if (!fn) throw new Error(`Unknown op ${JSON.stringify(op.op)} — ops: ${Object.keys(OPS).join(', ')}`);
+  if (['details', 'rule', 'report', 'review'].includes(op.op)) {
+    const warnings = fieldWarnings(op);
+    if (warnings.length) throw new Error(warnings.join(' '));
+  }
   return fn(store, op);
 }
