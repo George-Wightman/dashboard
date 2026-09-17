@@ -134,6 +134,11 @@ sync is set up and something hasn't reached GitHub yet.
 - Click ⚑, check the **About** line (a one-line summary of the moment — the look, today's
   progress, the coach, sync), write a sentence, and press **Save** (or Ctrl+Enter). It's saved at
   once and a sync is asked for straight away.
+- Above the box, pick what the flag is for: **Feature**, **Bug**, **For Claude** (something for
+  Claude to pick up later) or **Note**. Each flag in the list shows its kind (change it right there)
+  and who wrote it — *You*, the Coach (Gemini's star; its handoffs are *For Claude*), Claude (its
+  spark) or a follow-up rule — and the chips above the list show one kind at a time. Claude reads
+  them grouped the same way (`flags`, or `flags feature`).
 - The open flags list newest first, with **More details** (the captured context: window size, the
   arrangement, the coach and sync state — never a key or token, only whether one is set) and
   **Mark addressed**, which archives it — nothing is ever deleted.

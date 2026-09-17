@@ -9,7 +9,7 @@ import {
   checkConfigField, readPlannerConfig, mergeSetting, MERGED_SETTINGS, plannerStatus, COLOR_NAMES, checkTimeOff, nextOffId, offText,
 } from '../js/calendar.js';
 import { gymConfig, gymHabitId } from '../js/gym.js';
-import { FLAG_TEXT_MAX } from '../js/flags.js';
+import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
 import { GUIDE_MAX } from '../js/talk.js';
 import { weekStart } from '../js/dates.js';
 import { resolveId, shortId } from './ids.js';
@@ -448,8 +448,11 @@ function flag(store, op) {
   if (text.length > FLAG_TEXT_MAX) {
     throw new Error(`A flag can be at most ${FLAG_TEXT_MAX} characters — for anything longer, and for anything meant for whoever maintains the app, use handoff instead: it has no limit`);
   }
-  const rec = store.addFlag(text, null, CLAUDE);
-  return tagged(`Flagged ${q(rec.text)}`, rec.id);
+  // A note for George unless said otherwise; kind sorts it in his ⚑ panel.
+  const kind = op.kind ?? 'note';
+  if (!Object.hasOwn(FLAG_KINDS, kind)) throw new Error(`A flag's kind is one of: ${Object.keys(FLAG_KINDS).join(', ')}`);
+  const rec = store.addFlag(text, null, CLAUDE, kind);
+  return tagged(`Flagged ${q(rec.text)} as ${FLAG_KINDS[kind]}`, rec.id);
 }
 
 // A handoff is written to its own file rather than the document, so nothing is capped and nothing
@@ -642,7 +645,7 @@ export const FIELDS = {
   archive: ['id'],
   accept: ['id'],
   dismiss: ['id'],
-  flag: ['text'],
+  flag: ['text', 'kind'],
   handoff: ['title', 'text'],
   undo: ['change', 'id'],
   off: ['start', 'end', 'areas', 'reason', 'cancel'],

@@ -314,6 +314,10 @@ button.link.update-ready { color: var(--accent); }
 .checkin .buttons { align-items: center; margin-top: .25rem; }
 /* The Coach's conversation (js/ui/coach.js): its messages, what it did, the journal entry, the box. */
 .talk { display: flex; flex-direction: column; gap: .45rem; margin: .4rem 0 .6rem; padding: 0; list-style: none; }
+/* In the panel a long conversation scrolls inside itself (about three messages tall), so the
+   widgets under the Coach stay on screen; js/ui/coach.js keeps it at the newest message. The phone
+   sheet has the whole screen to itself and keeps the full length. */
+.talk.capped { max-height: 16rem; overflow-y: auto; overscroll-behavior: contain; padding-right: .25rem; }
 .msg { max-width: 88%; padding: .45rem .65rem; font-size: .9rem; line-height: 1.4; border-radius: var(--radius); }
 .msg-text { white-space: pre-line; }
 .msg.coach { align-self: flex-start; background: var(--accent-soft); color: var(--ink); }
@@ -405,6 +409,21 @@ button.link.update-ready { color: var(--accent); }
 .flag-item { margin-bottom: .6rem; padding: .5rem .75rem; font-size: .9rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
 .flag-item .flag-text { margin: 0 0 .25rem; }
 .flag-item .flag-meta { margin: 0 0 .25rem; font-size: .8rem; }
+/* What a flag is for (chosen above the box, changed in its row) and who wrote it. */
+.flags .chip { color: var(--muted); background: transparent; border: 1px solid var(--border); }
+.flags .chip.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.flag-kinds, .flag-filters { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .5rem; }
+.flag-filters { margin: 1rem 0 0; }
+.flag-filters + .flag-list { margin-top: .5rem; }
+.flag-item { border-left-width: 3px; }
+.flag-item.kind-feature { border-left-color: var(--accent); }
+.flag-item.kind-bug { border-left-color: var(--bad); }
+.flag-item.kind-claude { border-left-color: var(--muted); }
+.flag-head { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .3rem; }
+.flag-head .flag-meta { margin: 0; }
+.flag-kind { padding: .1rem .3rem; font-size: .78rem; color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.flag-src { display: inline-flex; gap: .25rem; align-items: center; font-size: .8rem; color: var(--muted); }
+.flag-src .src svg { width: .85rem; height: .85rem; }
 .flag-item details { margin-top: .25rem; font-size: .85rem; }
 .flag-item pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
 .flag-sync { margin-top: .75rem; font-size: .85rem; color: var(--muted); }

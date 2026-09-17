@@ -91,8 +91,13 @@ A day's conversations with the Coach in full (`today`, `yesterday` or a date): w
 the Coach changed, what it handed to you, and the entry each left. Messages go after 30 days; entries
 stay.
 
-### `flags`
-Open flags — notes George made about something to change in the app.
+### `flags [feature|bug|claude|note]`
+Open flags, grouped by what they're for, each saying who wrote it (George, the Coach, Claude or a
+follow-up rule). **Feature** and **Bug** are George's requests for changes to the app. **For Claude**
+is something to act on or keep in mind: George's own notes for later and the Coach's handoffs from
+his conversations — treat both as George's words. **Note** is something left for George to read. Give
+a kind to see one group, e.g. `flags claude`. Flags written before kinds existed are grouped by who
+wrote them. George can change a flag's kind in the ⚑ panel.
 
 ### `handoffs`
 Handoffs still open — what you or an earlier chat told whoever maintains the app, and nobody has
@@ -209,7 +214,9 @@ Turn a suggestion down: `{"op": "dismiss", "id": "…"}`. On a suggested goal it
 everything proposed with it.
 
 ### `flag`
-Leave a note George himself will read: `{"op": "flag", "text": "…"}`. At most 1000 characters, and it
+Leave a note George himself will read: `{"op": "flag", "text": "…"}`. It is filed as a **Note**;
+`"kind"` (`note`, `feature`, `bug` or `claude`) files it elsewhere — only use another kind when
+George asks you to log a feature request or bug for him. At most 1000 characters, and it
 is refused rather than cut if it's longer. Anything meant for whoever maintains the app — and
 anything that needs more room than that — is a `handoff`.
 

@@ -4,7 +4,7 @@
 import { logicalDay, addDays, weekStart } from './dates.js';
 import { MAPS, emptyDoc, stableStringify, isDoc, journalId, recordProblem, recoverDoc } from './doc.js';
 import { mergeDocs } from './merge.js';
-import { FLAG_TEXT_MAX, capContext } from './flags.js';
+import { FLAG_TEXT_MAX, FLAG_KINDS, capContext } from './flags.js';
 import { CHANGE_KEEP_DAYS, canUndo, diffDocs } from './changes.js';
 import { checkLength, checkClock, checkNotes } from './parse.js';
 import { reviseRecord, recordContent } from './record.js';
@@ -418,10 +418,26 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // ⚑: a note of something to change, with what the app was doing when the panel opened. The text
   // is trimmed and capped at FLAG_TEXT_MAX characters; the context is copied and capped at 4 KB
   // (js/flags.js), whoever built it.
-  function addFlag(text, ctx = null, source = 'me') {
+  // `kind` (js/flags.js's FLAG_KINDS) says what it's for; left out, it's read from who wrote it.
+  function addFlag(text, ctx = null, source = 'me', kind = null) {
     const clean = Array.from(String(text ?? '').trim()).slice(0, FLAG_TEXT_MAX).join('').trim();
     if (!clean) throw new Error('A flag needs some text');
-    return create('flags', { text: clean, ctx: capContext(ctx), source });
+    const checked = kind == null ? {} : { kind: checkFlagKind(kind) };
+    return create('flags', { text: clean, ctx: capContext(ctx), source, at: stamp(), ...checked });
+  }
+
+  function checkFlagKind(kind) {
+    if (!Object.hasOwn(FLAG_KINDS, kind)) throw new Error(`A flag's kind is one of: ${Object.keys(FLAG_KINDS).join(', ')}`);
+    return kind;
+  }
+
+  // Re-sorting a flag: an open flag's only edit. Its `at` keeps its place in the list.
+  function setFlagKind(id, kind) {
+    const rec = doc.flags[id];
+    if (!rec) throw new Error(`No flags record ${id}`);
+    checkFlagKind(kind);
+    if (rec.kind === kind) return rec;
+    return patch('flags', id, { kind, ...(rec.at ? {} : { at: rec.updated }) });
   }
 
   // "Mark addressed": archived, never deleted, and there is no un-address — so the later write
@@ -637,6 +653,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     dismissGoalPlan,
 
     addFlag,
+    setFlagKind,
     addressFlag,
 
     addChange,

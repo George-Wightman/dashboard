@@ -8,7 +8,7 @@ export const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 export const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-export const APP_VERSION = 'today-dashboard-v10';
+export const APP_VERSION = 'today-dashboard-v11';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -164,13 +164,40 @@ export function flagAbout(ctx) {
   return parts.join(' · ');
 }
 
-const stampOf = (f) => (typeof f.updated === 'string' ? f.updated : '');
+// What a flag is for, so George's own feature requests don't get lost among notes meant for Claude.
+// In the order the panel shows them.
+export const FLAG_KINDS = { feature: 'Feature', bug: 'Bug', claude: 'For Claude', note: 'Note' };
+// A flag written before kinds existed (or with one this copy doesn't know) is read by who wrote it:
+// George's were feature requests, the Coach's are handoffs for Claude, Claude's and a rule's are notes.
+const KIND_BY_SOURCE = { me: 'feature', coach: 'claude', claude: 'note', workflow: 'note' };
 
-// The open flags, newest first (an open flag is never edited, so `updated` is when it was written).
-export function openFlags(doc) {
+export function flagKind(f) {
+  if (Object.hasOwn(FLAG_KINDS, f?.kind)) return f.kind;
+  return KIND_BY_SOURCE[f?.source] ?? 'note';
+}
+
+// Who wrote a flag, in words: the panel's hover text and Claude's read.
+const FLAG_SOURCES = { me: 'George', coach: 'the Coach (Gemini)', claude: 'Claude', workflow: 'a follow-up rule' };
+export function flagSourceName(f) {
+  return FLAG_SOURCES[f?.source] ?? (typeof f?.source === 'string' && f.source ? f.source : 'George');
+}
+
+// When a flag was written. `at` is stamped on new flags, so changing a flag's kind (which moves
+// `updated`) doesn't jump it to the top; older flags were never edited, so `updated` is that time.
+const stampOf = (f) => (typeof f.at === 'string' ? f.at : typeof f.updated === 'string' ? f.updated : '');
+
+// The open flags, newest first; with a kind, only that kind.
+export function openFlags(doc, kind = null) {
   return values(doc?.flags)
-    .filter((f) => f.status === 'active')
+    .filter((f) => f.status === 'active' && (!kind || flagKind(f) === kind))
     .sort((a, b) => (stampOf(a) === stampOf(b) ? (a.id < b.id ? 1 : -1) : stampOf(a) < stampOf(b) ? 1 : -1));
+}
+
+// How many open flags of each kind, every kind present (0 when none).
+export function flagKindCounts(doc) {
+  const counts = Object.fromEntries(Object.keys(FLAG_KINDS).map((k) => [k, 0]));
+  for (const f of openFlags(doc)) counts[flagKind(f)]++;
+  return counts;
 }
 
 export function addressedCount(doc) {

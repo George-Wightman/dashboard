@@ -145,7 +145,10 @@ test('archive, accept and dismiss', () => {
 
 test('flag and undo', () => {
   const s = fresh();
-  assert.equal(runOp(s, { op: 'flag', text: 'The week bars overlap' }), 'Flagged "The week bars overlap" · #rec-1');
+  assert.equal(runOp(s, { op: 'flag', text: 'The week bars overlap' }), 'Flagged "The week bars overlap" as Note · #rec-1');
+  assert.equal(s.doc().flags['rec-1'].kind, 'note');
+  assert.match(runOp(s, { op: 'flag', text: 'Add a dark calendar', kind: 'feature' }), /^Flagged "Add a dark calendar" as Feature/);
+  assert.throws(() => runOp(s, { op: 'flag', text: 'x', kind: 'wish' }), /kind is one of: feature, bug, claude, note/);
   assert.equal(s.doc().flags['rec-1'].source, 'claude');
   const before = structuredClone(s.doc());
   runOp(s, { op: 'task', title: 'A' });
@@ -213,7 +216,7 @@ test('a flag over the cap is refused with the limit named, and nothing is writte
   assert.throws(() => runOp(s, { op: 'flag', text: 'x'.repeat(1001) }), /at most 1000 characters/);
   assert.throws(() => runOp(s, { op: 'flag', text: 'x'.repeat(1001) }), /use handoff instead/);
   assert.equal(Object.keys(s.doc().flags).length, 0, 'refused, not written and cut');
-  assert.match(runOp(s, { op: 'flag', text: 'x'.repeat(1000) }), /^Flagged "x+…" · #rec-1$/);
+  assert.match(runOp(s, { op: 'flag', text: 'x'.repeat(1000) }), /^Flagged "x+…" as Note · #rec-1$/);
   assert.equal(s.doc().flags['rec-1'].text.length, 1000, 'right on the cap is kept whole');
 });
 

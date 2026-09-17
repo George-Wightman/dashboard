@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHash, webcrypto } from 'node:crypto';
 import vm from 'node:vm';
 import { releaseManifest } from '../dev/build-release.mjs';
+import { APP_VERSION } from '../js/flags.js';
 
 const ROOT = new URL('../', import.meta.url);
 const SCOPE = 'https://example.test/dashboard/';
@@ -69,7 +70,7 @@ function harness() {
   release('release one'); restart();
   return { stores, caches, calls, clients, release, restart, event, refresh, request,
     fail: (fn) => { fail = fn; }, corrupt: (path, text) => network.set(new URL(path, SCOPE).href, text),
-    name: () => 'today-dashboard-v10-' + manifest.id };
+    name: () => `${APP_VERSION}-${manifest.id}` };
 }
 
 test('checked-in release manifest matches all current assets', () => {

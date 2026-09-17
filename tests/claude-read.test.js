@@ -141,7 +141,9 @@ test('journal, flags and changes', () => {
   assert.match(journal, /^ {2}Went well: CV$/m);
   assert.match(journal, /^ {2}Focus: Apply$/m);
   assert.match(journal, /^Check-in, Sat 12 Sep:\n {2}Q: How did it go\?\n {2}A: Fine\n {2}Coach: Nice work\.$/m);
-  assert.match(READS.flags(doc(), TODAY), /^ {2}"Button too small" #f1 · Sat 12 Sep, 11:00$/m);
+  assert.match(READS.flags(doc(), TODAY), /^Feature \(1, newest first\):\n {2}"Button too small" #f1 · Sat 12 Sep, 11:00 · from George$/m);
+  assert.match(READS.flags(doc(), TODAY, 'bugs'), /^No open Bug flags\.$/m);
+  assert.match(READS.flags(doc(), TODAY, 'cv'), /No kind called "cv", so here are all of them/);
   const changes = READS.changes(doc(), TODAY);
   assert.match(changes, /^ {2}#c1 · Sat 12 Sep, 14:02 · Added task "Email Sarah" for today$/m);
   assert.match(changes, /^ {2}#c2 · .* · Archived task "X" · undone$/m);

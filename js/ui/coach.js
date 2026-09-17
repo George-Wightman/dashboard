@@ -90,7 +90,7 @@ function reflag(store, id, before, forClaude) {
   const ids = forClaude.map((text) => {
     const i = oldTexts.indexOf(text);
     const kept = i === -1 ? null : oldIds[i];
-    return kept && store.doc().flags[kept] ? kept : store.addFlag(text, { from: 'coach', entry: id }, 'coach').id;
+    return kept && store.doc().flags[kept] ? kept : store.addFlag(text, { from: 'coach', entry: id }, 'coach', 'claude').id;
   });
   for (const f of oldIds) if (!ids.includes(f) && store.doc().flags[f]?.status === 'active') store.addressFlag(f);
   return ids;
@@ -351,6 +351,29 @@ function renderBox(ctx, where, talk) {
 
 const BUSY = { opening: 'The Coach is thinking of something to ask…', thinking: 'Thinking…', entry: 'Writing the journal entry…' };
 
+// In the panel the messages scroll inside a box about three messages tall (styles.css .talk.capped),
+// so the widgets below stay on screen. The page is redrawn on every change, so where the box was
+// scrolled is kept here: at the newest message, unless George has scrolled up to reread something —
+// and back to the newest whenever a message arrives or another conversation is shown.
+const talkScroll = { id: '', count: 0, top: 0, pinned: true };
+const PINNED_SLACK = 12; // px from the bottom that still counts as "at the newest"
+
+function messageList(ctx, talk, where) {
+  const items = talk.messages.map((m) => bubble(ctx, m));
+  if (where !== 'panel') return h('ul', { class: 'talk' }, items);
+  if (talk.id !== talkScroll.id || talk.messages.length > talkScroll.count) talkScroll.pinned = true;
+  Object.assign(talkScroll, { id: talk.id, count: talk.messages.length });
+  const list = h('ul', { class: 'talk capped' }, items);
+  list.addEventListener('scroll', () => {
+    talkScroll.top = list.scrollTop;
+    talkScroll.pinned = list.scrollHeight - list.scrollTop - list.clientHeight <= PINNED_SLACK;
+  });
+  queueMicrotask(() => {
+    list.scrollTop = talkScroll.pinned ? list.scrollHeight : talkScroll.top;
+  });
+  return list;
+}
+
 // The conversation, as the panel and the phone sheet both show it.
 export function renderTalk(ctx, where = 'panel') {
   const c = ctx.ui.coach;
@@ -371,7 +394,7 @@ export function renderTalk(ctx, where = 'panel') {
     !talk?.messages?.length && !c.talkBusy
       ? h('p', { class: 'muted' }, 'Say how the day is going, give it a pointer, or ask it to move something.')
       : null,
-    talk?.messages?.length ? h('ul', { class: 'talk' }, talk.messages.map((m) => bubble(ctx, m))) : null,
+    talk?.messages?.length ? messageList(ctx, talk, where) : null,
     talk && !entry ? (talk.handoffs ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)) : null,
     entry ? renderEntry(ctx, entry) : null,
     BUSY[c.talkBusy] ? h('p', { class: 'muted', role: 'status' }, BUSY[c.talkBusy]) : null,

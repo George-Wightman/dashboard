@@ -148,7 +148,8 @@ conversation in the morning, in the afternoon when something has slipped, and in
 can start one any time. It may change today and tomorrow only — add, move, skip, tick, set lengths,
 block out hours — and each change is logged like yours (*by the Coach* in `changes`). Anything bigger
 it hands to you as a **flag from the Coach**: treat those as George's own words, act on them, and
-mark them addressed.
+mark them addressed. `flags` groups flags by kind: *For Claude* (the Coach's handoffs and George's
+notes for you), *Feature* and *Bug* (his requests for app changes), and *Note* (left for him).
 
 - **Read the journal** (`journal`) in *plan my week* and whenever George asks how things are. Each
   conversation leaves an entry — how he was feeling, what was on his mind, pointers about how he

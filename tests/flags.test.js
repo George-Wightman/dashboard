@@ -6,6 +6,7 @@ import { mergeDocs, sameDoc } from '../js/merge.js';
 import {
   FLAG_TEXT_MAX, FLAG_CTX_MAX, LAST_SYNCED_KEY, APP_VERSION, capContext, flagContext, shortAgent, flagAbout,
   openFlags, addressedCount, waitingFlags, flagSyncLine, readLastSynced, writeLastSynced, scrubText,
+  FLAG_KINDS, flagKind, flagKindCounts, flagSourceName,
 } from '../js/flags.js';
 import { MemoryStorage, FullStorage, clock, makeStore, fixture } from './helpers.js';
 
@@ -42,7 +43,7 @@ test('addFlag writes a normal record with the text and a copy of the context', (
   const rec = store.addFlag('  The streak should say which habit  ', ctx);
   assert.deepEqual(rec, {
     id: 'id1', text: 'The streak should say which habit', ctx: { at: now().toISOString(), look: 'night', layout: { columns: [['coach'], []], hidden: [] } },
-    source: 'me', status: 'active', created: '2026-09-12', archivedOn: null, updated: now().toISOString(),
+    source: 'me', at: now().toISOString(), status: 'active', created: '2026-09-12', archivedOn: null, updated: now().toISOString(),
   });
   assert.deepEqual(reasons, ['local']);
   assert.deepEqual(JSON.parse(storage.getItem(DATA_KEY)).flags.id1, rec);
@@ -322,4 +323,49 @@ test('capContext copies plain data, refuses what is not an object, and never thr
   assert.equal(capContext(cyclic), null);
   assert.equal(capContext({ n: 10n }), null);
   assert.deepEqual(capContext({ when: new Date(Date.UTC(2026, 8, 12)), fn: () => 1, n: 1 }), { when: '2026-09-12T00:00:00.000Z', n: 1 });
+});
+
+// ---- kinds -------------------------------------------------------------------------------------
+
+test('a flag is a feature, bug, note for Claude or note; without one it is read from who wrote it', () => {
+  assert.deepEqual(Object.keys(FLAG_KINDS), ['feature', 'bug', 'claude', 'note']);
+  assert.equal(flagKind({ kind: 'bug', source: 'me' }), 'bug');
+  assert.equal(flagKind({ source: 'me' }), 'feature');
+  assert.equal(flagKind({ source: 'coach' }), 'claude');
+  assert.equal(flagKind({ source: 'claude' }), 'note');
+  assert.equal(flagKind({ source: 'workflow' }), 'note');
+  assert.equal(flagKind({ kind: 'someday', source: 'coach' }), 'claude', "a kind this copy doesn't know falls back");
+  assert.equal(flagSourceName({ source: 'coach' }), 'the Coach (Gemini)');
+  assert.equal(flagSourceName({}), 'George');
+});
+
+test('addFlag files a kind, refuses an unknown one, and setFlagKind re-sorts without moving it in the list', () => {
+  const now = clock(new Date(2026, 8, 17, 8, 0));
+  const store = makeStore({ now });
+  const first = store.addFlag('Scroll the Coach', null, 'me', 'feature');
+  now.advance(60000);
+  const second = store.addFlag('Tuesday off', null, 'coach', 'claude');
+  now.advance(60000);
+  assert.equal(first.kind, 'feature');
+  assert.throws(() => store.addFlag('x', null, 'me', 'wish'), /kind is one of/);
+  assert.equal(store.addFlag('Old style').kind, undefined);
+  const doc = () => store.doc();
+  assert.deepEqual(flagKindCounts(doc()), { feature: 2, bug: 0, claude: 1, note: 0 });
+  const order = openFlags(doc()).map((f) => f.id);
+  now.advance(60000);
+  store.setFlagKind(first.id, 'bug');
+  assert.equal(doc().flags[first.id].kind, 'bug');
+  assert.deepEqual(openFlags(doc()).map((f) => f.id), order, 'changing the kind keeps its place');
+  assert.deepEqual(openFlags(doc(), 'bug').map((f) => f.id), [first.id]);
+  assert.deepEqual(openFlags(doc(), 'claude').map((f) => f.id), [second.id]);
+  assert.throws(() => store.setFlagKind(first.id, 'wish'), /kind is one of/);
+  assert.throws(() => store.setFlagKind('nope', 'bug'), /No flags record/);
+});
+
+test('an old flag re-sorted keeps the time it was written as its place', () => {
+  const doc = fixture({ flags: [
+    { id: 'a', text: 'A', updated: '2026-09-12T09:00:00.000Z' },
+    { id: 'b', text: 'B', updated: '2026-09-12T11:00:00.000Z', at: '2026-09-12T08:00:00.000Z', kind: 'bug' },
+  ] });
+  assert.deepEqual(openFlags(doc).map((f) => f.id), ['a', 'b']);
 });

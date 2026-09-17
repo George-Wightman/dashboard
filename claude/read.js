@@ -7,7 +7,7 @@ import {
 } from '../js/schedule.js';
 import { longDate, weekStart, addDays, shortWeekday, carryLabel, forLabel } from '../js/dates.js';
 import { formatProgress } from '../js/parse.js';
-import { openFlags } from '../js/flags.js';
+import { openFlags, FLAG_KINDS, flagKind, flagSourceName } from '../js/flags.js';
 import { changeList } from '../js/changes.js';
 import {
   readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText,
@@ -265,11 +265,24 @@ function journal(doc, today) {
   return out.join('\n');
 }
 
-// Open flags in full: George's own, yours, and the Coach's handoffs from his conversations.
-function flags(doc, today) {
-  const open = openFlags(doc);
-  return [header(doc, today), open.length ? 'Open flags (newest first):' : 'No open flags.',
-    ...open.map((f) => `  ${q(String(f.text).replace(/\s+/g, ' '), 1000)} ${tag(f.id)} · ${when(f.updated)}${by(f)}`)].join('\n');
+// Open flags in full, grouped by what they're for: George's feature requests and bugs, notes left
+// for you (his own and the Coach's handoffs from his conversations), and notes for him. `flags
+// <kind>` shows one group.
+const KIND_WORDS = { feature: 'feature', features: 'feature', bug: 'bug', bugs: 'bug', claude: 'claude', 'for claude': 'claude', note: 'note', notes: 'note' };
+function flags(doc, today, arg = '') {
+  const want = String(arg ?? '').trim().toLowerCase();
+  const only = want ? KIND_WORDS[want] : null;
+  const open = openFlags(doc, only);
+  const out = [header(doc, today)];
+  if (want && !only) out.push(`(No kind called ${q(want)}, so here are all of them. Kinds: ${Object.keys(FLAG_KINDS).join(', ')}.)`);
+  if (!open.length) return [...out, only ? `No open ${FLAG_KINDS[only]} flags.` : 'No open flags.'].join('\n');
+  for (const [kind, label] of Object.entries(FLAG_KINDS)) {
+    const group = open.filter((f) => flagKind(f) === kind);
+    if (!group.length) continue;
+    out.push(`${label} (${group.length}, newest first):`,
+      ...group.map((f) => `  ${q(String(f.text).replace(/\s+/g, ' '), 1000)} ${tag(f.id)} · ${when(f.at ?? f.updated)} · from ${flagSourceName(f)}`));
+  }
+  return out.join('\n');
 }
 
 function changes(doc, today, arg) {

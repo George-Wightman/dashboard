@@ -358,5 +358,6 @@ test("Claude: the guide op, entries in the journal read, a day's conversations i
   assert.match(READS.talk(store.doc(), THU, 'today'),
     /Morning:\n  Coach: Morning — plan\?\n  George: CV first\n  Coach: Moved it\.\n    did: Moved "Update CV" to today\n  for you: Drop Friday\n  Entry \(keen\): Wants the CV done by noon\./);
   store.addFlag('y'.repeat(300), null, 'coach');
-  assert.match(READS.flags(store.doc(), THU), new RegExp(`"${'y'.repeat(300)}" #\\S+ · .* · by the Coach`));
+  assert.match(READS.flags(store.doc(), THU), new RegExp(`"${'y'.repeat(300)}" #\\S+ · .* · from the Coach \\(Gemini\\)`));
+  assert.match(READS.flags(store.doc(), THU), /^For Claude \(/m);
 });

@@ -211,7 +211,7 @@ export function processWorkflows(store, limit = 20) {
             require(Number.isFinite(amount) && amount > 0, 'Outcome amount must be positive');
             store.putLog(actionId, { kind: 'amount', itemId: store.doc().items[a.targetId] ? a.targetId : null,
               goalId: store.doc().goals[a.targetId] ? a.targetId : null, amount, day: outcome.day, at: outcome.at }, 'workflow');
-          } else if (a.type === 'flag') store.addFlag(a.text, null, 'workflow');
+          } else if (a.type === 'flag') store.addFlag(a.text, null, 'workflow', 'note');
           else store.requestReview(a.goalId, `Outcome reported for ${store.doc().items[outcome.sourceId]?.title ?? store.doc().goals[outcome.sourceId]?.title}`);
         });
         store.putWorkflow('workflowRuns', runId, { ruleId: rule.id, outcomeId: outcome.id, result: 'applied' });

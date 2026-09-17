@@ -1,6 +1,6 @@
 // Complete, integrity-checked releases. Open pages stay pinned to their release;
 // a refresh selects the new release for the next navigation, never per-file.
-const CACHE = 'today-dashboard-v10';
+const CACHE = 'today-dashboard-v11';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',

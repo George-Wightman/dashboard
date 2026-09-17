@@ -24,11 +24,12 @@ test('js/ui/flags.js builds the panel from the plan: About, Save/Ctrl+Enter, the
   assert.match(src, /export function openFlagPanel\(ctx\)/);
   assert.match(src, /flagContext\(ctx\.flagState\(\)\)/);
   assert.match(src, /flagAbout\(captured\)/);
-  assert.match(src, /store\.addFlag\(text, captured\)/);
+  assert.match(src, /store\.addFlag\(text, captured, 'me', draftKind\)/);
+  assert.match(src, /store\.setFlagKind\(f\.id, select\.value\)/);
   assert.match(src, /'Write something first\.'/);
   assert.match(src, /status\.textContent = 'Saved\.'/);
   assert.match(src, /e\.key === 'Enter' && \(e\.ctrlKey \|\| e\.metaKey\)/);
-  assert.match(src, /openFlags\(doc\)/);
+  assert.match(src, /openFlags\(doc, showKind\)/);
   assert.match(src, /addressFlag\(f\.id\)/);
   assert.match(src, /'Mark addressed'/);
   assert.match(src, /addressedCount\(doc\)/);

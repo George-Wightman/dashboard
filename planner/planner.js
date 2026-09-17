@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '833acac1';
+var PLANNER_BUILD = '5d7b3e74';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -370,7 +370,7 @@ function processWorkflows(store, limit = 20) {
             require(Number.isFinite(amount) && amount > 0, 'Outcome amount must be positive');
             store.putLog(actionId, { kind: 'amount', itemId: store.doc().items[a.targetId] ? a.targetId : null,
               goalId: store.doc().goals[a.targetId] ? a.targetId : null, amount, day: outcome.day, at: outcome.at }, 'workflow');
-          } else if (a.type === 'flag') store.addFlag(a.text, null, 'workflow');
+          } else if (a.type === 'flag') store.addFlag(a.text, null, 'workflow', 'note');
           else store.requestReview(a.goalId, `Outcome reported for ${store.doc().items[outcome.sourceId]?.title ?? store.doc().goals[outcome.sourceId]?.title}`);
         });
         store.putWorkflow('workflowRuns', runId, { ruleId: rule.id, outcomeId: outcome.id, result: 'applied' });
@@ -741,7 +741,7 @@ const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-const APP_VERSION = 'today-dashboard-v10';
+const APP_VERSION = 'today-dashboard-v11';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -897,13 +897,40 @@ function flagAbout(ctx) {
   return parts.join(' · ');
 }
 
-const stampOf = (f) => (typeof f.updated === 'string' ? f.updated : '');
+// What a flag is for, so George's own feature requests don't get lost among notes meant for Claude.
+// In the order the panel shows them.
+const FLAG_KINDS = { feature: 'Feature', bug: 'Bug', claude: 'For Claude', note: 'Note' };
+// A flag written before kinds existed (or with one this copy doesn't know) is read by who wrote it:
+// George's were feature requests, the Coach's are handoffs for Claude, Claude's and a rule's are notes.
+const KIND_BY_SOURCE = { me: 'feature', coach: 'claude', claude: 'note', workflow: 'note' };
 
-// The open flags, newest first (an open flag is never edited, so `updated` is when it was written).
-function openFlags(doc) {
+function flagKind(f) {
+  if (Object.hasOwn(FLAG_KINDS, f?.kind)) return f.kind;
+  return KIND_BY_SOURCE[f?.source] ?? 'note';
+}
+
+// Who wrote a flag, in words: the panel's hover text and Claude's read.
+const FLAG_SOURCES = { me: 'George', coach: 'the Coach (Gemini)', claude: 'Claude', workflow: 'a follow-up rule' };
+function flagSourceName(f) {
+  return FLAG_SOURCES[f?.source] ?? (typeof f?.source === 'string' && f.source ? f.source : 'George');
+}
+
+// When a flag was written. `at` is stamped on new flags, so changing a flag's kind (which moves
+// `updated`) doesn't jump it to the top; older flags were never edited, so `updated` is that time.
+const stampOf = (f) => (typeof f.at === 'string' ? f.at : typeof f.updated === 'string' ? f.updated : '');
+
+// The open flags, newest first; with a kind, only that kind.
+function openFlags(doc, kind = null) {
   return values(doc?.flags)
-    .filter((f) => f.status === 'active')
+    .filter((f) => f.status === 'active' && (!kind || flagKind(f) === kind))
     .sort((a, b) => (stampOf(a) === stampOf(b) ? (a.id < b.id ? 1 : -1) : stampOf(a) < stampOf(b) ? 1 : -1));
+}
+
+// How many open flags of each kind, every kind present (0 when none).
+function flagKindCounts(doc) {
+  const counts = Object.fromEntries(Object.keys(FLAG_KINDS).map((k) => [k, 0]));
+  for (const f of openFlags(doc)) counts[flagKind(f)]++;
+  return counts;
 }
 
 function addressedCount(doc) {
@@ -941,7 +968,7 @@ function writeLastSynced(storage, iso) {
     return false;
   }
 }
-return { FLAG_TEXT_MAX, FLAG_CTX_MAX, LAST_SYNCED_KEY, APP_VERSION, capContext, shortAgent, scrubText, flagContext, flagAbout, openFlags, addressedCount, waitingFlags, flagSyncLine, readLastSynced, writeLastSynced };
+return { FLAG_TEXT_MAX, FLAG_CTX_MAX, LAST_SYNCED_KEY, APP_VERSION, capContext, shortAgent, scrubText, flagContext, flagAbout, FLAG_KINDS, flagKind, flagSourceName, openFlags, flagKindCounts, addressedCount, waitingFlags, flagSyncLine, readLastSynced, writeLastSynced };
 })();
 
 // ---- js/changes.js
@@ -1155,7 +1182,7 @@ const __js_data = (() => {
 const { logicalDay, addDays, weekStart } = __js_dates;
 const { MAPS, emptyDoc, stableStringify, isDoc, journalId, recordProblem, recoverDoc } = __js_doc;
 const { mergeDocs } = __js_merge;
-const { FLAG_TEXT_MAX, capContext } = __js_flags;
+const { FLAG_TEXT_MAX, FLAG_KINDS, capContext } = __js_flags;
 const { CHANGE_KEEP_DAYS, canUndo, diffDocs } = __js_changes;
 const { checkLength, checkClock, checkNotes } = __js_parse;
 const { reviseRecord, recordContent } = __js_record;
@@ -1569,10 +1596,26 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // ⚑: a note of something to change, with what the app was doing when the panel opened. The text
   // is trimmed and capped at FLAG_TEXT_MAX characters; the context is copied and capped at 4 KB
   // (js/flags.js), whoever built it.
-  function addFlag(text, ctx = null, source = 'me') {
+  // `kind` (js/flags.js's FLAG_KINDS) says what it's for; left out, it's read from who wrote it.
+  function addFlag(text, ctx = null, source = 'me', kind = null) {
     const clean = Array.from(String(text ?? '').trim()).slice(0, FLAG_TEXT_MAX).join('').trim();
     if (!clean) throw new Error('A flag needs some text');
-    return create('flags', { text: clean, ctx: capContext(ctx), source });
+    const checked = kind == null ? {} : { kind: checkFlagKind(kind) };
+    return create('flags', { text: clean, ctx: capContext(ctx), source, at: stamp(), ...checked });
+  }
+
+  function checkFlagKind(kind) {
+    if (!Object.hasOwn(FLAG_KINDS, kind)) throw new Error(`A flag's kind is one of: ${Object.keys(FLAG_KINDS).join(', ')}`);
+    return kind;
+  }
+
+  // Re-sorting a flag: an open flag's only edit. Its `at` keeps its place in the list.
+  function setFlagKind(id, kind) {
+    const rec = doc.flags[id];
+    if (!rec) throw new Error(`No flags record ${id}`);
+    checkFlagKind(kind);
+    if (rec.kind === kind) return rec;
+    return patch('flags', id, { kind, ...(rec.at ? {} : { at: rec.updated }) });
   }
 
   // "Mark addressed": archived, never deleted, and there is no un-address — so the later write
@@ -1788,6 +1831,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     dismissGoalPlan,
 
     addFlag,
+    setFlagKind,
     addressFlag,
 
     addChange,
