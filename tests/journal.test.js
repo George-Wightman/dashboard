@@ -30,7 +30,7 @@ test('a document saved before the journal existed loads with an empty journal', 
 });
 
 test('settings gain geminiKey and checkinHour; older saved settings pick up the defaults', () => {
-  assert.deepEqual(DEFAULT_SETTINGS, { token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto' });
+  assert.deepEqual(DEFAULT_SETTINGS, { token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto', hebrewRepo: '', hebrewToken: '' });
   const storage = new MemoryStorage({ [SETTINGS_KEY]: JSON.stringify({ token: 't', repo: 'o/r', dayStartHour: 5 }) });
   const store = makeStore({ storage });
   assert.equal(store.settings().geminiKey, '');

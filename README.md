@@ -24,7 +24,7 @@ Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
   Things Claude added because you asked carry a small Claude logo (Gemini's star for the coach's);
   hover it for who added it.
-- **⚙ settings** open with the version at the top. Everything else (GitHub sync, the day, the
+- **⚙ settings** open with the version at the top. Everything else (GitHub sync, Hebrew progress, the day, the
   coach, the look, Claude's changes, backups) is folded away on one line each, showing what it's set to. Click a
   line to change it.
 
@@ -90,6 +90,18 @@ they may use it to improve their products.
 http://localhost:8080/?fakegemini. Canned replies stand in for Google, no key is read, and the panel
 heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-second replies),
 `nokey`, `quota`, `down`, `offline`, `badkey` or `nonsense`.
+
+## Hebrew progress
+
+Paste a fine-grained GitHub token (Contents read only) for the Hebrew app's own sync repo into
+⚙ → *Hebrew progress*, and the goal *Hold a 10-minute conversation in Hebrew* appears with a daily
+habit and two weekly targets — learning time and speaking practice — filled in from the app's real
+practice numbers (seconds practiced, spoken reps, sessions) each time it syncs. The daily habit
+ticks itself on any day the Hebrew app shows a session; the targets show real minutes and reps
+against target the same way any other weekly target does. Read-only: the dashboard never writes
+back to that repo, and this can never conflict with the Hebrew app's own sync. Once created, the
+goal, habit and targets are ordinary records — rename them, retarget them, or archive them, and
+the sync leaves your changes alone; it only ever fills in what's missing.
 
 ## Optional task controls and goal reviews
 
@@ -399,7 +411,7 @@ remain useful for recovering earlier history.
 ## Roadmap
 
 1. **Core hub** — built
-2. Hebrew auto-tick — practice minutes from the Hebrew app's sync file
+2. **Hebrew auto-tick** — practice minutes from the Hebrew app's sync file — built
 3. **Claude skill** — built
 4. Job search + Notion — application counts and deadlines from the Job Tracker
 5. **Gemini coach** — goal shaping, evening check-in, weekly digest — built

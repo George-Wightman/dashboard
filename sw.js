@@ -5,7 +5,7 @@ const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/data.js', 'js/doc.js', 'js/dates.js', 'js/parse.js', 'js/schedule.js',
-  'js/record.js', 'js/merge.js', 'js/sync.js', 'js/gemini.js', 'js/coach.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/talk.js', 'js/coach-tools.js',
+  'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/gemini.js', 'js/coach.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/talk.js', 'js/coach-tools.js',
   'js/workflow.js', 'js/goal-review.js', 'js/ui/outcome.js',
   'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/coach.js',
   'js/ui/widgets.js', 'js/ui/flags.js', 'js/ui/changes.js', 'js/ui/claude.js', 'js/ui/sources.js', 'js/ui/gym.js',

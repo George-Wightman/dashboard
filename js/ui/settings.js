@@ -67,6 +67,10 @@ export function openSettings(ctx) {
   const geminiKey = h('input', { type: 'password', name: 'geminiKey', autocomplete: 'off', spellcheck: 'false' });
   geminiKey.value = s.geminiKey ?? '';
   const checkinHour = h('input', { type: 'number', name: 'checkinHour', min: 12, max: 23, step: 1, value: s.checkinHour });
+  const hebrewRepo = h('input', { type: 'text', name: 'hebrewRepo', value: s.hebrewRepo, placeholder: 'George-Wightman/hebrew-reader-sync', autocomplete: 'off', spellcheck: 'false' });
+  // Same reasoning as the sync token above: the live value only, never an attribute.
+  const hebrewToken = h('input', { type: 'password', name: 'hebrewToken', autocomplete: 'new-password', spellcheck: 'false' });
+  hebrewToken.value = s.hebrewToken ?? '';
   const look = h('select', { name: 'look' },
     LOOK_CHOICES.map(([value, label]) => h('option', { value, selected: s.look === value }, label)));
   // Whether the Hebrew app has saved a key on this device (same origin, same localStorage). Only
@@ -81,6 +85,9 @@ export function openSettings(ctx) {
   // yet or is failing.
   const syncSet = !!(s.repo && s.token);
   const coachKey = s.geminiKey ? 'own key' : hebrewFound ? "the Hebrew app's key" : 'no key';
+  const hebrewSyncSet = !!(s.hebrewRepo && s.hebrewToken);
+  const hebrewProblem = ctx.hebrewSyncProblem();
+  const hebrewStatus = ctx.hebrewStatus();
   const lookName = (LOOK_CHOICES.find(([value]) => value === s.look)?.[1] ?? '').split(' (')[0];
 
   file.addEventListener('change', async () => {
@@ -119,10 +126,16 @@ export function openSettings(ctx) {
       refuse(repo, 'The repo should look like owner/name.');
       return;
     }
+    const hebrewRepoValue = hebrewRepo.value.trim();
+    if (hebrewRepoValue && !/^[\w.-]+\/[\w.-]+$/.test(hebrewRepoValue)) {
+      refuse(hebrewRepo, 'The repo should look like owner/name.');
+      return;
+    }
     store.updateSettings({
       repo: repoValue, token: token.value.trim(), dayStartHour: hour,
       geminiKey: geminiKey.value.trim(), checkinHour: checkin,
       look: LOOKS.includes(look.value) ? look.value : 'auto',
+      hebrewRepo: hebrewRepoValue, hebrewToken: hebrewToken.value.trim(),
     });
     dialog.close();
   }
@@ -146,6 +159,16 @@ export function openSettings(ctx) {
       h('p', { class: 'note' }, 'A fine-grained token with Contents read and write on the sync repo only. It stays on this device and is never synced.'),
       h('div', { class: 'buttons' },
         h('button', { class: 'btn', type: 'button', onclick: () => { ctx.syncNow(); dialog.close(); } }, 'Sync now'))),
+    group('Hebrew progress', hebrewSyncSet ? `${s.hebrewRepo}, key saved` : 'not set up', !hebrewSyncSet || !!hebrewProblem,
+      h('label', { class: 'field' }, h('span', {}, 'Sync repo'), hebrewRepo),
+      h('label', { class: 'field' }, h('span', {}, 'GitHub access key'), hebrewToken),
+      h('p', { class: 'note' }, "A fine-grained token with Contents read on the Hebrew app's own sync repo. Read-only: the dashboard never writes to it. Once set, a goal, a daily habit and two weekly targets (learning time, speaking practice) appear under Hebrew, filled in from its real practice numbers."),
+      hebrewProblem ? h('p', { class: 'error' }, `Last sync failed: ${hebrewProblem}`) : null,
+      hebrewSyncSet && hebrewStatus.words != null
+        ? h('p', { class: 'note' }, `${hebrewStatus.words} words known${hebrewStatus.at ? `, last synced ${hebrewStatus.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}.`)
+        : null,
+      h('div', { class: 'buttons' },
+        h('button', { class: 'btn', type: 'button', onclick: () => { ctx.hebrewSyncNow(); dialog.close(); } }, 'Sync now'))),
     group('The day', `starts at ${hourLabel(s.dayStartHour)}`, false,
       h('label', { class: 'field' }, h('span', {}, 'The day starts at (hour, 0–12)'), dayStart),
       h('p', { class: 'note' }, 'Anything done before this hour counts as the day before.')),

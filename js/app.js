@@ -6,6 +6,7 @@ import { longDate, weekStart } from './dates.js';
 import { dayCompletion } from './schedule.js';
 import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents } from './sync.js';
+import { syncHebrewProgress } from './hebrewSync.js';
 import { renderToday, initAddBox } from './ui/today.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
@@ -37,6 +38,9 @@ const ui = {
   },
 };
 const sync = { state: 'off', at: null, error: null };
+// The read-only pull from the Hebrew app's own sync file (js/hebrewSync.js): a separate repo and
+// token from the main sync above, so its own state and words-known count for ⚙ to show.
+const hebrew = { state: 'off', at: null, error: null, words: null };
 
 // The widget arrangement (js/layout.js): kept on this device, never synced. A window at least
 // 1500px wide shows two widget columns (the same media query as styles.css), a smaller one one.
@@ -68,6 +72,9 @@ const ctx = {
   openSettings: () => openSettings(ctx),
   syncNow: () => scheduler.now(),
   syncProblem: () => (sync.state === 'failing' ? sync.error : ''),
+  hebrewSyncNow: () => scheduler.now(),
+  hebrewSyncProblem: () => (hebrew.state === 'failing' ? hebrew.error : ''),
+  hebrewStatus: () => ({ words: hebrew.words, at: hebrew.at }),
   // Whether sync is actually set up (never true in fake mode, which never syncs), and when it
   // last succeeded (js/flags.js): together these decide the ⚑'s teal "waiting" state.
   syncOn: () => !FAKE && !!store.settings().token && !!store.settings().repo,
@@ -280,6 +287,21 @@ async function runSync() {
   }
 }
 
+// Read-only, so no conflicts and no push: just fetch, apply, and remember whether it worked. Runs
+// alongside the main sync above (same schedule), but never blocks or is blocked by it.
+async function runHebrewSync() {
+  const { hebrewRepo, hebrewToken } = store.settings();
+  if (FAKE || !hebrewRepo || !hebrewToken) { hebrew.state = 'off'; return; }
+  if (!navigator.onLine) { hebrew.state = 'offline'; return; }
+  hebrew.state = 'syncing';
+  try {
+    const result = await syncHebrewProgress({ store, client: createGitHubClient({ token: hebrewToken, repo: hebrewRepo, path: 'progress.json' }) });
+    Object.assign(hebrew, result.ok ? { state: 'ok', at: new Date(), error: null, words: result.words ?? hebrew.words } : { state: 'failing', error: result.error });
+  } catch (e) {
+    Object.assign(hebrew, { state: 'failing', error: e.message });
+  }
+}
+
 // Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the
 // re-rendered area (#list, #side): the add box lives outside it, so a sync there can't wipe it,
 // and a half-typed task title shouldn't hold up sync all day. The Coach's message box doesn't count
@@ -351,7 +373,15 @@ function maybeOpenMoment() {
 // Each sync pass (on open, on focus, after a change) is followed by the digest check and the
 // Coach's moment, so what another device already wrote has been pulled in before deciding.
 const scheduler = createSyncScheduler({
-  run: async () => { const result = await runSync(); maybeWriteDigest(); maybeOpenMoment(); return result; },
+  run: async () => {
+    // Hebrew first: a goal or target it creates on its first run then rides along on this same
+    // pass's push to the main sync repo, rather than waiting for the next one.
+    await runHebrewSync();
+    const result = await runSync();
+    maybeWriteDigest();
+    maybeOpenMoment();
+    return result;
+  },
   canRun,
   canPoll: () => ctx.syncOn() && !document.hidden && navigator.onLine !== false,
 });
