@@ -325,12 +325,19 @@ function renderEntry(ctx, e) {
         h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
         link('Cancel', () => { c.editing = null; ctx.render(); })));
   }
+  const collapsed = c.collapsedEntries.has(e.id);
+  const toggle = () => {
+    if (collapsed) c.collapsedEntries.delete(e.id); else c.collapsedEntries.add(e.id);
+    ctx.render();
+  };
   return h('div', { class: 'entry' },
-    h('div', { class: 'entry-head' }, h('strong', {}, 'Journal'), e.feeling ? h('span', { class: 'muted' }, ` · ${e.feeling}`) : null),
-    h('p', { class: 'entry-text' }, e.text),
-    e.pointers?.length ? h('ul', {}, e.pointers.map((p) => h('li', {}, p))) : null,
-    (e.forClaude ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)),
-    h('div', { class: 'entry-links' }, link('Edit', () => editEntry(ctx, e)), link('Remove', () => removeEntry(ctx, e))));
+    h('div', { class: 'entry-head' },
+      h('strong', {}, 'Journal'), e.feeling ? h('span', { class: 'muted' }, ` · ${e.feeling}`) : null,
+      link(collapsed ? 'Show' : 'Minimise', toggle)),
+    collapsed ? null : h('p', { class: 'entry-text' }, e.text),
+    collapsed || !e.pointers?.length ? null : h('ul', {}, e.pointers.map((p) => h('li', {}, p))),
+    collapsed ? null : (e.forClaude ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)),
+    collapsed ? null : h('div', { class: 'entry-links' }, link('Edit', () => editEntry(ctx, e)), link('Remove', () => removeEntry(ctx, e))));
 }
 
 function renderBox(ctx, where, talk) {

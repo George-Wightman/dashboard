@@ -33,6 +33,7 @@ const ui = {
     talk: null, draft: '', talkBusy: '', talkError: '', editing: null, sheet: false, tried: {},
     shapeOpen: false, shapeText: '', shapeBusy: false, shapeError: '',
     digestOpen: false, digestBusy: false, digestError: '', digestTried: false,
+    collapsedEntries: new Set(),
   },
 };
 const sync = { state: 'off', at: null, error: null };
