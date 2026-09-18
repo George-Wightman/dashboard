@@ -492,3 +492,44 @@ button.link.update-ready { color: var(--accent); }
 .conversation-stream { max-height: 48vh; overflow-y: auto; overflow-wrap: anywhere; }
 .talk-box { background: var(--panel); padding-top: .5rem; }
 #task-card { max-width: min(34rem, 92vw); border-radius: .7rem; }
+
+/* Compact side panels (2026-09-18). A habit's streak and dots sit with its logo and tag, so tags
+   line up down Today; the Coach's box sits flat on the panel and grows as you type; ⤢ opens the
+   conversation big; goals are one line each; Last 3 weeks is a strip of small squares. */
+.row .meta .prog { display: inline-flex; }
+.talk-box { background: none; }
+.talk-box.panel { display: flex; align-items: flex-end; gap: .5rem; padding-top: .4rem; }
+.talk-box.panel textarea { flex: 1; min-height: 2.2rem; max-height: 10rem; resize: none; }
+.talk-box.panel .buttons { margin: 0; flex: none; }
+.coach .panel-links .pop-out { font-size: 1rem; line-height: 1; }
+.panel.coach .conversation-stream { max-height: 18rem; }
+.coach-sheet .sheet-body { display: flex; flex-direction: column; height: 100%; }
+.coach-sheet .talk-area { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.coach-sheet .conversation-stream { flex: 1; max-height: none; }
+.coach-sheet .talk-box textarea { max-height: 14rem; resize: none; }
+@media (min-width: 760px) {
+  .coach-sheet {
+    width: min(56rem, 92vw); height: min(88vh, 60rem); margin: auto; padding: 1.25rem 1.5rem;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .coach-sheet::backdrop { background: rgb(0 0 0 / .35); }
+  .coach-sheet .msg { max-width: 75%; }
+}
+.goal.line { margin: 0; padding: .35rem 0; background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+.goal.line:last-child { border-bottom: 0; }
+.goal.line .goal-head { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem 2.6rem; align-items: center; gap: .6rem; font-size: .9rem; }
+.goal.line .goal-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal.line .bar { margin: 0; height: .3rem; }
+.goal.line .pct { text-align: right; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.goal.line.open .goal-title { white-space: normal; }
+.history .grid { grid-template-columns: repeat(7, 1.35rem); gap: .2rem; }
+.history .grid .dow { font-size: .6rem; line-height: 1; }
+.history .cell { border-radius: .2rem; }
+.history .cell.off { background: repeating-linear-gradient(45deg, transparent 0 3px, var(--border) 3px 4px); }
+.history-week, .agenda-sync { font-size: .75rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.agenda-next { display: flex; align-items: baseline; gap: .6rem; font-size: .9rem; }
+.agenda-next .agenda-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-when { flex: none; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.agenda .agenda-entry { padding: .45rem 0; border-bottom: 0; border-top: 1px solid var(--border); }
+.agenda-line { display: flex; justify-content: space-between; align-items: baseline; gap: .6rem; }
+.agenda .agenda-entry p { margin: .1rem 0 0; font-size: .8rem; }

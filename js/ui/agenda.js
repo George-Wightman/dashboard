@@ -1,7 +1,7 @@
 import { h } from './dom.js';
 import { scheduleView, localDate } from '../plan-state.js';
 import { clockLabel, momentLabel } from '../calendar.js';
-import { shortWeekday, shortDate } from '../dates.js';
+import { shortWeekday, addDays } from '../dates.js';
 import { openOutcome } from './outcome.js';
 
 export function resolveConflict(ctx, itemId, choice) {
@@ -14,36 +14,53 @@ export function resolveConflict(ctx, itemId, choice) {
   }, { summary: `Resolved calendar conflict for ${ctx.store.doc().items[itemId].title}: use ${choice}`, source: 'me' });
 }
 
+// Upcoming: only what needs George. Calendar already shows what's booked, so this is the next
+// booking on one line, then the tasks that need a decision — a Calendar/Dashboard conflict, one
+// taken out of Calendar, a later one still without a slot — five at a time. Today's own tasks
+// are already on Today's list, so an unbooked one only shows here if it's for a later day.
+const NEEDS_SHOWN = 5;
+const needsYou = (e, today, end) => e.state === 'conflict' || e.item.scheduleHold
+  || (e.state === 'unscheduled' && e.day > today && e.day < end);
+
+function whenLabel(day, today, start) {
+  const clock = start ? clockLabel(start) : '';
+  if (day === today) return clock || 'Today';
+  return `${shortWeekday(day)}${clock ? ` ${clock}` : ''}`;
+}
+
 export function renderAgenda(ctx) {
   const today = ctx.store.today();
   const plan = scheduleView(ctx.store.doc(), today);
   const now = ctx.now?.() ?? new Date();
-  let lastDay = '';
-  const entries = [...plan.entries, ...plan.commitments.filter((b) => localDate(b.start) >= today).map((b, i) => ({
-    item: { id: 'commitment-' + i, title: b.title }, day: localDate(b.start), bookings: [b], state: 'commitment', reason: '',
-  }))].sort((a, b) => a.day.localeCompare(b.day) || (a.bookings[0]?.start ?? 'z').localeCompare(b.bookings[0]?.start ?? 'z'));
-  const rows = entries.slice(0, ctx.ui.agendaExpanded ? undefined : 18).map((e) => {
-    const heading = e.day === lastDay ? null : h('h3', {}, `${shortWeekday(e.day)} ${shortDate(e.day)}`);
-    lastDay = e.day;
-    const b = e.bookings[0];
-    return h('div', { class: 'agenda-entry', 'data-task': e.item.id }, heading,
-      e.state === 'commitment' ? h('span', { class: 'agenda-title' }, e.item.title) : h('button', { type: 'button', class: 'link agenda-title', onclick: () => openTaskCard(ctx, e.item.id) }, e.item.title),
-      h('p', { class: 'muted' }, b ? `${b.allDay ? 'All day' : `${clockLabel(b.start)}–${clockLabel(b.end)}`} · ${b.calendar || 'Calendar'}${e.bookings.length > 1 ? ` · ${e.bookings.length} sessions` : ''}` : 'Unscheduled'),
-      e.reason ? h('p', { class: 'muted' }, e.reason) : null,
+  const horizon = addDays(today, 14);
+  const upcoming = [
+    ...plan.entries.filter((e) => e.state === 'scheduled' && !e.bookings[0].allDay).map((e) => ({ title: e.item.title, id: e.item.id, start: e.bookings[0].start })),
+    ...plan.commitments.filter((b) => !b.allDay).map((b) => ({ title: b.title, id: null, start: b.start })),
+  ].filter((x) => new Date(x.start) > now).sort((a, b) => a.start.localeCompare(b.start));
+  const next = upcoming[0];
+  const needs = plan.entries.filter((e) => needsYou(e, today, horizon));
+  if (!next && !needs.length && !ctx.ui.agendaError) return null;
+  const shown = ctx.ui.agendaExpanded ? needs : needs.slice(0, NEEDS_SHOWN);
+  const titleEl = (title, id) => (id
+    ? h('button', { type: 'button', class: 'link agenda-title', onclick: () => openTaskCard(ctx, id) }, title)
+    : h('span', { class: 'agenda-title' }, title));
+  return h('section', { class: 'panel agenda' },
+    h('h2', {}, 'Upcoming', h('span', { class: 'muted agenda-sync', title: 'When the calendar planner last confirmed the schedule' },
+      plan.lastSynced ? `synced ${momentLabel(plan.lastSynced, now)}` : 'planner not synced')),
+    ctx.ui.agendaError ? h('p', { class: 'error', role: 'status' }, ctx.ui.agendaError) : null,
+    next ? h('div', { class: 'agenda-next' }, h('span', { class: 'agenda-when' }, `Next · ${whenLabel(localDate(next.start), today, next.start)}`), titleEl(next.title, next.id)) : null,
+    shown.map((e) => h('div', { class: 'agenda-entry', 'data-task': e.item.id },
+      h('div', { class: 'agenda-line' }, titleEl(e.item.title, e.item.id), h('span', { class: 'agenda-when' }, whenLabel(e.day, today, e.bookings[0]?.start))),
+      h('p', { class: 'muted' }, e.reason),
       e.state === 'conflict' ? h('div', { class: 'buttons' }, ...(ctx.store.doc().calendar['conflict:' + e.item.id]?.calendarValid === false ? ['dashboard'] : ['calendar', 'dashboard']).map((choice) => h('button', {
         type: 'button', class: 'link', onclick: () => {
           try { resolveConflict(ctx, e.item.id, choice); ctx.ui.agendaError = ''; }
           catch (error) { ctx.ui.agendaError = error.message; }
           ctx.render();
         },
-      }, `Use ${choice === 'calendar' ? 'Calendar' : 'Dashboard'} edit`))) : null);
-  });
-  return h('section', { class: 'panel agenda' }, h('h2', {}, 'Upcoming'),
-    h('p', { class: 'muted' }, plan.lastSynced ? `Calendar confirmed ${momentLabel(plan.lastSynced, now)}` : 'Waiting for the calendar planner'),
-    ctx.ui.agendaError ? h('p', { class: 'error', role: 'status' }, ctx.ui.agendaError) : null,
-    rows.length ? rows : h('p', { class: 'muted' }, 'No upcoming tasks.'),
-    entries.length > 18 ? h('button', { class: 'link', type: 'button', onclick: () => { ctx.ui.agendaExpanded = !ctx.ui.agendaExpanded; ctx.render(); } },
-      ctx.ui.agendaExpanded ? 'Show fewer' : `Show all ${entries.length} entries`) : null);
+      }, `Use ${choice === 'calendar' ? 'Calendar' : 'Dashboard'} edit`))) : null)),
+    needs.length > NEEDS_SHOWN ? h('button', { class: 'link', type: 'button', onclick: () => { ctx.ui.agendaExpanded = !ctx.ui.agendaExpanded; ctx.render(); } },
+      ctx.ui.agendaExpanded ? 'Show fewer' : `${needs.length - NEEDS_SHOWN} more need you`) : null);
 }
 
 // A link from Calendar opens a task; opening a URL never marks it complete.

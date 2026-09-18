@@ -381,13 +381,17 @@ function renderEntry(ctx, e) {
 function renderBox(ctx, where, talk) {
   const c = ctx.ui.coach;
   const send = () => sendMessage(ctx);
+  // One line in the panel and three in the big view, growing with what's typed (up to a cap in
+  // styles.css), so an empty box doesn't take the panel's room.
   const box = field('textarea', {
-    rows: 2, placeholder: 'Add a task, plan a goal, or talk about your day…', 'aria-label': 'Message to the Coach', 'data-focus': `coach-talk-${where}`,
-  }, c.draft, (v) => { c.draft = v; });
+    rows: where === 'panel' ? 1 : 3, placeholder: 'Add a task, plan a goal, or talk about your day…', 'aria-label': 'Message to the Coach', 'data-focus': `coach-talk-${where}`,
+  }, c.draft, (v) => { c.draft = v; grow(); });
+  const grow = () => { box.style.height = 'auto'; box.style.height = `${box.scrollHeight + 2}px`; };
+  if (c.draft) queueMicrotask(grow);
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
   });
-  return h('form', { class: 'talk-box', onsubmit: (e) => { e.preventDefault(); send(); } },
+  return h('form', { class: `talk-box ${where}`, onsubmit: (e) => { e.preventDefault(); send(); } },
     box,
     h('div', { class: 'buttons' },
       h('button', { class: 'btn primary', type: 'submit', disabled: !!c.talkBusy }, 'Send'),
@@ -471,7 +475,8 @@ function renderProposal(ctx, talk) {
       link('Dismiss', () => { ctx.store.updateJournal(talk.id, { proposal: null }); ctx.render(); })));
 }
 
-// On a phone: the conversation as a sheet over the page, redrawn with the page (js/app.js's render).
+// The conversation as a sheet over the page, redrawn with the page (js/app.js's render): the whole
+// screen on a phone, a big window on a laptop (the Coach panel's ⤢).
 export function openCoachSheet(ctx) {
   const dlg = document.getElementById('coach-sheet');
   if (!dlg) return;
@@ -487,7 +492,8 @@ export function paintCoachSheet(ctx) {
   if (!dlg || !ctx.ui.coach.sheet) return;
   const kept = keptFocus(dlg);
   dlg.replaceChildren(h('div', { class: 'coach sheet-body' },
-    h('div', { class: 'sheet-head' }, h('h2', {}, 'Coach'), link('Close', () => dlg.close())),
+    h('div', { class: 'sheet-head' }, h('h2', {}, 'Coach'),
+      h('button', { class: 'link', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close the Coach', onclick: () => dlg.close() }, '✕')),
     renderTalk(ctx, 'sheet')));
   restoreFocus(dlg, kept);
 }
@@ -496,7 +502,8 @@ export function renderCoach(ctx) {
   return h('section', { class: 'panel coach' },
     h('h2', {}, 'Coach',
       ctx.coach.fake ? h('span', { class: 'fake' }, `fake · ${ctx.coach.fake}`) : null,
-      ctx.coach.keys().length ? h('span', { class: 'panel-links' }, link('Talk', () => startTalk(ctx))) : null),
+      ctx.coach.keys().length ? h('span', { class: 'panel-links' }, link('Talk', () => startTalk(ctx)),
+        h('button', { class: 'link pop-out', type: 'button', title: 'Open the conversation big', 'aria-label': 'Open the conversation big', onclick: () => openCoachSheet(ctx) }, '⤢')) : null),
     renderTalk(ctx, 'panel'));
 }
 

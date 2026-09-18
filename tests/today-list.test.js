@@ -88,7 +88,7 @@ test("Claude's controls on the page: ★, the notes mark, the brief and time off
   assert.match(app, /shown\(brief\) \? line\('brief', brief, mark\('claude', 'From Claude'\)\) : null/);
   assert.match(app, /waiting && shown\(waiting\.text\) \? line\('coach-line', waiting\.text, mark\('gemini', 'From the Coach'\), reply\) : null/);
   assert.match(app, /shown\(off\) \? line\('off', off\) : null/);
-  assert.match(read('js/ui/side.js'), /\}, 'off'\);/);
+  assert.match(read('js/ui/side.js'), /class: \['cell off'/);
   assert.equal((read('js/ui/edit.js').match(/notesField\(\),/g) ?? []).length, 2, 'Notes on items and goals');
   const css = read('styles.css');
   for (const rule of ['.row .star', '.row .note-mark', '.note-row', '.planner-notes .brief', '.cell.off', '.claude-panel h4']) assert.ok(css.includes(`${rule} {`), rule);

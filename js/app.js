@@ -440,6 +440,24 @@ document.addEventListener('keydown', (e) => {
   if (!document.getElementById('editor').hidden) return;
   setArranging(ctx, false);
 });
+// A click off a menu closes it, as Escape does. A modal (Settings, Flags, a task card, the big
+// Coach) closes when the click lands on its backdrop, outside the box. The edit panel closes on a
+// press anywhere outside it, unless something in it has been changed and not saved; an open note
+// under a row closes too.
+document.addEventListener('click', (e) => {
+  const dlg = e.target instanceof HTMLDialogElement && e.target.open ? e.target : null;
+  if (!dlg) return;
+  const r = dlg.getBoundingClientRect();
+  const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  if (outside && (e.clientX || e.clientY)) dlg.close();
+});
+document.addEventListener('click', (e) => {
+  if (ui.noteFor && !e.target.closest?.('.note-mark, .note-row')) { ui.noteFor = null; render(); }
+});
+document.addEventListener('pointerdown', (e) => {
+  const editor = document.getElementById('editor');
+  if (!editor.hidden && !ui.editorDirty && !editor.contains(e.target) && !e.target.closest?.('dialog')) ui.closeEditor?.();
+});
 window.addEventListener('focus', wake);
 window.addEventListener('online', () => scheduler.now());
 // Crossing 1500px changes the number of widget columns: redrawn once nothing is being typed

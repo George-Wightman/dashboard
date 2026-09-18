@@ -175,9 +175,10 @@ function renderSuggestion(row, ctx) {
         onclick: () => store.dismissSuggestion('items', item.id) }, '✕')));
 }
 
-// A row's second cell: the title (from the left), then its logo and tag (at the right).
-function mainCell(titleCell, mark, area) {
-  const meta = mark || area ? h('span', { class: 'meta' }, mark, area ? h('span', { class: 'tag' }, area) : null) : null;
+// A row's second cell: the title (from the left), then its logo and tag (at the right). A habit's
+// streak and weekly dots (`lead`) sit just left of the logo, so every tag ends on the same line.
+function mainCell(titleCell, mark, area, lead = null) {
+  const meta = lead || mark || area ? h('span', { class: 'meta' }, lead, mark, area ? h('span', { class: 'tag' }, area) : null) : null;
   return h('span', { class: 'main' }, titleCell, meta);
 }
 
@@ -197,7 +198,10 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
   const { store } = ctx;
   const { item } = row;
   const quota = row.kind === 'quota' && !row.blocked ? quotaCells(row, ctx) : null;
-  const prog = progressCell(row, ctx, quota);
+  // Only a weekly target keeps the progress column (its count and bar line up with the others);
+  // a habit's streak and dots go in with its logo and tag.
+  const cell = progressCell(row, ctx, quota);
+  const prog = quota ? cell : null;
   const act = quota?.act ? h('span', { class: 'act' }, quota.act) : null;
   const cls = ['row', row.done && 'done', quota && 'quota', !prog && 'no-prog', !prog && !act && 'bare'].filter(Boolean).join(' ');
   return h('li', { class: cls, 'data-id': item.id },
@@ -218,7 +222,7 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
       row.blocked ? h('span', { class: 'carry', title: row.blocked.join('; ') }, 'Waiting') : null,
       item.details?.deadline ? h('span', { class: 'carry', title: 'Target deadline (does not reschedule automatically)' }, `by ${item.details.deadline}`) : null,
       row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
-    sourceMark(item.source, 'added'), item.area),
+    sourceMark(item.source, 'added'), item.area, quota ? null : cell),
     prog,
     act);
 }

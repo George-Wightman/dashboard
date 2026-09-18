@@ -134,12 +134,12 @@ function renderGoal(goal, ctx) {
     else ui.expandedGoals.add(goal.id);
     ctx.render();
   };
-  const card = h('div', { class: 'goal' },
+  // One line: the title, a slim bar and the %; tap it for the rest.
+  const card = h('div', { class: open ? 'goal line open' : 'goal line' },
     h('div', {
-      class: 'goal-head', role: 'button', tabindex: 0, 'aria-expanded': String(open), onclick: toggle,
+      class: 'goal-head', role: 'button', tabindex: 0, 'aria-expanded': String(open), onclick: toggle, title: goal.title,
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } },
-    }, h('span', {}, goal.title), h('span', { class: 'muted' }, `${progress.pct}%`)),
-    bar(progress.pct, goal.title));
+    }, h('span', { class: 'goal-title' }, goal.title), bar(progress.pct, goal.title), h('span', { class: 'muted pct' }, `${progress.pct}%`)));
   if (open) card.append(renderGoalBody(goal, progress, ctx));
   return card;
 }
@@ -197,7 +197,7 @@ export function renderHistory(ctx) {
           class: ['cell off', c.day === today && 'today', c.day === ui.historyDay && 'selected'].filter(Boolean).join(' '),
           type: 'button', title: label, 'aria-label': label,
           onclick: () => { ui.historyDay = ui.historyDay === c.day ? null : c.day; ctx.render(); },
-        }, 'off');
+        });
       }
       const cls = ['cell', `lvl${level(c.done, c.total)}`, c.day === today && 'today', c.day === ui.historyDay && 'selected']
         .filter(Boolean).join(' ');
@@ -205,9 +205,14 @@ export function renderHistory(ctx) {
       return h('button', {
         class: cls, type: 'button', title: label, 'aria-label': label,
         onclick: () => { ui.historyDay = ui.historyDay === c.day ? null : c.day; ctx.render(); },
-      }, c.total ? `${c.done}/${c.total}` : '');
+      });
     }));
-  const section = h('section', { class: 'panel' }, h('h2', {}, 'Last 3 weeks'), grid);
+  // The squares carry the colour; the counts are on hover, and this week's total is in the heading.
+  const week = cells.slice(-7).filter((c) => !c.future && !c.off);
+  const done = week.reduce((n, c) => n + c.done, 0);
+  const total = week.reduce((n, c) => n + c.total, 0);
+  const section = h('section', { class: 'panel history' },
+    h('h2', {}, 'Last 3 weeks', total ? h('span', { class: 'muted history-week', title: 'Done so far this week' }, `this week ${done}/${total}`) : null), grid);
   if (ui.historyDay) section.append(renderDayDetail(ctx, ui.historyDay));
   const digest = renderDigest(ctx);
   if (digest) section.append(digest);
