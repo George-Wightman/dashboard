@@ -71,7 +71,7 @@ function parts(entries, share, name, config) {
   let extra = Math.max(0, (share?.minutes ?? 0) - out.reduce((n, p) => n + p.minutes, 0));
   while (extra > 0) {
     const minutes = Math.min(extra, config.maxBlockMinutes);
-    out.push({ ids: [], minutes, carried: false, base: (share?.titles?.join(' / ') || name) + ' — optional practice' });
+    out.push({ ids: [], minutes, carried: false, base: (share?.titles?.join(' / ') || name) + ' — unscheduled time' });
     extra -= minutes;
   }
   return out;

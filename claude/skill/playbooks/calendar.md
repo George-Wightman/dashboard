@@ -60,7 +60,7 @@ item's time and won't book a second one. Tell George how to do it rather than do
 ## Shared task events
 
 Concrete tasks now have individually named events and stable task/session identities. Long tasks
-use numbered sessions; spare weekly target time is separate optional practice. The planner imports
+use numbered sessions; spare weekly target time is separate unscheduled time. The planner imports
 George's Calendar edits before exporting: a single-session drag or resize updates the task's day,
 time and length; a rename updates its title. Conflicting concurrent edits wait for a visible choice
 in Upcoming. Moving one numbered session preserves the others without rewriting the whole estimate.

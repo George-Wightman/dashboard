@@ -79,13 +79,13 @@ test("a weekly time target: what's left spread over the week's days, next week a
   const blocks = run(doc, { links });
   assert.deepEqual(blocks.map(brief), [
     ['task|t1|0', 'Write the day out', 60, 't1'],
-    ['2026-09-16|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
+    ['2026-09-16|assessment centre|0', 'Assessment centre prep — unscheduled time', 60, ''],
     ['task|t2|0', 'Map competencies', 30, 't2'],
-    ['2026-09-17|assessment centre|0', 'Assessment centre prep — optional practice', 30, ''],
-    ['2026-09-18|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
-    ['2026-09-19|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
-    ['2026-09-20|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
-    ['2026-09-21|assessment centre|0', 'Assessment centre prep — optional practice', 45, ''],
+    ['2026-09-17|assessment centre|0', 'Assessment centre prep — unscheduled time', 30, ''],
+    ['2026-09-18|assessment centre|0', 'Assessment centre prep — unscheduled time', 60, ''],
+    ['2026-09-19|assessment centre|0', 'Assessment centre prep — unscheduled time', 60, ''],
+    ['2026-09-20|assessment centre|0', 'Assessment centre prep — unscheduled time', 60, ''],
+    ['2026-09-21|assessment centre|0', 'Assessment centre prep — unscheduled time', 45, ''],
   ]);
   const logged = fixture({ items: Object.values(doc.items), logs: [amount('a1', 'q1', '2026-09-14', 240)] });
   assert.equal(run(logged, { links }).find((b) => b.day === '2026-09-16').minutes, 15, '60 left over 6 days');
