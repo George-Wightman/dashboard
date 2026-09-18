@@ -5,7 +5,7 @@
 
 export const P = {
   mine: 'dash', key: 'dashKey', items: 'dashItems', title: 'dashTitle', at: 'dashAt',
-  state: 'dashState', pin: 'dashPin', habit: 'dashHabit',
+  state: 'dashState', pin: 'dashPin', habit: 'dashHabit', input: 'dashInput', summary: 'dashSummary', parts: 'dashParts',
 };
 
 const when = (v) => (v ? new Date(v) : null);

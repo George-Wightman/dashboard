@@ -12,9 +12,10 @@ import { addDays, weekStart } from '../dates.js';
 import { canUndo } from '../changes.js';
 import {
   talkId, talkOf, entryOf, entryId, talksOn, heard, openerDue, unfinished, nextOwnSlot, slotName, talkSystem, talkContents,
-  plainEntry, OPENERS, PLAIN_OPENERS, WRAP_UP, MESSAGE_MAX, ENTRY_MAX,
+  plainEntry, waitingOpener, conversationContents, OPENERS, PLAIN_OPENERS, WRAP_UP, MESSAGE_MAX, ENTRY_MAX,
 } from '../talk.js';
-import { coachTools } from '../coach-tools.js';
+import { prepareCoachTurn, describeEdits, netEdits } from '../coach-session.js';
+import { dayClosed } from '../plan-state.js';
 import { keptFocus, restoreFocus } from './side.js';
 
 const link = (text, onclick) => h('button', { class: 'link', type: 'button', onclick }, text);
@@ -66,7 +67,7 @@ export function talkNow(ctx) {
   const doc = ctx.store.doc();
   const today = ctx.store.today();
   const talks = talksOn(doc, today);
-  if (talks.some((t) => !t.done && t.messages?.length && !heard(t))) return 'waiting';
+  if (waitingOpener(doc, today, nowOf(ctx), hours(ctx))) return 'waiting';
   if (talks.some((t) => !t.done && heard(t))) return 'talking';
   return openerDue(doc, { today, now: nowOf(ctx), ...hours(ctx) }) ? 'due' : 'quiet';
 }
@@ -154,32 +155,60 @@ function keep(store, day, slot, at, result, did, handoffs, entry) {
 // when Gemini gave nothing back (what it did before failing is still kept).
 async function turn(ctx, day, slot, extra = [], { only = null, toolConfig = null, steps } = {}) {
   const { store } = ctx;
-  const did = [];
   const handoffs = [];
   let entry = null;
-  const tools = coachTools({ store, onHandoff: (t) => handoffs.push(t), onFinish: (e) => { entry = e; } });
-  let result;
-  try {
-    result = await ctx.coach.talk({
-      system: talkSystem(store.doc(), day, nowOf(ctx)),
-      contents: talkContents(talkOf(store.doc(), day, slot), extra),
-      tools: only ? tools.declarations.filter((d) => only.includes(d.name)) : tools.declarations,
-      toolConfig,
-      ...(steps != null ? { steps } : {}),
-      run: (name, args) => {
-        const res = tools.run(name, args);
-        if (res.ok && res.did && !QUIET_TOOLS.has(name)) did.push({ text: res.did, change: res.change ?? null });
-        return res;
-      },
-    });
-  } catch (e) {
-    await ctx.whenIdle();
-    if (did.length || handoffs.length || entry) keep(store, day, slot, nowOf(ctx).toISOString(), null, did, handoffs, entry);
-    throw e;
-  }
+  const message = talkOf(store.doc(), day, slot)?.messages.filter((m) => m.who === 'george').at(-1)?.text ?? '';
+  const session = prepareCoachTurn(store, () => nowOf(ctx), { message, only,
+    onHandoff: (t) => handoffs.push(t), onFinish: (e) => { entry = e; } });
+  const result = await ctx.coach.talk({
+    system: talkSystem(store.doc(), day, nowOf(ctx)),
+    contents: only ? talkContents(talkOf(store.doc(), day, slot), extra, store.doc()) : conversationContents(store.doc(), day, extra),
+    tools: only ? session.declarations.filter((d) => only.includes(d.name)) : session.declarations,
+    toolConfig, ...(steps != null ? { steps } : {}), run: session.run,
+  });
+  const prepared = session.finish();
+  if (prepared.mutated && store.today() !== day) throw new Error('The day changed while the Coach was thinking. Please send the request again.');
   await ctx.whenIdle();
+  const did = [];
+  if (prepared.proposal) {
+    entry = null;
+    result.text = 'Here is the proposed change. Review the dates below, then Apply when it fits.';
+  } else if (prepared.mutated) {
+    validatePrepared(store, prepared);
+    const change = store.commitDraft(prepared.before, prepared.after, prepared.summary);
+    did.push({ text: prepared.summary, change: change?.id ?? null });
+    if (!prepared.edits.length) result.text = prepared.summary;
+  }
   keep(store, day, slot, nowOf(ctx).toISOString(), result, did, handoffs, entry);
+  if (prepared.proposal) store.updateJournal(talkId(day, slot), { proposal: { before: prepared.before, after: prepared.after, summary: prepared.summary, id: prepared.id } });
   return entry;
+}
+
+function validatePrepared(store, prepared) {
+  if (prepared.undo) return;
+  for (const e of prepared.edits ?? []) if (e.map === 'items' && e.after?.type === 'task'
+    && (!e.before || e.before.date !== e.after.date || e.before.time !== e.after.time)) {
+    if (e.after.date < store.today()) throw new Error('The proposed day has passed. Ask the Coach to update the plan.');
+    const closed = dayClosed(store.doc(), e.after.date);
+    const reopened = prepared.after.calendar?.['closed:' + e.after.date]?.closed === false;
+    if (closed && !reopened) throw new Error('That day is closed. Choose another day or explicitly reopen it.');
+  }
+}
+
+export function applyProposal(ctx, talk) {
+  const p = ctx.store.doc().journal[talk.id]?.proposal;
+  if (!p) return;
+  try {
+    const edits = netEdits(p.before, p.after);
+    validatePrepared(ctx.store, { ...p, edits });
+    const change = ctx.store.commitDraft(p.before, p.after, describeEdits(edits).join(' · '));
+    const latest = ctx.store.doc().journal[talk.id];
+    ctx.store.updateJournal(talk.id, { proposal: null, messages: [...latest.messages,
+      { who: 'coach', text: 'Applied the proposed changes.', at: nowOf(ctx).toISOString(),
+        did: [{ text: change?.summary ?? 'No net changes', change: change?.id ?? null }] }] });
+    ctx.ui.coach.talkError = '';
+  } catch (e) { ctx.ui.coach.talkError = e.message; }
+  ctx.render();
 }
 
 // George's message, and the Coach's answer. Nothing back from Gemini: his message comes off the
@@ -191,11 +220,15 @@ export async function sendMessage(ctx) {
   if (!text || c.talkBusy) return;
   const why = blocker(ctx);
   if (why) { c.talkError = why; ctx.render(); return; }
+  c.talkBusy = 'thinking';
+  c.draft = '';
+  ctx.render();
+  await syncFirst(ctx);
   const day = store.today();
   const current = shownSlot(ctx);
   const slot = current && !talkOf(store.doc(), day, current)?.done ? current : nextOwnSlot(store.doc(), day);
   const before = talkOf(store.doc(), day, slot)?.messages ?? [];
-  Object.assign(c, { talk: slot, draft: '', talkError: '', talkBusy: 'thinking' });
+  Object.assign(c, { talk: slot, talkError: '', talkBusy: 'thinking' });
   store.saveJournal({ kind: 'talk', day, slot, messages: [...before, { who: 'george', text, at: nowOf(ctx).toISOString() }] }, 'gemini');
   try {
     await turn(ctx, day, slot);
@@ -207,7 +240,7 @@ export async function sendMessage(ctx) {
       if (!msgs.length) store.updateJournal(talkId(day, slot), { status: 'archived' });
       if (!c.draft) c.draft = text;
     }
-    c.talkError = e instanceof GeminiError ? e.message : MESSAGES.failed;
+    c.talkError = e.message || MESSAGES.failed;
   } finally {
     c.talkBusy = '';
     ctx.render();
@@ -264,7 +297,8 @@ export async function openMoment(ctx, slot) {
   try {
     await syncFirst(ctx);
     if (openerDue(store.doc(), { today: day, now: nowOf(ctx), ...hours(ctx) }) !== slot) return;
-    for (const t of unfinished(store.doc())) await wrapUp(ctx, t);
+    // Keep conversations continuous. Only unanswered invitations expire; a new
+    // time of day must not end a conversation George participated in.
     for (const t of talksOn(store.doc(), day)) if (!t.done && !heard(t)) store.updateJournal(t.id, { done: true });
     let text = PLAIN_OPENERS[slot];
     let model = '';
@@ -285,7 +319,9 @@ export async function openMoment(ctx, slot) {
 
 // Talk: a new conversation of George's own, shown and ready to type in.
 export function startTalk(ctx) {
-  Object.assign(ctx.ui.coach, { talk: nextOwnSlot(ctx.store.doc(), ctx.store.today()), talkError: '', editing: null });
+  const active = talksOn(ctx.store.doc(), ctx.store.today()).filter((t) => !t.done && heard(t)).at(-1);
+  for (const t of talksOn(ctx.store.doc(), ctx.store.today())) if (!t.done && !heard(t)) ctx.store.updateJournal(t.id, { done: true });
+  Object.assign(ctx.ui.coach, { talk: active?.slot ?? nextOwnSlot(ctx.store.doc(), ctx.store.today()), talkError: '', editing: null });
   ctx.render();
   queueMicrotask(() => document.querySelector('[data-focus^="coach-talk"]')?.focus());
 }
@@ -346,7 +382,7 @@ function renderBox(ctx, where, talk) {
   const c = ctx.ui.coach;
   const send = () => sendMessage(ctx);
   const box = field('textarea', {
-    rows: 2, placeholder: 'Talk to the Coach…', 'aria-label': 'Message to the Coach', 'data-focus': `coach-talk-${where}`,
+    rows: 2, placeholder: 'Add a task, plan a goal, or talk about your day…', 'aria-label': 'Message to the Coach', 'data-focus': `coach-talk-${where}`,
   }, c.draft, (v) => { c.draft = v; });
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
@@ -383,6 +419,16 @@ function messageList(ctx, talk, where) {
   return list;
 }
 
+const streams = new Map();
+function conversationStream(ctx, segments, where) {
+  const state = streams.get(where) ?? { top: 0, pinned: true };
+  streams.set(where, state);
+  const stream = h('div', { class: 'conversation-stream', 'aria-label': 'Conversation history' }, segments);
+  stream.addEventListener('scroll', () => { state.top = stream.scrollTop; state.pinned = stream.scrollHeight - stream.clientHeight - stream.scrollTop < 24; });
+  queueMicrotask(() => { stream.scrollTop = state.pinned ? stream.scrollHeight : state.top; });
+  return stream;
+}
+
 // The conversation, as the panel and the phone sheet both show it.
 export function renderTalk(ctx, where = 'panel') {
   const c = ctx.ui.coach;
@@ -395,20 +441,34 @@ export function renderTalk(ctx, where = 'panel') {
   const slots = [...talksOn(doc, today).map((t) => t.slot), ...(slot && !talk ? [slot] : [])];
   const pick = (s) => { Object.assign(c, { talk: s, editing: null }); ctx.render(); };
   return h('div', { class: 'talk-area' },
-    slots.length > 1
-      ? h('div', { class: 'talk-tabs' }, slots.map((s) => h('button', {
-        class: s === slot ? 'chip on' : 'chip', type: 'button', 'aria-pressed': String(s === slot), onclick: () => pick(s),
-      }, slotName(s))))
-      : null,
     !talk?.messages?.length && !c.talkBusy
-      ? h('p', { class: 'muted' }, 'Say how the day is going, give it a pointer, or ask it to move something.')
+      ? h('p', { class: 'muted' }, 'Tell me what is on your mind, add a task for any day, or describe a goal.')
       : null,
-    talk?.messages?.length ? messageList(ctx, talk, where) : null,
+    conversationStream(ctx, Object.values(doc.journal).filter((t) => t.kind === 'talk' && t.status === 'active' && t.day >= addDays(today, -2)
+      && t.day <= today && (heard(t) || (t.id === talk?.id && waitingOpener(doc, today, nowOf(ctx), hours(ctx))?.slot === t.slot)))
+      .sort((a, b) => (a.messages[0]?.at ?? a.updated).localeCompare(b.messages[0]?.at ?? b.updated))
+      .map((t) => h('div', { class: 'conversation-segment' }, t.day !== today ? h('p', { class: 'muted' }, t.day) : null,
+        messageList(ctx, t, 'stream'), t.proposal ? renderProposal(ctx, t) : null)), where),
     talk && !entry ? (talk.handoffs ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)) : null,
     entry ? renderEntry(ctx, entry) : null,
     BUSY[c.talkBusy] ? h('p', { class: 'muted', role: 'status' }, BUSY[c.talkBusy]) : null,
     c.talkError ? h('p', { class: 'error', role: 'status' }, c.talkError) : null,
-    talk?.done ? null : renderBox(ctx, where, talk));
+    dayClosed(doc, today) ? h('p', { class: 'muted' }, 'Today is closed for planning. You can still add future tasks. ', link('Reopen today', () => { ctx.store.putCalendar('closed:' + today, { day: today, closed: false }, 'me'); ctx.render(); })) : null,
+    renderBox(ctx, where, talk?.done ? null : talk));
+}
+
+function renderProposal(ctx, talk) {
+  const p = talk.proposal;
+  const edits = netEdits(p.before, p.after);
+  return h('div', { class: 'coach-proposal' }, h('strong', {}, 'Proposed changes'),
+    ...edits.map((e) => h('div', {}, h('p', {}, describeEdits([e])[0]),
+      e.map === 'items' && e.after?.type === 'task' ? h('input', { type: 'date', value: e.after.date,
+        'aria-label': 'Proposed date for ' + e.after.title, onchange: (ev) => {
+          const next = structuredClone(p); next.after.items[e.id].date = ev.target.value;
+          ctx.store.updateJournal(talk.id, { proposal: next });
+        } }) : null)),
+    h('div', { class: 'buttons' }, h('button', { class: 'btn primary', type: 'button', onclick: () => applyProposal(ctx, talk) }, 'Apply'),
+      link('Dismiss', () => { ctx.store.updateJournal(talk.id, { proposal: null }); ctx.render(); })));
 }
 
 // On a phone: the conversation as a sheet over the page, redrawn with the page (js/app.js's render).

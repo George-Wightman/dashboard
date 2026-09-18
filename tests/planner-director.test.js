@@ -29,7 +29,7 @@ test('a day off for everything: nothing booked on it, and its tasks move to the 
     task('natcen', 'Read the NatCen pack', 'Job search', THU)], { offs: [{ id: 'off:2026-09-16', start: WED, end: WED }] });
   const cal = new FakeCalendar();
   step(cal, doc, at(TUE, '08:00'));
-  assert.deepEqual(summaries(cal), ['2026-09-17 09:00–10:30 ~ Job search ×3']);
+  assert.deepEqual(summaries(cal), ['2026-09-17 09:00–09:30 ~ Trace the pharma figure', '2026-09-17 09:45–10:15 ~ Trace the WHO figure', '2026-09-17 10:30–11:00 ~ Read the NatCen pack']);
 });
 
 test('time off for some areas: the others are still booked that day', () => {
@@ -95,9 +95,9 @@ test("notes lead a block's description; the title stays the title", () => {
   ]);
   const cal = new FakeCalendar();
   step(cal, doc, at(TUE, '08:00'));
-  assert.equal(cal.byTitle('Write the day out').description, 'Bring the pack\ndashboard:dayout\nPlanned from your dashboard. Move it and it stays where you put it.');
-  assert.equal(cal.byTitle('Job search ×2').description,
-    'Trace the WHO figure — Use the 2023 report\ndashboard:pharma\ndashboard:who\nPlanned from your dashboard. Move it and it stays where you put it.');
+  assert.equal(cal.byTitle('Write the day out').description, 'Bring the pack\nOpen task / mark complete: https://george-wightman.github.io/dashboard/?task=dayout\ndashboard:dayout\nPlanned from your dashboard. Move it and it stays where you put it.');
+  assert.match(cal.byTitle('Trace the WHO figure').description, /^Use the 2023 report\nOpen task \/ mark complete:/);
+  assert.match(cal.byTitle('Trace the pharma figure').description, /dashboard:pharma/);
 });
 
 test("the planner's status tells the dashboard which colours are taken", async () => {

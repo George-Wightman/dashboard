@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blockTitle } from '../planner/plan.js';
+import { blockTitle, blockBody } from '../planner/plan.js';
 import { at } from '../planner/time.js';
 import { clockLabel } from '../js/calendar.js';
 import { fixture, done } from './helpers.js';
@@ -49,23 +49,26 @@ test('blockTitle', () => {
   assert.equal(blockTitle('Job search ×2', 'partial', 1, 2), 'Job search ×2 · 1 of 2 done');
 });
 
-test('first run: blocks by area around fixed events, exact today and tomorrow, rough after', () => {
+test('first run: individually named tasks around fixed events, exact today and tomorrow, rough after', () => {
   const { doc, cal } = tuesday();
   const r = step(cal, doc, now(TUE, '08:00'));
-  assert.equal(inserts(r).length, 4);
+  assert.equal(inserts(r).length, 5);
   assert.ok(inserts(r).every((a) => a.calendarId === APP));
   assert.deepEqual(summaries(cal), [
     '2026-09-15 13:15–13:45 Chase the GSS outcome',
     '2026-09-15 16:15–17:15 Write the day out',
-    '2026-09-16 13:15–14:15 Job search ×2',
+    '2026-09-16 13:15–13:45 Trace the pharma figure',
+    '2026-09-16 14:00–14:30 Trace the WHO figure',
     '2026-09-17 09:00–09:30 ~ Read the NatCen pack',
   ]);
   const rough = cal.byTitle('~ Read the NatCen pack');
   assert.equal(rough.colorId, '4');
   assert.deepEqual(rough.reminders, { useDefault: false, overrides: [] });
-  const exact = cal.byTitle('Job search ×2');
+  const exact = cal.byTitle('Trace the pharma figure');
   assert.equal(exact.colorId, undefined);
-  assert.equal(exact.description, 'dashboard:pharma\ndashboard:who\nPlanned from your dashboard. Move it and it stays where you put it.', 'same order, so by id');
+  assert.match(exact.description, /dashboard:pharma/);
+  assert.doesNotMatch(exact.description, /dashboard:who/);
+  assert.match(exact.description, /Open task \/ mark complete:/);
   assert.equal(exact.extendedProperties.private.dashState, 'exact');
   assert.equal(r.days[TUE].blocks.length, 2);
   assert.ok(r.days[TUE].blocks.every((b) => b.eventId));
@@ -83,9 +86,10 @@ test('a shift on top of a block moves it, and only it, with a note', () => {
   const first = step(cal, doc, now(TUE, '08:00'));
   cal.add(ev(WORK, 'Signify', WED, '13:00', '15:00'));
   const r = step(cal, doc, now(TUE, '08:30'), first.days);
-  assert.deepEqual(r.actions.map((a) => a.op), ['patch']);
-  assert.equal(span(cal.byTitle('Job search ×2')), '15:15–16:15');
-  assert.ok(r.days[TUE].notes.includes('Moved Job search ×2 on Wed to 15:15 (Signify)'));
+  assert.deepEqual(r.actions.map((a) => a.op), ['patch', 'patch']);
+  assert.equal(span(cal.byTitle('Trace the pharma figure')), '15:15–15:45');
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '16:00–16:30');
+  assert.ok(r.days[TUE].notes.includes('Moved Trace the pharma figure on Wed to 15:15 (Signify)'));
 });
 
 test('a block George moves stays where he put it', () => {
@@ -137,25 +141,26 @@ test('missed: the block goes and the task gets a new slot; ticked later, a recor
 
 test('part done when the block ends: the title says so and the rest gets a new slot', () => {
   const doc = fixture({ items: [task('pa', 'Email Sarah', 'Job search', TUE), task('pb', 'Update CV', 'Job search', TUE, { order: 2 })] });
-  const cal = new FakeCalendar();
-  const first = step(cal, doc, now(TUE, '08:00'));
+  const cal = new FakeCalendar([{ calendarId: APP, ...blockBody({ key: `${TUE}|job search|0`, base: 'Job search ×2', title: 'Job search ×2', start: at(TUE, '09:00'), end: at(TUE, '10:00'), items: ['pa', 'pb'], state: 'exact' }) }]);
+  const first = step(cal, doc, now(TUE, '09:01'));
   assert.equal(span(cal.byTitle('Job search ×2')), '09:00–10:00');
   const ticked = fixture({ items: Object.values(doc.items), logs: [done('pa', TUE, { at: at(TUE, '09:20').toISOString() })] });
   const r = step(cal, ticked, now(TUE, '10:05'), first.days);
   assert.equal(cal.byTitle('Job search ×2 · 1 of 2 done').extendedProperties.private.dashState, 'partial');
   const rest = cal.byTitle('Update CV');
   assert.equal(span(rest), '10:15–10:45');
-  assert.equal(rest.extendedProperties.private.dashKey, `${TUE}|job search|1`);
+  assert.equal(rest.extendedProperties.private.dashKey, 'task|pb|0');
   assert.equal(inserts(r).length, 1);
 });
 
 test('a block George deletes is not booked again that day', () => {
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
-  cal.remove(cal.byTitle('Job search ×2').id);
+  cal.remove(cal.byTitle('Trace the pharma figure').id);
   const r = step(cal, doc, now(TUE, '08:30'), first.days);
   assert.deepEqual(r.actions, []);
-  assert.deepEqual(r.days[WED].skipped, ['pharma', 'who']);
+  assert.deepEqual(r.days[WED].skipped, ['pharma']);
+  assert.ok(cal.byTitle('Trace the WHO figure'));
 });
 
 test('Hebrew and Gym: a session George placed stays; the other one moves off it', () => {
@@ -194,7 +199,8 @@ test('a task with a time is a fixed event: blocks go round it, and it gets a tic
   assert.equal(span(fixed), '10:30–17:00');
   assert.equal(fixed.calendarId, APP);
   assert.equal(fixed.extendedProperties.private.dashState, 'fixed');
-  assert.equal(span(cal.byTitle('Job search ×2')), '09:00–10:00');
+  assert.equal(span(cal.byTitle('Trace the pharma figure')), '09:00–09:30');
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '09:45–10:15');
   const ticked = fixture({ items: Object.values(doc.items), logs: [done('acday', WED, { at: at(WED, '17:05').toISOString() })] });
   step(cal, ticked, now(WED, '18:00'), first.days);
   assert.equal(span(cal.byTitle('✓ ASSESSMENT CENTRE')), '10:30–17:00');
@@ -218,8 +224,8 @@ test("what doesn't fit moves to the next day, with a note", () => {
   const doc = fixture({ items: [task('who', 'Trace the WHO figure', 'Job search', WED), task('pharma', 'Trace the pharma figure', 'Job search', WED)] });
   const cal = new FakeCalendar([ev(WORK, 'Signify', WED, '09:00', '19:00')]);
   const r = step(cal, doc, now(TUE, '08:00'));
-  assert.deepEqual(summaries(cal), ['2026-09-17 09:00–10:00 ~ Job search ×2']);
-  assert.ok(r.days[TUE].notes.includes("Couldn't fit Job search ×2 on Wed — moved to Thu"));
+  assert.deepEqual(summaries(cal), ['2026-09-17 09:00–09:30 ~ Trace the pharma figure', '2026-09-17 09:45–10:15 ~ Trace the WHO figure']);
+  assert.ok(r.days[TUE].notes.includes("Couldn't fit Trace the pharma figure on Wed — moved to Thu"));
 });
 
 test('the clocks going back: nine o\'clock is nine o\'clock on both sides', () => {

@@ -38,24 +38,24 @@ try {
   await page.reload();
   await page.locator('#add-title').fill('Browser regression task');
   await page.locator('#add-title').press('Enter');
-  await page.getByText('Browser regression task', { exact: true }).waitFor();
-  await page.getByText('Browser regression task', { exact: true }).click();
+  await page.locator('#list').getByText('Browser regression task', { exact: true }).waitFor();
+  await page.locator('#list').getByText('Browser regression task', { exact: true }).click();
   await page.locator('#editor').getByLabel('Title', { exact: true }).fill('Edited without losing my draft');
   const other = await context.newPage();
   other.on('pageerror', (e) => errors.push(e.message));
   await other.goto(origin + '/?fakegemini=nokey');
-  await other.getByText('Browser regression task', { exact: true }).click();
+  await other.locator('#list').getByText('Browser regression task', { exact: true }).click();
   await other.locator('#editor').getByLabel('Date', { exact: true }).fill('2026-09-01');
   await other.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();
   for (const title of ['From another tab A', 'From another tab B']) {
     await other.locator('#add-title').fill(title);
     await other.locator('#add-title').press('Enter');
-    await other.getByText(title, { exact: true }).waitFor();
+    await other.locator('#list').getByText(title, { exact: true }).waitFor();
   }
   assert.equal(await page.locator('#editor').getByLabel('Title', { exact: true }).inputValue(), 'Edited without losing my draft');
   await page.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();
   for (const title of ['Edited without losing my draft', 'From another tab A', 'From another tab B']) {
-    await page.getByText(title, { exact: true }).waitFor();
+    await page.locator('#list').getByText(title, { exact: true }).waitFor();
   }
   assert.equal(await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('dash_data')).items)
     .find((item) => item.title === 'Edited without losing my draft').date), '2026-09-01');
@@ -70,25 +70,25 @@ try {
   assert.deepEqual(retained, { refreshed: true, neighbours: true });
   await context.setOffline(true);
   await page.reload();
-  await page.getByText('Edited without losing my draft', { exact: true }).waitFor();
+  await page.locator('#list').getByText('Edited without losing my draft', { exact: true }).waitFor();
   await page.locator('#add-title').fill('Saved while offline');
   await page.locator('#add-title').press('Enter');
   await page.reload();
-  await page.getByText('Saved while offline', { exact: true }).waitFor();
+  await page.locator('#list').getByText('Saved while offline', { exact: true }).waitFor();
   await page.evaluate(() => {
     const doc = JSON.parse(localStorage.getItem('dash_data'));
     doc.items.broken = null;
     localStorage.setItem('dash_data', JSON.stringify(doc));
   });
   await page.reload();
-  await page.getByText('Saved while offline', { exact: true }).waitFor();
+  await page.locator('#list').getByText('Saved while offline', { exact: true }).waitFor();
   assert.match(await page.locator('#save-warning').textContent(), /recovered/);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'mobile layout fits the viewport');
-  await page.getByText('Saved while offline', { exact: true }).click();
+  await page.locator('#list').getByText('Saved while offline', { exact: true }).click();
   await page.locator('#editor').getByLabel('Title', { exact: true }).fill('Edited on mobile');
   await page.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();
-  await page.getByText('Edited on mobile', { exact: true }).waitFor();
+  await page.locator('#list').getByText('Edited on mobile', { exact: true }).waitFor();
   // Configure advanced controls through the same store used by Claude; then
   // exercise George's actual completion and goal-review UI without any API calls.
   await page.evaluate(async () => {
@@ -105,7 +105,7 @@ try {
   });
   await page.reload();
   assert.equal(await page.getByRole('checkbox', { name: 'Done: Next stage waits', exact: true }).isDisabled(), true);
-  await page.getByText('Report practice result', { exact: true }).click();
+  await page.locator('#list').getByText('Report practice result', { exact: true }).click();
   await page.locator('#editor').getByText('More options', { exact: true }).click();
   await page.locator('#editor').getByLabel('Context', { exact: true }).fill('Quiet desk');
   await page.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();

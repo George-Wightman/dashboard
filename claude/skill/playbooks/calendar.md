@@ -26,8 +26,8 @@ broken. It was working perfectly; the blocks were on Application.
 That lists the next seven days as the planner recorded them, `~` marking a rough time. This is the
 dashboard's own account and it needs no connector at all. Use it first.
 
-Beyond seven days the planner still books, roughly, but keeps no record — so an empty `week` past
-that means "no record", not "nothing booked".
+The CLI week view remains seven days. The app's Upcoming view uses the full confirmed booking
+horizon and also lists future tasks that have no slot yet.
 
 ## Never edit his calendar yourself
 
@@ -56,3 +56,18 @@ try to put it back, and don't read a moved block as a mistake.
 An event he created himself can be linked to a dashboard item by putting `dashboard:<id>` on its own
 line in the description — the id as this tool shows it. The planner then treats that event as the
 item's time and won't book a second one. Tell George how to do it rather than doing it for him.
+
+## Shared task events
+
+Concrete tasks now have individually named events and stable task/session identities. Long tasks
+use numbered sessions; spare weekly target time is separate optional practice. The planner imports
+George's Calendar edits before exporting: a single-session drag or resize updates the task's day,
+time and length; a rename updates its title. Conflicting concurrent edits wait for a visible choice
+in Upcoming. Moving one numbered session preserves the others without rewriting the whole estimate.
+Deleting a task event leaves the task unscheduled (including its remaining sessions), never completed
+or destroyed. Editing its date/time schedules it again. A task link in the event opens a completion
+view; opening the link itself does not complete anything.
+
+The planner verifies missing known events by their IDs, including events moved outside its window.
+A failed lookup is an error, never evidence of deletion. Future unpinned legacy area blocks migrate
+only after confirmed deletion; manually moved legacy groups and past history are preserved.

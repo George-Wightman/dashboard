@@ -16,7 +16,7 @@ export const LAYOUT_KEY = 'dash_layout';
 // widget.
 export const DEFAULT_LAYOUT = Object.freeze({
   v: 2,
-  columns: Object.freeze([Object.freeze(['coach', 'goals', 'muscles', 'cardio']), Object.freeze(['history', 'gym'])]),
+  columns: Object.freeze([Object.freeze(['coach', 'agenda', 'goals', 'muscles', 'cardio']), Object.freeze(['history', 'gym'])]),
   hidden: Object.freeze(['week']),
 });
 

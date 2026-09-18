@@ -481,3 +481,14 @@ button.link.update-ready { color: var(--accent); }
 .checklist-step input { width: auto; flex: 0 0 auto; }
 .goal-review { margin-top: .75rem; font-size: .85rem; overflow-wrap: anywhere; }
 .goal-review p { margin: .3rem 0; }
+/* One conversation and the same confirmed agenda as Calendar. */
+.agenda-entry { padding: .65rem 0; border-bottom: 1px solid var(--border); }
+.agenda-entry h3 { margin: .6rem 0; font-size: .9rem; }
+.agenda-entry p { margin: .25rem 0; font-size: .85rem; }
+.agenda-title { text-align: left; font-size: .95rem; }
+.coach-proposal { margin: .8rem 0; padding: .8rem; border: 1px solid var(--border); border-radius: .5rem; }
+.coach-proposal input[type=date] { max-width: 100%; }
+.conversation-segment .talk { max-height: none; }
+.conversation-stream { max-height: 48vh; overflow-y: auto; overflow-wrap: anywhere; }
+.talk-box { background: var(--panel); padding-top: .5rem; }
+#task-card { max-width: min(34rem, 92vw); border-radius: .7rem; }

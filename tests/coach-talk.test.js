@@ -94,7 +94,7 @@ test('talkGemini: no key, a refused key, and a busy Lite that hands over to Flas
 
 // ---- The Coach's tools ---------------------------------------------------------------------------
 
-test("the gate: today and tomorrow only, and every change is the Coach's, with Undo", () => {
+test("the gate: future dates supported, past dates refused, and every change is the Coach's, with Undo", () => {
   const { store, cv, later } = coachStore();
   const t = coachTools({ store });
   const add = t.run('add_task', { title: 'Call NatCen', day: 'tomorrow', minutes: '30m', time: '10:00' });
@@ -102,10 +102,10 @@ test("the gate: today and tomorrow only, and every change is the Coach's, with U
   const added = Object.values(store.doc().items).find((i) => i.title === 'Call NatCen');
   assert.deepEqual([added.date, added.minutes, added.time, added.source], [FRI, 30, '10:00', 'gemini']);
   assert.deepEqual([store.doc().changes[add.change].source, store.doc().changes[add.change].summary], ['coach', 'Added "Call NatCen" for tomorrow']);
-  assert.deepEqual(t.run('add_task', { title: 'Next week', day: '2026-09-21' }),
-    { ok: false, error: 'The Coach can only change today and tomorrow — hand anything else to Claude with hand_to_claude' });
+  assert.equal(t.run('add_task', { title: 'Next week', day: '2026-09-21' }).ok, true);
+  assert.equal(t.run('add_task', { title: 'Past', day: '2026-09-16' }).ok, false);
   assert.match(t.run('add_task', { title: 'x', day: 'today', minutes: '20h' }).error, /A length is from 5 minutes to 12 hours/);
-  assert.match(t.run('move_task', { id: later.id, day: 'today' }).error, /"Later thing" isn't on today's or tomorrow's list/);
+  assert.equal(t.run('move_task', { id: later.id, day: 'today', expectedDay: '2026-09-24' }).ok, true);
   const move = t.run('move_task', { id: cv.id, day: 'tomorrow' });
   assert.equal(move.did, 'Moved "Update CV" to tomorrow');
   assert.equal(store.doc().items[cv.id].date, FRI);
@@ -143,8 +143,8 @@ test('looking things up, handing to Claude, and finishing', () => {
   const handed = [];
   const finished = [];
   const t = coachTools({ store, onHandoff: (x) => handed.push(x), onFinish: (e) => finished.push(e) });
-  assert.match(t.run('get_day', { day: 'today' }).text, /\[ \] item-1 task "Update CV" · Job search/);
-  assert.match(t.run('get_day', { day: '2026-10-30' }).error, /30 days back to 7 days ahead/);
+  assert.match(t.run('get_day', { day: 'today' }).text, /\[ \] item-1 task "Update CV" · requested 2026-09-17/);
+  assert.equal(t.run('get_day', { day: '2026-10-30' }).ok, true);
   assert.match(t.run('find', { words: 'cv' }).text, /item-1 task "Update CV" for 2026-09-17 · Job search/);
   assert.equal(t.run('get_journal', {}).text, 'No journal entries in that time.');
   assert.equal(t.run('hand_to_claude', { text: ' Drop the  Friday target ' }).did, 'For Claude: Drop the Friday target');
@@ -179,7 +179,7 @@ test("openerDue: one a moment, none once he's talked in it, the afternoon only a
   assert.deepEqual(waitingOpener(store.doc(), THU), { slot: 'afternoon', text: 'Move the CV?' });
   assert.equal(openerDue(store.doc(), { ...s, now: at(THU, '19:00') }), 'evening');
   assert.match(talkContext(store.doc(), THU, pm.now), /Slipped earlier today: "Update CV"/);
-  assert.match(talkContext(store.doc(), THU, pm.now), /^Now: Thursday 17 September, 15:00\nToday's list \(2026-09-17\):\n  \[ \] item-1 task "Update CV" · Job search · at 10:00/);
+  assert.match(talkContext(store.doc(), THU, pm.now), /Now: Thursday 17 September, 15:00[\s\S]*Today's list \(2026-09-17\):\n  \[ \] item-1 task "Update CV" · requested 2026-09-17/);
   assert.match(talkContext(store.doc(), THU, pm.now), /\nTomorrow's list \(2026-09-18\):\n/);
 });
 
@@ -237,7 +237,7 @@ test("a message: his words, the Coach's change and its reply are kept with the c
   const t = talkOf(store.doc(), THU, 'own-1');
   assert.deepEqual(t.messages.map((m) => [m.who, m.text]), [['george', 'push the CV to tomorrow'], ['coach', 'Moved it to tomorrow.']]);
   const [d] = t.messages[1].did;
-  assert.equal(d.text, 'Moved "Update CV" to tomorrow');
+  assert.equal(d.text, '"Update CV": date: 2026-09-17 → 2026-09-18');
   assert.equal(store.doc().changes[d.change].source, 'coach');
   assert.deepEqual([ctx.ui.coach.draft, ctx.ui.coach.talk, ctx.ui.coach.talkBusy], ['', 'own-1', '']);
   assert.match(seen.system, /^You are George's coach/);
@@ -309,7 +309,7 @@ test("Finish: Gemini is asked for the entry with only finish to call; if it can'
   assert.deepEqual(entryOf(other.store.doc(), THU, 'own-1').text, 'Gym was good');
 });
 
-test("a moment's opener: earlier conversations wrapped up first; the plain line when Gemini can't be reached; never twice", async () => {
+test("a moment's opener: earlier conversations stay open; the plain line when Gemini can't be reached; never twice", async () => {
   const { store, now } = coachStore('19:00');
   store.saveJournal({ kind: 'talk', day: THU, slot: 'own-1', messages: [{ who: 'george', text: 'Busy morning', at: at(THU, '10:00').toISOString() }] });
   const asked = [];
@@ -319,9 +319,9 @@ test("a moment's opener: earlier conversations wrapped up first; the plain line 
   });
   assert.equal(talkNow(ctx), 'talking');
   await openMoment(ctx, 'evening');
-  assert.deepEqual(asked, [['finish'], []]);
-  assert.equal(talkOf(store.doc(), THU, 'own-1').done, true);
-  assert.equal(entryOf(store.doc(), THU, 'own-1').text, 'Busy morning');
+  assert.deepEqual(asked, [[]]);
+  assert.equal(talkOf(store.doc(), THU, 'own-1').done, false);
+  assert.equal(entryOf(store.doc(), THU, 'own-1'), null);
   assert.deepEqual(talkOf(store.doc(), THU, 'evening').messages.map((m) => [m.who, m.text]), [['coach', 'How did the CV go?']]);
   assert.equal(ctx.ui.coach.tried[`${THU}|evening`], true);
   assert.equal(talkNow(ctx), 'waiting');

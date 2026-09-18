@@ -95,7 +95,7 @@ again.
 ## The calendar
 
 A planner — a Google Apps Script in George's account — books the dashboard into his Google Calendar
-every 10 minutes: each day's tasks grouped by area into blocks, around his fixed events, exact for
+every 10 minutes: each task in its own named event, around his fixed events, exact for
 today and tomorrow and rough (`~`, pale) further out. It moves blocks off new shifts and trims them
 when he ticks. **Don't touch his Google Calendar yourself** — no booking, no editing, no deleting, no retitling, not
 his own events and not the planner's blocks. A change made by hand doesn't appear in `changes`, so
@@ -107,7 +107,7 @@ Give the planner what it needs instead:
 - `minutes` on anything longer than half an hour (`"2h"`, `"90m"`), and `time` when it happens at a
   set time (`"14:00"`) — an interview, the assessment centre day. A habit takes a `time` too, and
   then it's booked at that time on every day it's due instead of being slotted in.
-- An `area` on every task, so similar ones share a block (reuse the areas already in `list`).
+- An `area` on every task, so it reaches the right calendar and colour (reuse the areas already in `list`).
 - A date on each task — spread a week's work over its days rather than piling it on one.
 
 **"Plan my week"** (the weekly check): read `week`, `list`, `goals` and `planner`, and the calendar if
@@ -143,13 +143,14 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
 
 ## The Coach
 
-The Coach is Gemini on George's devices, and he talks with it through the day: it opens a
-conversation in the morning, in the afternoon when something has slipped, and in the evening, and he
-can start one any time. It may change today and tomorrow only — add, move, skip, tick, set lengths,
-block out hours — and each change is logged like yours (*by the Coach* in `changes`). Anything bigger
-it hands to you as a **flag from the Coach**: treat those as George's own words, act on them, and
-mark them addressed. `flags` groups flags by kind: *For Claude* (the Coach's handoffs and George's
-notes for you), *Feature* and *Bug* (his requests for app changes), and *Note* (left for him).
+The Coach is Gemini on George's devices, presented as one continuous conversation. Unanswered
+check-ins expire when their moment passes. It reads the same confirmed bookings as Today and
+Upcoming, distinguishes requested dates from actual slots, and can capture future tasks and draft
+goals. Explicit instructions act directly; broad rescheduling reviews produce editable proposals.
+Each turn commits its net changes as one undoable action, and the Coach can undo using saved records.
+Going to bed can close today's planning; future capture still works, and George can reopen today.
+Handoffs remain **flags from the Coach**: treat those as George's words and address them when done.
+Flags are grouped as *For Claude*, *Feature*, *Bug*, and *Note*.
 
 - **Read the journal** (`journal`) in *plan my week* and whenever George asks how things are. Each
   conversation leaves an entry — how he was feeling, what was on his mind, pointers about how he

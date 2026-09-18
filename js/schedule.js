@@ -3,6 +3,7 @@
 import { addDays, weekday, weekStart, dayOfMonth, daysInMonth } from './dates.js';
 import { timeOff, excused, offCovers } from './calendar.js';
 import { blockers, completedBefore } from './workflow.js';
+import { plannedTaskDay, bookingsFor, localDate } from './plan-state.js';
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -60,13 +61,16 @@ export function isHabitDue(doc, item, day, idx) {
 }
 
 function taskRow(doc, item, day, idx) {
-  if (item.date > day) return null;
   const doneOn = [...doneDays(doc, item.id, idx)].sort()[0] ?? null;
   if (doneOn && doneOn < day) return null;
-  return {
-    item, kind: 'task', done: doneOn === day,
-    carriedFrom: item.date < day ? item.date : null, suggested: false,
-  };
+  if (doneOn === day) return { item, kind: 'task', done: true, carriedFrom: item.date < day ? item.date : null, suggested: false };
+  const anchor = doc.calendar?.agenda?.from;
+  const planned = anchor && day < anchor ? item.date : plannedTaskDay(doc, item);
+  if (planned > day) return null;
+  const slots = bookingsFor(doc, item);
+  if (anchor && day >= anchor && slots.length && !slots.some((b) => localDate(b.start) === day)) return null;
+  if (anchor && day > anchor && !slots.length && item.date !== day) return null;
+  return { item, kind: 'task', done: false, carriedFrom: planned < day ? planned : null, suggested: false };
 }
 
 // The tasks and habits that count on a day — what the header and the history measure. Anything

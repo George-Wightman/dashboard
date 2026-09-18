@@ -27,7 +27,7 @@ const JOURNAL_FIELDS = {
   brief: { text: '' },
   // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
   // slot; Claude's guide for the Coach, filed under the week's Monday.
-  talk: { slot: '', messages: [], handoffs: [], done: false, model: '' },
+  talk: { slot: '', messages: [], handoffs: [], done: false, model: '', proposal: null },
   entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
   guide: { text: '' },
 };
@@ -616,6 +616,31 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     notify('settings');
   }
 
+  // Commit an asynchronous editor's draft only if every touched record still
+  // matches what it read. Unrelated edits are preserved; a turn publishes once.
+  function commitDraft(before, after, summary, source = 'coach') {
+    const content = (r) => { if (!r) return null; const { updated, _sync, ...fields } = r; return fields; };
+    const edits = diffDocs(before, after).filter((e) => stableStringify(content(e.before)) !== stableStringify(content(e.after)));
+    const current = structuredClone(doc);
+    const changeEdits = Object.keys(after.changes ?? {}).filter((id) =>
+      stableStringify(before.changes?.[id]) !== stableStringify(after.changes[id]));
+    for (const { map, id, before: expected } of edits) {
+      if (stableStringify(recordContent(doc[map]?.[id] ?? null)) !== stableStringify(recordContent(expected))) {
+        throw new Error('The plan changed while this was being prepared. Please try again against the current schedule.');
+      }
+    }
+    for (const id of changeEdits) if (stableStringify(doc.changes[id]) !== stableStringify(before.changes?.[id])) {
+      throw new Error('That action has changed since this conversation started. Please try again.');
+    }
+    let change = null;
+    transaction(() => {
+      for (const e of edits) writeRecord(e.map, e.id, e.after ?? { ...e.before, status: 'archived' });
+      for (const id of changeEdits) writeRecord('changes', id, after.changes[id]);
+      if (edits.length) change = addChange({ summary, edits: diffDocs(current, doc), source });
+    });
+    return change;
+  }
+
   return {
     doc: () => doc,
     settings: () => settings,
@@ -628,7 +653,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     },
 
     addItem,
-    updateItem: (id, changes) => patch('items', id, changes),
+    updateItem: (id, changes) => patch('items', id, { ...changes,
+      ...(doc.items[id]?.scheduleHold === true && (Object.hasOwn(changes, 'date') || Object.hasOwn(changes, 'time')) && !Object.hasOwn(changes, 'scheduleHold') ? { scheduleHold: false } : {}) }),
     archiveItem: (id) => patch('items', id, { status: 'archived', archivedOn: today() }),
     moveBefore,
     acceptSuggestion: (map, id) => patch(map, id, { status: 'active', created: today() }),
@@ -666,6 +692,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     putGym,
     putLog,
     transaction,
+    commitDraft,
     putWorkflow,
     setDetails,
     saveRule,

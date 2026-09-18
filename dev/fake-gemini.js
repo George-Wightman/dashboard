@@ -105,6 +105,10 @@ function talkAnswer(body) {
   if (said.includes(WRAP_UP) || /\bbye\b/i.test(said)) {
     return call('finish', { feeling: 'steady', text: 'Fake entry: talked through the day and what matters tomorrow.', pointers: ['Likes the hardest task first'] });
   }
+  if (/going to bed/i.test(said)) return call('close_day', {});
+  if (/\bundo\b/i.test(said)) return call('undo_last_action', {});
+  const dated = said.match(/\badd (.+) on (\d{4}-\d{2}-\d{2})/i);
+  if (dated) return call('add_task', { title: clip(dated[1], 60), day: dated[2] });
   const add = said.match(/\badd (.+)/i);
   if (add) return call('add_task', { title: clip(add[1], 60), day: 'today' });
   if (/\bclaude\b/i.test(said)) return call('hand_to_claude', { text: clip(said, 200) });

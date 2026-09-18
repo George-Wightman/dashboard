@@ -9,6 +9,7 @@ import { readPlannerConfig, timeOff, offWindows, offCovers, COLOR_NAMES, colorNa
 import { at, localDay, iso, MINUTE } from './time.js';
 import { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, roughColor, nearestColor, paleOf } from './events.js';
 import { norm, resolveCalendars, calendarFor, habitLinks } from './calendars.js';
+import { taskInput, dayClosed } from '../js/plan-state.js';
 import { demand, fixedTasks } from './demand.js';
 import { fits, earliestFit, nearestFit, ceilQuarter } from './place.js';
 
@@ -29,16 +30,17 @@ export function blockTitle(base, state, done = 0, total = 0) {
 
 // A block as a Google event. `notes` lead the description (the items' notes); the title stays the
 // title. `colorId` is the area's colour, or a rough block's pale one; none means the calendar's own.
-export function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [] }) {
+export function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [], input = null, parts = 1 }) {
   const rough = state === 'rough';
   const props = {
     [P.mine]: '1', [P.key]: key, [P.items]: items.join(','), [P.title]: base,
     [P.at]: atText(start, end), [P.state]: state,
   };
   if (pinned) props[P.pin] = '1';
+  if (input) Object.assign(props, { [P.input]: JSON.stringify(input), [P.summary]: title, [P.parts]: String(parts) });
   return {
     summary: title,
-    description: [...notes, ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
+    description: [...notes, ...(items.length === 1 ? ['Open task / mark complete: https://george-wightman.github.io/dashboard/?task=' + encodeURIComponent(items[0])] : []), ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
     start: { dateTime: iso(start) },
     end: { dateTime: iso(end) },
     ...(colorId ? { colorId } : {}),
@@ -91,6 +93,11 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   const links = habitLinks(doc, config, find, problems);
   const items = doc.items ?? {};
   const itemIds = Object.keys(items);
+  const bodyFor = (spec) => {
+    const item = spec.items?.length === 1 ? items[spec.items[0]] : null;
+    return blockBody({ ...spec, input: item?.type === 'task' ? taskInput(item) : null,
+      parts: item?.time ? 1 : Math.ceil((item?.minutes ?? config.defaultMinutes) / config.maxBlockMinutes) });
+  };
   const offs = timeOff(doc);
 
   // Colours: each watched calendar takes the event colour nearest its own, so an area can't have it.
@@ -119,14 +126,14 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   // A block's area from its key (a task with a time, or a record of a missed one, takes its task's).
   const areaOfKey = (key, ids) => {
     const seg = String(key).split('|')[1] ?? '';
-    return seg === 'fixed' || seg === 'done' ? String(items[ids[0]]?.area ?? '') : seg;
+    return key.startsWith('task|') || seg === 'fixed' || seg === 'done' ? String(items[ids[0]]?.area ?? '') : seg;
   };
   // The notes at the top of a block's description: the note alone for one task, "Title — note" for several.
   const noteLines = (ids) => {
     const unique = [...new Set(ids)];
-    const withNotes = unique.map((id) => items[id]).filter((i) => i?.notes);
-    if (unique.length === 1) return withNotes.map((i) => i.notes);
-    return withNotes.map((i) => `${i.title} — ${i.notes}`);
+    const withNotes = unique.map((id) => items[id]).filter(Boolean);
+    if (unique.length === 1) return withNotes.map((i) => i.notes).filter(Boolean);
+    return withNotes.map((i) => `${i.title}${i.notes ? ` — ${i.notes}` : ''}`);
   };
   // Time off as busy time for one area's blocks on a day: its stretches of hours, or the whole day.
   const offBusy = (d, area) => {
@@ -158,7 +165,9 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   // All-day events used to be skipped outright, so a day George had marked "no work" the obvious way
   // was invisible and the planner booked straight through it. Anything all-day and busy on a watched
   // calendar now holds the days it covers; the ignore list is what keeps Holidays and Family out.
-  const allDayBusy = listed.filter((e) => e.allDay && !e.cancelled && !e.free && e.dates?.from);
+  const replacingAllDay = listed.filter(e => e.mine && e.allDay && !e.cancelled
+    && splitIds(e.props[P.items]).some(id => doc.calendar?.['conflict:' + id]?.resolution === 'dashboard'));
+  const allDayBusy = listed.filter((e) => e.allDay && !e.cancelled && !e.free && e.dates?.from && !replacingAllDay.includes(e));
 
   // A task counts as done from the day it's ticked; a habit only on the day ticked. `at` is the
   // latest tick's time, when the log has one; `span` is when it actually happened, from a tick that
@@ -202,7 +211,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   const actions = duplicates.map((ev) => ({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }));
   const record = (d, b) => rec(d).blocks.push({
     key: b.key, eventId: b.eventId, calendarId: b.calendarId, calendar: calName(b.calendarId), title: b.title,
-    start: iso(b.start), end: iso(b.end), state: b.state, items: b.items,
+    start: iso(b.start), end: iso(b.end), state: b.state, items: b.items, ...(b.items?.length === 1 && items[b.items[0]]?.type === 'task' ? { input: taskInput(items[b.items[0]]) } : {}),
   });
 
   // An event's new shape: nothing when it's already right; a patch; or, for a rough block becoming
@@ -248,7 +257,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     for (const b of prev.blocks ?? []) {
       if (!b.eventId || !['rough', 'exact', 'fixed'].includes(b.state)) continue;
       if (present.has(b.eventId) || Date.parse(b.end) <= nowMs) continue;
-      const kd = String(b.key).split('|')[0] || d;
+      const kd = String(b.key).startsWith('task|') ? d : String(b.key).split('|')[0] || d;
       for (const id of b.items ?? []) rec(kd).skipped.add(id);
     }
   }
@@ -257,16 +266,30 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   const fixedWanted = new Map(fixedTasks({ doc, days, config, links }).map((f) => [f.key, f]));
   for (const ev of timed.filter((e) => e.mine)) {
     const key = ev.props[P.key] ?? '';
-    const kd = key.split('|')[0] || localDay(ev.start);
-    const state = ev.props[P.state];
+    const kd = key.startsWith('task|') ? localDay(ev.start) : key.split('|')[0] || localDay(ev.start);
+    const state = fixedWanted.has(key) ? 'fixed' : ev.props[P.state];
     const ids = splitIds(ev.props[P.items]);
-    const base = ev.props[P.title] ?? ev.title;
+    const originalBase = ev.props[P.title] ?? ev.title;
+    let base = key.startsWith('task|') && ids.length === 1 && items[ids[0]] ? items[ids[0]].title + (originalBase.match(/ \(\d+ of \d+\)$/)?.[0] ?? '') : originalBase;
     const start = ev.start.getTime();
     const end = ev.end.getTime();
-    const pinned = movedByGeorge(ev);
+    const currentItem = ids.length === 1 ? items[ids[0]] : null;
+    let baseline = null;
+    try { baseline = JSON.parse(ev.props[P.input] || 'null'); } catch {}
+    const inputChanged = baseline && currentItem && ['date', 'time', 'minutes', 'hold'].some((k) => baseline[k] !== taskInput(currentItem)[k]);
+    const pinned = movedByGeorge(ev) && !inputChanged && !ids.some((id) => doc.calendar?.['conflict:' + id]?.resolution === 'dashboard');
+    if (pinned && ids.length > 1 && !HISTORY.has(state)) base = ids.map((id) => items[id]?.title ?? id).join(' · ').slice(0, 1000);
+    if (ids.some((id) => doc.calendar?.['conflict:' + id]?.open)) {
+      busy(start, end, ev.title); cover(kd, ids); useKey(kd, key); fixedWanted.delete(key);
+      record(kd, { key, eventId: ev.id, calendarId: ev.calendarId, title: ev.title, start, end, state: 'conflict', items: ids });
+      continue;
+    }
+    if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active')) {
+      actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }); fixedWanted.delete(key); continue;
+    }
     const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
       const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), nextState, calendars.find((c) => c.id === ev.calendarId));
-      const body = blockBody({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
+      const body = bodyFor({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
       const eventId = emit(ev, body, key);
       const landed = localDay(new Date(span.start));
       busy(span.start, span.end, title);
@@ -283,9 +306,17 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       settle({ start, end }, state, ev.title, state === 'done' ? ids : ids.filter((id) => tickOf(id, kd).finished));
       continue;
     }
-    if (state === 'fixed') {
-      const want = fixedWanted.get(key);
+    // A user placement beyond the automatic horizon remains an actual booking.
+    // It must not be mistaken for a task that no longer wants an event.
+    if (currentItem?.type === 'task' && currentItem.status === 'active' && currentItem.date > lastDay && !currentItem.scheduleHold) {
+      settle({ start, end }, 'fixed', currentItem.title);
       fixedWanted.delete(key);
+      continue;
+    }
+    if (state === 'fixed') {
+      const wantedKey = fixedWanted.has(key) ? key : ids.length === 1 ? `task|${ids[0]}|0` : key;
+      const want = fixedWanted.get(wantedKey);
+      fixedWanted.delete(wantedKey);
       const finished = ids.length > 0 && tickOf(ids[0], kd).finished;
       if (!want && !finished && start > nowMs && !pinned) {
         actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
@@ -343,12 +374,29 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     keep.set(key, ev);
   }
 
+  // A migration must delete the old generated block successfully before any
+  // replacement is inserted. Keep a parent for every child, not just the first.
+  const migrationParents = timed.filter((e) => e.mine && !e.props[P.key]?.startsWith('task|')
+    && e.start.getTime() > nowMs && !movedByGeorge(e) && !HISTORY.has(e.props[P.state]));
+  migrationParents.push(...replacingAllDay);
+  const migrationFor = (ids, key) => migrationParents.find((e) => (e.props[P.key] !== key || e.allDay)
+    && splitIds(e.props[P.items]).some((id) => ids.includes(id)));
+  const migrate = (parent) => {
+    if (!parent) return {};
+    if (!actions.some((a) => a.op === 'delete' && a.calendarId === parent.calendarId && a.eventId === parent.id)) {
+      actions.push({ op: 'delete', calendarId: parent.calendarId, eventId: parent.id });
+    }
+    keep.delete(parent.props[P.key]);
+    return { afterDelete: parent.id, afterDeleteCalendar: parent.calendarId };
+  };
+
   // Tasks with a time that have no event yet.
   for (const f of fixedWanted.values()) {
     if (f.start <= nowMs || tickOf(f.itemId, f.day).finished || rec(f.day).skipped.has(f.itemId)) continue;
     const cal = calendarFor(f.area, config, find, problems);
     if (!cal) continue;
-    actions.push({ op: 'insert', calendarId: cal.id, key: f.key, body: blockBody({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed', colorId: colourFor(f.area, 'fixed', cal), notes: noteLines([f.itemId]) }) });
+    const migration = migrate(migrationFor([f.itemId], f.key));
+    actions.push({ op: 'insert', ...migration, calendarId: cal.id, key: f.key, body: bodyFor({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed', colorId: colourFor(f.area, 'fixed', cal), notes: noteLines([f.itemId]) }) });
     busy(f.start, f.end, f.title);
     cover(f.day, [f.itemId]);
     useKey(f.day, f.key);
@@ -406,7 +454,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const key = `${today}|done|${m.itemId}`;
     const span = recordSpan(t.at, m.minutes * MINUTE, null);
     const title = blockTitle(items[m.itemId].title, 'done');
-    actions.push({ op: 'insert', calendarId: cal.id, key, body: blockBody({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
+    actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
     busy(span.start, span.end, title);
     cover(today, [m.itemId]);
     useKey(today, key);
@@ -419,10 +467,10 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const [from, to] = config.dayHours[d] ?? config.hours;
     const open = at(d, from).getTime();
     const close = at(d, to).getTime();
-    return { open, start: d === today ? Math.max(open, ceilQuarter(nowMs)) : open, end: close };
+    return { open, start: dayClosed(doc, d) ? close : d === today ? Math.max(open, ceilQuarter(nowMs)) : open, end: close };
   };
   const todayWindow = windowOf(today);
-  const todayClosed = todayWindow.start + MIN_BLOCK > todayWindow.end;
+  const todayClosed = dayClosed(doc, today) || todayWindow.start + MIN_BLOCK > todayWindow.end;
   for (const d of days) cover(d, rec(d).skipped);
   const { blocks: wanted } = demand({ doc, today, days, config, links, covered, usedKeys, todayClosed });
 
@@ -490,8 +538,9 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const cal = calendarFor(b.area, config, find, problems);
     if (!cal) continue;
     const title = blockTitle(b.base, state);
-    const body = blockBody({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: colourFor(b.area, state, cal), notes: noteLines(b.items) });
+    const body = bodyFor({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: colourFor(b.area, state, cal), notes: noteLines(b.items) });
     const ex = keep.get(b.key);
+    const migration = ex ? {} : migrate(migrationFor(b.items, b.key));
     keep.delete(b.key);
     let eventId = null;
     if (ex && ex.calendarId === cal.id) {
@@ -504,14 +553,14 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       }
     } else {
       if (ex) actions.push({ op: 'delete', calendarId: ex.calendarId, eventId: ex.id });
-      actions.push({ op: 'insert', calendarId: cal.id, key: b.key, body, ...(ex ? { afterDelete: ex.id, afterDeleteCalendar: ex.calendarId } : {}) });
+      actions.push({ op: 'insert', ...migration, calendarId: cal.id, key: b.key, body, ...(ex ? { afterDelete: ex.id, afterDeleteCalendar: ex.calendarId } : {}) });
     }
     record(day, { key: b.key, eventId, calendarId: cal.id, title, start, end, state, items: b.items });
   }
   for (const ex of keep.values()) actions.push({ op: 'delete', calendarId: ex.calendarId, eventId: ex.id });
 
   const out = {};
-  for (const d of [yesterday, ...days]) {
+  for (const d of [...new Set([yesterday, ...days, ...Object.keys(recs)])]) {
     const r = rec(d);
     out[d] = {
       day: d,

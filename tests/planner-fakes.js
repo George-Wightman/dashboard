@@ -78,6 +78,11 @@ export class FakeCalendar {
         get: () => ({ event: Object.fromEntries(Object.entries(EVENT_COLORS).map(([id, hex]) => [id, { background: hex, foreground: '#1d1d1d' }])) }),
       },
       Events: {
+        get(calendarId, eventId) {
+          const event = self.get(eventId);
+          if (!event || event.calendarId !== calendarId) throw new Error('404 Not Found');
+          return copy(event);
+        },
         list(calendarId, opts = {}) {
           const lo = opts.timeMin ? Date.parse(opts.timeMin) : -Infinity;
           const hi = opts.timeMax ? Date.parse(opts.timeMax) : Infinity;

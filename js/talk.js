@@ -7,6 +7,7 @@ import { addDays, weekStart, longDate, shortWeekday } from './dates.js';
 import { rowsForDay, weekTotal, countsOn, streak, goalProgress } from './schedule.js';
 import { dayRecord, offLine, briefFor, clockLabel } from './calendar.js';
 import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, sessionLine } from './gym.js';
+import { scheduleView, scheduleBlocks, dayClosed } from './plan-state.js';
 import { formatAmount } from './parse.js';
 import { clip } from './coach.js';
 
@@ -17,7 +18,7 @@ export const ENTRY_MAX = 600;
 export const GUIDE_MAX = 600;
 export const MESSAGE_MAX = 2000;
 const POINTERS_MAX = 5;
-const CONTEXT_MAX = 6000;
+const CONTEXT_MAX = 14000;
 
 const values = (map) => Object.values(map ?? {});
 const live = (r) => (r && r.status === 'active' ? r : null);
@@ -109,7 +110,7 @@ export function slippedItems(doc, today, now) {
 export function openerDue(doc, { today, now, dayStartHour = 4, checkinHour = 18 }) {
   const hours = { dayStartHour, checkinHour };
   const slot = momentAt(now, hours);
-  if (!slot || talkOf(doc, today, slot)) return null;
+  if (!slot || dayClosed(doc, today) || talkOf(doc, today, slot)) return null;
   const spoke = talksOn(doc, today).some((t) => (t.messages ?? []).some((m) => m.who === 'george' && momentAt(new Date(m.at), hours) === slot));
   if (spoke) return null;
   if (slot === 'afternoon' && !slippedItems(doc, today, now).length) return null;
@@ -117,8 +118,9 @@ export function openerDue(doc, { today, now, dayStartHour = 4, checkinHour = 18 
 }
 
 // The opener waiting on Today: the latest conversation the Coach opened that George hasn't answered.
-export function waitingOpener(doc, today) {
-  const t = talksOn(doc, today).filter((x) => !x.done && x.messages?.length && !heard(x)).at(-1);
+export function waitingOpener(doc, today, now = null, hours = {}) {
+  const t = talksOn(doc, today).filter((x) => !x.done && x.messages?.length && !heard(x) && !dayClosed(doc, today)
+    && (!now || x.slot === momentAt(now, hours)) && !talksOn(doc, today).some((other) => heard(other) && firstAt(other) > firstAt(x))).at(-1);
   return t ? { slot: t.slot, text: t.messages[0].text } : null;
 }
 
@@ -154,13 +156,21 @@ function rowText(doc, row, today) {
 }
 
 export function listText(doc, day, today) {
-  const rows = rowsForDay(doc, day).filter((r) => r.item.status === 'active');
-  return rows.length ? rows.map((r) => rowText(doc, r, today)) : ['  nothing'];
+  if (day < today) return rowsForDay(doc, day).map((r) => rowText(doc, r, today));
+  const plan = scheduleView(doc, today, 14);
+  const tasks = plan.entries.filter((e) => e.day === day).map((e) => {
+    const booking = e.bookings[0];
+    return '  [ ] ' + shortId(e.item.id) + ' task "' + clip(e.item.title, 100) + '" · requested ' + e.requestedDay
+      + (booking ? ' · booked ' + e.scheduledDay + ' ' + clockLabel(booking.start) + '–' + clockLabel(booking.end) + ' on ' + booking.calendar : ' · unscheduled')
+      + (e.reason ? ' · ' + e.reason : '');
+  });
+  const habits = rowsForDay(doc, day).filter((r) => r.item.type !== 'task' && r.item.status === 'active').map((r) => rowText(doc, r, today));
+  return [...tasks, ...habits].length ? [...tasks, ...habits] : ['  nothing'];
 }
 
 function blocksText(doc, day) {
-  return (dayRecord(doc, day)?.blocks ?? [])
-    .map((b) => `${clockLabel(b.start)}–${clockLabel(b.end)} ${String(b.title).replace(/^~ /, '')}${b.state === 'rough' ? ' (rough)' : ''}`);
+  return [...scheduleBlocks(doc), ...(doc.calendar?.agenda?.busy ?? []).map((b) => ({ ...b, items: [] }))].filter((b) => b.start && new Date(b.start).toDateString() === new Date(day + 'T12:00:00').toDateString())
+    .map((b) => `${b.allDay ? 'All day' : `${clockLabel(b.start)}–${clockLabel(b.end)}`} ${String(b.title).replace(/^~ /, '')}${b.state === 'rough' ? ' (flexible)' : ''} on ${b.calendar ?? 'Calendar'} [${b.items.map(shortId).join(', ')}]`);
 }
 
 // Everything the Coach is told at the start of each turn, as compact text.
@@ -168,11 +178,17 @@ export function talkContext(doc, today, now) {
   const tomorrow = addDays(today, 1);
   const lines = [
     `Now: ${longDate(today)}, ${clockLabel(now.toISOString())}`,
+    `Shared plan: tasks and Google Calendar use these same confirmed bookings. Requested dates are separate. Unscheduled means no confirmed booking.`,
+    `Today is ${dayClosed(doc, today) ? 'CLOSED for new work' : 'open for planning'}.`,
+    `Calendar last synchronized: ${scheduleView(doc, today).lastSynced ?? 'not yet'}. The planner runs periodically; never claim an unconfirmed edit has reached Calendar.`,
     `Today's list (${today}):`, ...listText(doc, today, today),
     `Tomorrow's list (${tomorrow}):`, ...listText(doc, tomorrow, today),
   ];
   const cal = blocksText(doc, today);
   lines.push(cal.length ? `Calendar today: ${cal.join(' · ')}` : 'Calendar today: nothing booked by the planner');
+  const next = scheduleView(doc, today).entries.filter((e) => e.day > tomorrow).slice(0, 25);
+  if (next.length) lines.push('Upcoming tasks:', ...next.map((e) => `${shortId(e.item.id)} "${clip(e.item.title, 90)}" · requested ${e.requestedDay} · ${e.bookings[0] ? `booked ${e.scheduledDay} ${clockLabel(e.bookings[0].start)} on ${e.bookings[0].calendar}` : 'unscheduled'}${e.reason ? ' · ' + e.reason : ''}`));
+  lines.push('Calendar tomorrow: ' + (blocksText(doc, tomorrow).join(' · ') || 'no confirmed bookings'));
   const slips = slippedItems(doc, today, now).map((id) => `"${clip(doc.items[id].title, 60)}"`);
   if (slips.length) lines.push(`Slipped earlier today: ${slips.join(', ')}`);
   for (const [d, name] of [[today, 'Today'], [tomorrow, 'Tomorrow']]) {
@@ -197,11 +213,14 @@ export function talkContext(doc, today, now) {
 }
 
 export const TALK_SYSTEM = [
-  "You are George's coach inside his personal dashboard, talking with him in short messages. British English; direct, warm and specific. No emojis, no filler, no bullet lists unless he asks. One to four sentences a reply, and at most one question at a time.",
-  "You can change today's and tomorrow's plan with your tools: add a task, move one between today and tomorrow, skip one, set a length, a time or notes, tick off what he says he's done, and block out hours he's busy. Do it when he asks or clearly means it, then say in a few words what you did. You can't touch goals, habits, weekly targets, whole days off or anything after tomorrow: hand those to Claude with hand_to_claude and tell him you have.",
-  'His gym sessions are his own to plan. Talk about them, never plan them.',
-  'Refer to items by the 8-character ids in the lists. Look things up with get_day, get_gym, find and get_journal rather than guessing.',
-  "When the conversation reaches a natural end — he has what he needed, or says bye — call finish with its journal entry: how he's feeling, in a few words; what's on his mind, written about him in plain sentences (at most 600 characters); and up to 5 short pointers he gave you about how he works or what matters. Then say a short goodbye.",
+  "You are George's coach inside his personal dashboard. British English; warm, direct, specific. One to four sentences, at most one question, no habitual follow-up question or forced goodbye. This is one continuous conversation; follow his current subject. Missed invitations expire, and silence is not failure.",
+  "The shared schedule below is the Dashboard and Google Calendar's common plan. Requested date, actual calendar booking and deadline are different. Read get_day or find before reviewing work. A missing booking is unscheduled, not a reason to pull work into today. Never guess why a calendar task moved or claim to see external appointments that are absent from your context.",
+  "Execute explicit task instructions, including future dates, using tools. Add goals with add_goal. For an open-ended review ('the layout looks wrong', 'make tomorrow relevant') first use propose_changes and prepare specific changes for George to apply. Do not substitute unrelated tasks. Read original dates and pass expectedDay to move_task. Do not introduce earlier work, a different date, or extra tasks without a clear request.",
+  "All tools work on one draft until your turn finishes. Do not promise success before tool results. Any failed mutation cancels the whole batch. Undo means undo_last_action; never attempt to reconstruct an earlier plan by moving items from memory. Recorded action receipts and their undo status are the evidence of changes, even when an earlier reply claimed otherwise.",
+  "When George says the day is over or he is going to bed, call close_day. A closed day accepts no new work; capture future ideas normally. Only call reopen_day on his explicit request. You can still record something he says he already completed. Never reopen today to evade a tool refusal.",
+  "For a flexible request such as 'over the weekend', choose and state a sensible weekend date, or ask one question if the choice matters. Goals are drafts that he can accept. Hand app bugs, habits, weekly targets or whole days off to Claude. Use item titles in conversation; IDs are for tools.",
+  "His gym sessions are his own to plan: never plan them.",
+  "At a natural end use finish to save a journal entry about George, not about yourself. Leave feeling blank if unknown. Do not force closure after every task or question. He can continue the conversation afterwards.",
 ].join('\n');
 
 export function talkSystem(doc, today, now) {
@@ -210,12 +229,12 @@ export function talkSystem(doc, today, now) {
 
 export const OPENERS = {
   morning: "It's the morning. Open a short conversation with George: one or two sentences, ending in one question about what today looks like and anything the plan should know. Reply with just your message.",
-  afternoon: "It's the afternoon and something from earlier has slipped. Open a short conversation with George: name what slipped, and ask whether to move something. Reply with just your message.",
+  afternoon: "It's the afternoon. Use the current shared schedule to offer a brief, natural check-in. Do not assume a task has failed or needs moving merely because its slot passed. Ask one useful question. Reply with just your message.",
   evening: "It's the evening. Open a short conversation with George: one or two sentences about how today went — name something specific from it — ending in one question about today or tomorrow. Reply with just your message.",
 };
 export const PLAIN_OPENERS = {
   morning: "Morning — what's today looking like?",
-  afternoon: 'How is the afternoon going — shall we move anything?',
+  afternoon: 'How is the afternoon going?',
   evening: 'How did today go?',
 };
 export const WRAP_UP = '(George has closed the conversation. Call finish now with its journal entry.)';
@@ -223,15 +242,20 @@ export const WRAP_UP = '(George has closed the conversation. Call finish now wit
 // A conversation as Gemini's contents: George's messages as "user", the Coach's as "model",
 // back-to-back ones from the same side joined. One the Coach opened starts with a note saying so,
 // since Gemini's contents start on George's side.
-export function talkContents(talk, extra = []) {
+export function talkContents(talk, extra = [], doc = null) {
   const out = [];
   const msgs = talk?.messages ?? [];
   if (msgs[0]?.who === 'coach') out.push({ role: 'user', parts: [{ text: `(${slotName(talk.slot)}: the coach opened the conversation.)` }] });
   for (const m of msgs) {
+    const receipts = (m.did ?? []).map((d) => {
+      const change = d.change && doc?.changes?.[d.change];
+      return d.text + (change?.undoneAt ? ' [UNDONE]' : d.change ? ' [committed action ' + d.change + ']' : '');
+    });
+    const text = m.text + (receipts.length ? '\nRecorded action receipts: ' + receipts.join(' | ') : '');
     const role = m.who === 'george' ? 'user' : 'model';
     const prev = out.at(-1);
-    if (prev?.role === role) prev.parts = [{ text: `${prev.parts[0].text}\n\n${m.text}` }];
-    else out.push({ role, parts: [{ text: m.text }] });
+    if (prev?.role === role) prev.parts = [{ text: `${prev.parts[0].text}\n\n${text}` }];
+    else out.push({ role, parts: [{ text }] });
   }
   for (const c of extra) {
     const prev = out.at(-1);
@@ -239,6 +263,19 @@ export function talkContents(talk, extra = []) {
     else out.push(c);
   }
   return out;
+}
+
+// Storage remains segmented by day for history and merging; model context is continuous.
+export function conversationContents(doc, today, extra = []) {
+  const talks = Object.values(doc.journal ?? {}).filter((t) => t.kind === 'talk' && t.status === 'active' && !t.pruned
+    && t.day >= addDays(today, -7) && t.day <= today && (heard(t) || t === talksOn(doc, today).at(-1)))
+    .sort((a, b) => firstAt(a).localeCompare(firstAt(b)));
+  const messages = talks.flatMap((t) => t.messages ?? []).slice(-40);
+  let size = 0;
+  const kept = [];
+  for (const m of [...messages].reverse()) { if (size + m.text.length > 24000) break; kept.unshift(m); size += m.text.length; }
+  const contents = talkContents({ slot: 'own-1', messages: kept }, extra, doc);
+  return contents.length ? contents : [{ role: 'user', parts: [{ text: 'Continue our conversation.' }] }];
 }
 
 // ---- Entries -------------------------------------------------------------------------------------

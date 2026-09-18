@@ -21,7 +21,7 @@ test('evenPicks: spread from the first', () => {
   assert.deepEqual(evenPicks(['a', 'b'], 0), []);
 });
 
-test("a day's tasks: grouped by area, carried-over first, done and timed ones left out", () => {
+test("a day's tasks: named individually within each area, carried-over first, done and timed ones left out", () => {
   const doc = fixture({
     items: [
       task('t1', 'Email Sarah', 'Job search', TUE),
@@ -36,14 +36,16 @@ test("a day's tasks: grouped by area, carried-over first, done and timed ones le
     logs: [done('t6', TUE)],
   });
   assert.deepEqual(run(doc).filter((b) => b.day === TUE).map(brief), [
-    [`${TUE}||0`, 'Buy stamps', 30, 't4'],
-    [`${TUE}|assessment centre|0`, 'Write the day out', 30, 't3'],
-    [`${TUE}|job search|0`, 'Job search ×3', 105, 't5,t1,t2'],
+    ['task|t4|0', 'Buy stamps', 30, 't4'],
+    ['task|t3|0', 'Write the day out', 30, 't3'],
+    ['task|t5|0', 'Chase GSS', 30, 't5'],
+    ['task|t1|0', 'Email Sarah', 30, 't1'],
+    ['task|t2|0', 'Update CV', 45, 't2'],
   ]);
-  assert.equal(run(doc).find((b) => b.key === `${TUE}|job search|0`).carried, true);
+  assert.equal(run(doc).find((b) => b.key === 'task|t5|0').carried, true);
 });
 
-test('long blocks split: tasks packed in order, a very long task in equal parts', () => {
+test('long tasks split into stable numbered sessions; other tasks keep individual events', () => {
   const doc = fixture({ items: [
     task('t1', 'A', 'Job search', TUE, { minutes: 60 }),
     task('t2', 'B', 'Job search', TUE, { minutes: 60 }),
@@ -51,17 +53,18 @@ test('long blocks split: tasks packed in order, a very long task in equal parts'
     task('t4', 'Full mock day', 'Assessment centre', TUE, { minutes: 300 }),
   ] });
   assert.deepEqual(run(doc).map(brief), [
-    [`${TUE}|assessment centre|0`, 'Full mock day (1 of 2)', 150, 't4'],
-    [`${TUE}|assessment centre|1`, 'Full mock day (2 of 2)', 150, 't4'],
-    [`${TUE}|job search|0`, 'Job search ×2', 120, 't1,t2'],
-    [`${TUE}|job search|1`, 'C', 60, 't3'],
+    ['task|t4|0', 'Full mock day (1 of 2)', 150, 't4'],
+    ['task|t4|1', 'Full mock day (2 of 2)', 150, 't4'],
+    ['task|t1|0', 'A', 60, 't1'],
+    ['task|t2|0', 'B', 60, 't2'],
+    ['task|t3|0', 'C', 60, 't3'],
   ]);
 });
 
 test('covered items and used keys are left alone', () => {
   const doc = fixture({ items: [task('t1', 'A', 'Job search', TUE), task('t2', 'B', 'Job search', TUE)] });
   const blocks = run(doc, { covered: new Map([[TUE, new Set(['t1'])]]), usedKeys: new Map([[TUE, new Set([`${TUE}|job search|0`])]]) });
-  assert.deepEqual(blocks.map(brief), [[`${TUE}|job search|1`, 'B', 30, 't2']]);
+  assert.deepEqual(blocks.map(brief), [['task|t2|0', 'B', 30, 't2']]);
 });
 
 test("a weekly time target: what's left spread over the week's days, next week an even share", () => {
@@ -75,13 +78,14 @@ test("a weekly time target: what's left spread over the week's days, next week a
   const links = [{ habitId: 'heb', calendarId: 'main', title: 'Learn Hebrew', area: 'Hebrew' }];
   const blocks = run(doc, { links });
   assert.deepEqual(blocks.map(brief), [
-    [`${TUE}|assessment centre|0`, 'Write the day out', 60, 't1'],
-    ['2026-09-16|assessment centre|0', 'Assessment centre prep', 60, ''],
-    ['2026-09-17|assessment centre|0', 'Assessment centre', 60, 't2'],
-    ['2026-09-18|assessment centre|0', 'Assessment centre prep', 60, ''],
-    ['2026-09-19|assessment centre|0', 'Assessment centre prep', 60, ''],
-    ['2026-09-20|assessment centre|0', 'Assessment centre prep', 60, ''],
-    ['2026-09-21|assessment centre|0', 'Assessment centre prep', 45, ''],
+    ['task|t1|0', 'Write the day out', 60, 't1'],
+    ['2026-09-16|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
+    ['task|t2|0', 'Map competencies', 30, 't2'],
+    ['2026-09-17|assessment centre|0', 'Assessment centre prep — optional practice', 30, ''],
+    ['2026-09-18|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
+    ['2026-09-19|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
+    ['2026-09-20|assessment centre|0', 'Assessment centre prep — optional practice', 60, ''],
+    ['2026-09-21|assessment centre|0', 'Assessment centre prep — optional practice', 45, ''],
   ]);
   const logged = fixture({ items: Object.values(doc.items), logs: [amount('a1', 'q1', '2026-09-14', 240)] });
   assert.equal(run(logged, { links }).find((b) => b.day === '2026-09-16').minutes, 15, '60 left over 6 days');
@@ -113,7 +117,7 @@ test('fixedTasks: a task with a time, on its date, for its length', () => {
     task('t2', 'Call', '', '2026-09-30', { time: '10:00' }),
   ] });
   assert.deepEqual(fixedTasks({ doc, days: DAYS, config }), [{
-    key: '2026-09-16|fixed|t1', itemId: 't1', day: '2026-09-16', title: 'ASSESSMENT CENTRE', area: 'Assessment centre',
+    key: 'task|t1|0', itemId: 't1', day: '2026-09-16', title: 'ASSESSMENT CENTRE', area: 'Assessment centre',
     start: at('2026-09-16', '09:30').getTime(), end: at('2026-09-16', '16:00').getTime(),
   }]);
 });

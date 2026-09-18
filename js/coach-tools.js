@@ -8,7 +8,8 @@ import { addDays, daysBetween } from './dates.js';
 import { rowsForDay } from './schedule.js';
 import { checkTimeOff, nextOffId } from './calendar.js';
 import { parseLength, parseClock, checkNotes, formatAmount } from './parse.js';
-import { diffDocs } from './changes.js';
+import { dayClosed } from './plan-state.js';
+import { diffDocs, undoLine, canUndo } from './changes.js';
 import { clip } from './coach.js';
 import { findItem, dayText, gymText, findText, journalText, cleanEntry, cleanHandoff } from './talk.js';
 
@@ -18,27 +19,35 @@ const DAY = S('"today", "tomorrow", or a date as YYYY-MM-DD');
 const ID = S("the item's 8-character id from the lists");
 
 export const TOOL_DECLARATIONS = [
-  decl('get_day', "A day's list, calendar, time off, gym sessions and journal, from 30 days back to 7 ahead.", { day: DAY }, ['day']),
+  decl('get_day', "A day's list, calendar, time off, gym sessions and journal, from 30 days back to 365 ahead; confirmed Calendar bookings and unscheduled work.", { day: DAY }, ['day']),
   decl('get_gym', "His training from Hevy: each key lift's estimated 1RM, pace and PRs, and the last 14 days' sessions; or one lift.", { lift: S('a lift by its Hevy name, e.g. "Squat (Barbell)"; leave out for every key lift') }),
   decl('find', 'Tasks, habits, weekly targets and goals whose title or notes contain the words.', { words: S('what to look for') }, ['words']),
   decl('get_journal', 'His saved journal entries, newest first.', { days: { type: 'INTEGER', description: 'how many days back, 1 to 30 (default 7)' } }),
-  decl('add_task', 'Add a task for today or tomorrow.', {
+  decl('add_task', 'Add a task on an explicit date, including future weeks. For a flexible weekend choose and state a date, or ask if it matters.', {
     title: S('a few words'), day: DAY, minutes: S('its length, like "45m" or "2h"'), time: S('a set start, like "14:00"'),
     area: S('an area already in use, like "Job search"'), notes: S('detail behind the title'),
   }, ['title', 'day']),
-  decl('move_task', "Move a task on today's or tomorrow's list to the other of the two days.", { id: ID, day: DAY }, ['id', 'day']),
+  decl('move_task', 'Move an active task to the specified date. Read its current requested date first.', { id: ID, day: DAY, expectedDay: DAY }, ['id', 'day']),
   decl('skip', "Skip something on today's list: a task moves to tomorrow; a habit is let off today, its streak safe.", { id: ID, reason: S('why, in a few words') }, ['id']),
-  decl('set_task', "Set a length, a time or notes on a task on today's or tomorrow's list. Notes replace any it has; \"\" clears a field.", {
-    id: ID, minutes: S('its length, like "45m" or "2h"'), time: S('a set start, like "14:00"'), notes: S('the notes'),
+  decl('set_task', "Set a title, length, time or notes on an active task. Notes replace any it has; \"\" clears a field.", {
+    id: ID, title: S('new title, only when asked'), minutes: S('its length, like "45m" or "2h"'), time: S('a set start, like "14:00"'), notes: S('the notes'),
   }, ['id']),
   decl('tick', "Tick off a task or habit on today's list that he says he has done.", { id: ID }, ['id']),
   decl('untick', "Take the tick off something on today's list.", { id: ID }, ['id']),
-  decl('block_hours', "Block out hours today or tomorrow when he's busy, so the calendar plans round them.", {
+  decl('block_hours', "Block out hours on a specified date when he's busy, so the calendar plans round them.", {
     day: DAY, start: S('like "13:00"'), end: S('like "17:00"'), reason: S('a few words'),
   }, ['day', 'start', 'end']),
-  decl('hand_to_claude', "Pass something to Claude: anything you can't do (goals, habits, weekly targets, whole days off, anything after tomorrow), or anything Claude should know.", {
+  decl('hand_to_claude', "Pass something to Claude: anything you can't do (habits, weekly targets, whole days off, app changes), or anything Claude should know.", {
     text: S('what George wants, in a sentence or two'),
   }, ['text']),
+  decl('propose_changes', 'Use before inferred planning or a broad calendar review. Changes become one proposal for George to Apply, not immediate edits.'),
+  decl('undo_last_action', 'Undo the last Coach action using its saved before/after records. Never improvise reverse moves.'),
+  decl('close_day', 'Close today for planning ONLY when George explicitly says he has finished the day or is going to bed.'),
+  decl('reopen_day', 'Reopen today for planning ONLY when George explicitly asks to work on today again.'),
+  decl('add_goal', 'Draft a goal and optional milestones in this conversation, ready to accept in Goals.', {
+    title: S('the goal'), targetDate: DAY, why: S('why it matters'),
+    milestones: { type: 'ARRAY', items: { type: 'STRING' }, description: 'up to 8 concrete stages' },
+  }, ['title']),
   decl('finish', 'End the conversation with its journal entry.', {
     feeling: S('how he is feeling, in a few words'), text: S("what's on his mind, at most 600 characters"),
     pointers: { type: 'ARRAY', items: { type: 'STRING' }, description: 'up to 5 short pointers he gave' },
@@ -47,12 +56,12 @@ export const TOOL_DECLARATIONS = [
 
 class Refusal extends Error {}
 const refuse = (message) => { throw new Refusal(message); };
-const LATER = 'The Coach can only change today and tomorrow — hand anything else to Claude with hand_to_claude';
 
-export function coachTools({ store, onHandoff = () => {}, onFinish = () => {} }) {
+
+export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, onProposal = () => {}, logChanges = true }) {
   const today = () => store.today();
   const tomorrow = () => addDays(today(), 1);
-  const dayName = (d) => (d === today() ? 'today' : 'tomorrow');
+  const dayName = (d) => (d === today() ? 'today' : d === tomorrow() ? 'tomorrow' : d);
 
   function dayOf(v) {
     const s = String(v ?? '').trim().toLowerCase();
@@ -60,13 +69,13 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {} })
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || addDays(d, 0) !== d) refuse(`"${v}" isn't a day — use today, tomorrow or YYYY-MM-DD`);
     return d;
   }
-  const gated = (v) => { const d = dayOf(v); if (d !== today() && d !== tomorrow()) refuse(LATER); return d; };
+  const gated = (v) => { const d = dayOf(v); if (d < today()) refuse('New work cannot be moved into the past'); if (dayClosed(store.doc(), d)) refuse('That day is closed. Capture this on another date, or reopen the day only if George asks.'); return d; };
   const item = (ref) => { try { return findItem(store.doc(), ref); } catch (e) { return refuse(e.message); } };
   const onList = (it, day) => rowsForDay(store.doc(), day).some((r) => r.item.id === it.id);
   const task = (ref) => {
     const it = item(ref);
     if (it.type !== 'task') refuse(`"${it.title}" is a ${it.type === 'quota' ? 'weekly target' : it.type}, not a task`);
-    if (it.status !== 'active' || (!onList(it, today()) && !onList(it, tomorrow()))) refuse(`"${it.title}" isn't on today's or tomorrow's list`);
+    if (it.status !== 'active') refuse('That task is not active');
     return it;
   };
   const lengthOf = (v) => {
@@ -84,7 +93,7 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {} })
     const before = structuredClone(store.doc());
     fn();
     const edits = diffDocs(before, store.doc());
-    const rec = edits.length ? store.addChange({ summary, edits, source: 'coach' }) : null;
+    const rec = logChanges && edits.length ? store.addChange({ summary, edits, source: 'coach' }) : null;
     return { ok: true, did: summary, change: rec?.id ?? null };
   }
 
@@ -92,16 +101,18 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {} })
     const it = item(ref);
     if (it.type === 'quota') refuse(`"${it.title}" is a weekly target — he logs his time or count on it himself`);
     const row = rowsForDay(store.doc(), today()).find((r) => r.item.id === it.id);
-    if (!row) refuse(`"${it.title}" isn't on today's list`);
-    if (row.done === on) return { ok: true, did: `"${it.title}" was already ${on ? 'ticked' : 'unticked'}` };
-    return change(`${on ? 'Ticked' : 'Unticked'} "${it.title}"`, () => store.toggleDone(it.id, today(), 'coach'));
+    if (!row && it.type !== 'task') refuse(`"${it.title}" isn't on today's list`);
+    const log = it.type === 'task' ? Object.values(store.doc().logs).find((l) => l.kind === 'done' && l.itemId === it.id && l.status === 'active') : null;
+    const isDone = it.type === 'task' ? !!log : !!row?.done;
+    if (isDone === on) return { ok: true, did: `"${it.title}" was already ${on ? 'ticked' : 'unticked'}` };
+    return change(`${on ? 'Ticked' : 'Unticked'} "${it.title}"`, () => store.toggleDone(it.id, !on && log ? log.day : today(), 'coach'));
   }
 
   const TOOLS = {
     get_day: ({ day }) => {
       const d = dayOf(day);
       const n = daysBetween(today(), d);
-      if (n < -30 || n > 7) refuse('get_day looks from 30 days back to 7 days ahead');
+      if (n < -30 || n > 365) refuse('get_day looks from 30 days back to 365 days ahead');
       return { ok: true, text: dayText(store.doc(), d, today()) };
     },
     get_gym: ({ lift }) => ({ ok: true, text: gymText(store.doc(), today(), lift ? String(lift) : '') }),
@@ -121,16 +132,17 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {} })
         ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}),
       }));
     },
-    move_task: ({ id, day }) => {
+    move_task: ({ id, day, expectedDay }) => {
       const it = task(id);
       const d = gated(day);
-      if (it.date === d) return { ok: true, did: `"${it.title}" was already on ${dayName(d)}'s list` };
-      return change(`Moved "${it.title}" to ${dayName(d)}`, () => store.updateItem(it.id, { date: d }));
+      if (expectedDay && it.date !== dayOf(expectedDay)) refuse('The task date has changed. Read the schedule again.');
+      if (it.date === d && !it.scheduleHold) return { ok: true, did: `"${it.title}" was already on ${dayName(d)}'s list` };
+      return change(`Moved "${it.title}" to ${dayName(d)}`, () => store.updateItem(it.id, { date: d, ...(it.time ? { time: null } : {}), ...(it.scheduleHold ? { scheduleHold: false } : {}) }));
     },
     skip: ({ id, reason }) => {
       const it = item(id);
       if (it.status !== 'active' || !onList(it, today())) refuse(`"${it.title}" isn't on today's list`);
-      if (it.type === 'task') return change(`Moved "${it.title}" to tomorrow`, () => store.updateItem(it.id, { date: tomorrow() }));
+      if (it.type === 'task') return change(`Moved "${it.title}" to tomorrow`, () => store.updateItem(it.id, { date: gated(tomorrow()), ...(it.time ? { time: null } : {}), ...(it.scheduleHold ? { scheduleHold: false } : {}) }));
       if (it.type !== 'habit') refuse(`"${it.title}" is a weekly target — it can't be skipped`);
       const why = clip(typeof reason === 'string' ? reason : '', 120);
       return change(`Let "${it.title}" off today${why ? ` — ${why}` : ''}`, () => store.skipItem(it.id, today(), why, 'coach'));
@@ -139,6 +151,7 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {} })
       const it = task(a.id);
       const changes = {};
       const said = [];
+      if (a.title !== undefined) { changes.title = String(a.title).trim().slice(0, 120); if (!changes.title) refuse('A task needs a title'); said.push('renamed to ' + changes.title); }
       if (a.minutes !== undefined) { changes.minutes = lengthOf(a.minutes); said.push(changes.minutes ? `length ${formatAmount(changes.minutes, 'minutes')}` : 'no length'); }
       if (a.time !== undefined) { changes.time = clockOf(a.time); said.push(changes.time ? `at ${changes.time}` : 'no set time'); }
       if (a.notes !== undefined) { changes.notes = checkNotes(String(a.notes ?? '')); said.push(changes.notes ? 'new notes' : 'no notes'); }
@@ -159,6 +172,22 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {} })
       }
       const id = nextOffId(store.doc(), off.start);
       return change(`Blocked out ${start}–${end} ${dayName(day)}${off.reason ? ` — ${off.reason}` : ''}`, () => store.putCalendar(id, off, 'coach'));
+    },
+    propose_changes: () => { onProposal(); return { ok: true, did: 'Preparing a proposal; George will apply it' }; },
+    close_day: () => change('Closed today for planning', () => store.putCalendar('closed:' + today(), { day: today(), closed: true }, 'coach')),
+    reopen_day: () => change('Reopened today for planning', () => store.putCalendar('closed:' + today(), { day: today(), closed: false }, 'coach')),
+    undo_last_action: () => {
+      const last = Object.values(store.doc().changes).reverse().filter((c) => c.source === 'coach' && canUndo(c)).sort((a, b) => b.at.localeCompare(a.at))[0];
+      if (!last) refuse('There is no Coach action available to undo');
+      const result = store.undoChange(last.id, 'coach');
+      return { ok: true, did: undoLine(result), change: null };
+    },
+    add_goal: (a) => {
+      const title = String(a.title ?? '').trim().slice(0, 120);
+      if (!title) refuse('A goal needs a title');
+      const targetDate = a.targetDate ? dayOf(a.targetDate) : null;
+      const milestones = Array.isArray(a.milestones) ? a.milestones.slice(0, 8).map(String) : [];
+      return change('Drafted goal "' + title + '"', () => store.addPlan({ goal: { title, targetDate, why: String(a.why ?? '').slice(0, 600) }, milestones }));
     },
     hand_to_claude: ({ text }) => {
       const t = cleanHandoff(text);

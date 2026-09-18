@@ -10,6 +10,8 @@ import { readPlannerConfig, dayRecordId, plannerStatus, CALENDAR_DEFAULTS } from
 import { scrubText } from '../js/flags.js';
 import { MODELS, ENDPOINT, readReply } from '../js/gemini.js';
 import { addDays, logicalDay } from '../js/dates.js';
+import { taskInput } from '../js/plan-state.js';
+import { reconcileCalendar } from './reconcile.js';
 import { plan, fillIds } from './plan.js';
 import { resolveCalendars } from './calendars.js';
 import { P } from './events.js';
@@ -74,6 +76,30 @@ export function createPlanner({
       } while (pageToken);
     }
     return out;
+  }
+
+  // A missing window result may have been dragged outside the window. Ask by
+  // event identity before treating absence as deletion; an API error stops the pass.
+  function resolveMissing(events, memory, watchedIds, t) {
+    if (!Calendar.Events.get) return [];
+    const present = new Set(events.map((e) => e.calendarId + '|' + e.id));
+    const removed = [];
+    for (const b of Object.values(memory).flatMap((d) => d.blocks ?? [])) {
+      const key = b.calendarId + '|' + b.eventId;
+      if (!b.eventId || present.has(key) || !watchedIds.includes(b.calendarId)
+        || Date.parse(b.end) < t.getTime() || ['done', 'partial'].includes(b.state)) continue;
+      present.add(key);
+      let raw;
+      try { raw = Calendar.Events.get(b.calendarId, b.eventId); }
+      catch (error) {
+        if (!/404|410|not found|gone/i.test(String(error?.message ?? error))) throw error;
+      }
+      if (raw && raw.status !== 'cancelled') events.push({ ...raw, calendarId: b.calendarId });
+      else removed.push({ id: b.eventId, calendarId: b.calendarId, status: 'cancelled',
+        extendedProperties: { private: { [P.mine]: '1', [P.items]: b.items.join(','), [P.state]: b.state,
+          ...(b.input ? { [P.input]: JSON.stringify(b.input) } : {}) } } });
+    }
+    return removed;
   }
 
   // The dashboard, in a store over memory, as the Claude tool opens it.
@@ -179,13 +205,15 @@ export function createPlanner({
     const days = Object.fromEntries(Object.entries(planned).map(([d, rec]) => [d, { ...rec, blocks: [] }]));
     for (const ev of actual) {
       const p = ev.extendedProperties?.private;
-      if (p?.[P.mine] !== '1' || !ev.start?.dateTime || !ev.end?.dateTime) continue;
+      if (ev.status === 'cancelled' || p?.[P.mine] !== '1' || !ev.start?.dateTime || !ev.end?.dateTime) continue;
+      let input = null;
+      try { input = JSON.parse(p[P.input] || 'null'); } catch {}
       const day = logicalDay(new Date(ev.start.dateTime), 0);
-      if (!days[day]) continue;
+      if (!days[day]) days[day] = { day, blocks: [], skipped: [], missed: [], notes: [] };
       days[day].blocks.push({ key: p[P.key], eventId: ev.id, calendarId: ev.calendarId,
         calendar: cals.find((c) => c.id === ev.calendarId)?.name ?? '', title: ev.summary ?? '',
         start: new Date(ev.start.dateTime).toISOString(), end: new Date(ev.end.dateTime).toISOString(),
-        state: p[P.state], items: String(p[P.items] ?? '').split(',').filter(Boolean) });
+        state: p[P.state], ...(input ? { input } : {}), items: String(p[P.items] ?? '').split(',').filter(Boolean) });
     }
     for (const rec of Object.values(days)) rec.blocks.sort((a, b) => a.start.localeCompare(b.start) || a.key.localeCompare(b.key));
     return days;
@@ -238,21 +266,51 @@ export function createPlanner({
         store.putCalendar('review-status', { lastError: 'Goal reviews could not run; calendar planning continues. Check the planner logs.' });
       }
       tag(store, t);
-      const doc = store.doc();
+      let doc = store.doc();
       const { config } = readPlannerConfig(doc);
       const cals = calendars();
       const { watched } = resolveCalendars(cals, config);
       const today = logicalDay(t, dayStartHour());
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
+      const memory = readProperty(props(), 'DAYS');
+      const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
+      reconcileCalendar(store, events, removed);
+      // Persist inbound edits before making outbound Calendar changes. Never
+      // export from a draft that failed to reach the other interfaces.
+      if (session.changed()) {
+        const saved = await syncOnce({ store, client: session.client });
+        if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
+      }
+      doc = store.doc();
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),
-        memory: readProperty(props(), 'DAYS'),
+        memory,
       });
       // Check the storage budget before mutating Calendar; reserve room for Google's event IDs.
       propertyParts(fillIds(result.days, Object.fromEntries(result.actions.filter((a) => a.key).map((a) => [a.key, 'x'.repeat(128)]))));
       const { errors, actual } = apply(result.actions, events);
       const days = confirmedDays(result.days, actual, cals);
+      for (const c of Object.values(store.doc().calendar).filter((c) => c.resolution)) {
+        const ev = actual.find((e) => e.status !== 'cancelled' && e.extendedProperties?.private?.[P.mine] === '1'
+            && (e.id === c.eventId && e.calendarId === c.calendarId || String(e.extendedProperties.private[P.items] ?? '').split(',').includes(c.itemId))
+            && e.extendedProperties.private[P.input] === JSON.stringify(taskInput(store.doc().items[c.itemId] ?? {})));
+        let baseline = null;
+        try { baseline = JSON.parse(ev?.extendedProperties?.private?.[P.input] || 'null'); } catch {}
+        const item = store.doc().items[c.itemId];
+        if (baseline && item && JSON.stringify(baseline) === JSON.stringify(taskInput(item))) store.putCalendar(c.id, { resolution: null });
+      }
       writeProperty(props(), 'DAYS', days);
+      store.putCalendar('agenda', { from: today, through: addDays(today, config.days - 1),
+        syncedAt: t.toISOString(), busy: events.filter((e) => e.extendedProperties?.private?.[P.mine] !== '1' && e.status !== 'cancelled' && e.transparency !== 'transparent')
+          .flatMap((e) => {
+            const common = { title: e.summary || 'Busy', calendar: cals.find(c => c.id === e.calendarId)?.name ?? '' };
+            if (e.start?.dateTime && e.end?.dateTime) return [{ ...common, start: e.start.dateTime, end: e.end.dateTime }];
+            const out = [];
+            if (e.start?.date && e.end?.date) for (let d = e.start.date < today ? today : e.start.date; d < e.end.date && d < addDays(today, config.days); d = addDays(d, 1)) {
+              out.push({ ...common, allDay: true, start: at(d, '00:00').toISOString(), end: at(addDays(d, 1), '00:00').toISOString() });
+            }
+            return out;
+          }), blocks: Object.values(days).filter((d) => d.day >= today).flatMap((d) => d.blocks) });
       if (result.actions.length) put('LAST_WRITE', now().getTime());
       // Day records are keyed by weekday (day:1 … day:7) and everything that reads them — the app's
       // list, the Coach, Claude's week — looks seven days at most. Writing a longer plan into them

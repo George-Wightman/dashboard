@@ -207,23 +207,30 @@ to the tool itself doesn't: the skill always runs the version on GitHub.
 Your dashboard, booked into your Google Calendar. A small script in your own Google account (the
 *Dashboard planner*) runs every 10 minutes, and whenever one of your calendars changes:
 
-- **Every task gets time.** A day's tasks and habits are grouped by area into one block — *Job
-  search ×2* — around your fixed events, between 9:00 and 19:00, 15 minutes clear of anything else. A
-  task's length is its own (*Draft cover letter 2h* in the add box, or Length in the edit panel),
-  otherwise 30 minutes; *Call NatCen 14:00* makes it a fixed event at 14:00. A weekly time target
-  (*Assessment centre prep 5h*) adds its share to each day.
+- **Each task has its own named event.** Tasks fit individually around appointments, with long tasks
+  split into numbered sessions. Area calendars and colours remain. Weekly target time beyond
+  concrete tasks becomes separate optional practice. A task's length defaults to 30 minutes;
+  add a length or set a time in the editor when it needs one.
 - **Today and tomorrow are exact; later days are rough** — `~` and a paler colour — and at 20:00 each
   evening the day after tomorrow turns exact.
 - **Blocks go on the calendar for their area** (Job search and Assessment centre on Application,
   Health on Gym), so they take your colours. Hebrew and Gym are your own events: moved off a clash,
   never copied.
 - **When things change:** a shift on top of a block moves it, and a note under the date says so. Move
-  a block yourself and it stays where you put it. Delete one and it isn't booked again that day.
+  a block yourself and it stays where you put it. Drag, rename or resize a single-task event and its linked task follows. Deleting a task event leaves the task unscheduled until you choose a new date/time.
 - **When you tick:** during its block, the block ends at the tick; before it or later that day, it
   moves to end at the tick; part done, it says *1 of 2 done* and the rest gets a new slot; missed, it
   goes and the task gets a new slot.
 - **On the list,** today's tasks show their time and follow the day's order. ⚙ → *Calendar planner*
   says when it last ran; the header warns if it stops.
+
+**One shared plan:** Today, Upcoming and the Coach use confirmed Calendar bookings. Upcoming shows
+future tasks, external commitments, booking freshness, overflow dates and unscheduled work. Conflicting
+Calendar/Dashboard edits wait for your choice. Event links open a task completion view.
+
+The Coach has one continuous conversation with expiring check-ins, future task capture and goal
+drafting. Clear instructions act directly; broad reviews show an editable proposal. Each turn has
+one net action and one Undo. Closing today for planning still allows future ideas to be captured.
 
 Claude does the thinking: say **"plan my week"** and it spreads the week's work over the days, with
 lengths and areas, and the calendar follows. Its settings (planning hours, calendars, linked habits)

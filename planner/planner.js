@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '07fd894c';
+var PLANNER_BUILD = 'b1b49d6c';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -741,7 +741,7 @@ const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-const APP_VERSION = 'today-dashboard-v11';
+const APP_VERSION = 'today-dashboard-v12';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -1192,7 +1192,9 @@ const DATA_KEY = 'dash_data';
 const SETTINGS_KEY = 'dash_settings';
 const CORRUPT_KEY = 'dash_data_corrupt';
 const BACKUP_KEY = 'dash_data_previous';
-const DEFAULT_SETTINGS = { token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto' };
+const DEFAULT_SETTINGS = {
+  token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto', hebrewRepo: '', hebrewToken: '',
+};
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
 
@@ -1203,7 +1205,7 @@ const JOURNAL_FIELDS = {
   brief: { text: '' },
   // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
   // slot; Claude's guide for the Coach, filed under the week's Monday.
-  talk: { slot: '', messages: [], handoffs: [], done: false, model: '' },
+  talk: { slot: '', messages: [], handoffs: [], done: false, model: '', proposal: null },
   entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
   guide: { text: '' },
 };
@@ -1792,6 +1794,31 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     notify('settings');
   }
 
+  // Commit an asynchronous editor's draft only if every touched record still
+  // matches what it read. Unrelated edits are preserved; a turn publishes once.
+  function commitDraft(before, after, summary, source = 'coach') {
+    const content = (r) => { if (!r) return null; const { updated, _sync, ...fields } = r; return fields; };
+    const edits = diffDocs(before, after).filter((e) => stableStringify(content(e.before)) !== stableStringify(content(e.after)));
+    const current = structuredClone(doc);
+    const changeEdits = Object.keys(after.changes ?? {}).filter((id) =>
+      stableStringify(before.changes?.[id]) !== stableStringify(after.changes[id]));
+    for (const { map, id, before: expected } of edits) {
+      if (stableStringify(recordContent(doc[map]?.[id] ?? null)) !== stableStringify(recordContent(expected))) {
+        throw new Error('The plan changed while this was being prepared. Please try again against the current schedule.');
+      }
+    }
+    for (const id of changeEdits) if (stableStringify(doc.changes[id]) !== stableStringify(before.changes?.[id])) {
+      throw new Error('That action has changed since this conversation started. Please try again.');
+    }
+    let change = null;
+    transaction(() => {
+      for (const e of edits) writeRecord(e.map, e.id, e.after ?? { ...e.before, status: 'archived' });
+      for (const id of changeEdits) writeRecord('changes', id, after.changes[id]);
+      if (edits.length) change = addChange({ summary, edits: diffDocs(current, doc), source });
+    });
+    return change;
+  }
+
   return {
     doc: () => doc,
     settings: () => settings,
@@ -1804,7 +1831,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     },
 
     addItem,
-    updateItem: (id, changes) => patch('items', id, changes),
+    updateItem: (id, changes) => patch('items', id, { ...changes,
+      ...(doc.items[id]?.scheduleHold === true && (Object.hasOwn(changes, 'date') || Object.hasOwn(changes, 'time')) && !Object.hasOwn(changes, 'scheduleHold') ? { scheduleHold: false } : {}) }),
     archiveItem: (id) => patch('items', id, { status: 'archived', archivedOn: today() }),
     moveBefore,
     acceptSuggestion: (map, id) => patch(map, id, { status: 'active', created: today() }),
@@ -1842,6 +1870,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     putGym,
     putLog,
     transaction,
+    commitDraft,
     putWorkflow,
     setDetails,
     saveRule,
@@ -2682,25 +2711,55 @@ async function talkGemini({
 return { MODELS, ENDPOINT, TIMEOUT_MS, MAX_WAIT_S, HEBREW_KEY_NAMES, MESSAGES, GeminiError, hebrewKeys, geminiKeys, readReply, retryAfterSeconds, askGemini, TALK_STEPS, talkGemini };
 })();
 
-// ---- planner/time.js
-const __planner_time = (() => {
-// Moments on George's days, in local time. The tests set TZ=Europe/London; Apps Script uses the
-// project's time zone (Europe/London in appsscript.json), so a planning hour is a wall-clock hour
-// on both sides of a clock change.
+// ---- js/plan-state.js
+const __js_plan_state = (() => {
+// The shared schedule contract. A requested day is not a booking. Calendar, the
+// Dashboard and the Coach resolve the same confirmed placements through here.
+const { blockers } = __js_workflow;
+const { addDays } = __js_dates;
 
-const MINUTE = 60000;
-const pad = (n) => String(n).padStart(2, '0');
-
-function at(day, hhmm) {
-  const [y, m, d] = day.split('-').map(Number);
-  const [h, min] = hhmm.split(':').map(Number);
-  return new Date(y, m - 1, d, h, min);
+const taskInput = (i) => ({ title: i.title, date: i.date ?? null, time: i.time || null,
+  minutes: i.minutes ?? null, hold: i.scheduleHold === true });
+const localDate = (iso) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const dayClosed = (doc, day) => doc.calendar?.[`closed:${day}`]?.closed === true;
+function scheduleBlocks(doc) {
+  if (doc.calendar?.agenda?.blocks) return doc.calendar.agenda.blocks;
+  return Object.values(doc.calendar ?? {}).filter((r) => r.id?.startsWith('day:')).flatMap((r) => r.blocks ?? []);
 }
-
-const localDay = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-const iso = (msOrDate) => new Date(msOrDate).toISOString();
-return { MINUTE, at, localDay, iso };
+function bookingsFor(doc, item) {
+  if (item.scheduleHold) return [];
+  return scheduleBlocks(doc).filter((b) => (!doc.calendar?.agenda?.from || localDate(b.end) >= doc.calendar.agenda.from) && b.items.includes(item.id) && !['done', 'partial'].includes(b.state)
+    && (!b.input || ['date', 'time', 'minutes', 'hold'].every((k) => b.input[k] === taskInput(item)[k])))
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+function plannedTaskDay(doc, item) {
+  return bookingsFor(doc, item)[0]?.start ? localDate(bookingsFor(doc, item)[0].start) : item.date;
+}
+function scheduleView(doc, today, days = 14) {
+  const end = addDays(today, days);
+  const done = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
+  const tasks = Object.values(doc.items ?? {}).filter((i) => i.type === 'task' && i.status === 'active' && !done.has(i.id));
+  const entries = tasks.map((item) => {
+    const bookings = bookingsFor(doc, item).filter((b) => localDate(b.end) >= today);
+    const scheduledDay = bookings[0] ? localDate(bookings[0].start) : null;
+    const conflict = doc.calendar?.[`conflict:${item.id}`];
+    const blocked = blockers(doc, item, scheduledDay ?? (item.date < today ? today : item.date)).join('; ');
+    const reason = conflict?.open ? 'Calendar and Dashboard edits need resolving'
+      : blocked ? blocked
+      : item.scheduleHold ? 'Removed from Calendar — choose a new day to schedule'
+      : scheduledDay && scheduledDay !== item.date ? `Requested ${item.date}; placed ${scheduledDay}`
+      : !bookings.length ? item.date >= end ? 'Beyond the current calendar horizon' : 'Waiting for a calendar slot' : '';
+    return { item, requestedDay: item.date, scheduledDay, bookings, reason,
+      day: scheduledDay ?? (item.date < today ? today : item.date), state: conflict?.open ? 'conflict' : bookings.length ? 'scheduled' : 'unscheduled' };
+  }).sort((a, b) => a.day.localeCompare(b.day) || (a.bookings[0]?.start ?? 'z').localeCompare(b.bookings[0]?.start ?? 'z')
+    || (a.item.order ?? 0) - (b.item.order ?? 0));
+  return { entries, commitments: doc.calendar?.agenda?.busy ?? [], lastSynced: doc.calendar?.agenda?.syncedAt ?? doc.calendar?.status?.lastRun ?? null,
+    through: doc.calendar?.agenda?.through ?? null, closed: dayClosed(doc, today) };
+}
+return { taskInput, localDate, dayClosed, scheduleBlocks, bookingsFor, plannedTaskDay, scheduleView };
 })();
 
 // ---- planner/events.js
@@ -2712,7 +2771,7 @@ const __planner_events = (() => {
 
 const P = {
   mine: 'dash', key: 'dashKey', items: 'dashItems', title: 'dashTitle', at: 'dashAt',
-  state: 'dashState', pin: 'dashPin', habit: 'dashHabit',
+  state: 'dashState', pin: 'dashPin', habit: 'dashHabit', input: 'dashInput', summary: 'dashSummary', parts: 'dashParts',
 };
 
 const when = (v) => (v ? new Date(v) : null);
@@ -2805,6 +2864,90 @@ function roughColor(calendarHex, eventColors) {
 return { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, nearestColor, paleOf, roughColor };
 })();
 
+// ---- planner/reconcile.js
+const __planner_reconcile = (() => {
+// Import edits to known task events before planning outbound changes. The last
+// exported input is a three-way merge baseline, not an assumption that Calendar wins.
+const { taskInput, localDate } = __js_plan_state;
+const { clockLabel } = __js_calendar;
+const { P } = __planner_events;
+
+function reconcileCalendar(store, events, removed = []) {
+  const conflicts = [];
+  store.transaction(() => {
+    for (const raw of [...events, ...removed]) {
+      const props = raw.extendedProperties?.private ?? {};
+      if (props[P.mine] !== '1') continue;
+      const ids = String(props[P.items] ?? '').split(',').filter(Boolean);
+      if (!ids.length || ['done', 'partial'].includes(props[P.state])) continue;
+      for (const id of ids) {
+        const item = store.doc().items[id];
+        if (item?.type !== 'task' || item.status !== 'active') continue;
+        if (store.doc().calendar['conflict:' + id]?.resolution === 'dashboard') continue;
+        let baseline;
+        try { baseline = JSON.parse(props[P.input] || 'null'); } catch { baseline = null; }
+        const changes = {};
+        if (raw.status === 'cancelled') changes.scheduleHold = true;
+        else if (ids.length === 1 && baseline) {
+          if (raw.summary !== props[P.summary]) changes.title = String(raw.summary ?? '').replace(/^[~✓]\s*/, '').trim();
+          const [oldStart, oldEnd] = String(props[P.at] ?? '').split('/');
+          const moved = Date.parse(oldStart) !== Date.parse(raw.start?.dateTime) || Date.parse(oldEnd) !== Date.parse(raw.end?.dateTime);
+          if (moved && Number(props[P.parts] ?? 1) <= 1) {
+            if (raw.start?.dateTime && raw.end?.dateTime) {
+              changes.date = localDate(raw.start.dateTime);
+              changes.time = clockLabel(raw.start.dateTime);
+              changes.minutes = Math.round((Date.parse(raw.end.dateTime) - Date.parse(raw.start.dateTime)) / 60000);
+              changes.scheduleHold = false;
+            } else changes.time = 'invalid';
+          }
+        }
+        if (!Object.keys(changes).length) continue;
+        const current = taskInput(item);
+        const collided = baseline && Object.keys(changes).filter((k) => {
+          const field = k === 'scheduleHold' ? 'hold' : k;
+          return current[field] !== baseline[field] && item[k] !== changes[k];
+        });
+        const invalid = ('title' in changes && (!changes.title || changes.title.length > 200))
+          || (changes.minutes != null && (changes.minutes < 5 || changes.minutes > 720)) || changes.time === 'invalid';
+        if (invalid || collided?.length) {
+          store.putCalendar(`conflict:${id}`, { open: true, itemId: id, changes,
+            eventId: raw.id, calendarId: raw.calendarId, fields: collided || [], calendarValid: !invalid,
+            reason: invalid ? 'Calendar edit is not a valid timed task' : 'Both Calendar and Dashboard changed this task' });
+          conflicts.push(id);
+          continue;
+        }
+        const effective = Object.fromEntries(Object.entries(changes).filter(([k, v]) => (k === 'scheduleHold' ? item[k] === true : item[k] ?? null) !== v));
+        if (Object.keys(effective).length) store.updateItem(id, effective);
+        if (store.doc().calendar[`conflict:${id}`]?.open) store.putCalendar(`conflict:${id}`, { open: false });
+      }
+    }
+  }, { summary: 'Imported task edits from Google Calendar', source: 'calendar' });
+  return conflicts;
+}
+return { reconcileCalendar };
+})();
+
+// ---- planner/time.js
+const __planner_time = (() => {
+// Moments on George's days, in local time. The tests set TZ=Europe/London; Apps Script uses the
+// project's time zone (Europe/London in appsscript.json), so a planning hour is a wall-clock hour
+// on both sides of a clock change.
+
+const MINUTE = 60000;
+const pad = (n) => String(n).padStart(2, '0');
+
+function at(day, hhmm) {
+  const [y, m, d] = day.split('-').map(Number);
+  const [h, min] = hhmm.split(':').map(Number);
+  return new Date(y, m - 1, d, h, min);
+}
+
+const localDay = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+const iso = (msOrDate) => new Date(msOrDate).toISOString();
+return { MINUTE, at, localDay, iso };
+})();
+
 // ---- planner/calendars.js
 const __planner_calendars = (() => {
 // Which of George's calendars the planner reads, which one each area's blocks go on, and which
@@ -2863,6 +3006,7 @@ const __js_schedule = (() => {
 const { addDays, weekday, weekStart, dayOfMonth, daysInMonth } = __js_dates;
 const { timeOff, excused, offCovers } = __js_calendar;
 const { blockers, completedBefore } = __js_workflow;
+const { plannedTaskDay, bookingsFor, localDate } = __js_plan_state;
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -2920,13 +3064,16 @@ function isHabitDue(doc, item, day, idx) {
 }
 
 function taskRow(doc, item, day, idx) {
-  if (item.date > day) return null;
   const doneOn = [...doneDays(doc, item.id, idx)].sort()[0] ?? null;
   if (doneOn && doneOn < day) return null;
-  return {
-    item, kind: 'task', done: doneOn === day,
-    carriedFrom: item.date < day ? item.date : null, suggested: false,
-  };
+  if (doneOn === day) return { item, kind: 'task', done: true, carriedFrom: item.date < day ? item.date : null, suggested: false };
+  const anchor = doc.calendar?.agenda?.from;
+  const planned = anchor && day < anchor ? item.date : plannedTaskDay(doc, item);
+  if (planned > day) return null;
+  const slots = bookingsFor(doc, item);
+  if (anchor && day >= anchor && slots.length && !slots.some((b) => localDate(b.start) === day)) return null;
+  if (anchor && day > anchor && !slots.length && item.date !== day) return null;
+  return { item, kind: 'task', done: false, carriedFrom: planned < day ? planned : null, suggested: false };
 }
 
 // The tasks and habits that count on a day — what the header and the history measure. Anything
@@ -3115,6 +3262,7 @@ const { timeOff, excused } = __js_calendar;
 const { at, MINUTE } = __planner_time;
 const { norm } = __planner_calendars;
 
+const { dayClosed } = __js_plan_state;
 const { blockers } = __js_workflow;
 
 const values = (map) => Object.values(map ?? {});
@@ -3140,11 +3288,11 @@ function fixedTasks({ doc, days, config, links = [] }) {
   const place = (i, day) => {
     const start = at(day, i.time).getTime();
     return {
-      key: `${day}|fixed|${i.id}`, itemId: i.id, day, title: i.title, area: String(i.area ?? '').trim(),
+      key: i.type === 'task' ? `task|${i.id}|0` : `${day}|fixed|${i.id}`, itemId: i.id, day, title: i.title, area: String(i.area ?? '').trim(),
       start, end: start + (i.minutes ?? config.defaultMinutes) * MINUTE,
     };
   };
-  for (const i of values(doc.items).filter((x) => x.status === 'active' && x.time).sort(byOrder)) {
+  for (const i of values(doc.items).filter((x) => x.status === 'active' && x.time && !x.scheduleHold && !doc.calendar?.[`conflict:${x.id}`]?.open).sort(byOrder)) {
     if (i.type === 'task') {
       if (days.includes(i.date) && !excused(doc, i, i.date, offs) && !blockers(doc, i, i.date).length) out.push(place(i, i.date));
     } else if (i.type === 'habit' && !linked.has(i.id)) {
@@ -3161,59 +3309,34 @@ function fixedTasks({ doc, days, config, links = [] }) {
 // One area's entries on one day as blocks of at most maxBlockMinutes: tasks packed in order, a task
 // longer than that in equal parts, then the weekly target's extra time.
 function parts(entries, share, name, config) {
-  const max = config.maxBlockMinutes;
   const out = [];
-  let cur = null;
   for (const { item, carried } of entries) {
-    const m = item.minutes ?? config.defaultMinutes;
-    if (m > max) {
-      const n = Math.ceil(m / max);
-      const each = Math.min(max, ceil15(m / n));
-      for (let k = 1; k <= n; k++) out.push({ ids: [item.id], titles: [], minutes: each, carried, split: `${item.title} (${k} of ${n})` });
-      cur = null;
-      continue;
+    const total = item.minutes ?? config.defaultMinutes;
+    const count = Math.ceil(total / config.maxBlockMinutes);
+    let left = total;
+    for (let part = 0; part < count; part++) {
+      const minutes = Math.min(config.maxBlockMinutes, left);
+      left -= minutes;
+      out.push({ ids: [item.id], minutes, carried, part, type: item.type,
+        base: count > 1 ? item.title + ' (' + (part + 1) + ' of ' + count + ')' : item.title });
     }
-    if (!cur || cur.minutes + m > max) {
-      cur = { ids: [], titles: [], minutes: 0, carried: false };
-      out.push(cur);
-    }
-    cur.ids.push(item.id);
-    cur.titles.push(item.title);
-    cur.minutes += m;
-    cur.carried = cur.carried || carried;
   }
-  let extra = Math.max(0, (share?.minutes ?? 0) - out.reduce((s, p) => s + p.minutes, 0));
-  const last = out[out.length - 1];
-  if (extra > 0 && last && !last.split && last.minutes < max) {
-    const add = Math.min(extra, max - last.minutes);
-    last.minutes += add;
-    last.padded = true;
-    extra -= add;
-  }
+  let extra = Math.max(0, (share?.minutes ?? 0) - out.reduce((n, p) => n + p.minutes, 0));
   while (extra > 0) {
-    const m = Math.min(extra, max);
-    out.push({ ids: [], titles: [], minutes: m, carried: false });
-    extra -= m;
+    const minutes = Math.min(extra, config.maxBlockMinutes);
+    out.push({ ids: [], minutes, carried: false, base: (share?.titles?.join(' / ') || name) + ' — optional practice' });
+    extra -= minutes;
   }
-  const targetTitle = share?.titles.length === 1 ? share.titles[0] : name;
-  return out.map((p) => {
-    const many = `${name} ×${p.ids.length}`;
-    let base;
-    if (p.split) base = p.split;
-    else if (p.padded) base = p.ids.length > 1 ? many : name;
-    else if (p.ids.length === 1) base = p.titles[0];
-    else base = p.ids.length ? many : targetTitle;
-    return { ids: p.ids, minutes: p.minutes, carried: p.carried, base };
-  });
+  return out;
 }
 
 function demand({ doc, today, days, config, links, covered = new Map(), usedKeys = new Map(), todayClosed = false }) {
   const idx = doneIndex(doc);
   const offs = timeOff(doc);
-  const off = (item, d) => blockers(doc, item, d).length > 0 || (offs.length > 0 && excused(doc, item, d, offs));
+  const off = (item, d) => dayClosed(doc, d) || blockers(doc, item, d).length > 0 || (offs.length > 0 && excused(doc, item, d, offs));
   const linked = new Set(links.map((l) => l.habitId));
   const linkedAreas = new Set(links.map((l) => norm(l.area)).filter(Boolean));
-  const active = values(doc.items).filter((i) => i.status === 'active').sort(byOrder);
+  const active = values(doc.items).filter((i) => i.status === 'active' && !i.scheduleHold && !doc.calendar?.[`conflict:${i.id}`]?.open).sort(byOrder);
   const inWindow = new Set(days);
   const lastDay = days[days.length - 1];
   const thisMonday = weekStart(today);
@@ -3269,6 +3392,7 @@ function demand({ doc, today, days, config, links, covered = new Map(), usedKeys
     }
   }
 
+  const allUsed = new Set([...usedKeys.values()].flatMap(keys => [...keys]));
   const blocks = [];
   for (const d of days) {
     const skip = covered.get(d) ?? new Set();
@@ -3280,7 +3404,9 @@ function demand({ doc, today, days, config, links, covered = new Map(), usedKeys
       groups.set(a, g);
     };
     for (const i of active) {
-      if (skip.has(i.id)) continue;
+      const coveredTask = i.type === 'task' && [...covered.values()].some(ids => ids.has(i.id));
+      const hasNamedSession = i.type === 'task' && [...allUsed].some(key => key.startsWith(`task|${i.id}|`));
+      if ((i.type !== 'task' && skip.has(i.id)) || (coveredTask && !hasNamedSession)) continue;
       if (i.type === 'task' && !i.time) {
         if (doneDays(doc, i.id, idx).size) continue;
         if (dueDay(i) === d) add(i, i.date < d);
@@ -3299,9 +3425,10 @@ function demand({ doc, today, days, config, links, covered = new Map(), usedKeys
       const areaFirst = config.priorityAreas.some((p) => norm(p) === a);
       let n = 0;
       for (const p of parts(g.entries, shares.get(a)?.get(d), g.area || 'Tasks', config)) {
+        if (p.type === 'task' && allUsed.has(`task|${p.ids[0]}|${p.part}`)) continue;
         while (used.has(`${d}|${a}|${n}`)) n++;
         const priority = areaFirst || p.ids.some((id) => doc.items[id]?.priority === true);
-        blocks.push({ key: `${d}|${a}|${n++}`, day: d, area: g.area, items: p.ids, minutes: p.minutes, carried: p.carried, base: p.base, priority });
+        blocks.push({ key: p.type === 'task' ? `task|${p.ids[0]}|${p.part}` : `${d}|${a}|${n++}`, day: d, area: g.area, items: p.ids, minutes: p.minutes, carried: p.carried, base: p.base, priority });
       }
     }
   }
@@ -3355,6 +3482,7 @@ const { readPlannerConfig, timeOff, offWindows, offCovers, COLOR_NAMES, colorNam
 const { at, localDay, iso, MINUTE } = __planner_time;
 const { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, roughColor, nearestColor, paleOf } = __planner_events;
 const { norm, resolveCalendars, calendarFor, habitLinks } = __planner_calendars;
+const { taskInput, dayClosed } = __js_plan_state;
 const { demand, fixedTasks } = __planner_demand;
 const { fits, earliestFit, nearestFit, ceilQuarter } = __planner_place;
 
@@ -3375,16 +3503,17 @@ function blockTitle(base, state, done = 0, total = 0) {
 
 // A block as a Google event. `notes` lead the description (the items' notes); the title stays the
 // title. `colorId` is the area's colour, or a rough block's pale one; none means the calendar's own.
-function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [] }) {
+function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [], input = null, parts = 1 }) {
   const rough = state === 'rough';
   const props = {
     [P.mine]: '1', [P.key]: key, [P.items]: items.join(','), [P.title]: base,
     [P.at]: atText(start, end), [P.state]: state,
   };
   if (pinned) props[P.pin] = '1';
+  if (input) Object.assign(props, { [P.input]: JSON.stringify(input), [P.summary]: title, [P.parts]: String(parts) });
   return {
     summary: title,
-    description: [...notes, ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
+    description: [...notes, ...(items.length === 1 ? ['Open task / mark complete: https://george-wightman.github.io/dashboard/?task=' + encodeURIComponent(items[0])] : []), ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
     start: { dateTime: iso(start) },
     end: { dateTime: iso(end) },
     ...(colorId ? { colorId } : {}),
@@ -3437,6 +3566,11 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   const links = habitLinks(doc, config, find, problems);
   const items = doc.items ?? {};
   const itemIds = Object.keys(items);
+  const bodyFor = (spec) => {
+    const item = spec.items?.length === 1 ? items[spec.items[0]] : null;
+    return blockBody({ ...spec, input: item?.type === 'task' ? taskInput(item) : null,
+      parts: item?.time ? 1 : Math.ceil((item?.minutes ?? config.defaultMinutes) / config.maxBlockMinutes) });
+  };
   const offs = timeOff(doc);
 
   // Colours: each watched calendar takes the event colour nearest its own, so an area can't have it.
@@ -3465,14 +3599,14 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   // A block's area from its key (a task with a time, or a record of a missed one, takes its task's).
   const areaOfKey = (key, ids) => {
     const seg = String(key).split('|')[1] ?? '';
-    return seg === 'fixed' || seg === 'done' ? String(items[ids[0]]?.area ?? '') : seg;
+    return key.startsWith('task|') || seg === 'fixed' || seg === 'done' ? String(items[ids[0]]?.area ?? '') : seg;
   };
   // The notes at the top of a block's description: the note alone for one task, "Title — note" for several.
   const noteLines = (ids) => {
     const unique = [...new Set(ids)];
-    const withNotes = unique.map((id) => items[id]).filter((i) => i?.notes);
-    if (unique.length === 1) return withNotes.map((i) => i.notes);
-    return withNotes.map((i) => `${i.title} — ${i.notes}`);
+    const withNotes = unique.map((id) => items[id]).filter(Boolean);
+    if (unique.length === 1) return withNotes.map((i) => i.notes).filter(Boolean);
+    return withNotes.map((i) => `${i.title}${i.notes ? ` — ${i.notes}` : ''}`);
   };
   // Time off as busy time for one area's blocks on a day: its stretches of hours, or the whole day.
   const offBusy = (d, area) => {
@@ -3504,7 +3638,9 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   // All-day events used to be skipped outright, so a day George had marked "no work" the obvious way
   // was invisible and the planner booked straight through it. Anything all-day and busy on a watched
   // calendar now holds the days it covers; the ignore list is what keeps Holidays and Family out.
-  const allDayBusy = listed.filter((e) => e.allDay && !e.cancelled && !e.free && e.dates?.from);
+  const replacingAllDay = listed.filter(e => e.mine && e.allDay && !e.cancelled
+    && splitIds(e.props[P.items]).some(id => doc.calendar?.['conflict:' + id]?.resolution === 'dashboard'));
+  const allDayBusy = listed.filter((e) => e.allDay && !e.cancelled && !e.free && e.dates?.from && !replacingAllDay.includes(e));
 
   // A task counts as done from the day it's ticked; a habit only on the day ticked. `at` is the
   // latest tick's time, when the log has one; `span` is when it actually happened, from a tick that
@@ -3548,7 +3684,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   const actions = duplicates.map((ev) => ({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }));
   const record = (d, b) => rec(d).blocks.push({
     key: b.key, eventId: b.eventId, calendarId: b.calendarId, calendar: calName(b.calendarId), title: b.title,
-    start: iso(b.start), end: iso(b.end), state: b.state, items: b.items,
+    start: iso(b.start), end: iso(b.end), state: b.state, items: b.items, ...(b.items?.length === 1 && items[b.items[0]]?.type === 'task' ? { input: taskInput(items[b.items[0]]) } : {}),
   });
 
   // An event's new shape: nothing when it's already right; a patch; or, for a rough block becoming
@@ -3594,7 +3730,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     for (const b of prev.blocks ?? []) {
       if (!b.eventId || !['rough', 'exact', 'fixed'].includes(b.state)) continue;
       if (present.has(b.eventId) || Date.parse(b.end) <= nowMs) continue;
-      const kd = String(b.key).split('|')[0] || d;
+      const kd = String(b.key).startsWith('task|') ? d : String(b.key).split('|')[0] || d;
       for (const id of b.items ?? []) rec(kd).skipped.add(id);
     }
   }
@@ -3603,16 +3739,30 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   const fixedWanted = new Map(fixedTasks({ doc, days, config, links }).map((f) => [f.key, f]));
   for (const ev of timed.filter((e) => e.mine)) {
     const key = ev.props[P.key] ?? '';
-    const kd = key.split('|')[0] || localDay(ev.start);
-    const state = ev.props[P.state];
+    const kd = key.startsWith('task|') ? localDay(ev.start) : key.split('|')[0] || localDay(ev.start);
+    const state = fixedWanted.has(key) ? 'fixed' : ev.props[P.state];
     const ids = splitIds(ev.props[P.items]);
-    const base = ev.props[P.title] ?? ev.title;
+    const originalBase = ev.props[P.title] ?? ev.title;
+    let base = key.startsWith('task|') && ids.length === 1 && items[ids[0]] ? items[ids[0]].title + (originalBase.match(/ \(\d+ of \d+\)$/)?.[0] ?? '') : originalBase;
     const start = ev.start.getTime();
     const end = ev.end.getTime();
-    const pinned = movedByGeorge(ev);
+    const currentItem = ids.length === 1 ? items[ids[0]] : null;
+    let baseline = null;
+    try { baseline = JSON.parse(ev.props[P.input] || 'null'); } catch {}
+    const inputChanged = baseline && currentItem && ['date', 'time', 'minutes', 'hold'].some((k) => baseline[k] !== taskInput(currentItem)[k]);
+    const pinned = movedByGeorge(ev) && !inputChanged && !ids.some((id) => doc.calendar?.['conflict:' + id]?.resolution === 'dashboard');
+    if (pinned && ids.length > 1 && !HISTORY.has(state)) base = ids.map((id) => items[id]?.title ?? id).join(' · ').slice(0, 1000);
+    if (ids.some((id) => doc.calendar?.['conflict:' + id]?.open)) {
+      busy(start, end, ev.title); cover(kd, ids); useKey(kd, key); fixedWanted.delete(key);
+      record(kd, { key, eventId: ev.id, calendarId: ev.calendarId, title: ev.title, start, end, state: 'conflict', items: ids });
+      continue;
+    }
+    if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active')) {
+      actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }); fixedWanted.delete(key); continue;
+    }
     const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
       const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), nextState, calendars.find((c) => c.id === ev.calendarId));
-      const body = blockBody({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
+      const body = bodyFor({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
       const eventId = emit(ev, body, key);
       const landed = localDay(new Date(span.start));
       busy(span.start, span.end, title);
@@ -3629,9 +3779,17 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       settle({ start, end }, state, ev.title, state === 'done' ? ids : ids.filter((id) => tickOf(id, kd).finished));
       continue;
     }
-    if (state === 'fixed') {
-      const want = fixedWanted.get(key);
+    // A user placement beyond the automatic horizon remains an actual booking.
+    // It must not be mistaken for a task that no longer wants an event.
+    if (currentItem?.type === 'task' && currentItem.status === 'active' && currentItem.date > lastDay && !currentItem.scheduleHold) {
+      settle({ start, end }, 'fixed', currentItem.title);
       fixedWanted.delete(key);
+      continue;
+    }
+    if (state === 'fixed') {
+      const wantedKey = fixedWanted.has(key) ? key : ids.length === 1 ? `task|${ids[0]}|0` : key;
+      const want = fixedWanted.get(wantedKey);
+      fixedWanted.delete(wantedKey);
       const finished = ids.length > 0 && tickOf(ids[0], kd).finished;
       if (!want && !finished && start > nowMs && !pinned) {
         actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
@@ -3689,12 +3847,29 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     keep.set(key, ev);
   }
 
+  // A migration must delete the old generated block successfully before any
+  // replacement is inserted. Keep a parent for every child, not just the first.
+  const migrationParents = timed.filter((e) => e.mine && !e.props[P.key]?.startsWith('task|')
+    && e.start.getTime() > nowMs && !movedByGeorge(e) && !HISTORY.has(e.props[P.state]));
+  migrationParents.push(...replacingAllDay);
+  const migrationFor = (ids, key) => migrationParents.find((e) => (e.props[P.key] !== key || e.allDay)
+    && splitIds(e.props[P.items]).some((id) => ids.includes(id)));
+  const migrate = (parent) => {
+    if (!parent) return {};
+    if (!actions.some((a) => a.op === 'delete' && a.calendarId === parent.calendarId && a.eventId === parent.id)) {
+      actions.push({ op: 'delete', calendarId: parent.calendarId, eventId: parent.id });
+    }
+    keep.delete(parent.props[P.key]);
+    return { afterDelete: parent.id, afterDeleteCalendar: parent.calendarId };
+  };
+
   // Tasks with a time that have no event yet.
   for (const f of fixedWanted.values()) {
     if (f.start <= nowMs || tickOf(f.itemId, f.day).finished || rec(f.day).skipped.has(f.itemId)) continue;
     const cal = calendarFor(f.area, config, find, problems);
     if (!cal) continue;
-    actions.push({ op: 'insert', calendarId: cal.id, key: f.key, body: blockBody({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed', colorId: colourFor(f.area, 'fixed', cal), notes: noteLines([f.itemId]) }) });
+    const migration = migrate(migrationFor([f.itemId], f.key));
+    actions.push({ op: 'insert', ...migration, calendarId: cal.id, key: f.key, body: bodyFor({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed', colorId: colourFor(f.area, 'fixed', cal), notes: noteLines([f.itemId]) }) });
     busy(f.start, f.end, f.title);
     cover(f.day, [f.itemId]);
     useKey(f.day, f.key);
@@ -3752,7 +3927,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     const key = `${today}|done|${m.itemId}`;
     const span = recordSpan(t.at, m.minutes * MINUTE, null);
     const title = blockTitle(items[m.itemId].title, 'done');
-    actions.push({ op: 'insert', calendarId: cal.id, key, body: blockBody({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
+    actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
     busy(span.start, span.end, title);
     cover(today, [m.itemId]);
     useKey(today, key);
@@ -3765,10 +3940,10 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     const [from, to] = config.dayHours[d] ?? config.hours;
     const open = at(d, from).getTime();
     const close = at(d, to).getTime();
-    return { open, start: d === today ? Math.max(open, ceilQuarter(nowMs)) : open, end: close };
+    return { open, start: dayClosed(doc, d) ? close : d === today ? Math.max(open, ceilQuarter(nowMs)) : open, end: close };
   };
   const todayWindow = windowOf(today);
-  const todayClosed = todayWindow.start + MIN_BLOCK > todayWindow.end;
+  const todayClosed = dayClosed(doc, today) || todayWindow.start + MIN_BLOCK > todayWindow.end;
   for (const d of days) cover(d, rec(d).skipped);
   const { blocks: wanted } = demand({ doc, today, days, config, links, covered, usedKeys, todayClosed });
 
@@ -3836,8 +4011,9 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     const cal = calendarFor(b.area, config, find, problems);
     if (!cal) continue;
     const title = blockTitle(b.base, state);
-    const body = blockBody({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: colourFor(b.area, state, cal), notes: noteLines(b.items) });
+    const body = bodyFor({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: colourFor(b.area, state, cal), notes: noteLines(b.items) });
     const ex = keep.get(b.key);
+    const migration = ex ? {} : migrate(migrationFor(b.items, b.key));
     keep.delete(b.key);
     let eventId = null;
     if (ex && ex.calendarId === cal.id) {
@@ -3850,14 +4026,14 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       }
     } else {
       if (ex) actions.push({ op: 'delete', calendarId: ex.calendarId, eventId: ex.id });
-      actions.push({ op: 'insert', calendarId: cal.id, key: b.key, body, ...(ex ? { afterDelete: ex.id, afterDeleteCalendar: ex.calendarId } : {}) });
+      actions.push({ op: 'insert', ...migration, calendarId: cal.id, key: b.key, body, ...(ex ? { afterDelete: ex.id, afterDeleteCalendar: ex.calendarId } : {}) });
     }
     record(day, { key: b.key, eventId, calendarId: cal.id, title, start, end, state, items: b.items });
   }
   for (const ex of keep.values()) actions.push({ op: 'delete', calendarId: ex.calendarId, eventId: ex.id });
 
   const out = {};
-  for (const d of [yesterday, ...days]) {
+  for (const d of [...new Set([yesterday, ...days, ...Object.keys(recs)])]) {
     const r = rec(d);
     out[d] = {
       day: d,
@@ -4201,6 +4377,75 @@ function sessionLine(doc, w, config = gymConfig(doc)) {
 
 const dayLines = (doc, day) => workoutsOn(doc, day).map((w) => sessionLine(doc, w));
 
+// ---- Muscles and cardio over time (the Muscles and Cardio trend widgets) ----------------------
+
+// Broad groups, the way they're trained together, in the order the radar goes round (clockwise
+// from the top). Hevy's primary muscle for an exercise decides its group; forearms go with
+// biceps, traps with back, calves with quads. Cardio, full body and "other" count for none.
+const MUSCLE_GROUPS = Object.freeze([
+  { name: 'Chest', muscles: ['chest'] },
+  { name: 'Shoulders', muscles: ['shoulders', 'neck'] },
+  { name: 'Triceps', muscles: ['triceps'] },
+  { name: 'Biceps', muscles: ['biceps', 'forearms'] },
+  { name: 'Back', muscles: ['lats', 'upper_back', 'lower_back', 'traps'] },
+  { name: 'Core', muscles: ['abdominals'] },
+  { name: 'Glutes & hams', muscles: ['glutes', 'hamstrings', 'abductors', 'adductors'] },
+  { name: 'Quads', muscles: ['quadriceps', 'calves'] },
+].map((g) => Object.freeze({ name: g.name, muscles: Object.freeze(g.muscles) })));
+
+const GROUP_OF = new Map(MUSCLE_GROUPS.flatMap((g) => g.muscles.map((m) => [m, g.name])));
+const muscleGroupOf = (muscle) => GROUP_OF.get(norm(muscle)) ?? null;
+
+// Each non-cardio exercise done by `today` as [day, group, working sets]; exercises whose
+// template the app hasn't been sent, or whose muscle has no group, are left out.
+function groupSets(doc, today) {
+  const templates = templatesOf(doc);
+  const out = [];
+  for (const w of workouts(doc)) {
+    if (w.day > today) continue;
+    for (const e of w.exercises ?? []) {
+      if (e.kind === 'cardio') continue;
+      const group = muscleGroupOf(templates[e.tpl]?.[2]);
+      if (group && Number(e.n) > 0) out.push([w.day, group, Number(e.n)]);
+    }
+  }
+  return out;
+}
+
+// Working sets per group over the 7 days ending `today`, in MUSCLE_GROUPS order.
+function muscleWeek(doc, today) {
+  const from = addDays(today, -6);
+  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, 0]));
+  for (const [day, group, n] of groupSets(doc, today)) if (day >= from) sets.set(group, sets.get(group) + n);
+  return MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) }));
+}
+
+// The `count` groups longest since a working set: days since, or null for never (those first).
+function longestRested(doc, today, count = 3) {
+  const last = new Map();
+  for (const [day, group] of groupSets(doc, today)) if (!(last.get(group) >= day)) last.set(group, day);
+  const rest = MUSCLE_GROUPS.map((g, i) => ({ i, name: g.name, days: last.has(g.name) ? daysBetween(last.get(g.name), today) : null }));
+  rest.sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.i - b.i);
+  return rest.slice(0, count).map(({ name, days }) => ({ name, days }));
+}
+
+// Cardio minutes for each of the `count` weeks up to this one (so far), oldest first. With a
+// cardio target they're its weekly totals, as the Gym panel shows; without, Hevy's minutes.
+function cardioWeeks(doc, today, config = gymConfig(doc), count = 8) {
+  const quota = cardioQuotaId(doc, config);
+  const list = workouts(doc);
+  const thisWeek = weekStart(today);
+  const weeks = Array.from({ length: count }, (_, i) => {
+    const monday = addDays(thisWeek, 7 * (i - count + 1));
+    const last = monday === thisWeek ? today : addDays(monday, 6);
+    const minutes = quota
+      ? weekTotal(doc, quota, monday)
+      : list.filter((w) => w.day >= monday && w.day <= last).reduce((m, w) => m + cardioOf(w).minutes, 0);
+    return { monday, minutes: Math.round(minutes), current: monday === thisWeek };
+  });
+  return { weeks, target: quota ? Number(doc.items[quota].target) : null };
+}
+
 // A week's training in a line, for the Coach and the digest: sessions, cardio, key lifts.
 function trainingWeek(doc, day, config = gymConfig(doc)) {
   const start = weekStart(day);
@@ -4249,7 +4494,7 @@ function gymStatusLines(doc, when = (iso) => iso) {
   if (s.lastError) out.push(`Problem: ${s.lastError}`);
   return out;
 }
-return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, trainingWeek, gymContext, hevyTick, gymStatusLines };
+return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, MUSCLE_GROUPS, muscleGroupOf, muscleWeek, longestRested, cardioWeeks, trainingWeek, gymContext, hevyTick, gymStatusLines };
 })();
 
 // ---- planner/hevy.js
@@ -4673,6 +4918,8 @@ const { readPlannerConfig, dayRecordId, plannerStatus, CALENDAR_DEFAULTS } = __j
 const { scrubText } = __js_flags;
 const { MODELS, ENDPOINT, readReply } = __js_gemini;
 const { addDays, logicalDay } = __js_dates;
+const { taskInput } = __js_plan_state;
+const { reconcileCalendar } = __planner_reconcile;
 const { plan, fillIds } = __planner_plan;
 const { resolveCalendars } = __planner_calendars;
 const { P } = __planner_events;
@@ -4737,6 +4984,30 @@ function createPlanner({
       } while (pageToken);
     }
     return out;
+  }
+
+  // A missing window result may have been dragged outside the window. Ask by
+  // event identity before treating absence as deletion; an API error stops the pass.
+  function resolveMissing(events, memory, watchedIds, t) {
+    if (!Calendar.Events.get) return [];
+    const present = new Set(events.map((e) => e.calendarId + '|' + e.id));
+    const removed = [];
+    for (const b of Object.values(memory).flatMap((d) => d.blocks ?? [])) {
+      const key = b.calendarId + '|' + b.eventId;
+      if (!b.eventId || present.has(key) || !watchedIds.includes(b.calendarId)
+        || Date.parse(b.end) < t.getTime() || ['done', 'partial'].includes(b.state)) continue;
+      present.add(key);
+      let raw;
+      try { raw = Calendar.Events.get(b.calendarId, b.eventId); }
+      catch (error) {
+        if (!/404|410|not found|gone/i.test(String(error?.message ?? error))) throw error;
+      }
+      if (raw && raw.status !== 'cancelled') events.push({ ...raw, calendarId: b.calendarId });
+      else removed.push({ id: b.eventId, calendarId: b.calendarId, status: 'cancelled',
+        extendedProperties: { private: { [P.mine]: '1', [P.items]: b.items.join(','), [P.state]: b.state,
+          ...(b.input ? { [P.input]: JSON.stringify(b.input) } : {}) } } });
+    }
+    return removed;
   }
 
   // The dashboard, in a store over memory, as the Claude tool opens it.
@@ -4842,13 +5113,15 @@ function createPlanner({
     const days = Object.fromEntries(Object.entries(planned).map(([d, rec]) => [d, { ...rec, blocks: [] }]));
     for (const ev of actual) {
       const p = ev.extendedProperties?.private;
-      if (p?.[P.mine] !== '1' || !ev.start?.dateTime || !ev.end?.dateTime) continue;
+      if (ev.status === 'cancelled' || p?.[P.mine] !== '1' || !ev.start?.dateTime || !ev.end?.dateTime) continue;
+      let input = null;
+      try { input = JSON.parse(p[P.input] || 'null'); } catch {}
       const day = logicalDay(new Date(ev.start.dateTime), 0);
-      if (!days[day]) continue;
+      if (!days[day]) days[day] = { day, blocks: [], skipped: [], missed: [], notes: [] };
       days[day].blocks.push({ key: p[P.key], eventId: ev.id, calendarId: ev.calendarId,
         calendar: cals.find((c) => c.id === ev.calendarId)?.name ?? '', title: ev.summary ?? '',
         start: new Date(ev.start.dateTime).toISOString(), end: new Date(ev.end.dateTime).toISOString(),
-        state: p[P.state], items: String(p[P.items] ?? '').split(',').filter(Boolean) });
+        state: p[P.state], ...(input ? { input } : {}), items: String(p[P.items] ?? '').split(',').filter(Boolean) });
     }
     for (const rec of Object.values(days)) rec.blocks.sort((a, b) => a.start.localeCompare(b.start) || a.key.localeCompare(b.key));
     return days;
@@ -4901,21 +5174,51 @@ function createPlanner({
         store.putCalendar('review-status', { lastError: 'Goal reviews could not run; calendar planning continues. Check the planner logs.' });
       }
       tag(store, t);
-      const doc = store.doc();
+      let doc = store.doc();
       const { config } = readPlannerConfig(doc);
       const cals = calendars();
       const { watched } = resolveCalendars(cals, config);
       const today = logicalDay(t, dayStartHour());
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
+      const memory = readProperty(props(), 'DAYS');
+      const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
+      reconcileCalendar(store, events, removed);
+      // Persist inbound edits before making outbound Calendar changes. Never
+      // export from a draft that failed to reach the other interfaces.
+      if (session.changed()) {
+        const saved = await syncOnce({ store, client: session.client });
+        if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
+      }
+      doc = store.doc();
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),
-        memory: readProperty(props(), 'DAYS'),
+        memory,
       });
       // Check the storage budget before mutating Calendar; reserve room for Google's event IDs.
       propertyParts(fillIds(result.days, Object.fromEntries(result.actions.filter((a) => a.key).map((a) => [a.key, 'x'.repeat(128)]))));
       const { errors, actual } = apply(result.actions, events);
       const days = confirmedDays(result.days, actual, cals);
+      for (const c of Object.values(store.doc().calendar).filter((c) => c.resolution)) {
+        const ev = actual.find((e) => e.status !== 'cancelled' && e.extendedProperties?.private?.[P.mine] === '1'
+            && (e.id === c.eventId && e.calendarId === c.calendarId || String(e.extendedProperties.private[P.items] ?? '').split(',').includes(c.itemId))
+            && e.extendedProperties.private[P.input] === JSON.stringify(taskInput(store.doc().items[c.itemId] ?? {})));
+        let baseline = null;
+        try { baseline = JSON.parse(ev?.extendedProperties?.private?.[P.input] || 'null'); } catch {}
+        const item = store.doc().items[c.itemId];
+        if (baseline && item && JSON.stringify(baseline) === JSON.stringify(taskInput(item))) store.putCalendar(c.id, { resolution: null });
+      }
       writeProperty(props(), 'DAYS', days);
+      store.putCalendar('agenda', { from: today, through: addDays(today, config.days - 1),
+        syncedAt: t.toISOString(), busy: events.filter((e) => e.extendedProperties?.private?.[P.mine] !== '1' && e.status !== 'cancelled' && e.transparency !== 'transparent')
+          .flatMap((e) => {
+            const common = { title: e.summary || 'Busy', calendar: cals.find(c => c.id === e.calendarId)?.name ?? '' };
+            if (e.start?.dateTime && e.end?.dateTime) return [{ ...common, start: e.start.dateTime, end: e.end.dateTime }];
+            const out = [];
+            if (e.start?.date && e.end?.date) for (let d = e.start.date < today ? today : e.start.date; d < e.end.date && d < addDays(today, config.days); d = addDays(d, 1)) {
+              out.push({ ...common, allDay: true, start: at(d, '00:00').toISOString(), end: at(addDays(d, 1), '00:00').toISOString() });
+            }
+            return out;
+          }), blocks: Object.values(days).filter((d) => d.day >= today).flatMap((d) => d.blocks) });
       if (result.actions.length) put('LAST_WRITE', now().getTime());
       // Day records are keyed by weekday (day:1 … day:7) and everything that reads them — the app's
       // list, the Coach, Claude's week — looks seven days at most. Writing a longer plan into them

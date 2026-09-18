@@ -8,6 +8,7 @@ import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents } from './sync.js';
 import { syncHebrewProgress } from './hebrewSync.js';
 import { renderToday, initAddBox } from './ui/today.js';
+import { openTaskCard } from './ui/agenda.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
@@ -186,7 +187,7 @@ function renderHeader() {
   const shown = (text) => text && !hidden.has(`${today}|${text}`);
   const brief = briefFor(store.doc(), today);
   const off = offLine(store.doc(), today);
-  const waiting = ctx.coach.keys().length ? waitingOpener(store.doc(), today) : null;
+  const waiting = ctx.coach.keys().length ? waitingOpener(store.doc(), today, new Date(), store.settings()) : null;
   const line = (cls, text, lead = null, action = null) => h('p', { class: cls },
     lead,
     h('span', {}, text),
@@ -200,6 +201,7 @@ function renderHeader() {
   const reply = waiting ? h('button', { class: 'link', type: 'button', onclick: () => ctx.openTalk(waiting.slot) }, 'Reply') : null;
   const notesEl = document.getElementById('planner-notes');
   notesEl.replaceChildren(...[
+    ctx.coach.keys().length ? h('p', {}, h('button', { class: 'link', type: 'button', onclick: () => ctx.openTalk() }, 'Add or plan with the Coach')) : null,
     shown(brief) ? line('brief', brief, mark('claude', 'From Claude')) : null,
     waiting && shown(waiting.text) ? line('coach-line', waiting.text, mark('gemini', 'From the Coach'), reply) : null,
     shown(off) ? line('off', off) : null,
@@ -251,6 +253,10 @@ function render() {
   renderSide(ctx);
   paintCoachSheet(ctx);
   shownTalk = talkNow(ctx);
+  if (!ui.openedLinkedTask && params.has('task') && store.doc().items[params.get('task')]) {
+    ui.openedLinkedTask = true;
+    queueMicrotask(() => openTaskCard(ctx, params.get('task')));
+  }
 }
 
 // A storage-event save held back while typing/editing (see below), absorbed as soon as a sync

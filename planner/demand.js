@@ -9,6 +9,7 @@ import { timeOff, excused } from '../js/calendar.js';
 import { at, MINUTE } from './time.js';
 import { norm } from './calendars.js';
 
+import { dayClosed } from '../js/plan-state.js';
 import { blockers } from '../js/workflow.js';
 
 const values = (map) => Object.values(map ?? {});
@@ -34,11 +35,11 @@ export function fixedTasks({ doc, days, config, links = [] }) {
   const place = (i, day) => {
     const start = at(day, i.time).getTime();
     return {
-      key: `${day}|fixed|${i.id}`, itemId: i.id, day, title: i.title, area: String(i.area ?? '').trim(),
+      key: i.type === 'task' ? `task|${i.id}|0` : `${day}|fixed|${i.id}`, itemId: i.id, day, title: i.title, area: String(i.area ?? '').trim(),
       start, end: start + (i.minutes ?? config.defaultMinutes) * MINUTE,
     };
   };
-  for (const i of values(doc.items).filter((x) => x.status === 'active' && x.time).sort(byOrder)) {
+  for (const i of values(doc.items).filter((x) => x.status === 'active' && x.time && !x.scheduleHold && !doc.calendar?.[`conflict:${x.id}`]?.open).sort(byOrder)) {
     if (i.type === 'task') {
       if (days.includes(i.date) && !excused(doc, i, i.date, offs) && !blockers(doc, i, i.date).length) out.push(place(i, i.date));
     } else if (i.type === 'habit' && !linked.has(i.id)) {
@@ -55,59 +56,34 @@ export function fixedTasks({ doc, days, config, links = [] }) {
 // One area's entries on one day as blocks of at most maxBlockMinutes: tasks packed in order, a task
 // longer than that in equal parts, then the weekly target's extra time.
 function parts(entries, share, name, config) {
-  const max = config.maxBlockMinutes;
   const out = [];
-  let cur = null;
   for (const { item, carried } of entries) {
-    const m = item.minutes ?? config.defaultMinutes;
-    if (m > max) {
-      const n = Math.ceil(m / max);
-      const each = Math.min(max, ceil15(m / n));
-      for (let k = 1; k <= n; k++) out.push({ ids: [item.id], titles: [], minutes: each, carried, split: `${item.title} (${k} of ${n})` });
-      cur = null;
-      continue;
+    const total = item.minutes ?? config.defaultMinutes;
+    const count = Math.ceil(total / config.maxBlockMinutes);
+    let left = total;
+    for (let part = 0; part < count; part++) {
+      const minutes = Math.min(config.maxBlockMinutes, left);
+      left -= minutes;
+      out.push({ ids: [item.id], minutes, carried, part, type: item.type,
+        base: count > 1 ? item.title + ' (' + (part + 1) + ' of ' + count + ')' : item.title });
     }
-    if (!cur || cur.minutes + m > max) {
-      cur = { ids: [], titles: [], minutes: 0, carried: false };
-      out.push(cur);
-    }
-    cur.ids.push(item.id);
-    cur.titles.push(item.title);
-    cur.minutes += m;
-    cur.carried = cur.carried || carried;
   }
-  let extra = Math.max(0, (share?.minutes ?? 0) - out.reduce((s, p) => s + p.minutes, 0));
-  const last = out[out.length - 1];
-  if (extra > 0 && last && !last.split && last.minutes < max) {
-    const add = Math.min(extra, max - last.minutes);
-    last.minutes += add;
-    last.padded = true;
-    extra -= add;
-  }
+  let extra = Math.max(0, (share?.minutes ?? 0) - out.reduce((n, p) => n + p.minutes, 0));
   while (extra > 0) {
-    const m = Math.min(extra, max);
-    out.push({ ids: [], titles: [], minutes: m, carried: false });
-    extra -= m;
+    const minutes = Math.min(extra, config.maxBlockMinutes);
+    out.push({ ids: [], minutes, carried: false, base: (share?.titles?.join(' / ') || name) + ' — optional practice' });
+    extra -= minutes;
   }
-  const targetTitle = share?.titles.length === 1 ? share.titles[0] : name;
-  return out.map((p) => {
-    const many = `${name} ×${p.ids.length}`;
-    let base;
-    if (p.split) base = p.split;
-    else if (p.padded) base = p.ids.length > 1 ? many : name;
-    else if (p.ids.length === 1) base = p.titles[0];
-    else base = p.ids.length ? many : targetTitle;
-    return { ids: p.ids, minutes: p.minutes, carried: p.carried, base };
-  });
+  return out;
 }
 
 export function demand({ doc, today, days, config, links, covered = new Map(), usedKeys = new Map(), todayClosed = false }) {
   const idx = doneIndex(doc);
   const offs = timeOff(doc);
-  const off = (item, d) => blockers(doc, item, d).length > 0 || (offs.length > 0 && excused(doc, item, d, offs));
+  const off = (item, d) => dayClosed(doc, d) || blockers(doc, item, d).length > 0 || (offs.length > 0 && excused(doc, item, d, offs));
   const linked = new Set(links.map((l) => l.habitId));
   const linkedAreas = new Set(links.map((l) => norm(l.area)).filter(Boolean));
-  const active = values(doc.items).filter((i) => i.status === 'active').sort(byOrder);
+  const active = values(doc.items).filter((i) => i.status === 'active' && !i.scheduleHold && !doc.calendar?.[`conflict:${i.id}`]?.open).sort(byOrder);
   const inWindow = new Set(days);
   const lastDay = days[days.length - 1];
   const thisMonday = weekStart(today);
@@ -163,6 +139,7 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
     }
   }
 
+  const allUsed = new Set([...usedKeys.values()].flatMap(keys => [...keys]));
   const blocks = [];
   for (const d of days) {
     const skip = covered.get(d) ?? new Set();
@@ -174,7 +151,9 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
       groups.set(a, g);
     };
     for (const i of active) {
-      if (skip.has(i.id)) continue;
+      const coveredTask = i.type === 'task' && [...covered.values()].some(ids => ids.has(i.id));
+      const hasNamedSession = i.type === 'task' && [...allUsed].some(key => key.startsWith(`task|${i.id}|`));
+      if ((i.type !== 'task' && skip.has(i.id)) || (coveredTask && !hasNamedSession)) continue;
       if (i.type === 'task' && !i.time) {
         if (doneDays(doc, i.id, idx).size) continue;
         if (dueDay(i) === d) add(i, i.date < d);
@@ -193,9 +172,10 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
       const areaFirst = config.priorityAreas.some((p) => norm(p) === a);
       let n = 0;
       for (const p of parts(g.entries, shares.get(a)?.get(d), g.area || 'Tasks', config)) {
+        if (p.type === 'task' && allUsed.has(`task|${p.ids[0]}|${p.part}`)) continue;
         while (used.has(`${d}|${a}|${n}`)) n++;
         const priority = areaFirst || p.ids.some((id) => doc.items[id]?.priority === true);
-        blocks.push({ key: `${d}|${a}|${n++}`, day: d, area: g.area, items: p.ids, minutes: p.minutes, carried: p.carried, base: p.base, priority });
+        blocks.push({ key: p.type === 'task' ? `task|${p.ids[0]}|${p.part}` : `${d}|${a}|${n++}`, day: d, area: g.area, items: p.ids, minutes: p.minutes, carried: p.carried, base: p.base, priority });
       }
     }
   }
