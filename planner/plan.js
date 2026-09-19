@@ -107,9 +107,16 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     if (id && !takenBy.has(id)) takenBy.set(id, String(c.name).trim());
   }
   const takenColors = [...takenBy.keys()].map(colorName).filter(Boolean).sort();
-  const areaColorId = (area) => {
+  // An area with no colour of its own still mustn't look like George's own events on the main
+  // calendar: reading and everything else get a colour each, the first of theirs that's free.
+  const fallbackColorId = (area) => {
+    const used = new Set([...takenBy.keys(), ...Object.values(config.areaColors).map((n) => COLOR_NAMES[n])]);
+    const prefer = /read/i.test(area) ? ['Sage', 'Basil', 'Peacock'] : ['Lavender', 'Grape', 'Flamingo'];
+    return prefer.map((n) => COLOR_NAMES[n]).find((id) => !used.has(id)) ?? null;
+  };
+  const areaColorId = (area, cal) => {
     const key = Object.keys(config.areaColors).find((a) => norm(a) === norm(area));
-    if (key === undefined) return null;
+    if (key === undefined) return cal?.primary ? fallbackColorId(String(area ?? '')) : null;
     const name = config.areaColors[key];
     const id = COLOR_NAMES[name];
     if (!takenBy.has(id)) return id;
@@ -119,7 +126,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     return null;
   };
   const colourFor = (area, state, cal) => {
-    const id = areaColorId(area);
+    const id = areaColorId(area, cal);
     if (state === 'rough') return id ? paleOf(id) : roughColor(cal?.backgroundColor, eventColors);
     return id;
   };
