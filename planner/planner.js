@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '099b4f94';
+var PLANNER_BUILD = 'a493414f';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -459,6 +459,8 @@ function recordProblem(map, id, r) {
     }
   }
   if (['items', 'goals', 'milestones'].includes(map) && (!string(r.title) || !r.title.trim())) return 'A record needs a title';
+  if (map === 'milestones' && r.auto !== undefined
+    && !(isPlainObject(r.auto) && ['words', 'days'].includes(r.auto.kind) && finite(r.auto.n) && r.auto.n > 0)) return 'Invalid milestone rule';
   if (map === 'items') {
     if (!['task', 'habit', 'quota'].includes(r.type)) return 'Invalid item type';
     if (r.type === 'task' && !day(r.date)) return 'A task needs a real date';
@@ -1495,9 +1497,12 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     return create('goals', goalFields(fields));
   }
 
-  function addMilestone(goalId, title, { source = 'me', status = 'active' } = {}) {
+  // `auto` is a rule for a milestone that ticks itself, e.g. { kind: 'words', n: 250 }; `id` lets an
+  // integration create one at a fixed id.
+  function addMilestone(goalId, title, { source = 'me', status = 'active', id, auto } = {}) {
     return create('milestones', {
       goalId, title: requireTitle(title, 'A milestone'), done: false, order: nextOrder('milestones'), source, status,
+      ...(id ? { id } : {}), ...(auto ? { auto } : {}),
     });
   }
 

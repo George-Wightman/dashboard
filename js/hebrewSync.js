@@ -8,12 +8,39 @@
 
 export const HEBREW_IDS = { goal: 'hebrew-goal', habit: 'hebrew-habit', minutes: 'hebrew-minutes', spoken: 'hebrew-spoken' };
 
+const OLD_GOAL_TITLE = 'Hold a 10-minute conversation in Hebrew';
+
+// The stages on the way, in the order they should come up. `auto` ones tick themselves from the
+// Hebrew app's numbers (words in its library, days practiced); the rest are conversations only
+// George can vouch for, so they stay plain checkboxes.
+export const HEBREW_LADDER = [
+  { id: 'hebrew-ms-words-50', title: 'Know 50 Hebrew words', auto: { kind: 'words', n: 50 } },
+  { id: 'hebrew-ms-days-7', title: 'Practise Hebrew on 7 different days', auto: { kind: 'days', n: 7 } },
+  { id: 'hebrew-ms-talk-hello', title: 'Greet her and introduce myself in Hebrew' },
+  { id: 'hebrew-ms-words-100', title: 'Know 100 Hebrew words', auto: { kind: 'words', n: 100 } },
+  { id: 'hebrew-ms-talk-1', title: 'Have a 1-minute exchange with her in Hebrew (how was your day)' },
+  { id: 'hebrew-ms-days-30', title: 'Practise Hebrew on 30 different days', auto: { kind: 'days', n: 30 } },
+  { id: 'hebrew-ms-words-250', title: 'Know 250 Hebrew words', auto: { kind: 'words', n: 250 } },
+  { id: 'hebrew-ms-talk-3', title: 'Have a 3-minute chat with her in Hebrew, no English' },
+  { id: 'hebrew-ms-words-500', title: 'Know 500 Hebrew words', auto: { kind: 'words', n: 500 } },
+  { id: 'hebrew-ms-talk-5', title: 'Have a 5-minute chat with her in Hebrew about anything' },
+  { id: 'hebrew-ms-days-60', title: 'Practise Hebrew on 60 different days', auto: { kind: 'days', n: 60 } },
+  { id: 'hebrew-ms-words-1000', title: 'Know 1000 Hebrew words', auto: { kind: 'words', n: 1000 } },
+  { id: 'hebrew-ms-talk-10', title: 'Hold a 10-minute conversation in Hebrew' },
+];
+
 // Created once, however they're since renamed, retargeted or archived: this only fills in what's
-// missing, it never resets an existing record.
+// missing, it never resets an existing record. The one exception is the goal's old title, renamed
+// to plain "Hebrew" if (and only if) it's still exactly what this file first gave it.
 export function ensureHebrewGoal(store, { minutesTarget = 90, spokenTarget = 40 } = {}) {
   const doc = store.doc();
   if (!doc.goals[HEBREW_IDS.goal]) {
-    store.addGoal({ id: HEBREW_IDS.goal, title: 'Hold a 10-minute conversation in Hebrew', source: 'hebrew' });
+    store.addGoal({ id: HEBREW_IDS.goal, title: 'Hebrew', source: 'hebrew' });
+  } else if (doc.goals[HEBREW_IDS.goal].title === OLD_GOAL_TITLE) {
+    store.updateGoal(HEBREW_IDS.goal, { title: 'Hebrew' });
+  }
+  for (const { id, title, auto } of HEBREW_LADDER) {
+    if (!doc.milestones[id]) store.addMilestone(HEBREW_IDS.goal, title, { id, auto, source: 'hebrew' });
   }
   if (!doc.items[HEBREW_IDS.habit]) {
     store.addItem({
@@ -87,6 +114,17 @@ function latestWords(stats) {
   return null;
 }
 
+// Ticks any auto milestone whose rule has been reached. One-way: a milestone once ticked stays
+// ticked (a library that later shrinks, or one you untick by hand, isn't fought), and an archived
+// one is never touched.
+function applyAutoMilestones(store, { words, days }) {
+  const reached = { words: words ?? 0, days };
+  for (const m of Object.values(store.doc().milestones)) {
+    if (m.goalId !== HEBREW_IDS.goal || m.status !== 'active' || m.done || !m.auto) continue;
+    if (reached[m.auto.kind] >= m.auto.n) store.updateMilestone(m.id, { done: true });
+  }
+}
+
 // Fetch, parse and apply once. Like js/sync.js's syncOnce, this never throws: every failure comes
 // back as { ok: false, error }. No file yet is not a failure — there's nothing to apply yet.
 export async function syncHebrewProgress({ store, client }) {
@@ -105,5 +143,9 @@ export async function syncHebrewProgress({ store, client }) {
   }
   ensureHebrewGoal(store);
   applyDailyStats(store, stats);
-  return { ok: true, words: latestWords(stats) };
+  const words = latestWords(stats);
+  const today = store.today();
+  const days = Object.entries(stats).filter(([day, s]) => day <= today && s.sessions > 0).length;
+  applyAutoMilestones(store, { words, days });
+  return { ok: true, words };
 }

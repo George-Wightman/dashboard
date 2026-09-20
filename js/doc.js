@@ -71,6 +71,8 @@ export function recordProblem(map, id, r) {
     }
   }
   if (['items', 'goals', 'milestones'].includes(map) && (!string(r.title) || !r.title.trim())) return 'A record needs a title';
+  if (map === 'milestones' && r.auto !== undefined
+    && !(isPlainObject(r.auto) && ['words', 'days'].includes(r.auto.kind) && finite(r.auto.n) && r.auto.n > 0)) return 'Invalid milestone rule';
   if (map === 'items') {
     if (!['task', 'habit', 'quota'].includes(r.type)) return 'Invalid item type';
     if (r.type === 'task' && !day(r.date)) return 'A task needs a real date';

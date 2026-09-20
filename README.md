@@ -94,14 +94,18 @@ heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-
 ## Hebrew progress
 
 Paste a fine-grained GitHub token (Contents read only) for the Hebrew app's own sync repo into
-⚙ → *Hebrew progress*, and the goal *Hold a 10-minute conversation in Hebrew* appears with a daily
-habit and two weekly targets — learning time and speaking practice — filled in from the app's real
+⚙ → *Hebrew progress*, and the goal *Hebrew* appears with a daily
+habit, two weekly targets and a ladder of milestones leading up to a 10-minute conversation — learning time and speaking practice — filled in from the app's real
 practice numbers (seconds practiced, spoken reps, sessions) each time it syncs. The daily habit
 ticks itself on any day the Hebrew app shows a session; the targets show real minutes and reps
 against target the same way any other weekly target does. Read-only: the dashboard never writes
 back to that repo, and this can never conflict with the Hebrew app's own sync. Once created, the
 goal, habit and targets are ordinary records — rename them, retarget them, or archive them, and
 the sync leaves your changes alone; it only ever fills in what's missing.
+
+The ladder mixes stages that tick themselves (Know 50 / 100 / 250 / 500 / 1000 words, from the app's
+library size; Practise on 7 / 30 / 60 different days) with conversation stages you tick by hand
+(greeting her, then 1-, 3-, 5- and finally 10-minute chats). A stage that has ticked stays ticked.
 
 ## Optional task controls and goal reviews
 

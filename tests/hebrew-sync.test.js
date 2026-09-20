@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncHebrewProgress, ensureHebrewGoal, HEBREW_IDS } from '../js/hebrewSync.js';
+import { syncHebrewProgress, ensureHebrewGoal, HEBREW_IDS, HEBREW_LADDER } from '../js/hebrewSync.js';
 import { weekTotal } from '../js/schedule.js';
 import { makeStore, clock } from './helpers.js';
 
@@ -40,7 +40,7 @@ test('first sync creates the goal, habit and two weekly targets, and applies eac
 
   const doc = store.doc();
   const goal = doc.goals[HEBREW_IDS.goal];
-  assert.equal(goal.title, 'Hold a 10-minute conversation in Hebrew');
+  assert.equal(goal.title, 'Hebrew');
   assert.equal(goal.source, 'hebrew');
   assert.equal(doc.items[HEBREW_IDS.habit].goalId, HEBREW_IDS.goal);
   assert.equal(doc.items[HEBREW_IDS.minutes].target, 90);
@@ -127,4 +127,50 @@ test('missing hvr_stats key (a brand new Hebrew app) applies nothing, still repo
   assert.equal(result.ok, true);
   assert.equal(result.words, null);
   assert.ok(store.doc().goals[HEBREW_IDS.goal]); // still connects the goal, ready for real data later
+});
+
+const ms = (store, id) => store.doc().milestones[id];
+
+test('the ladder is created once, in order, under the Hebrew goal', () => {
+  const store = makeStore();
+  ensureHebrewGoal(store);
+  ensureHebrewGoal(store);
+  const list = Object.values(store.doc().milestones).sort((a, b) => a.order - b.order);
+  assert.deepEqual(list.map((m) => m.id), HEBREW_LADDER.map((m) => m.id));
+  assert.ok(list.every((m) => m.goalId === HEBREW_IDS.goal && !m.done));
+  assert.equal(list.at(-1).title, 'Hold a 10-minute conversation in Hebrew');
+});
+
+test('word and day milestones tick from the synced stats; conversation ones do not', async () => {
+  const store = makeStore();
+  const stats = {};
+  for (let d = 1; d <= 8; d++) stats[`2026-09-0${d}`] = { sec: 300, sessions: 1, spoken: 0, lib: d * 40 };
+  await syncHebrewProgress({ store, client: client(await envelope(stats)) }); // 8 days, 320 words
+  assert.equal(ms(store, 'hebrew-ms-words-250').done, true);
+  assert.equal(ms(store, 'hebrew-ms-words-500').done, false);
+  assert.equal(ms(store, 'hebrew-ms-days-7').done, true);
+  assert.equal(ms(store, 'hebrew-ms-days-30').done, false);
+  assert.equal(ms(store, 'hebrew-ms-talk-hello').done, false);
+});
+
+test('a ticked milestone stays ticked and an archived one is left alone', async () => {
+  const store = makeStore();
+  ensureHebrewGoal(store);
+  store.archiveMilestone('hebrew-ms-words-50');
+  await syncHebrewProgress({ store, client: client(await envelope({ '2026-09-08': { sec: 60, sessions: 1, lib: 300 } })) });
+  assert.equal(ms(store, 'hebrew-ms-words-50').done, false);
+  assert.equal(ms(store, 'hebrew-ms-words-250').done, true);
+  await syncHebrewProgress({ store, client: client(await envelope({ '2026-09-08': { sec: 60, sessions: 1, lib: 10 } })) });
+  assert.equal(ms(store, 'hebrew-ms-words-250').done, true);
+});
+
+test('an old-titled goal is renamed once; a title you chose is kept', () => {
+  const old = makeStore();
+  old.addGoal({ id: HEBREW_IDS.goal, title: 'Hold a 10-minute conversation in Hebrew', source: 'hebrew' });
+  ensureHebrewGoal(old);
+  assert.equal(old.doc().goals[HEBREW_IDS.goal].title, 'Hebrew');
+  const mine = makeStore();
+  mine.addGoal({ id: HEBREW_IDS.goal, title: 'Speak Hebrew with Sam', source: 'hebrew' });
+  ensureHebrewGoal(mine);
+  assert.equal(mine.doc().goals[HEBREW_IDS.goal].title, 'Speak Hebrew with Sam');
 });
