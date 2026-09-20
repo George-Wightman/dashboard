@@ -3,7 +3,7 @@
 // journal entry — and Claude's guide for the week. Pure. js/coach-tools.js is what the Coach may
 // do; js/ui/coach.js is the panel.
 
-import { addDays, weekStart, longDate, shortWeekday } from './dates.js';
+import { addDays, weekStart, longDate, shortWeekday, shortDate } from './dates.js';
 import { rowsForDay, weekTotal, countsOn, streak, goalProgress } from './schedule.js';
 import { dayRecord, offLine, briefFor, clockLabel } from './calendar.js';
 import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, sessionLine } from './gym.js';
@@ -173,8 +173,68 @@ function blocksText(doc, day) {
     .map((b) => `${b.allDay ? 'All day' : `${clockLabel(b.start)}–${clockLabel(b.end)}`} ${String(b.title).replace(/^~ /, '')}${b.state === 'rough' ? ' (flexible)' : ''} on ${b.calendar ?? 'Calendar'} [${b.items.map(shortId).join(', ')}]`);
 }
 
-// Everything the Coach is told at the start of each turn, as compact text.
-export function talkContext(doc, today, now) {
+const dayName = (day) => `${shortWeekday(day)} ${shortDate(day)}`;
+
+// A task with no estimate takes the planner's defaultMinutes.
+export const DEFAULT_TASK_MINUTES = 30;
+// A day counts as light when the time still booked on it, doubled, is under the time asked for it.
+export const LIGHT_DAY_RATIO = 2;
+
+// How today turned out against what was asked of it, recomputed from the bookings every time.
+// `movedOff` is the part the lists can't show: work that left this day, and where it went.
+// `significant` is about what is left, not what moved — three tasks leaving a day that is still
+// full is a non-event; three leaving a day that is now empty is worth a sentence. It lives here
+// rather than in plan-state.js because only the Coach's prompt reads it, and plan-state is bundled
+// into the Apps Script planner, which would then need redeploying for every change to this.
+export function dayShape(doc, today) {
+  const { entries } = scheduleView(doc, today);
+  const bookedToday = entries.filter((e) => e.scheduledDay === today);
+  const requested = entries.filter((e) => e.requestedDay === today);
+  const minutes = (list) => list.reduce((n, e) => n + (e.item.minutes ?? DEFAULT_TASK_MINUTES), 0);
+  const requestedMinutes = minutes(requested);
+  const bookedMinutes = minutes(bookedToday);
+  const movedOff = requested
+    .filter((e) => e.scheduledDay && e.scheduledDay > today)
+    .map((e) => ({ item: e.item, to: e.scheduledDay, reason: e.reason }));
+  return {
+    bookedToday,
+    movedOff,
+    unscheduled: requested.filter((e) => !e.scheduledDay),
+    arrived: bookedToday.filter((e) => e.requestedDay < today),
+    requestedMinutes,
+    bookedMinutes,
+    significant: movedOff.length > 0
+      && (bookedToday.length === 0 || bookedMinutes * LIGHT_DAY_RATIO < requestedMinutes),
+  };
+}
+
+// How today stands against what was asked of it. The lists above show what is booked; these lines
+// are the part they can't show — work that left this day, and where it went. They are here on every
+// turn, so the Coach is never wrong-footed by an intent line that the planner has since overtaken.
+// The marker that licenses mentioning it unprompted is written only on the Coach's first message of
+// a conversation, so there is nothing left to repeat on later turns.
+function shapeLines(doc, today, first) {
+  const shape = dayShape(doc, today);
+  const titled = (e) => `"${clip(e.item.title, 80)}"`;
+  const out = [];
+  if (shape.movedOff.length) {
+    out.push(`Requested for today, now booked later: ${shape.movedOff.map((m) => `${titled(m)} → ${dayName(m.to)}`).join(' · ')}`);
+  }
+  if (shape.unscheduled.length) {
+    out.push(`Requested for today, no booking yet: ${shape.unscheduled.map(titled).join(' · ')}`);
+  }
+  if (shape.arrived.length) {
+    out.push(`Booked today though requested earlier: ${shape.arrived.map((e) => `${titled(e)} (requested ${dayName(e.requestedDay)})`).join(' · ')}`);
+  }
+  if (first && shape.significant) {
+    out.push("Today's shape is significantly different from what was asked of it. You may say so once, in this first message, naming where the work went. Do not raise it again unless George does.");
+  }
+  return out;
+}
+
+// Everything the Coach is told at the start of each turn, as compact text. `first` marks the
+// Coach's first message of a conversation — an opener, or its first reply in one George started.
+export function talkContext(doc, today, now, { first = false } = {}) {
   const tomorrow = addDays(today, 1);
   const lines = [
     `Now: ${longDate(today)}, ${clockLabel(now.toISOString())}`,
@@ -195,8 +255,9 @@ export function talkContext(doc, today, now) {
     const off = offLine(doc, d);
     if (off) lines.push(`${name}: ${off}`);
   }
+  lines.push(...shapeLines(doc, today, first));
   const brief = briefFor(doc, today);
-  if (brief) lines.push(`Claude's brief for today: ${brief}`);
+  if (brief) lines.push(`Today's intent (Claude — why today matters, not what is scheduled): ${brief}`);
   const guide = guideFor(doc, today);
   if (guide) lines.push(`Claude's guide for this week: ${guide}`);
   lines.push(...gymContext(doc, today));
@@ -215,6 +276,8 @@ export function talkContext(doc, today, now) {
 export const TALK_SYSTEM = [
   "You are George's coach inside his personal dashboard. British English; warm, direct, specific. One to four sentences, at most one question, no habitual follow-up question or forced goodbye. This is one continuous conversation; follow his current subject. Missed invitations expire, and silence is not failure.",
   "The shared schedule below is the Dashboard and Google Calendar's common plan. Requested date, actual calendar booking and deadline are different. Read get_day or find before reviewing work. A missing booking is unscheduled, not a reason to pull work into today. Never guess why a calendar task moved or claim to see external appointments that are absent from your context.",
+  "Claude's intent lines say why today matters and how to approach it. They never state what is scheduled, and they are written in advance, so the planner may have moved the work they refer to. The lists and bookings are the only source of what is happening; where they disagree with an intent line, the lists are right.",
+  "Talk about the day as it actually is. Do not volunteer that work has moved, slipped or been rebooked unless the context marks today as significantly different, or George raises it himself. When he asks, answer in full from the bookings.",
   "Execute explicit task instructions, including future dates, using tools. Add goals with add_goal. For an open-ended review ('the layout looks wrong', 'make tomorrow relevant') first use propose_changes and prepare specific changes for George to apply. Do not substitute unrelated tasks. Read original dates and pass expectedDay to move_task. Do not introduce earlier work, a different date, or extra tasks without a clear request.",
   "All tools work on one draft until your turn finishes. Do not promise success before tool results. Any failed mutation cancels the whole batch. Undo means undo_last_action; never attempt to reconstruct an earlier plan by moving items from memory. Recorded action receipts and their undo status are the evidence of changes, even when an earlier reply claimed otherwise.",
   "When George says the day is over or he is going to bed, call close_day. A closed day accepts no new work; capture future ideas normally. Only call reopen_day on his explicit request. You can still record something he says he already completed. Never reopen today to evade a tool refusal.",
@@ -223,9 +286,13 @@ export const TALK_SYSTEM = [
   "At a natural end use finish to save a journal entry about George, not about yourself. Leave feeling blank if unknown. Do not force closure after every task or question. He can continue the conversation afterwards.",
 ].join('\n');
 
-export function talkSystem(doc, today, now) {
-  return `${TALK_SYSTEM}\n\nWhat you know right now:\n${talkContext(doc, today, now)}`;
+export function talkSystem(doc, today, now, { first = false } = {}) {
+  return `${TALK_SYSTEM}\n\nWhat you know right now:\n${talkContext(doc, today, now, { first })}`;
 }
+
+// Whether the Coach has yet to speak in this conversation: an opener, or its first reply in one
+// George started. Only then may it raise a significantly changed day unprompted.
+export const firstCoachTurn = (doc, day, slot) => !(talkOf(doc, day, slot)?.messages ?? []).some((m) => m.who === 'coach');
 
 export const OPENERS = {
   morning: "It's the morning. Open a short conversation with George: one or two sentences, ending in one question about what today looks like and anything the plan should know. Reply with just your message.",

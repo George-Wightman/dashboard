@@ -11,7 +11,7 @@ import { shapePrompt, parseShape, digestOf, digestDue, digestPrompt, parseDigest
 import { addDays, weekStart } from '../dates.js';
 import { canUndo } from '../changes.js';
 import {
-  talkId, talkOf, entryOf, entryId, talksOn, heard, openerDue, unfinished, nextOwnSlot, slotName, talkSystem, talkContents,
+  talkId, talkOf, entryOf, entryId, talksOn, heard, openerDue, unfinished, nextOwnSlot, slotName, talkSystem, talkContents, firstCoachTurn,
   plainEntry, waitingOpener, conversationContents, OPENERS, PLAIN_OPENERS, WRAP_UP, MESSAGE_MAX, ENTRY_MAX,
 } from '../talk.js';
 import { prepareCoachTurn, describeEdits, netEdits } from '../coach-session.js';
@@ -161,7 +161,7 @@ async function turn(ctx, day, slot, extra = [], { only = null, toolConfig = null
   const session = prepareCoachTurn(store, () => nowOf(ctx), { message, only,
     onHandoff: (t) => handoffs.push(t), onFinish: (e) => { entry = e; } });
   const result = await ctx.coach.talk({
-    system: talkSystem(store.doc(), day, nowOf(ctx)),
+    system: talkSystem(store.doc(), day, nowOf(ctx), { first: firstCoachTurn(store.doc(), day, slot) }),
     contents: only ? talkContents(talkOf(store.doc(), day, slot), extra, store.doc()) : conversationContents(store.doc(), day, extra),
     tools: only ? session.declarations.filter((d) => only.includes(d.name)) : session.declarations,
     toolConfig, ...(steps != null ? { steps } : {}), run: session.run,
@@ -303,7 +303,7 @@ export async function openMoment(ctx, slot) {
     let text = PLAIN_OPENERS[slot];
     let model = '';
     try {
-      const r = await ctx.coach.talk({ system: talkSystem(store.doc(), day, nowOf(ctx)), contents: [{ role: 'user', parts: [{ text: OPENERS[slot] }] }] });
+      const r = await ctx.coach.talk({ system: talkSystem(store.doc(), day, nowOf(ctx), { first: true }), contents: [{ role: 'user', parts: [{ text: OPENERS[slot] }] }] });
       if (r.text) { text = r.text.trim().slice(0, 600); model = r.model; }
     } catch {
       // the plain line will do

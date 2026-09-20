@@ -260,6 +260,10 @@ planner out. Cancel: `{"op": "off", "cancel": "off:2026-09-16"}`.
 The line at the top of George's list: `{"op": "brief", "text": "…", "day": "tomorrow"}` (`day`
 defaults to today; up to 500 characters). Writing one for a day replaces it.
 
+It is intent, not a schedule: say why the day matters and how to approach it, and don't name the
+tasks on it. The planner rebooks work between days, and the Coach is told to trust the lists over a
+brief that disagrees with them, so a brief naming tasks simply goes stale.
+
 ### `guide`
 The Coach's guide for a week: `{"op": "guide", "text": "…"}` (up to 600 characters; `"week":
 "2026-09-21"` or any day in it for another week — it's filed under that week's Monday). What to focus

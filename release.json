@@ -1,5 +1,5 @@
 {
-  "id": "41efd5a62463c7be71a40247b5f0562e38215192956707b2d4357631e38e2b60",
+  "id": "3bb05333b4bd605c700886160ed78aab9c44afc7a0532ca9ed538ad167152ef0",
   "files": {
     "./": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
     "index.html": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
@@ -27,7 +27,7 @@
     "js/calendar.js": "963218b2ced14aae468d0ffb7739b9318c865ae275ba23c6bb94d0ce5b03c5de",
     "js/attention.js": "a1045ff2d32ba60a000017b60bb9ce7dca6c69eeb1018bedcf5e03195d4e24ff",
     "js/gym.js": "d254b72e4ae92627f507c37fd903d14437236aa156d254016e952366d4edc7ab",
-    "js/talk.js": "ac3e22c48d7c941a36422ef1b33fbe24e806d9e20623ff1d9205db3c89f55f19",
+    "js/talk.js": "ab1fc7a91bb3ac0eab97b9464485aee246fc0a3437c07947cf620c25f7ee6c76",
     "js/coach-tools.js": "45a1511132b06beec9d028ad61b56f4cf59f0da70f21d56912fd46fe8f3cdc6d",
     "js/plan-state.js": "b2f81f7435ce27181b39b7c9a13538de8de9c06347662bad5392eb614e67f44e",
     "js/coach-session.js": "f5279e15ce34e36c2c4b3003fb4bd2ae7704eca936ac79ce1e77453c59a765b3",
@@ -41,7 +41,7 @@
     "js/ui/side.js": "b0994cbeb6268701563a762bfd4347d5a97b70423c95be2b92a473916c063c30",
     "js/ui/edit.js": "15dbe102aeca484fb1855068c724e32677b5e57bd73d30a7f5cb371b9cfbcf40",
     "js/ui/settings.js": "ec2890731075df451c022e9c502797757f1070fa0f2b239a1c61ea0e62c4de4c",
-    "js/ui/coach.js": "492bf75ed1988b3cb65441fb9ec918eb64f0168a322eb1e115f5f81017865a08",
+    "js/ui/coach.js": "a42e32f350e793bbfa800463fbb82596d3e560774182806bd3e039b62918f514",
     "js/ui/widgets.js": "ca24f0e7d888af72eae8be928e25f9622e67ad3b8bd82ac3907830a3096fdbd5",
     "js/ui/flags.js": "b8f49fc589e3c4b8d79cd0b9c64ee661fadd970e16ca780af1f5dc0055cdfbb3",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",

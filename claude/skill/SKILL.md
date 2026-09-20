@@ -132,6 +132,9 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
   title. Keep titles to a few words: they are the calendar block's label.
 - **The brief** — `{"op": "brief", "text": "…"}`: one or two lines on what matters today and why,
   shown at the top of his list. In *plan my week*, write each day's (`"day": "2026-09-17"`).
+  **Write intent, never a task list.** The planner moves work between days, so a brief that names
+  the day's tasks is wrong as soon as it does — say why the day matters and how to approach it, and
+  let his list say what's on it.
 - **Priority** — `"priority": true` on a task or habit, or `priorityAreas` for a whole area:
   booked first, starred on his list.
 - **Area colours** — `{"op": "planner", "areaColors": {"Assessment centre": "Grape"}}` (Google's colour
