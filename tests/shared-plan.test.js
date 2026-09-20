@@ -5,7 +5,7 @@ import { FakeCalendar, step, ev, WORK } from './planner-fakes.js';
 import { at } from '../planner/time.js';
 import { reconcileCalendar } from '../planner/reconcile.js';
 import { prepareCoachTurn } from '../js/coach-session.js';
-import { scheduleView, taskInput } from '../js/plan-state.js';
+import { scheduleView, taskInput, readPinMarker } from '../js/plan-state.js';
 import { talkContents, waitingOpener, conversationContents } from '../js/talk.js';
 import { rowsForDay } from '../js/schedule.js';
 import { createPlanner } from '../planner/gas.js';
@@ -208,6 +208,59 @@ test('calendar drag, resize and rename update the task and do not duplicate its 
   assert.equal(cal.mine()[0].id, event.id);
   assert.equal(cal.mine()[0].summary, updated.title);
   assert.deepEqual(step(cal, store.doc(), now(), second.days).actions, []);
+});
+
+test('the pin reads off a title in either form, wherever George types it', () => {
+  assert.deepEqual(readPinMarker('STAY Draft the answer'), { title: 'Draft the answer', pinned: true });
+  assert.deepEqual(readPinMarker('stay: Draft the answer'), { title: 'Draft the answer', pinned: true });
+  assert.deepEqual(readPinMarker('Stay - Draft the answer'), { title: 'Draft the answer', pinned: true });
+  assert.deepEqual(readPinMarker('📌 Draft the answer'), { title: 'Draft the answer', pinned: true });
+  assert.deepEqual(readPinMarker('📌 ~ Draft the answer'), { title: 'Draft the answer', pinned: true });
+  assert.deepEqual(readPinMarker('Draft the answer'), { title: 'Draft the answer', pinned: false });
+  // A title that merely starts with those letters is his title, not a marker.
+  assert.deepEqual(readPinMarker('Staying on top of the boards'), { title: 'Staying on top of the boards', pinned: false });
+});
+
+test('a STAY prefix pins the task where it sits and is not kept in the title', () => {
+  const { store, task, now } = setup();
+  const cal = new FakeCalendar();
+  step(cal, store.doc(), now());
+  const event = cal.byTitle(task.title);
+  cal.get(event.id).summary = `STAY ${task.title}`;
+  reconcileCalendar(store, cal.all());
+  const updated = store.doc().items[task.id];
+  assert.equal(updated.title, 'Write the day out');
+  assert.equal(updated.pinned, true);
+});
+
+test('a STAY block keeps its slot when a shift is booked over it', () => {
+  const { store, task, now } = setup();
+  const cal = new FakeCalendar();
+  const first = step(cal, store.doc(), now());
+  const event = cal.byTitle(task.title);
+  const slot = cal.get(event.id).start.dateTime;
+  cal.get(event.id).summary = `STAY ${task.title}`;
+  reconcileCalendar(store, cal.all());
+  cal.add(ev(WORK, 'Signify', FRI, '08:00', '19:00'));
+  step(cal, store.doc(), now(), first.days);
+  assert.equal(store.doc().items[task.id].date, FRI, 'stays on the day it was pinned to');
+  assert.equal(cal.get(event.id).start.dateTime, slot, 'stays in its slot under the shift');
+});
+
+test('a pinned block keeps a visible marker, and taking it off lets the block float again', () => {
+  const { store, task, now } = setup();
+  const cal = new FakeCalendar();
+  const first = step(cal, store.doc(), now());
+  const event = cal.byTitle(task.title);
+  cal.get(event.id).summary = `STAY ${task.title}`;
+  reconcileCalendar(store, cal.all());
+  const second = step(cal, store.doc(), now(), first.days);
+  assert.equal(cal.get(event.id).summary, '📌 Write the day out', 'the pin is his handle on the block');
+  cal.get(event.id).summary = 'Write the day out';
+  reconcileCalendar(store, cal.all());
+  assert.equal(store.doc().items[task.id].pinned, false);
+  assert.equal(store.doc().items[task.id].title, 'Write the day out');
+  assert.equal(store.doc().items[task.id].time ?? null, null, 'it is free to be placed again');
 });
 
 test('calendar deletion retains the task as unscheduled; conflicting edits are visible', () => {

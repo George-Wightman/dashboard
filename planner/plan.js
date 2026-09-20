@@ -296,7 +296,11 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     }
     const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
       const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), nextState, calendars.find((c) => c.id === ev.calendarId));
-      const body = bodyFor({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
+      // A pinned block wears the pin, so George can see why it isn't moving and take it off again.
+      // Only the event carries it; the recorded title stays clean for the dashboard to mark itself.
+      const held = pinned || ids.some((id) => items[id]?.pinned);
+      const shown = held && !HISTORY.has(nextState) ? `📌 ${title}` : title;
+      const body = bodyFor({ key, base: nextBase, title: shown, start: span.start, end: span.end, items: ids, state: nextState, pinned: held, colorId, notes: noteLines(ids) });
       const eventId = emit(ev, body, key);
       const landed = localDay(new Date(span.start));
       busy(span.start, span.end, title);

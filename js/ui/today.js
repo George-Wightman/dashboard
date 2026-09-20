@@ -216,6 +216,7 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
     mainCell(h('span', { class: 'title-cell' },
       slot ? h('span', { class: 'time', title: `${clockLabel(slot.start)}–${clockLabel(slot.end)} in your calendar` }, clockLabel(slot.start)) : null,
       star ? h('span', { class: 'star', title: 'A priority', role: 'img', 'aria-label': 'A priority' }, '★') : null,
+      item.pinned ? h('span', { class: 'pin', title: 'Pinned to this slot — take the pin off its calendar block to let it move again', role: 'img', 'aria-label': 'Pinned to this slot' }, '📌') : null,
       titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
       via?.from && via?.at ? h('span', { class: 'via', title: 'Ticked by your Hevy workout' }, `via Hevy · ${clockLabel(via.from)}–${clockLabel(via.at)}`) : null,
       item.notes ? noteMark(item, ctx) : null,

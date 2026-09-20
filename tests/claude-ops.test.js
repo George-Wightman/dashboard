@@ -176,6 +176,17 @@ test('lengths, times, and the planner settings', () => {
   assert.throws(() => runOp(s, { op: 'planner', colour: 'red' }), /no setting "colour"/);
 });
 
+test('a task can be pinned to its slot and let go again from here', () => {
+  const s = fresh();
+  runOp(s, { op: 'task', title: 'Draft the Motivational Fit answer', area: 'Assessment centre', time: '09:00' });
+  runOp(s, { op: 'edit', id: 'rec-1', set: { pinned: true } });
+  assert.equal(s.doc().items['rec-1'].pinned, true);
+  // Letting it go hands the slot back to the planner.
+  runOp(s, { op: 'edit', id: 'rec-1', set: { pinned: false } });
+  assert.equal(s.doc().items['rec-1'].pinned, false);
+  assert.throws(() => runOp(s, { op: 'edit', id: 'rec-1', set: { pinned: 'yes' } }), /pinned is true or false/);
+});
+
 test('directing: notes and priority, time off, the brief, one-key planner settings and colour clashes', () => {
   const s = fresh();
   assert.equal(runOp(s, { op: 'task', title: 'Email York Careers', area: 'Job search', notes: ' Say the date is 5 Oct ', priority: true }),

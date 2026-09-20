@@ -1,6 +1,6 @@
 // Import edits to known task events before planning outbound changes. The last
 // exported input is a three-way merge baseline, not an assumption that Calendar wins.
-import { taskInput, localDate } from '../js/plan-state.js';
+import { taskInput, localDate, readPinMarker } from '../js/plan-state.js';
 import { clockLabel } from '../js/calendar.js';
 import { P } from './events.js';
 
@@ -21,10 +21,19 @@ export function reconcileCalendar(store, events, removed = []) {
         const changes = {};
         if (raw.status === 'cancelled') changes.scheduleHold = true;
         else if (ids.length === 1 && baseline) {
-          if (raw.summary !== props[P.summary]) changes.title = String(raw.summary ?? '').replace(/^[~✓]\s*/, '').trim();
+          if (raw.summary !== props[P.summary]) {
+            const read = readPinMarker(raw.summary);
+            changes.title = read.title;
+            // Only when it changes, so an ordinary rename doesn't log a pin it never had.
+            if (read.pinned || item.pinned) changes.pinned = read.pinned;
+            // Taking the pin off hands the block back to the planner.
+            if (item.pinned && !read.pinned) changes.time = null;
+          }
           const [oldStart, oldEnd] = String(props[P.at] ?? '').split('/');
           const moved = Date.parse(oldStart) !== Date.parse(raw.start?.dateTime) || Date.parse(oldEnd) !== Date.parse(raw.end?.dateTime);
-          if (moved && Number(props[P.parts] ?? 1) <= 1) {
+          // A pin is only worth anything against a concrete slot, so STAY takes the one it is
+          // sitting in — the same fields a drag would have set, without the drag.
+          if ((moved || changes.pinned) && Number(props[P.parts] ?? 1) <= 1) {
             if (raw.start?.dateTime && raw.end?.dateTime) {
               changes.date = localDate(raw.start.dateTime);
               changes.time = clockLabel(raw.start.dateTime);

@@ -122,6 +122,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .row .carry, .row .for { flex: none; font-size: .8rem; }
 .row .time { flex: none; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .row .star { flex: none; color: var(--accent); font-size: .8rem; }
+.row .pin { flex: none; font-size: .75rem; opacity: .75; }
 .row .note-mark { flex: none; background: none; border: 0; padding: 0 .15rem; color: var(--muted); cursor: pointer; font-size: .95rem; line-height: 1; }
 .row .note-mark[aria-expanded="true"], .row .note-mark:hover { color: var(--accent); }
 .row .via { flex: none; font-size: .75rem; color: var(--muted); white-space: nowrap; }
@@ -179,7 +180,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   .row .title-cell { grid-column: 2; grid-row: 1; display: block; }
   .row .title { white-space: normal; overflow-wrap: anywhere; }
   .row .carry, .row .for, .row .via { margin-left: .5rem; }
-  .row .time, .row .star { margin-right: .35rem; }
+  .row .time, .row .star, .row .pin { margin-right: .35rem; }
   .row .meta { flex-wrap: wrap; gap: .5rem; grid-column: 2; grid-row: 2; justify-self: start; }
   .row .prog { grid-column: 2; grid-row: 2; justify-self: end; }
   .row .act { grid-column: 3; }

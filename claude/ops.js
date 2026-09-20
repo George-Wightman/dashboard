@@ -333,6 +333,12 @@ const EDITABLE = {
     time: (v, rec) => { if (rec.type === 'quota') throw new Error('A weekly target has no time'); return clockOf(v); },
     notes: (v) => checkNotes(v),
     priority: (v, rec) => (v == null ? false : priorityOf(v, rec.type)),
+    // Keep this where it is: the planner leaves a pinned block alone, as if George had dragged it.
+    pinned: (v, rec) => {
+      onlyFor('task', 'Only a task can be pinned to a slot')(rec);
+      if (typeof v !== 'boolean' && v != null) throw new Error('pinned is true or false');
+      return v === true;
+    },
   },
   goals: {
     title: (v) => title(v, 'A goal'),

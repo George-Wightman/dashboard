@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '338347e7';
+var PLANNER_BUILD = 'e664ee8e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2732,6 +2732,23 @@ const { addDays } = __js_dates;
 
 const taskInput = (i) => ({ title: i.title, date: i.date ?? null, time: i.time || null,
   minutes: i.minutes ?? null, hold: i.scheduleHold === true });
+
+// George's pin, typed at the front of a title: keep this where it is. He types the word; the
+// planner writes it back as 📌, which is then his handle for taking it off again. Either form
+// reads as a pin, and neither ever becomes part of the task's name. Markers can stack
+// ("📌 ~ Draft the answer"), so they come off in whatever order they arrive.
+const PIN_MARK = /^\s*(?:stay\b[\s:.,–—-]*|📌\s*)/i;
+const STATE_MARK = /^\s*[~✓]\s*/;
+function readPinMarker(summary) {
+  let rest = String(summary ?? ''), pinned = false;
+  for (;;) {
+    const pin = rest.match(PIN_MARK);
+    if (pin) { pinned = true; rest = rest.slice(pin[0].length); continue; }
+    const mark = rest.match(STATE_MARK);
+    if (mark) { rest = rest.slice(mark[0].length); continue; }
+    return { title: rest.trim(), pinned };
+  }
+}
 const localDate = (iso) => {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -2771,7 +2788,7 @@ function scheduleView(doc, today, days = 14) {
   return { entries, commitments: doc.calendar?.agenda?.busy ?? [], lastSynced: doc.calendar?.agenda?.syncedAt ?? doc.calendar?.status?.lastRun ?? null,
     through: doc.calendar?.agenda?.through ?? null, closed: dayClosed(doc, today) };
 }
-return { taskInput, localDate, dayClosed, scheduleBlocks, bookingsFor, plannedTaskDay, scheduleView };
+return { taskInput, readPinMarker, localDate, dayClosed, scheduleBlocks, bookingsFor, plannedTaskDay, scheduleView };
 })();
 
 // ---- planner/events.js
@@ -2880,7 +2897,7 @@ return { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, nearestCol
 const __planner_reconcile = (() => {
 // Import edits to known task events before planning outbound changes. The last
 // exported input is a three-way merge baseline, not an assumption that Calendar wins.
-const { taskInput, localDate } = __js_plan_state;
+const { taskInput, localDate, readPinMarker } = __js_plan_state;
 const { clockLabel } = __js_calendar;
 const { P } = __planner_events;
 
@@ -2901,10 +2918,19 @@ function reconcileCalendar(store, events, removed = []) {
         const changes = {};
         if (raw.status === 'cancelled') changes.scheduleHold = true;
         else if (ids.length === 1 && baseline) {
-          if (raw.summary !== props[P.summary]) changes.title = String(raw.summary ?? '').replace(/^[~✓]\s*/, '').trim();
+          if (raw.summary !== props[P.summary]) {
+            const read = readPinMarker(raw.summary);
+            changes.title = read.title;
+            // Only when it changes, so an ordinary rename doesn't log a pin it never had.
+            if (read.pinned || item.pinned) changes.pinned = read.pinned;
+            // Taking the pin off hands the block back to the planner.
+            if (item.pinned && !read.pinned) changes.time = null;
+          }
           const [oldStart, oldEnd] = String(props[P.at] ?? '').split('/');
           const moved = Date.parse(oldStart) !== Date.parse(raw.start?.dateTime) || Date.parse(oldEnd) !== Date.parse(raw.end?.dateTime);
-          if (moved && Number(props[P.parts] ?? 1) <= 1) {
+          // A pin is only worth anything against a concrete slot, so STAY takes the one it is
+          // sitting in — the same fields a drag would have set, without the drag.
+          if ((moved || changes.pinned) && Number(props[P.parts] ?? 1) <= 1) {
             if (raw.start?.dateTime && raw.end?.dateTime) {
               changes.date = localDate(raw.start.dateTime);
               changes.time = clockLabel(raw.start.dateTime);
@@ -3781,7 +3807,11 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     }
     const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
       const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), nextState, calendars.find((c) => c.id === ev.calendarId));
-      const body = bodyFor({ key, base: nextBase, title, start: span.start, end: span.end, items: ids, state: nextState, pinned, colorId, notes: noteLines(ids) });
+      // A pinned block wears the pin, so George can see why it isn't moving and take it off again.
+      // Only the event carries it; the recorded title stays clean for the dashboard to mark itself.
+      const held = pinned || ids.some((id) => items[id]?.pinned);
+      const shown = held && !HISTORY.has(nextState) ? `📌 ${title}` : title;
+      const body = bodyFor({ key, base: nextBase, title: shown, start: span.start, end: span.end, items: ids, state: nextState, pinned: held, colorId, notes: noteLines(ids) });
       const eventId = emit(ev, body, key);
       const landed = localDay(new Date(span.start));
       busy(span.start, span.end, title);

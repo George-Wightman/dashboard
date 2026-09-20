@@ -18,6 +18,14 @@ test('sourceLabel: the words behind a row\'s logo', () => {
   assert.deepEqual(Object.keys(SOURCE_NAMES), ['claude', 'gemini', 'hebrew', 'notion', 'workflow']);
 });
 
+test('a pinned row wears the pin, with the words only on hover', () => {
+  const js = read('js/ui/today.js');
+  // The marker is drawn from the task's own flag, and says what it means on hover.
+  assert.match(js, /item\.pinned\s*\?\s*h\('span',\s*\{\s*class:\s*'pin'/);
+  assert.match(js, /title:\s*'Pinned[^']*'/);
+  assert.match(read('styles.css'), /\.row\s+\.pin\b/);
+});
+
 test('the logos are drawn in the app\'s own colour, never the companies\'', () => {
   // every known source has a logo, so a row never falls back to words
   assert.deepEqual(Object.keys(LOGOS).sort(), Object.keys(SOURCE_NAMES).sort());

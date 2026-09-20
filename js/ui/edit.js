@@ -4,6 +4,7 @@ import { h } from './dom.js';
 import { weekday } from '../dates.js';
 import { parseLength, formatAmount } from '../parse.js';
 import { stableStringify } from '../doc.js';
+import { readPinMarker } from '../plan-state.js';
 import { openOutcome } from './outcome.js';
 
 // Save only the fields changed in this form. A remote update may have reached
@@ -211,7 +212,11 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
   }
 
   function itemFields(title) {
-    const fields = { type: draft.type, title, area: String(draft.area ?? '').trim(), goalId: draft.goalId || null };
+    // The same pin he can type on a calendar block works here, and never sticks to the name.
+    const read = readPinMarker(title);
+    if (!read.title) throw new Error('Give it a title.');
+    const fields = { type: draft.type, title: read.title, area: String(draft.area ?? '').trim(), goalId: draft.goalId || null };
+    if (read.pinned || existing?.pinned) fields.pinned = read.pinned;
     if (draft.type === 'task') {
       if (!draft.date) throw new Error('Pick a date.');
       fields.date = draft.date;

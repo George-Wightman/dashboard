@@ -5,6 +5,23 @@ import { addDays } from './dates.js';
 
 export const taskInput = (i) => ({ title: i.title, date: i.date ?? null, time: i.time || null,
   minutes: i.minutes ?? null, hold: i.scheduleHold === true });
+
+// George's pin, typed at the front of a title: keep this where it is. He types the word; the
+// planner writes it back as 📌, which is then his handle for taking it off again. Either form
+// reads as a pin, and neither ever becomes part of the task's name. Markers can stack
+// ("📌 ~ Draft the answer"), so they come off in whatever order they arrive.
+const PIN_MARK = /^\s*(?:stay\b[\s:.,–—-]*|📌\s*)/i;
+const STATE_MARK = /^\s*[~✓]\s*/;
+export function readPinMarker(summary) {
+  let rest = String(summary ?? ''), pinned = false;
+  for (;;) {
+    const pin = rest.match(PIN_MARK);
+    if (pin) { pinned = true; rest = rest.slice(pin[0].length); continue; }
+    const mark = rest.match(STATE_MARK);
+    if (mark) { rest = rest.slice(mark[0].length); continue; }
+    return { title: rest.trim(), pinned };
+  }
+}
 export const localDate = (iso) => {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
