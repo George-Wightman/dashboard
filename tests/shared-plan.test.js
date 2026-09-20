@@ -263,6 +263,18 @@ test('a pinned block keeps a visible marker, and taking it off lets the block fl
   assert.equal(store.doc().items[task.id].time ?? null, null, 'it is free to be placed again');
 });
 
+test('a habit block he moved stays put without wearing a pin he cannot take off', () => {
+  const { store, now } = setup();
+  store.addItem({ type: 'habit', title: 'Morning walk', area: 'Health', repeat: { kind: 'daily' }, minutes: 30 });
+  const cal = new FakeCalendar();
+  const first = step(cal, store.doc(), now());
+  const event = cal.byTitle('Morning walk');
+  cal.move(event.id, FRI, '11:00', '11:30');
+  step(cal, store.doc(), now(), first.days);
+  // Only a task can be unpinned from the calendar, so only a task advertises the pin.
+  assert.equal(cal.get(event.id).summary, 'Morning walk');
+});
+
 test('calendar deletion retains the task as unscheduled; conflicting edits are visible', () => {
   const { store, task, now } = setup();
   const cal = new FakeCalendar();
