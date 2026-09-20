@@ -144,24 +144,44 @@ test('the ladder is created once, in order, under the Hebrew goal', () => {
 test('word and day milestones tick from the synced stats; conversation ones do not', async () => {
   const store = makeStore();
   const stats = {};
-  for (let d = 1; d <= 8; d++) stats[`2026-09-0${d}`] = { sec: 300, sessions: 1, spoken: 0, lib: d * 40 };
-  await syncHebrewProgress({ store, client: client(await envelope(stats)) }); // 8 days, 320 words
-  assert.equal(ms(store, 'hebrew-ms-words-250').done, true);
-  assert.equal(ms(store, 'hebrew-ms-words-500').done, false);
-  assert.equal(ms(store, 'hebrew-ms-days-7').done, true);
-  assert.equal(ms(store, 'hebrew-ms-days-30').done, false);
+  for (let d = 0; d < 50; d++) {
+    const day = new Date(Date.UTC(2026, 8, 9 - d)).toISOString().slice(0, 10); // 50 days ending the 9th
+    stats[day] = { sec: 300, sessions: 1, spoken: 0, lib: 800 };
+  }
+  await syncHebrewProgress({ store, client: client(await envelope(stats)) });
+  assert.equal(ms(store, 'hebrew-ms-words-750').done, true);
+  assert.equal(ms(store, 'hebrew-ms-words-1000').done, false);
+  assert.equal(ms(store, 'hebrew-ms-days-45').done, true);
+  assert.equal(ms(store, 'hebrew-ms-days-60').done, false);
   assert.equal(ms(store, 'hebrew-ms-talk-hello').done, false);
 });
 
 test('a ticked milestone stays ticked and an archived one is left alone', async () => {
   const store = makeStore();
   ensureHebrewGoal(store);
-  store.archiveMilestone('hebrew-ms-words-50');
-  await syncHebrewProgress({ store, client: client(await envelope({ '2026-09-08': { sec: 60, sessions: 1, lib: 300 } })) });
-  assert.equal(ms(store, 'hebrew-ms-words-50').done, false);
-  assert.equal(ms(store, 'hebrew-ms-words-250').done, true);
+  store.archiveMilestone('hebrew-ms-words-750');
+  await syncHebrewProgress({ store, client: client(await envelope({ '2026-09-08': { sec: 60, sessions: 1, lib: 1200 } })) });
+  assert.equal(ms(store, 'hebrew-ms-words-750').done, false);
+  assert.equal(ms(store, 'hebrew-ms-words-1000').done, true);
   await syncHebrewProgress({ store, client: client(await envelope({ '2026-09-08': { sec: 60, sessions: 1, lib: 10 } })) });
-  assert.equal(ms(store, 'hebrew-ms-words-250').done, true);
+  assert.equal(ms(store, 'hebrew-ms-words-1000').done, true);
+});
+
+test('the first, too-easy ladder is retired once, and the rest put in order', () => {
+  const store = makeStore();
+  store.addGoal({ id: HEBREW_IDS.goal, title: 'Hebrew', source: 'hebrew' });
+  const old = [['words-50', 50], ['words-500', 500]];
+  for (const [k, n] of old) store.addMilestone(HEBREW_IDS.goal, `Know ${n}`, { id: `hebrew-ms-${k}`, auto: { kind: 'words', n }, source: 'hebrew' });
+  store.addMilestone(HEBREW_IDS.goal, 'Know 1000', { id: 'hebrew-ms-words-1000', auto: { kind: 'words', n: 1000 }, source: 'hebrew' });
+  ensureHebrewGoal(store);
+  assert.equal(ms(store, 'hebrew-ms-words-50').status, 'archived');
+  assert.equal(ms(store, 'hebrew-ms-words-500').status, 'archived');
+  assert.equal(ms(store, 'hebrew-ms-words-1000').status, 'active');
+  const live = Object.values(store.doc().milestones).filter((m) => m.status === 'active').sort((a, b) => a.order - b.order);
+  assert.deepEqual(live.map((m) => m.id), HEBREW_LADDER.map((m) => m.id));
+  store.updateMilestone('hebrew-ms-words-50', { status: 'active' }); // the user brings one back
+  ensureHebrewGoal(store);
+  assert.equal(ms(store, 'hebrew-ms-words-50').status, 'active');
 });
 
 test('an old-titled goal is renamed once; a title you chose is kept', () => {

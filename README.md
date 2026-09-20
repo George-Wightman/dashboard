@@ -103,8 +103,8 @@ back to that repo, and this can never conflict with the Hebrew app's own sync. O
 goal, habit and targets are ordinary records — rename them, retarget them, or archive them, and
 the sync leaves your changes alone; it only ever fills in what's missing.
 
-The ladder mixes stages that tick themselves (Know 50 / 100 / 250 / 500 / 1000 words, from the app's
-library size; Practise on 7 / 30 / 60 different days) with conversation stages you tick by hand
+The ladder mixes stages that tick themselves (Know 750 / 1000 / 1500 / 2000 / 3000 words, from the app's
+library size; Practise on 45 / 60 / 90 / 120 / 180 different days) with conversation stages you tick by hand
 (greeting her, then 1-, 3-, 5- and finally 10-minute chats). A stage that has ticked stays ticked.
 
 ## Optional task controls and goal reviews

@@ -319,9 +319,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
 
   // `auto` is a rule for a milestone that ticks itself, e.g. { kind: 'words', n: 250 }; `id` lets an
   // integration create one at a fixed id.
-  function addMilestone(goalId, title, { source = 'me', status = 'active', id, auto } = {}) {
+  function addMilestone(goalId, title, { source = 'me', status = 'active', id, auto, order } = {}) {
     return create('milestones', {
-      goalId, title: requireTitle(title, 'A milestone'), done: false, order: nextOrder('milestones'), source, status,
+      goalId, title: requireTitle(title, 'A milestone'), done: false, order: order ?? nextOrder('milestones'), source, status,
       ...(id ? { id } : {}), ...(auto ? { auto } : {}),
     });
   }

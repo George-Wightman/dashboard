@@ -14,24 +14,33 @@ const OLD_GOAL_TITLE = 'Hold a 10-minute conversation in Hebrew';
 // Hebrew app's numbers (words in its library, days practiced); the rest are conversations only
 // George can vouch for, so they stay plain checkboxes.
 export const HEBREW_LADDER = [
-  { id: 'hebrew-ms-words-50', title: 'Know 50 Hebrew words', auto: { kind: 'words', n: 50 } },
-  { id: 'hebrew-ms-days-7', title: 'Practise Hebrew on 7 different days', auto: { kind: 'days', n: 7 } },
   { id: 'hebrew-ms-talk-hello', title: 'Greet her and introduce myself in Hebrew' },
-  { id: 'hebrew-ms-words-100', title: 'Know 100 Hebrew words', auto: { kind: 'words', n: 100 } },
   { id: 'hebrew-ms-talk-1', title: 'Have a 1-minute exchange with her in Hebrew (how was your day)' },
-  { id: 'hebrew-ms-days-30', title: 'Practise Hebrew on 30 different days', auto: { kind: 'days', n: 30 } },
-  { id: 'hebrew-ms-words-250', title: 'Know 250 Hebrew words', auto: { kind: 'words', n: 250 } },
+  { id: 'hebrew-ms-words-750', title: 'Know 750 Hebrew words', auto: { kind: 'words', n: 750 } },
+  { id: 'hebrew-ms-days-45', title: 'Practise Hebrew on 45 different days', auto: { kind: 'days', n: 45 } },
   { id: 'hebrew-ms-talk-3', title: 'Have a 3-minute chat with her in Hebrew, no English' },
-  { id: 'hebrew-ms-words-500', title: 'Know 500 Hebrew words', auto: { kind: 'words', n: 500 } },
-  { id: 'hebrew-ms-talk-5', title: 'Have a 5-minute chat with her in Hebrew about anything' },
-  { id: 'hebrew-ms-days-60', title: 'Practise Hebrew on 60 different days', auto: { kind: 'days', n: 60 } },
   { id: 'hebrew-ms-words-1000', title: 'Know 1000 Hebrew words', auto: { kind: 'words', n: 1000 } },
+  { id: 'hebrew-ms-days-60', title: 'Practise Hebrew on 60 different days', auto: { kind: 'days', n: 60 } },
+  { id: 'hebrew-ms-talk-5', title: 'Have a 5-minute chat with her in Hebrew about anything' },
+  { id: 'hebrew-ms-words-1500', title: 'Know 1500 Hebrew words', auto: { kind: 'words', n: 1500 } },
+  { id: 'hebrew-ms-days-90', title: 'Practise Hebrew on 90 different days', auto: { kind: 'days', n: 90 } },
+  { id: 'hebrew-ms-words-2000', title: 'Know 2000 Hebrew words', auto: { kind: 'words', n: 2000 } },
+  { id: 'hebrew-ms-days-120', title: 'Practise Hebrew on 120 different days', auto: { kind: 'days', n: 120 } },
+  { id: 'hebrew-ms-words-3000', title: 'Know 3000 Hebrew words', auto: { kind: 'words', n: 3000 } },
+  { id: 'hebrew-ms-days-180', title: 'Practise Hebrew on 180 different days', auto: { kind: 'days', n: 180 } },
   { id: 'hebrew-ms-talk-10', title: 'Hold a 10-minute conversation in Hebrew' },
 ];
 
+// The first draft's early steps (50, 100, 250, 500 words; 7 and 30 days) were far too easy for
+// someone already well into the app, so ladder version 2 archives them and rescales the rest.
+const RETIRED = ['hebrew-ms-words-50', 'hebrew-ms-days-7', 'hebrew-ms-words-100', 'hebrew-ms-days-30', 'hebrew-ms-words-250', 'hebrew-ms-words-500'];
+const LADDER_VERSION = 2;
+
 // Created once, however they're since renamed, retargeted or archived: this only fills in what's
-// missing, it never resets an existing record. The one exception is the goal's old title, renamed
-// to plain "Hebrew" if (and only if) it's still exactly what this file first gave it.
+// missing, it never resets an existing record. The exceptions are the goal's old title, renamed
+// to plain "Hebrew" if (and only if) it's still exactly what this file first gave it, and a
+// one-time move to the current ladder (retire the too-easy steps, put the rest in order), marked
+// on the goal so it never runs again and never undoes edits made after it.
 export function ensureHebrewGoal(store, { minutesTarget = 90, spokenTarget = 40 } = {}) {
   const doc = store.doc();
   if (!doc.goals[HEBREW_IDS.goal]) {
@@ -39,8 +48,14 @@ export function ensureHebrewGoal(store, { minutesTarget = 90, spokenTarget = 40 
   } else if (doc.goals[HEBREW_IDS.goal].title === OLD_GOAL_TITLE) {
     store.updateGoal(HEBREW_IDS.goal, { title: 'Hebrew' });
   }
-  for (const { id, title, auto } of HEBREW_LADDER) {
-    if (!doc.milestones[id]) store.addMilestone(HEBREW_IDS.goal, title, { id, auto, source: 'hebrew' });
+  const migrating = doc.goals[HEBREW_IDS.goal].ladderVersion !== LADDER_VERSION;
+  HEBREW_LADDER.forEach(({ id, title, auto }, i) => {
+    if (!doc.milestones[id]) store.addMilestone(HEBREW_IDS.goal, title, { id, auto, order: i + 1, source: 'hebrew' });
+    else if (migrating) store.updateMilestone(id, { order: i + 1 });
+  });
+  if (migrating) {
+    for (const id of RETIRED) if (doc.milestones[id]?.status === 'active') store.archiveMilestone(id);
+    store.updateGoal(HEBREW_IDS.goal, { ladderVersion: LADDER_VERSION });
   }
   if (!doc.items[HEBREW_IDS.habit]) {
     store.addItem({
