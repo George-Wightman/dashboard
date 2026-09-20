@@ -162,10 +162,15 @@ export function openSettings(ctx) {
     group('Hebrew progress', hebrewSyncSet ? `${s.hebrewRepo}, key saved` : 'not set up', !hebrewSyncSet || !!hebrewProblem,
       h('label', { class: 'field' }, h('span', {}, 'Sync repo'), hebrewRepo),
       h('label', { class: 'field' }, h('span', {}, 'GitHub access key'), hebrewToken),
-      h('p', { class: 'note' }, "A fine-grained token with Contents read on the Hebrew app's own sync repo. Read-only: the dashboard never writes to it. Once set, a goal, a daily habit and two weekly targets (learning time, speaking practice) appear under Hebrew, filled in from its real practice numbers."),
+      h('p', { class: 'note' }, "A fine-grained token with Contents read on the Hebrew app's own sync repo. Read-only: the dashboard never writes to it. Once set, a goal, a daily habit, three weekly targets (learning time, speaking practice, words said live) and a ladder of milestones appear under Hebrew, filled in from its real practice numbers."),
       hebrewProblem ? h('p', { class: 'error' }, `Last sync failed: ${hebrewProblem}`) : null,
       hebrewSyncSet && hebrewStatus.words != null
-        ? h('p', { class: 'note' }, `${hebrewStatus.words} words known${hebrewStatus.at ? `, last synced ${hebrewStatus.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}.`)
+        ? h('p', { class: 'note' }, [
+          hebrewStatus.strong != null ? `${hebrewStatus.strong} words held strong` : null,
+          hebrewStatus.live != null ? `${hebrewStatus.live} said live` : null,
+          hebrewStatus.gold != null ? `${hebrewStatus.gold} nodes perfected` : null,
+          `${hebrewStatus.words} in the library`,
+        ].filter(Boolean).join(' · ') + (hebrewStatus.at ? `, last synced ${hebrewStatus.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '') + '.')
         : null,
       h('div', { class: 'buttons' },
         h('button', { class: 'btn', type: 'button', onclick: () => { ctx.hebrewSyncNow(); dialog.close(); } }, 'Sync now'))),

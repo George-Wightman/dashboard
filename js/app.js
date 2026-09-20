@@ -41,7 +41,7 @@ const ui = {
 const sync = { state: 'off', at: null, error: null };
 // The read-only pull from the Hebrew app's own sync file (js/hebrewSync.js): a separate repo and
 // token from the main sync above, so its own state and words-known count for ⚙ to show.
-const hebrew = { state: 'off', at: null, error: null, words: null };
+const hebrew = { state: 'off', at: null, error: null, words: null, strong: null, live: null, gold: null };
 
 // The widget arrangement (js/layout.js): kept on this device, never synced. A window at least
 // 1500px wide shows two widget columns (the same media query as styles.css), a smaller one one.
@@ -302,7 +302,12 @@ async function runHebrewSync() {
   hebrew.state = 'syncing';
   try {
     const result = await syncHebrewProgress({ store, client: createGitHubClient({ token: hebrewToken, repo: hebrewRepo, path: 'progress.json' }) });
-    Object.assign(hebrew, result.ok ? { state: 'ok', at: new Date(), error: null, words: result.words ?? hebrew.words } : { state: 'failing', error: result.error });
+    Object.assign(hebrew, result.ok
+      ? {
+        state: 'ok', at: new Date(), error: null, words: result.words ?? hebrew.words,
+        strong: result.strong ?? hebrew.strong, live: result.live ?? hebrew.live, gold: result.gold ?? hebrew.gold,
+      }
+      : { state: 'failing', error: result.error });
   } catch (e) {
     Object.assign(hebrew, { state: 'failing', error: e.message });
   }

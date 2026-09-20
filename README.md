@@ -94,18 +94,35 @@ heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-
 ## Hebrew progress
 
 Paste a fine-grained GitHub token (Contents read only) for the Hebrew app's own sync repo into
-⚙ → *Hebrew progress*, and the goal *Hebrew* appears with a daily
-habit, two weekly targets and a ladder of milestones leading up to a 10-minute conversation — learning time and speaking practice — filled in from the app's real
-practice numbers (seconds practiced, spoken reps, sessions) each time it syncs. The daily habit
-ticks itself on any day the Hebrew app shows a session; the targets show real minutes and reps
-against target the same way any other weekly target does. Read-only: the dashboard never writes
-back to that repo, and this can never conflict with the Hebrew app's own sync. Once created, the
-goal, habit and targets are ordinary records — rename them, retarget them, or archive them, and
-the sync leaves your changes alone; it only ever fills in what's missing.
+⚙ → *Hebrew progress*, and the goal *Hebrew* appears with a daily habit, three weekly targets
+(learning time, speaking practice, words said live) and a ladder of milestones leading up to a
+10-minute conversation — all filled in from the app's real numbers each time it syncs. The daily
+habit ticks itself on any day the Hebrew app shows a session; the targets show real minutes, reps
+and words against target the same way any other weekly target does. Read-only: the dashboard never
+writes back to that repo, and this can never conflict with the Hebrew app's own sync. Once created,
+the goal, habit, targets and stages are ordinary records — rename them, retarget them, or archive
+them, and the sync leaves your changes alone; it only ever fills in what's missing.
 
-The ladder mixes stages that tick themselves (Know 750 / 1000 / 1500 / 2000 / 3000 words, from the app's
-library size; Practise on 45 / 60 / 90 / 120 / 180 different days) with conversation stages you tick by hand
-(greeting her, then 1-, 3-, 5- and finally 10-minute chats). A stage that has ticked stays ticked.
+**What the stages count, and why not "words known".** The app's library size is the obvious number
+and the wrong one: it counts every entry whether or not it has ever been drilled, and it grows from
+seeds and imports, with each word's own inflections nested inside it. So the ladder is built from
+four things the app has already decided for itself and that cannot be padded:
+
+- **Words held strong** — its own hardest SRS band: held for weeks *and* accurate on recently.
+- **Words said live** — its ledger of words spoken unprompted and correctly to the coach.
+- **Nodes perfected** — a node on the path turns gold when every word it teaches is both ready and
+  has been said live. The app stamps that itself; the dashboard only counts the stamps.
+- **Days practised** — days with a real session behind them.
+
+Those four are interleaved with five conversation stages you tick by hand (greeting her, then 1-,
+3-, 5- and finally 10-minute chats). A stage that has ticked stays ticked.
+
+**The numbers are set from where you actually stand.** Each automatic stage starts life as "50 more
+words strong" rather than a number picked in advance, and the first sync that finds real practice
+history turns it into a fixed target that much above where you were that day — so no stage can
+arrive already passed. That happens once and is recorded on the goal; retarget a stage afterwards
+and it stays where you put it. Coach transcripts never leave the Hebrew app, so conversations are
+counted by what they produced, never by how many you held.
 
 ## Optional task controls and goal reviews
 

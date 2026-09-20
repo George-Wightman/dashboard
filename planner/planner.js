@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'ad34c9ca';
+var PLANNER_BUILD = '338347e7';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -459,8 +459,15 @@ function recordProblem(map, id, r) {
     }
   }
   if (['items', 'goals', 'milestones'].includes(map) && (!string(r.title) || !r.title.trim())) return 'A record needs a title';
-  if (map === 'milestones' && r.auto !== undefined
-    && !(isPlainObject(r.auto) && ['words', 'days'].includes(r.auto.kind) && finite(r.auto.n) && r.auto.n > 0)) return 'Invalid milestone rule';
+  // A milestone that ticks itself from an integration. `n` is a reached target; `add` is one still
+  // waiting to be calibrated against a baseline (js/hebrewSync.js). Exactly one of the two.
+  if (map === 'milestones' && r.auto !== undefined) {
+    const a = r.auto;
+    const amount = (v) => finite(v) && v > 0;
+    if (!isPlainObject(a) || !['strong', 'live', 'gold', 'days', 'words'].includes(a.kind)
+      || amount(a.n) === amount(a.add) || (a.n !== undefined && !amount(a.n))
+      || (a.add !== undefined && !amount(a.add))) return 'Invalid milestone rule';
+  }
   if (map === 'items') {
     if (!['task', 'habit', 'quota'].includes(r.type)) return 'Invalid item type';
     if (r.type === 'task' && !day(r.date)) return 'A task needs a real date';
