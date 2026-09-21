@@ -8,6 +8,7 @@ import { FakeCalendar, ev, allDayEv, step, MAIN, APP, GYM, WORK, FAMILY } from '
 
 process.env.TZ = 'Europe/London';
 
+const MON = '2026-09-14';
 const TUE = '2026-09-15';
 const WED = '2026-09-16';
 const THU = '2026-09-17';
@@ -92,6 +93,46 @@ test('a shift on top of a block moves it, and only it, with a note', () => {
   assert.ok(r.days[TUE].notes.includes('Moved Trace the pharma figure on Wed to 15:15 (Signify)'));
 });
 
+test('time freed up later in the day is used, not left as a hole', () => {
+  const { doc, cal } = tuesday();
+  const first = step(cal, doc, now(TUE, '08:00'));
+  assert.equal(span(cal.byTitle('Trace the pharma figure')), '13:15–13:45');
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '14:00–14:30');
+  // George drags Wednesday's gym into the afternoon. The late morning it freed is now the earliest
+  // the day's work can start, so it starts there rather than sitting behind an empty two hours.
+  const gym = cal.all().find((e) => e.summary === 'Gym' && e.start.dateTime.startsWith(WED));
+  cal.move(gym.id, WED, '15:00', '17:00');
+  const r = step(cal, doc, now(TUE, '08:30'), first.days);
+  assert.equal(span(cal.byTitle('Trace the pharma figure')), '10:30–11:00');
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '11:15–11:45');
+  assert.ok(r.days[TUE].notes.includes('Moved Trace the pharma figure on Wed to 10:30 (earlier time opened up)'));
+  // And it settles there: a block already at its earliest fit has nowhere earlier to go, so the run
+  // ten minutes later moves nothing. Without that the day would creep every time the planner ran.
+  assert.deepEqual(step(cal, doc, now(TUE, '08:40'), r.days).actions, []);
+});
+
+test('a hole left behind a block never drags it later', () => {
+  const { doc, cal } = tuesday();
+  const first = step(cal, doc, now(TUE, '08:00'));
+  cal.remove(cal.byTitle('Trace the WHO figure').id);
+  const r = step(cal, doc, now(TUE, '08:30'), first.days);
+  assert.equal(span(cal.byTitle('Trace the pharma figure')), '13:15–13:45');
+  assert.deepEqual(r.days[WED].skipped, ['who']);
+});
+
+test('a short carried task no longer crowds out a long one the day had room for', () => {
+  const doc = fixture({ items: [
+    task('chase', 'Chase the GSS outcome', 'Job search', MON),
+    task('dayout', 'Write the day out', 'Assessment centre', TUE, { minutes: 150 }),
+  ] });
+  const cal = new FakeCalendar([ev(WORK, 'Signify', TUE, '12:00', '19:00')]);
+  const r = step(cal, doc, now(TUE, '08:00'));
+  // Carried-first puts the 30-minute chase at 09:00 and leaves no run long enough for the
+  // 150-minute one. Tuesday is worth more the other way round, so the other way round is what it gets.
+  assert.equal(span(cal.byTitle('Write the day out')), '09:00–11:30');
+  assert.ok(r.days[TUE].notes.includes("Couldn't fit Chase the GSS outcome — moved to Wed"));
+});
+
 test('a block George moves stays where he put it', () => {
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
@@ -156,11 +197,14 @@ test('part done when the block ends: the title says so and the rest gets a new s
 test('a block George deletes is not booked again that day', () => {
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '14:00–14:30');
   cal.remove(cal.byTitle('Trace the pharma figure').id);
   const r = step(cal, doc, now(TUE, '08:30'), first.days);
-  assert.deepEqual(r.actions, []);
+  assert.deepEqual(inserts(r), []);
   assert.deepEqual(r.days[WED].skipped, ['pharma']);
   assert.ok(cal.byTitle('Trace the WHO figure'));
+  // The time it freed isn't left as a hole: what was behind it slides up into it.
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '13:15–13:45');
 });
 
 test('Hebrew and Gym: a session George placed stays; the other one moves off it', () => {

@@ -98,6 +98,10 @@ The planner looks at **today and the next 6 days**.
 - **Order**, per day: fixed events → anything George placed himself → linked habit events at their
   current times → exact planner blocks that can stay → everything else, carried-over first, then
   biggest first, each into the **earliest** free stretch that fits.
+- **A day that strands work is packed again**, once, with the stranded blocks given first refusal;
+  whichever arrangement strands fewer blocks (then fewer minutes) is the one that's kept. Carried-over
+  first is right most days, but a short carried block taking the front of the only long free stretch
+  used to cost the day a three-hour one it had room for.
 - **Today** starts from now, rounded up to the next quarter hour. Nothing that has started is ever
   moved.
 - **Doesn't fit** → the next day in the window; beyond the window, it waits. Either way the
@@ -111,6 +115,12 @@ The planner looks at **today and the next 6 days**.
 - **An exact block moves only if it has to:** a fixed or pinned event now overlaps it, it no longer
   fits within planning hours, or its tasks changed and it no longer fits where it is (a longer
   block first tries to grow in place). Never for neatness.
+- **… but it takes time that opens up earlier in its day.** When George frees a stretch — he drags
+  a gym session into the afternoon, or deletes a block — the blocks behind it move up into it.
+  **Earlier only**, never later: work is never pushed towards the evening to close a hole, and a
+  block already at its earliest fit doesn't move, so nothing creeps run to run. Without this the
+  freed time sat empty while the work that wanted it cascaded day by day through the rest of the
+  week — the reason for the rule in the first place.
 - **Rough blocks** are recomputed every run. The placement is deterministic, so they move only when
   their inputs change.
 - **Anything George moves sticks.** The planner remembers, on each event it places (private event

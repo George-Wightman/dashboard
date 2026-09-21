@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '4f6b0a62';
+var PLANNER_BUILD = 'dd899331';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -4023,22 +4023,57 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       .sort((a, b) => Number(b.priority) - Number(a.priority) || Number(b.carried) - Number(a.carried)
         || b.minutes - a.minutes || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     overflow = [];
-    const taken = [...hard];
-    const slot = new Map();
-    const take = (b, s) => { slot.set(b.key, s); taken.push({ start: s, end: s + b.minutes * MINUTE, title: b.base }); };
-    if (exactDay(d)) {
-      for (const b of queue) {
-        const ex = keep.get(b.key);
-        if (!ex || localDay(ex.start) !== d) continue;
-        const s = ex.start.getTime();
-        const e = s + b.minutes * MINUTE;
-        if (s >= win.open && e <= win.end && fits(s, e, [...taken, ...offBusy(d, b.area)], gap)) take(b, s);
+
+    // The day packed around what's already fixed. `order` is who gets first refusal; the blocks that
+    // can stay put are settled the same way whatever the order, so two orders can be compared fairly.
+    const pack = (order) => {
+      const taken = [...hard];
+      const slot = new Map();
+      const take = (b, s) => { slot.set(b.key, s); taken.push({ start: s, end: s + b.minutes * MINUTE, title: b.base }); };
+      const busyFor = (b) => [...taken, ...offBusy(d, b.area)];
+      if (exactDay(d)) {
+        for (const b of queue) {
+          const ex = keep.get(b.key);
+          if (!ex || localDay(ex.start) !== d) continue;
+          const length = b.minutes * MINUTE;
+          const s = ex.start.getTime();
+          // A block the planner placed itself keeps its slot, but slides *earlier* in the day when
+          // earlier time has opened up: George moved a gym session off the late morning and the two
+          // hours it freed sat empty all day, while the work that wanted them cascaded into the rest
+          // of the week. Earlier only — moving a block later would push work into the evening for no
+          // reason, and one already at its earliest fit doesn't move at all, so nothing drifts
+          // between runs. A block George moved himself isn't here: those are pinned before this.
+          const to = earliestFit(length, { start: win.open, end: Math.min(win.end, s + length) }, busyFor(b), gap);
+          if (to != null) take(b, to);
+        }
+      }
+      const bumped = [];
+      for (const b of order) {
+        if (slot.has(b.key)) continue;
+        const s = earliestFit(b.minutes * MINUTE, win, busyFor(b), gap);
+        if (s != null) take(b, s);
+        else bumped.push(b);
+      }
+      return { slot, bumped };
+    };
+
+    // Biggest-first is usually right, but a carried block takes first refusal however short it is,
+    // and a long one that then has nowhere to go leaves the day short of work it had room for. So
+    // when anything is bumped, try again with the bumped blocks first and keep whichever
+    // arrangement strands less. Only two orders, both settled the same way, so the result is stable.
+    let { slot, bumped } = pack(queue);
+    if (bumped.length) {
+      const jumped = new Set(bumped.map((b) => b.key));
+      const alt = pack([...bumped, ...queue.filter((b) => !jumped.has(b.key))]);
+      const stranded = (list) => list.reduce((n, b) => n + b.minutes, 0);
+      if (alt.bumped.length < bumped.length
+        || (alt.bumped.length === bumped.length && stranded(alt.bumped) < stranded(bumped))) {
+        ({ slot, bumped } = alt);
       }
     }
+
     for (const b of queue) {
       if (slot.has(b.key)) continue;
-      const s = earliestFit(b.minutes * MINUTE, win, [...taken, ...offBusy(d, b.area)], gap);
-      if (s != null) { take(b, s); continue; }
       const next = addDays(d, 1);
       // Carrying is right for a task — it still needs doing. A habit that repeats already has its own
       // instance on the next day, so carrying it there booked two and left this day with none: one
@@ -4073,7 +4108,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       if (state === 'exact' && ex.props[P.state] === 'exact' && ex.start.getTime() !== start) {
         const s0 = ex.start.getTime();
         const e0 = ex.end.getTime();
-        const why = hard.find((h) => !fits(s0, e0, [h], gap))?.title;
+        const why = hard.find((h) => !fits(s0, e0, [h], gap))?.title ?? (start < s0 ? 'earlier time opened up' : null);
         note(`Moved ${b.base}${onDay(day)} to ${hhmm(start)}${why ? ` (${why})` : ''}`);
       }
     } else {
