@@ -1,5 +1,5 @@
 {
-  "id": "2cdfbec29ae598f020fefed107c75eaad416f42e160aaae9516679606be2b962",
+  "id": "8ff09010b71b2412302ed71f240b99ca5c3260c0fb2fbdde849aeb6e978f7636",
   "files": {
     "./": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
     "index.html": "e41a7dc586608c0080560fe3556a281a3cb6041eea1d97974b147d4d9fd5273e",
@@ -10,7 +10,7 @@
     "icons/icon-512.png": "20842b1a050ea876ecb8cbf7e83fffb62fba540645a1430d4e59f1cf5defdd48",
     "js/app.js": "b37844c753f6535ca68b0eace96c033583b872c17721e56394041a125ff93ecc",
     "js/data.js": "d61927a1df7a90a264b481e646b28123d35c6bd047137808a408542f660d3697",
-    "js/doc.js": "4b374fa037854b4b076e8fafb598d42b001416d1184281e4a31f79373d4b7ccc",
+    "js/doc.js": "277ee06c18e5de30fe7a9cd81c86171dc419ac60b2f030b20d189e722279239e",
     "js/dates.js": "2dda4426edef203d9d3fb2db293d0bf72c15b863eb73c5631155105ab76a8da9",
     "js/parse.js": "edaa0f2cf3f8c38e5a3cc4c5b75038f6834c7ead347618565e690f2b90881837",
     "js/schedule.js": "44bfaf285d7e41ac22aca9313764805c5495d5abdafabf9024cd64fd3188bca2",
@@ -22,7 +22,7 @@
     "js/coach.js": "ed4d71b99b8d8bde680d4de362e14117a57887013ea57c929192d601c2710de6",
     "js/look.js": "f1828f6793e0c9e2837c6df88c4b4bef4de77cca8582b3856dad945dc206f7ea",
     "js/layout.js": "9093d576c1444645185f642bc921a25736df92ff3989999d67e9f6fd74fa20b6",
-    "js/flags.js": "d5408121753d5b3593c2609bf8c28a3aa5b6e5a44ff4fb7e639d1e4cb416dc84",
+    "js/flags.js": "b2ef147386c48b15b14ae55c8a416e4b3aaa10984beca760a8933cd4a93f45e1",
     "js/changes.js": "04e5e8048b847eabda9e677b9627b55c308d0af869390e0720e9799690c95044",
     "js/calendar.js": "963218b2ced14aae468d0ffb7739b9318c865ae275ba23c6bb94d0ce5b03c5de",
     "js/attention.js": "a1045ff2d32ba60a000017b60bb9ce7dca6c69eeb1018bedcf5e03195d4e24ff",
@@ -43,10 +43,10 @@
     "js/ui/settings.js": "eb283af6d2139cc982c91fede1793a98a471285469342772a63ce278fa9dbba0",
     "js/ui/coach.js": "a42e32f350e793bbfa800463fbb82596d3e560774182806bd3e039b62918f514",
     "js/ui/widgets.js": "ca24f0e7d888af72eae8be928e25f9622e67ad3b8bd82ac3907830a3096fdbd5",
-    "js/ui/flags.js": "b8f49fc589e3c4b8d79cd0b9c64ee661fadd970e16ca780af1f5dc0055cdfbb3",
+    "js/ui/flags.js": "ec97bdf58df2e1f3e76abd20b1dd771dbd62ba5cd42606b4c573d19cca58bad5",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
     "js/ui/claude.js": "31f9f0123c4f8cf1d1b5b429dfb09799791ed7793ad2a14cfd70d6c0505c4590",
-    "js/ui/sources.js": "ff9bdc6a6ba23b8dd2b08b56e6faceeea42318a151272a0fa72b37a2e53ea828",
+    "js/ui/sources.js": "1faf89ebe7fa9856d268c5406add111bac9632f25865f12ae9431ef7dcdfb22f",
     "js/ui/gym.js": "ddf8e16c96e96744fde6837e5a5bee0af37709a4124acf234b12a0f691ce0415",
     "js/ui/training.js": "c830df17cccebf218f819511b3f7d3eff8575f1f6c7f8a9550657b882e599bbf"
   }

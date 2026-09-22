@@ -83,7 +83,7 @@ test('production runner imports deletion and never infers it from a failed looku
   assert.notEqual(repo.doc().items[task.id].scheduleHold, true);
   env.Calendar.Events.get = get;
   assert.equal(await planner.run(), 'ok');
-  assert.equal(repo.doc().items[task.id].scheduleHold, true);
+  assert.equal(repo.doc().items[task.id].status, 'archived');
   assert.equal(cal.mine().length, 0);
   assert.equal(await planner.run(), 'ok');
   assert.equal(cal.mine().length, 0);
@@ -275,7 +275,7 @@ test('a habit block he moved stays put without wearing a pin he cannot take off'
   assert.equal(cal.get(event.id).summary, 'Morning walk');
 });
 
-test('calendar deletion retains the task as unscheduled; conflicting edits are visible', () => {
+test('calendar deletion removes the task; conflicting edits are visible', () => {
   const { store, task, now } = setup();
   const cal = new FakeCalendar();
   step(cal, store.doc(), now());
@@ -288,8 +288,7 @@ test('calendar deletion retains the task as unscheduled; conflicting edits are v
   const clean = setup();
   const deleted = { ...event, status: 'cancelled' };
   reconcileCalendar(clean.store, [], [deleted]);
-  assert.equal(clean.store.doc().items[clean.task.id].scheduleHold, true);
-  assert.equal(clean.store.doc().items[clean.task.id].status, 'active');
+  assert.equal(clean.store.doc().items[clean.task.id].status, 'archived');
   assert.equal(step(new FakeCalendar(), clean.store.doc(), clean.now()).actions.length, 0);
 });
 

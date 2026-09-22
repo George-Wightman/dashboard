@@ -12,9 +12,10 @@ import { MODELS, ENDPOINT, readReply } from '../js/gemini.js';
 import { addDays, logicalDay } from '../js/dates.js';
 import { taskInput } from '../js/plan-state.js';
 import { reconcileCalendar } from './reconcile.js';
+import { adoptEvents } from './adopt.js';
 import { plan, fillIds } from './plan.js';
 import { resolveCalendars } from './calendars.js';
-import { P } from './events.js';
+import { P, atText } from './events.js';
 import { at } from './time.js';
 import { tagPrompt, readArea } from './tag.js';
 import { syncHevy } from './hevy.js';
@@ -97,6 +98,7 @@ export function createPlanner({
       if (raw && raw.status !== 'cancelled') events.push({ ...raw, calendarId: b.calendarId });
       else removed.push({ id: b.eventId, calendarId: b.calendarId, status: 'cancelled',
         extendedProperties: { private: { [P.mine]: '1', [P.items]: b.items.join(','), [P.state]: b.state,
+          [P.key]: b.key, [P.title]: b.title, ...(b.start && b.end ? { [P.at]: atText(b.start, b.end) } : {}),
           ...(b.input ? { [P.input]: JSON.stringify(b.input) } : {}) } } });
     }
     return removed;
@@ -275,6 +277,7 @@ export function createPlanner({
       const memory = readProperty(props(), 'DAYS');
       const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
       reconcileCalendar(store, events, removed);
+      adoptEvents(store, events, { calendars: cals, config, today, lastDay: addDays(today, config.days - 1) });
       // Persist inbound edits before making outbound Calendar changes. Never
       // export from a draft that failed to reach the other interfaces.
       if (session.changed()) {

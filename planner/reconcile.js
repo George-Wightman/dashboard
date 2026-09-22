@@ -2,6 +2,7 @@
 // exported input is a three-way merge baseline, not an assumption that Calendar wins.
 import { taskInput, localDate, readPinMarker } from '../js/plan-state.js';
 import { clockLabel } from '../js/calendar.js';
+import { shortWeekday, shortDate } from '../js/dates.js';
 import { P } from './events.js';
 
 export function reconcileCalendar(store, events, removed = []) {
@@ -19,6 +20,18 @@ export function reconcileCalendar(store, events, removed = []) {
         let baseline;
         try { baseline = JSON.parse(props[P.input] || 'null'); } catch { baseline = null; }
         const changes = {};
+        // Deleting a task's block removes the task (docs/superpowers/specs/2026-09-22-calendar-one-to-one-design.md),
+        // with a note so Claude and George can see why it went. One part of a long task says nothing
+        // clear about the rest, so that only unschedules it.
+        const onePart = Number(props[P.parts] ?? 1) <= 1 && !/ \(\d+ of \d+\)$/.test(String(props[P.title] ?? ''));
+        if (raw.status === 'cancelled' && ids.length === 1 && onePart) {
+          const [from] = String(props[P.at] ?? '').split('/');
+          const when = Date.parse(from) ? ` (${shortWeekday(localDate(from))} ${shortDate(localDate(from))}, ${clockLabel(from)})` : '';
+          store.archiveItem(id);
+          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. Undo it in ⚙ → changes if that was a mistake.`, null, 'calendar', 'note');
+          if (store.doc().calendar[`conflict:${id}`]?.open) store.putCalendar(`conflict:${id}`, { open: false });
+          continue;
+        }
         if (raw.status === 'cancelled') changes.scheduleHold = true;
         else if (ids.length === 1 && baseline) {
           if (raw.summary !== props[P.summary]) {

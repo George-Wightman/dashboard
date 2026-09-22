@@ -177,7 +177,7 @@ export function flagKind(f) {
 }
 
 // Who wrote a flag, in words: the panel's hover text and Claude's read.
-const FLAG_SOURCES = { me: 'George', coach: 'the Coach (Gemini)', claude: 'Claude', workflow: 'a follow-up rule' };
+const FLAG_SOURCES = { me: 'George', coach: 'the Coach (Gemini)', claude: 'Claude', workflow: 'a follow-up rule', calendar: 'the calendar planner' };
 export function flagSourceName(f) {
   return FLAG_SOURCES[f?.source] ?? (typeof f?.source === 'string' && f.source ? f.source : 'George');
 }

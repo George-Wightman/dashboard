@@ -6,7 +6,7 @@
 
 import { h } from './dom.js';
 
-export const SOURCE_NAMES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion', workflow: 'a follow-up rule' };
+export const SOURCE_NAMES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion', workflow: 'a follow-up rule', calendar: 'your calendar' };
 
 const svg = (body) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
 const RAYS = [[12, 2.5], [18.5, 4.5], [21.5, 10], [20, 17.5], [14, 21.5], [7, 20.5], [2.5, 15], [3, 7.5], [7.5, 3]];
@@ -21,6 +21,8 @@ export const LOGOS = {
     + '<circle cx="21" cy="18" r="1.6" fill="currentColor"/>'),
   notion: svg('<rect x="3.5" y="3" width="17" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>'
     + '<path d="M8.5 16.5v-9l7 9v-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+  calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/>'
+    + '<path d="M3.5 10h17M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
   workflow: svg('<path d="M5 5h9a5 5 0 0 1 0 10H5m4-4-4 4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
 };
 

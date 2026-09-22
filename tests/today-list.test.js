@@ -15,7 +15,8 @@ test('sourceLabel: the words behind a row\'s logo', () => {
   assert.equal(sourceLabel('someone'), null);
   // a suggestion always says who it's from
   assert.equal(sourceLabel('someone', 'suggested'), 'suggested by someone');
-  assert.deepEqual(Object.keys(SOURCE_NAMES), ['claude', 'gemini', 'hebrew', 'notion', 'workflow']);
+  assert.equal(sourceLabel('calendar'), 'added by your calendar');
+  assert.deepEqual(Object.keys(SOURCE_NAMES), ['claude', 'gemini', 'hebrew', 'notion', 'workflow', 'calendar']);
 });
 
 test('a pinned row wears the pin, with the words only on hover', () => {

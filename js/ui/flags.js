@@ -30,7 +30,7 @@ const PROMPTS = {
 
 // Who wrote it, as a mark: Gemini's star for the Coach, Claude's spark for Claude, the loop for a
 // follow-up rule, and a plain "You" for George's own.
-const MARK_LOGO = { coach: 'gemini', claude: 'claude', workflow: 'workflow' };
+const MARK_LOGO = { coach: 'gemini', claude: 'claude', workflow: 'workflow', calendar: 'calendar' };
 function sourceBadge(f) {
   const name = flagSourceName(f);
   const logo = LOGOS[MARK_LOGO[f.source]];
@@ -38,7 +38,7 @@ function sourceBadge(f) {
   if (logo) {
     const icon = h('span', { class: 'src', 'aria-hidden': 'true' });
     icon.innerHTML = logo; // a fixed string from sources.js, never data
-    el.append(icon, f.source === 'coach' ? 'Coach' : name);
+    el.append(icon, f.source === 'coach' ? 'Coach' : f.source === 'calendar' ? 'Calendar' : name);
   } else el.append(f.source === 'me' || !f.source ? 'You' : name);
   return el;
 }

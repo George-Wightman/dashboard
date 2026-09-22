@@ -51,6 +51,15 @@ If something is wrong on the calendar, the fix is always in the dashboard:
 The planner leaves a block where George drags it, and never moves it again. That's deliberate — don't
 try to put it back, and don't read a moved block as a mistake.
 
+## Events George adds himself
+
+An event he adds on **Application, Challenger, Hebrew or Gym** — any calendar an area books into —
+becomes a task on its next run: its title, day, start time (pinned), length, the area that books into
+that calendar, and its description as notes. The event becomes that task's block, so everything above
+applies to it. His **main calendar** (Tasks, being renamed Stuff) is for reminders like "Dinner with
+dad" and never becomes tasks; nor do Work, repeating events, linked habit sessions or all-day events.
+So if George says "I put it in the calendar", look for the task before adding one.
+
 ## The one thing he may need to do by hand
 
 An event he created himself can be linked to a dashboard item by putting `dashboard:<id>` on its own
@@ -64,8 +73,10 @@ use numbered sessions; spare weekly target time is separate unscheduled time. Th
 George's Calendar edits before exporting: a single-session drag or resize updates the task's day,
 time and length; a rename updates its title. Conflicting concurrent edits wait for a visible choice
 in Upcoming. Moving one numbered session preserves the others without rewriting the whole estimate.
-Deleting a task event leaves the task unscheduled (including its remaining sessions), never completed
-or destroyed. Editing its date/time schedules it again. A task link in the event opens a completion
+Deleting a task's event removes the task (archived, so George can undo it in ⚙ → changes) and leaves
+a Note flag from the calendar saying what went and when. Deleting one numbered session of a long task
+only unschedules the task. Read those notes at a check-in: a task that vanished was deleted by George
+on purpose, so don't add it back unless he asks. A task link in the event opens a completion
 view; opening the link itself does not complete anything.
 
 The planner verifies missing known events by their IDs, including events moved outside its window.

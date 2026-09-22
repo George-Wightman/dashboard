@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '4d054f00';
+var PLANNER_BUILD = '0918b932';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -444,6 +444,7 @@ function recordProblem(map, id, r) {
   if (!optional('time', (v) => v === '' || clock(v), true)) return 'Invalid time';
   if (!optional('priority', (v) => typeof v === 'boolean')) return 'Invalid priority';
   if (!optional('series', (v) => string(v) && v.length <= 60, true)) return 'Invalid series';
+  if (!optional('fromEvent', (v) => string(v) && v.length <= 1100)) return 'Invalid source event';
   if (r._sync !== undefined) {
     const m = r._sync;
     if (!isPlainObject(m) || !timestamp(m.version) || !isPlainObject(m.fields)
@@ -920,7 +921,7 @@ function flagKind(f) {
 }
 
 // Who wrote a flag, in words: the panel's hover text and Claude's read.
-const FLAG_SOURCES = { me: 'George', coach: 'the Coach (Gemini)', claude: 'Claude', workflow: 'a follow-up rule' };
+const FLAG_SOURCES = { me: 'George', coach: 'the Coach (Gemini)', claude: 'Claude', workflow: 'a follow-up rule', calendar: 'the calendar planner' };
 function flagSourceName(f) {
   return FLAG_SOURCES[f?.source] ?? (typeof f?.source === 'string' && f.source ? f.source : 'George');
 }
@@ -2900,6 +2901,7 @@ const __planner_reconcile = (() => {
 // exported input is a three-way merge baseline, not an assumption that Calendar wins.
 const { taskInput, localDate, readPinMarker } = __js_plan_state;
 const { clockLabel } = __js_calendar;
+const { shortWeekday, shortDate } = __js_dates;
 const { P } = __planner_events;
 
 function reconcileCalendar(store, events, removed = []) {
@@ -2917,6 +2919,18 @@ function reconcileCalendar(store, events, removed = []) {
         let baseline;
         try { baseline = JSON.parse(props[P.input] || 'null'); } catch { baseline = null; }
         const changes = {};
+        // Deleting a task's block removes the task (docs/superpowers/specs/2026-09-22-calendar-one-to-one-design.md),
+        // with a note so Claude and George can see why it went. One part of a long task says nothing
+        // clear about the rest, so that only unschedules it.
+        const onePart = Number(props[P.parts] ?? 1) <= 1 && !/ \(\d+ of \d+\)$/.test(String(props[P.title] ?? ''));
+        if (raw.status === 'cancelled' && ids.length === 1 && onePart) {
+          const [from] = String(props[P.at] ?? '').split('/');
+          const when = Date.parse(from) ? ` (${shortWeekday(localDate(from))} ${shortDate(localDate(from))}, ${clockLabel(from)})` : '';
+          store.archiveItem(id);
+          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. Undo it in ⚙ → changes if that was a mistake.`, null, 'calendar', 'note');
+          if (store.doc().calendar[`conflict:${id}`]?.open) store.putCalendar(`conflict:${id}`, { open: false });
+          continue;
+        }
         if (raw.status === 'cancelled') changes.scheduleHold = true;
         else if (ids.length === 1 && baseline) {
           if (raw.summary !== props[P.summary]) {
@@ -2964,27 +2978,6 @@ function reconcileCalendar(store, events, removed = []) {
   return conflicts;
 }
 return { reconcileCalendar };
-})();
-
-// ---- planner/time.js
-const __planner_time = (() => {
-// Moments on George's days, in local time. The tests set TZ=Europe/London; Apps Script uses the
-// project's time zone (Europe/London in appsscript.json), so a planning hour is a wall-clock hour
-// on both sides of a clock change.
-
-const MINUTE = 60000;
-const pad = (n) => String(n).padStart(2, '0');
-
-function at(day, hhmm) {
-  const [y, m, d] = day.split('-').map(Number);
-  const [h, min] = hhmm.split(':').map(Number);
-  return new Date(y, m - 1, d, h, min);
-}
-
-const localDay = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-const iso = (msOrDate) => new Date(msOrDate).toISOString();
-return { MINUTE, at, localDay, iso };
 })();
 
 // ---- planner/calendars.js
@@ -3036,6 +3029,27 @@ function habitLinks(doc, config, find, problems) {
   return links;
 }
 return { norm, resolveCalendars, calendarFor, habitLinks };
+})();
+
+// ---- planner/time.js
+const __planner_time = (() => {
+// Moments on George's days, in local time. The tests set TZ=Europe/London; Apps Script uses the
+// project's time zone (Europe/London in appsscript.json), so a planning hour is a wall-clock hour
+// on both sides of a clock change.
+
+const MINUTE = 60000;
+const pad = (n) => String(n).padStart(2, '0');
+
+function at(day, hhmm) {
+  const [y, m, d] = day.split('-').map(Number);
+  const [h, min] = hhmm.split(':').map(Number);
+  return new Date(y, m - 1, d, h, min);
+}
+
+const localDay = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+const iso = (msOrDate) => new Date(msOrDate).toISOString();
+return { MINUTE, at, localDay, iso };
 })();
 
 // ---- js/schedule.js
@@ -4251,6 +4265,85 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
 return { blockTitle, blockBody, fillIds, plan };
 })();
 
+// ---- planner/adopt.js
+const __planner_adopt = (() => {
+// An event George adds himself on an area's calendar becomes a task
+// (docs/superpowers/specs/2026-09-22-calendar-one-to-one-design.md). His main calendar is where he
+// keeps reminders like "Dinner with dad", so it is left out; so is anything the planner doesn't book
+// into. The event then becomes the task's own block: it carries the planner's markers from this run
+// on, so moving, renaming, ticking and deleting work as for any block.
+
+const { norm, resolveCalendars } = __planner_calendars;
+const { blockBody } = __planner_plan;
+const { P } = __planner_events;
+const { localDate, taskInput } = __js_plan_state;
+const { clockLabel } = __js_calendar;
+
+const TITLE_MAX = 200;
+const NOTES_MAX = 1000;
+
+// Calendar id → the area whose tasks it takes. The main calendar never counts. When two areas book
+// into one calendar, a priority area wins, then whichever the settings name first.
+function adoptableCalendars(calendars, config) {
+  const { find } = resolveCalendars(calendars, config);
+  const main = find(config.defaultCalendar) ?? find('main');
+  const priority = new Set(config.priorityAreas.map(norm));
+  const out = new Map();
+  for (const [area, name] of Object.entries(config.areaCalendars)) {
+    const cal = find(name);
+    if (!cal || cal.primary || cal.id === main?.id) continue;
+    if (!out.has(cal.id) || (priority.has(norm(area)) && !priority.has(norm(out.get(cal.id))))) out.set(cal.id, area);
+  }
+  return out;
+}
+
+// Adopts George's new events as tasks, in one change. `events` are the raw events the planner is
+// about to plan with; an adopted one gets the planner's markers here, in memory, so this same run
+// treats it as the task's block rather than booking the task a second one — and writes the markers.
+function adoptEvents(store, events, { calendars, config, today, lastDay }) {
+  const doc = store.doc();
+  const areaOf = adoptableCalendars(calendars, config);
+  if (!areaOf.size) return [];
+  const { find } = resolveCalendars(calendars, config);
+  // A habit's own sessions (habitEvents) are the habit's, whether or not the habit still matches.
+  const links = config.habitEvents.map((l) => ({ calendarId: find(l.calendar)?.id, title: l.title }));
+  const known = new Set(Object.values(doc.items ?? {}).map((i) => i.fromEvent).filter(Boolean));
+  const fresh = events.filter((raw) => {
+    const props = raw.extendedProperties?.private ?? {};
+    if (!areaOf.has(raw.calendarId) || raw.status === 'cancelled' || props[P.mine] === '1') return false;
+    if (!raw.start?.dateTime || !raw.end?.dateTime || raw.recurringEventId) return false;
+    if (/dashboard:/.test(String(raw.description ?? ''))) return false;
+    if (links.some((l) => l.calendarId === raw.calendarId && norm(l.title) === norm(raw.summary))) return false;
+    const day = localDate(raw.start.dateTime);
+    const minutes = (Date.parse(raw.end.dateTime) - Date.parse(raw.start.dateTime)) / 60000;
+    return day >= today && day <= lastDay && minutes >= 5 && minutes <= 720
+      && String(raw.summary ?? '').trim() && !known.has(`${raw.calendarId}|${raw.id}`);
+  });
+  if (!fresh.length) return [];
+  const adopted = [];
+  store.transaction(() => {
+    for (const raw of fresh) {
+      const title = String(raw.summary).trim().slice(0, TITLE_MAX);
+      const notes = String(raw.description ?? '').trim().slice(0, NOTES_MAX);
+      const item = store.addItem({
+        type: 'task', title, date: localDate(raw.start.dateTime), time: clockLabel(raw.start.dateTime),
+        minutes: Math.round((Date.parse(raw.end.dateTime) - Date.parse(raw.start.dateTime)) / 60000),
+        area: areaOf.get(raw.calendarId), status: 'active', source: 'calendar',
+        fromEvent: `${raw.calendarId}|${raw.id}`, ...(notes ? { notes } : {}),
+      });
+      const marks = blockBody({
+        key: `task|${item.id}|0`, base: title, title, start: Date.parse(raw.start.dateTime), end: Date.parse(raw.end.dateTime),
+        items: [item.id], state: 'fixed', input: taskInput(item), parts: 1,
+      }).extendedProperties.private;
+      raw.extendedProperties = { ...(raw.extendedProperties ?? {}), private: { ...(raw.extendedProperties?.private ?? {}), ...marks } };
+      adopted.push(item.id);
+    }
+  }, { summary: 'Added tasks from Google Calendar', source: 'calendar' });
+  return adopted;
+}
+return { adoptableCalendars, adoptEvents };
+})();
+
 // ---- planner/tag.js
 const __planner_tag = (() => {
 // Giving an untagged task an area, so it can share a block: one question to Gemini, answered from
@@ -5121,9 +5214,10 @@ const { MODELS, ENDPOINT, readReply } = __js_gemini;
 const { addDays, logicalDay } = __js_dates;
 const { taskInput } = __js_plan_state;
 const { reconcileCalendar } = __planner_reconcile;
+const { adoptEvents } = __planner_adopt;
 const { plan, fillIds } = __planner_plan;
 const { resolveCalendars } = __planner_calendars;
-const { P } = __planner_events;
+const { P, atText } = __planner_events;
 const { at } = __planner_time;
 const { tagPrompt, readArea } = __planner_tag;
 const { syncHevy } = __planner_hevy;
@@ -5206,6 +5300,7 @@ function createPlanner({
       if (raw && raw.status !== 'cancelled') events.push({ ...raw, calendarId: b.calendarId });
       else removed.push({ id: b.eventId, calendarId: b.calendarId, status: 'cancelled',
         extendedProperties: { private: { [P.mine]: '1', [P.items]: b.items.join(','), [P.state]: b.state,
+          [P.key]: b.key, [P.title]: b.title, ...(b.start && b.end ? { [P.at]: atText(b.start, b.end) } : {}),
           ...(b.input ? { [P.input]: JSON.stringify(b.input) } : {}) } } });
     }
     return removed;
@@ -5384,6 +5479,7 @@ function createPlanner({
       const memory = readProperty(props(), 'DAYS');
       const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
       reconcileCalendar(store, events, removed);
+      adoptEvents(store, events, { calendars: cals, config, today, lastDay: addDays(today, config.days - 1) });
       // Persist inbound edits before making outbound Calendar changes. Never
       // export from a draft that failed to reach the other interfaces.
       if (session.changed()) {
