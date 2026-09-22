@@ -2,7 +2,7 @@ process.env.TZ = 'Europe/London';
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture, clock } from './helpers.js';
+import { fixture, clock, done } from './helpers.js';
 import { at } from '../planner/time.js';
 import { dayShape, talkContext } from '../js/talk.js';
 
@@ -130,4 +130,47 @@ test('an ordinary day carries no reconciliation lines at all', () => {
   const text = talkContext(d, SUN, now(), { first: true });
   assert.doesNotMatch(text, /Requested for today, now booked later/);
   assert.doesNotMatch(text, /significantly different/i);
+});
+
+// ---- 22 September: what George ticked, not what was booked -------------------------------------
+
+const TUE = '2026-09-22';
+
+// The evening of 22 September: three tasks ticked during the day, and two booked into the evening
+// that he hadn't done. The Coach congratulated him on the two he hadn't done.
+function tuesdayEvening() {
+  const d = fixture({
+    items: [
+      task('s1', 'Pick a STAR for each interview competency', TUE),
+      task('p1', 'Post the PC for spares on Facebook', TUE, 30),
+      task('r1', 'Role play 1 - untimed, learn the shape', TUE, 150),
+      task('m1', "Figure out Maya's birthday present with Luli", TUE, 30),
+    ],
+    logs: [done('s1', TUE), done('p1', TUE)],
+  });
+  d.calendar = { ...(d.calendar ?? {}), agenda: { blocks: [
+    block(TUE, '09:00', '11:00', ['s1']),
+    block(TUE, '16:00', '18:30', ['r1'], 'Role play 1 - untimed, learn the shape'),
+    block(TUE, '18:45', '19:15', ['m1'], "Figure out Maya's birthday present with Luli"),
+  ] } };
+  return d;
+}
+const evening = clock(at(TUE, '19:30'));
+
+test("22 September: the Coach is told what he ticked today, even though ticked tasks leave the schedule", () => {
+  const text = talkContext(tuesdayEvening(), TUE, evening());
+  assert.match(text, /Ticked off today[^\n]*: "Pick a STAR for each interview competency" · "Post the PC for spares on Facebook"/);
+});
+
+test('22 September: a block whose time has passed but was never ticked says so', () => {
+  const text = talkContext(tuesdayEvening(), TUE, evening());
+  assert.match(text, /16:00–18:30 Role play 1 - untimed, learn the shape[^·]*not ticked/);
+  assert.match(text, /18:45–19:15 Figure out Maya's birthday present with Luli[^·]*not ticked/);
+  assert.doesNotMatch(text, /09:00–11:00 [^·]*not ticked/);
+});
+
+test('22 September: with nothing ticked, the context says so rather than leaving it out', () => {
+  const d = tuesdayEvening();
+  d.logs = {};
+  assert.match(talkContext(d, TUE, evening()), /Ticked off today[^\n]*: nothing yet/);
 });
