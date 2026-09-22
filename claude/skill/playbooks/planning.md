@@ -26,6 +26,24 @@ Put the week's tasks and the next stage of each goal across the days. Every task
 Do it in one `apply` with several `edit` ops. The calendar follows within ten minutes — never book
 blocks yourself.
 
+## Work that has to happen in order is a series
+
+Role play 1 before 2 before 3; mock interview 1 before 2. Give those tasks one `series` name
+(`"series": "Role plays"`) and orders that run in sequence. The planner then never books a later one
+before an earlier one has ended, and when an earlier one slips a day the later ones slip with it.
+Unrelated work in the same goal stays out of the series, or one slipped scenario would hold back every
+role play.
+
+On 22 September a chat moved Role play 1 onto a Wednesday where Role plays 2 and 3 were already pinned.
+It didn't fit, the planner carried it to Thursday, and it landed after both. So:
+
+- **Before you pin a time or move a date**, look at the day (`day <date>`): what's pinned there, and
+  whether what you're adding fits in the gaps.
+- **Read every `Note:` that comes back.** A series warning means the dates are out of order; with a
+  pin involved, the planner can't fix it for you.
+- **After it runs** (ten minutes), read `planner`'s notes and the day again. "Couldn't fit … moved to …"
+  means your plan isn't the calendar's.
+
 ## Watch out: `plan` drops most of what you give it
 
 `{"op": "plan", …}` is for a goal with stages. Its nested parts read **much less** than the ops they

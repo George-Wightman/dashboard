@@ -241,7 +241,7 @@ test('fieldWarnings: an unknown field says so and names what the op does take', 
   const [note] = fieldWarnings({ op: 'task', title: 'x', length: '2h' });
   assert.match(note, /"length" isn't a field on task/);
   assert.match(note, /ignored/);
-  assert.match(note, /title, date, area, goal, minutes, time, notes, priority, suggest/);
+  assert.match(note, /title, date, area, goal, minutes, time, notes, priority, series, suggest/);
 });
 
 test("fieldWarnings: a plan retains its task's detailed controls", () => {
@@ -282,4 +282,36 @@ test('a habit can have a set time, on the way in and on an edit', () => {
   assert.match(runOp(s, { op: 'edit', id: 'rec-2', set: { time: null } }), /time → none/);
   assert.equal(s.doc().items['rec-2'].time ?? null, null, 'cleared');
   assert.throws(() => runOp(s, { op: 'habit', title: 'x', time: 'half nine' }), /time needs a time of day/);
+});
+
+// ---- series: tasks that only make sense in order ----------------------------------------------
+
+test('series: set on a task or by edit, cleared with null, and only on a task', () => {
+  const s = fresh();
+  runOp(s, { op: 'task', title: 'Role play 1', date: '2026-09-16', series: 'Role plays' });
+  assert.equal(s.doc().items['rec-1'].series, 'Role plays');
+  runOp(s, { op: 'task', title: 'Role play 2', date: '2026-09-17' });
+  assert.match(runOp(s, { op: 'edit', id: 'rec-2', set: { series: 'Role plays' } }), /series → "Role plays"/);
+  runOp(s, { op: 'edit', id: 'rec-2', set: { series: null } });
+  assert.equal(s.doc().items['rec-2'].series ?? null, null);
+  runOp(s, { op: 'habit', title: 'Walk' });
+  assert.throws(() => runOp(s, { op: 'edit', id: 'rec-3', set: { series: 'x' } }), /Only a task/);
+  assert.deepEqual(fieldWarnings({ op: 'task', title: 'x', series: 'y' }), []);
+});
+
+test('series: a date that puts one before an earlier one comes back with a warning', () => {
+  const s = fresh();
+  runOp(s, { op: 'task', title: 'Role play 1', date: '2026-09-16', series: 'Role plays' });
+  runOp(s, { op: 'task', title: 'Role play 2', date: '2026-09-16', series: 'Role plays' });
+  runOp(s, { op: 'task', title: 'Role play 3', date: '2026-09-17', series: 'Role plays' });
+  const out = runOp(s, { op: 'edit', id: 'rec-1', set: { date: '2026-09-18' } });
+  assert.match(out, /Note: "Role play 1" is now dated after "Role play 2" and "Role play 3" in its series/);
+  assert.doesNotMatch(runOp(s, { op: 'edit', id: 'rec-1', set: { date: '2026-09-15' } }), /Note:/);
+});
+
+test('series: a later one pinned earlier in the same day than an earlier one is warned about', () => {
+  const s = fresh();
+  runOp(s, { op: 'task', title: 'Role play 1', date: '2026-09-16', time: '14:00', series: 'Role plays' });
+  runOp(s, { op: 'task', title: 'Role play 2', date: '2026-09-16', series: 'Role plays' });
+  assert.match(runOp(s, { op: 'edit', id: 'rec-2', set: { time: '09:00' } }), /Note: "Role play 2" is now before "Role play 1"/);
 });

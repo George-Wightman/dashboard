@@ -151,7 +151,9 @@ notes and details; tasks and habits also retain minutes, time and priority, and 
 minutes to 12 hours (`"45m"`, `"1h30"`, or a number of minutes) — and `"time": "14:00"` for a fixed
 start, which makes it a fixed event in the calendar. `"notes": "…"` — the detail behind a short title
 (up to 1000 characters; shown under it, and at the top of its calendar block); `"priority": true` —
-booked first, starred.
+booked first, starred. `"series": "Role plays"` — work that only makes sense in order: the planner
+books a series by `order` and never puts a later one before an earlier one (`reference planning`).
+`null` clears it on an edit. A date or time that breaks the order comes back with a `Note:`.
 
 ### `habit`
 `{"op": "habit", "title": "…", "repeat": {…}}` — `repeat` defaults to every day. Shapes:
@@ -195,7 +197,7 @@ An amount on a weekly target, or on a goal measured by a number:
 
 ### `edit`
 `{"op": "edit", "id": "…", "set": {"title": "…", "date": "…"}}`. Editable — tasks: `title, date,
-area, goalId, order, minutes, time, notes, priority`; habits: `title, area, goalId, repeat, order,
+area, goalId, order, minutes, time, notes, priority, series`; habits: `title, area, goalId, repeat, order,
 minutes, time, notes, priority` (`null` clears a length or time); weekly targets: `title, area,
 goalId, target, unitLabel, order, notes`; goals: `title, targetDate, target, unitLabel, why, order, notes`
 (`target: null` measures by milestones); milestones: `title, done, goalId, order`. A weekly target's

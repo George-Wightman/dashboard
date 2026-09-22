@@ -12,6 +12,7 @@ import { norm, resolveCalendars, calendarFor, habitLinks } from './calendars.js'
 import { taskInput, dayClosed } from '../js/plan-state.js';
 import { demand, fixedTasks } from './demand.js';
 import { fits, earliestFit, nearestFit, ceilQuarter } from './place.js';
+import { seriesOf, compareRank, inSeriesOrder } from './series.js';
 
 const DESCRIPTION_LINE = 'Planned from your dashboard. Move it and it stays where you put it.';
 const HISTORY = new Set(['done', 'partial']);
@@ -270,7 +271,8 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   }
 
   // ---- The planner's own events -----------------------------------------------------------------
-  const fixedWanted = new Map(fixedTasks({ doc, days, config, links }).map((f) => [f.key, f]));
+  const fixedAll = fixedTasks({ doc, days, config, links });
+  const fixedWanted = new Map(fixedAll.map((f) => [f.key, f]));
   for (const ev of timed.filter((e) => e.mine)) {
     const key = ev.props[P.key] ?? '';
     const kd = key.startsWith('task|') ? localDay(ev.start) : key.split('|')[0] || localDay(ev.start);
@@ -488,6 +490,48 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   for (const d of days) cover(d, rec(d).skipped);
   const { blocks: wanted } = demand({ doc, today, days, config, links, covered, usedKeys, todayClosed });
 
+  // ---- Series: tasks that only make sense in order (planner/series.js) ---------------------------
+  // On 22 September Role play 1 couldn't fit on a Wednesday its successors were pinned into, was
+  // carried to Thursday, and landed after them. A series member now never starts before an earlier
+  // unticked one has ended, and waits — a day at a time, like any carried block — until it can.
+  const rankOf = (b) => {
+    if (b.items.length !== 1) return null;
+    const it = items[b.items[0]];
+    const series = seriesOf(it);
+    return series ? { series, rank: [it.order ?? 0, Number(String(b.key).split('|')[2]) || 0] } : null;
+  };
+  const seriesPinned = fixedAll.filter((f) => seriesOf(items[f.itemId]) && !tickOf(f.itemId, f.day).finished)
+    .map((f) => ({ series: seriesOf(items[f.itemId]), rank: [items[f.itemId].order ?? 0, 0], day: f.day, start: f.start, end: f.end, title: f.title }));
+  const seriesWaiting = new Map();
+  const seriesPlaced = [];
+  for (const b of wanted) {
+    const r = rankOf(b);
+    if (r) seriesWaiting.set(b.key, { ...r, minutes: b.minutes });
+  }
+  // The span a series block may use on day `d`, given what's taken today (`slot`): from the end of
+  // every earlier member, up to the start of a later member pinned on the same day. null when an
+  // earlier member hasn't been placed yet, or is pinned on a later day. `soft` drops the upper
+  // bound — a pinned later member George placed himself doesn't strand the earlier one.
+  const seriesWindow = (b, d, win, slot, soft = false) => {
+    const r = rankOf(b);
+    if (!r) return win;
+    let start = win.start;
+    let end = win.end;
+    const same = (x) => x.series === r.series;
+    for (const p of seriesPinned.filter(same)) {
+      const c = compareRank(p.rank, r.rank);
+      if (c < 0 && p.day > d) return null;
+      if (c < 0 && p.day === d) start = Math.max(start, p.end + gap);
+      if (c > 0 && p.day === d && !soft) end = Math.min(end, p.start - gap);
+    }
+    for (const [k, w] of seriesWaiting) {
+      if (!same(w) || compareRank(w.rank, r.rank) >= 0) continue;
+      if (!slot.has(k)) return null;
+      start = Math.max(start, slot.get(k) + w.minutes * MINUTE + gap);
+    }
+    return { ...win, start, end };
+  };
+
   const placed = [];
   let overflow = [];
   for (const d of days) {
@@ -512,6 +556,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       .sort((a, b) => Number(b.priority) - Number(a.priority) || Number(b.carried) - Number(a.carried)
         || b.minutes - a.minutes || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     overflow = [];
+    const held = new Set();
 
     // The day packed around what's already fixed. `order` is who gets first refusal; the blocks that
     // can stay put are settled the same way whatever the order, so two orders can be compared fairly.
@@ -521,7 +566,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       const take = (b, s) => { slot.set(b.key, s); taken.push({ start: s, end: s + b.minutes * MINUTE, title: b.base }); };
       const busyFor = (b) => [...taken, ...offBusy(d, b.area)];
       if (exactDay(d)) {
-        for (const b of queue) {
+        for (const b of inSeriesOrder(queue, rankOf)) {
           const ex = keep.get(b.key);
           if (!ex || localDay(ex.start) !== d) continue;
           const length = b.minutes * MINUTE;
@@ -532,16 +577,25 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
           // of the week. Earlier only — moving a block later would push work into the evening for no
           // reason, and one already at its earliest fit doesn't move at all, so nothing drifts
           // between runs. A block George moved himself isn't here: those are pinned before this.
-          const to = earliestFit(length, { start: win.open, end: Math.min(win.end, s + length) }, busyFor(b), gap);
+          const w = seriesWindow(b, d, { start: win.open, end: Math.min(win.end, s + length) }, slot);
+          const to = w && earliestFit(length, w, busyFor(b), gap);
           if (to != null) take(b, to);
         }
       }
       const bumped = [];
-      for (const b of order) {
+      for (const b of inSeriesOrder(order, rankOf)) {
         if (slot.has(b.key)) continue;
-        const s = earliestFit(b.minutes * MINUTE, win, busyFor(b), gap);
+        const w = seriesWindow(b, d, win, slot);
+        let s = w && earliestFit(b.minutes * MINUTE, w, busyFor(b), gap);
+        if (s == null && w) {
+          const loose = seriesWindow(b, d, win, slot, true);
+          s = earliestFit(b.minutes * MINUTE, loose, busyFor(b), gap);
+        }
         if (s != null) take(b, s);
-        else bumped.push(b);
+        else {
+          bumped.push(b);
+          if (!w) held.add(b.key);
+        }
       }
       return { slot, bumped };
     };
@@ -573,12 +627,34 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
         if (exactDay(d) && !(d === today && todayClosed)) note(`Couldn't fit ${b.base}${onDay(d)}`);
       } else if (next <= lastDay) {
         overflow.push({ ...b, carried: true });
-        if (exactDay(d) && !(d === today && todayClosed)) note(`Couldn't fit ${b.base}${onDay(d)} — moved to ${shortWeekday(next)}`);
+        if (held.has(b.key)) {
+          if (exactDay(d) && !(d === today && todayClosed)) note(`Kept ${b.base} after the one before it in its series — moved to ${shortWeekday(next)}`);
+        } else if (exactDay(d) && !(d === today && todayClosed)) note(`Couldn't fit ${b.base}${onDay(d)} — moved to ${shortWeekday(next)}`);
       } else {
         note(`Couldn't fit ${b.base} in the next ${config.days} days`);
       }
     }
-    for (const b of queue) if (slot.has(b.key)) placed.push({ b, day: d, start: slot.get(b.key) });
+    for (const b of queue) {
+      if (!slot.has(b.key)) continue;
+      placed.push({ b, day: d, start: slot.get(b.key) });
+      const r = rankOf(b);
+      if (r) {
+        seriesWaiting.delete(b.key);
+        seriesPlaced.push({ ...r, day: d, start: slot.get(b.key), end: slot.get(b.key) + b.minutes * MINUTE, title: b.base });
+      }
+    }
+  }
+
+  // Pins can still put a series out of order — George's, or a time Claude set. The planner won't move
+  // a pinned block, so it says which pair is the wrong way round.
+  const members = [...seriesPinned.map((p) => ({ ...p, pinned: true })), ...seriesPlaced];
+  for (const a of members) {
+    for (const b of members) {
+      if (a.series !== b.series || compareRank(a.rank, b.rank) >= 0 || a.start < b.start) continue;
+      if (!a.pinned && !b.pinned) continue;
+      const pin = b.pinned ? b : a;
+      note(`${a.title} is booked after ${b.title}, but comes before it in its series — ${pin.title} is pinned (${shortWeekday(localDay(new Date(pin.start)))} ${hhmm(pin.start)}); move or unpin one of them`);
+    }
   }
 
   for (const { b, day, start } of placed) {

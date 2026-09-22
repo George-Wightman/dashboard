@@ -55,6 +55,7 @@ export function recordProblem(map, id, r) {
   for (const key of ['order', 'target', 'amount', 'minutes']) if (!optional(key, finite, true)) return `Invalid ${key}`;
   if (!optional('time', (v) => v === '' || clock(v), true)) return 'Invalid time';
   if (!optional('priority', (v) => typeof v === 'boolean')) return 'Invalid priority';
+  if (!optional('series', (v) => string(v) && v.length <= 60, true)) return 'Invalid series';
   if (r._sync !== undefined) {
     const m = r._sync;
     if (!isPlainObject(m) || !timestamp(m.version) || !isPlainObject(m.fields)

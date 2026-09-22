@@ -15,6 +15,7 @@ import { weekStart } from '../js/dates.js';
 import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 import { checkDetails } from '../js/workflow.js';
+import { seriesOf } from '../planner/series.js';
 
 const extraDetails = (op) => op.details === undefined ? {} : { details: checkDetails(op.details) };
 
@@ -180,19 +181,59 @@ function goalOf(store, ref) {
 
 // ---- Adding -----------------------------------------------------------------------------------
 
+// A series name: tasks that only make sense in order (planner/series.js). null or '' clears it.
+function seriesName(value) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 60) throw new Error('series is a short name, up to 60 characters, or null to clear it');
+  return value.trim();
+}
+
+const listed = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+
+// Whether this task's date or time now puts it out of order in its series. The planner books a series
+// in order and holds a later one back, so out-of-order dates are silently corrected — or, with a pin
+// involved, left wrong. Either way the model that set them should hear about it at once.
+function seriesNote(store, id) {
+  const doc = store.doc();
+  const t = doc.items[id];
+  const series = seriesOf(t);
+  if (!series || t.status !== 'active') return '';
+  const ticked = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
+  if (ticked.has(id)) return '';
+  const members = Object.values(doc.items).filter((m) => m.id !== id && m.status === 'active' && !ticked.has(m.id) && seriesOf(m) === series);
+  // -1 when a is booked before b; 0 when it can't be told (same day, not both timed).
+  const when = (a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.time && b.time && a.time !== b.time ? (a.time < b.time ? -1 : 1) : 0);
+  const order = (m) => m.order ?? 0;
+  const later = members.filter((m) => order(m) > order(t) && when(m, t) < 0);
+  const earlier = members.filter((m) => order(m) < order(t) && when(t, m) < 0);
+  const out = [];
+  const say = (offenders, where) => {
+    const dated = offenders.every((m) => m.date === t.date) ? '' : 'dated ';
+    const pinned = [t, ...offenders].some((m) => m.time);
+    out.push(`Note: ${q(t.title)} is now ${dated}${where} ${listed(offenders.map((m) => q(m.title)))} in its series. `
+      + (pinned ? "A pinned time is involved, so the planner won't put them back in order — change a date or time."
+        : "The planner books a series in order, so the later ones will wait — change a date if that isn't what you want."));
+  };
+  if (later.length) say(later, 'after');
+  if (earlier.length) say(earlier, 'before');
+  return out.length ? `\n${out.join('\n')}` : '';
+}
+
 function task(store, op) {
   const today = store.today();
   const minutes = lengthOf(op.minutes);
   const time = clockOf(op.time);
   const notes = notesOf(op.notes);
   const priority = priorityOf(op.priority, 'task');
+  const series = seriesName(op.series);
   const rec = store.addItem({
     type: 'task', title: title(op.title, 'A task'), date: toDay(op.date ?? 'today', today),
     ...extraDetails(op),
     area: str(op.area), goalId: goalOf(store, op.goal), status: statusOf(op), source: CLAUDE,
     ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
+    ...(series ? { series } : {}),
   });
-  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}${rec.priority ? ' ★' : ''}`, rec.id);
+  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}${rec.priority ? ' ★' : ''}`, rec.id) + seriesNote(store, rec.id);
 }
 
 function habit(store, op) {
@@ -333,6 +374,7 @@ const EDITABLE = {
     time: (v, rec) => { if (rec.type === 'quota') throw new Error('A weekly target has no time'); return clockOf(v); },
     notes: (v) => checkNotes(v),
     priority: (v, rec) => (v == null ? false : priorityOf(v, rec.type)),
+    series: (v, rec) => { onlyFor('task', 'Only a task can be in a series')(rec); return seriesName(v); },
     // Keep this where it is: the planner leaves a pinned block alone, as if George had dragged it.
     pinned: (v, rec) => {
       onlyFor('task', 'Only a task can be pinned to a slot')(rec);
@@ -388,7 +430,8 @@ function edit(store, op) {
   const update = { items: store.updateItem, goals: store.updateGoal, milestones: store.updateMilestone }[map];
   update(id, changes);
   const what = Object.keys(changes).map((f) => `${f} → ${show(changes[f], f, store)}`).join(', ');
-  return `Edited ${noun(map, rec)} ${q(rec.title)}: ${what}`;
+  const moved = map === 'items' && ['date', 'time', 'series', 'order'].some((f) => f in changes);
+  return `Edited ${noun(map, rec)} ${q(rec.title)}: ${what}${moved ? seriesNote(store, id) : ''}`;
 }
 
 // ---- Archiving and suggestions ----------------------------------------------------------------
@@ -638,7 +681,7 @@ export const FIELDS = {
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],
   review: ['id'],
-  task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest', 'details'],
+  task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'series', 'suggest', 'details'],
   habit: ['title', 'repeat', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest', 'details'],
   target: ['title', 'target', 'unit', 'unitLabel', 'area', 'goal', 'notes', 'suggest', 'details'],
   goal: ['title', 'targetDate', 'why', 'milestones', 'notes', 'suggest', 'details'],
@@ -662,7 +705,7 @@ export const FIELDS = {
 // Plan entries retain the same practical controls as their standalone counterparts.
 const PLAN_FIELDS = {
   goal: ['title', 'targetDate', 'why', 'notes', 'details'],
-  tasks: ['title', 'date', 'area', 'minutes', 'time', 'notes', 'priority', 'details'],
+  tasks: ['title', 'date', 'area', 'minutes', 'time', 'notes', 'priority', 'series', 'details'],
   habits: ['title', 'repeat', 'area', 'minutes', 'time', 'notes', 'priority', 'details'],
   targets: ['title', 'target', 'unit', 'unitLabel', 'area', 'notes', 'details'],
 };

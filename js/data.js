@@ -363,7 +363,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   function addPlan({ goal = null, milestones = [], habits = [], targets = [], tasks = [], source = 'gemini' } = {}) {
     if (milestones.length && !goal) throw new Error('Milestones need a goal');
     const suggested = { status: 'suggested', source };
-    const extras = (rec) => Object.fromEntries(['area', 'minutes', 'time', 'priority', 'notes', 'details']
+    const extras = (rec) => Object.fromEntries(['area', 'minutes', 'time', 'priority', 'series', 'notes', 'details']
       .filter((key) => rec[key] !== undefined).map((key) => [key, rec[key]]));
     const goalRec = goal
       ? goalFields({ ...extras(goal), title: goal.title, targetDate: goal.targetDate ?? null, why: goal.why ?? '', ...suggested })
