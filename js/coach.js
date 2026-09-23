@@ -222,12 +222,10 @@ export const SYSTEM = "You are George's coach inside his personal daily dashboar
 export const JOBS = {
   questions: `Ask George 2 or 3 short questions about today, each answerable in a sentence or two. At least one must name something specific from today — a miss, a win, or a number. The last question is about tomorrow. Shape: {"questions": ["…", "…"]}`,
   feedback: `Reply with feedback of at most 90 words. First one specific thing that went well, if anything did; then the single most useful change for tomorrow, grounded in his answers and the numbers. Don't moralise and don't repeat his answers back to him. Then suggest at most 2 concrete tasks for tomorrow, only if they follow from what he said. Shape: {"feedback": "…", "tomorrow": [{"title": "…"}]}`,
-  shape: `Turn this into a plan George can start this week. Don't duplicate anything he already tracks. Prefer small weekly targets he can actually hit. Shape: {"title": "short goal name", "targetDate": "YYYY-MM-DD" or null (only if he gave or implied a deadline), "milestones": ["3 to 6 concrete, checkable steps, in order"], "habits": [0 to 2 of {"title": "…", "repeat": {"kind": "daily"} or {"kind": "weekdays", "days": [1-7…]} or {"kind": "perWeek", "n": 1-7}}], "targets": [0 to 2 of {"title": "…", "target": number, "unit": "count" or "minutes", "unitLabel": "…"}], "why": "one sentence"}`,
   digest: `Write last week's digest, for George and for Claude, who reads it later to help him. Shape: {"summary": "at most 120 words", "wins": [0 to 3 short phrases], "slipped": [0 to 3 short phrases], "focus": "one sentence for this week"}`,
 };
 
 const TYPED_CAP = 1000;
-const TRACKED_CAP = 80;
 
 // Job A — the check-in questions.
 export function questionsPrompt(doc, today) {
@@ -240,32 +238,6 @@ export function feedbackPrompt(doc, today, questions, answers) {
   return {
     system: SYSTEM,
     prompt: `${coachContext(doc, today)}\n\nToday's check-in:\n${qa.join('\n')}\n\n${JOBS.feedback}`,
-  };
-}
-
-// Every goal and item he tracks or has been offered, so a new plan doesn't repeat them.
-function trackedTitles(doc) {
-  const live = (r) => r.status === 'active' || r.status === 'suggested';
-  return [...values(doc.goals).filter(live).sort(byOrder), ...values(doc.items).filter(live).sort(byOrder)]
-    .map((r) => clip(r.title, 80))
-    .filter(Boolean);
-}
-
-// Job C — shape a goal from what he typed.
-export function shapePrompt(doc, today, text) {
-  const titles = trackedTitles(doc);
-  return {
-    system: SYSTEM,
-    prompt: [
-      coachContext(doc, today),
-      '',
-      `Today's date: ${today}`,
-      `Already tracked: ${titles.length ? titles.slice(0, TRACKED_CAP).join('; ') : 'nothing yet'}`,
-      'Days of the week are numbered 1 (Monday) to 7 (Sunday). Time targets are in minutes.',
-      `George wrote: ${clip(text, TYPED_CAP)}`,
-      '',
-      JOBS.shape,
-    ].join('\n'),
   };
 }
 
@@ -309,7 +281,6 @@ const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const oneLine = (v, n) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n).trim() : '');
 const block = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n).trim() : '');
 const lineList = (v, max, n) => (Array.isArray(v) ? v.map((x) => oneLine(x, n)).filter(Boolean).slice(0, max) : []);
-const isRealDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && addDays(d, 0) === d;
 
 // → { questions: string[] }  1–3 questions, each at most 300 characters.
 export function parseQuestions(data) {
@@ -331,8 +302,8 @@ export function parseFeedback(data) {
   return { feedback, tomorrow };
 }
 
-// Only the three repeats the prompt offers; anything else becomes daily.
-function cleanRepeat(r) {
+// A habit's repeat: daily, some weekdays, or a number of times a week; anything else becomes daily.
+export function cleanRepeat(r) {
   if (isObject(r) && r.kind === 'weekdays' && Array.isArray(r.days)) {
     const days = [...new Set(r.days.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))].sort((a, b) => a - b);
     if (days.length) return { kind: 'weekdays', days };
@@ -344,7 +315,7 @@ function cleanRepeat(r) {
 }
 
 // A weekly target, or null when it can't be one: a positive number, in minutes for time.
-function cleanTarget(t) {
+export function cleanTarget(t) {
   if (!isObject(t)) return null;
   const unit = t.unit === undefined ? 'count' : t.unit;
   if (unit !== 'count' && unit !== 'minutes') return null;
@@ -354,26 +325,6 @@ function cleanTarget(t) {
   if (unit === 'minutes') target = Math.round(target);
   if (!title || !(target > 0)) return null;
   return { title, target, unit, unitLabel: unit === 'count' ? oneLine(t.unitLabel, 40) : '' };
-}
-
-// → { title, targetDate, milestones, habits, targets, why }  targetDate only if it's a real day
-// on or after today; up to 6 milestones, 2 habits and 2 targets.
-export function parseShape(data, today) {
-  if (!isObject(data)) throw nonsense();
-  const title = oneLine(data.title, 80);
-  if (!title) throw nonsense();
-  return {
-    title,
-    targetDate: isRealDay(data.targetDate) && data.targetDate >= today ? data.targetDate : null,
-    milestones: lineList(data.milestones, 6, 80),
-    habits: (Array.isArray(data.habits) ? data.habits : [])
-      .filter(isObject)
-      .map((h) => ({ title: oneLine(h.title, 80), repeat: cleanRepeat(h.repeat) }))
-      .filter((h) => h.title)
-      .slice(0, 2),
-    targets: (Array.isArray(data.targets) ? data.targets : []).map(cleanTarget).filter(Boolean).slice(0, 2),
-    why: oneLine(data.why, 300),
-  };
 }
 
 // → { summary, wins, slipped, focus }  summary at most 1200 characters; 0–3 wins and slips.

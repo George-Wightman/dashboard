@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9a6c0988';
+var PLANNER_BUILD = 'd15a0225';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1143,24 +1143,6 @@ function parseClock(text) {
   return h <= 23 && min <= 59 ? `${String(h).padStart(2, '0')}:${m[2]}` : null;
 }
 
-const LENGTH_WORD = /^(\d+(\.\d+)?h|\d+m|\d+h\d{1,2}m?)$/i;
-
-// The add box: a trailing length and/or time come off the title ("Draft cover letter 2h", "Call
-// NatCen 14:00", "Mock interview 14:00 1h"). A bare number stays in the title ("Read 20"), and the
-// title always keeps at least one word.
-function splitTaskInput(text) {
-  const words = String(text ?? '').trim().split(/\s+/);
-  let minutes = null;
-  let time = null;
-  while (words.length > 1) {
-    const last = words[words.length - 1];
-    if (time == null && parseClock(last)) { time = parseClock(last); words.pop(); continue; }
-    if (minutes == null && LENGTH_WORD.test(last) && parseLength(last)) { minutes = parseLength(last); words.pop(); continue; }
-    break;
-  }
-  return { title: words.join(' '), minutes, time };
-}
-
 function checkLength(v) {
   if (v == null || v === '') return null;
   if (!(Number.isInteger(v) && v >= LENGTH_MIN && v <= LENGTH_MAX)) throw new Error('A length should be from 5 minutes to 12 hours');
@@ -1183,7 +1165,7 @@ function checkClock(v) {
   if (typeof v !== 'string' || parseClock(v) !== v) throw new Error('A time should look like 14:00');
   return v;
 }
-return { parseAmount, formatAmount, formatProgress, LENGTH_MIN, LENGTH_MAX, parseLength, parseClock, splitTaskInput, checkLength, NOTES_MAX, checkNotes, checkClock };
+return { parseAmount, formatAmount, formatProgress, LENGTH_MIN, LENGTH_MAX, parseLength, parseClock, checkLength, NOTES_MAX, checkNotes, checkClock };
 })();
 
 // ---- js/data.js

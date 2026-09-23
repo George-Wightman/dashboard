@@ -1,17 +1,19 @@
 // The Coach panel: a conversation with the Coach (js/talk.js says when it opens one and what it's
-// told, js/coach-tools.js what it may do), goal shaping under Goals, and last week's digest (shown under Last 3 weeks). Every
+// told, js/coach-tools.js what it may do) — the one place new work comes in, tasks, goals, habits
+// and weekly targets alike — and last week's digest (shown under Last 3 weeks). Every
 // Gemini request runs in the background: the panel says "Thinking…", the rest of the page keeps
 // working, and a failure is one line of text, never a dialog. What George types lives in
 // ctx.ui.coach, so a re-render (a sync landing, a tick on the left) never loses it. On a phone the
-// conversation also opens as a sheet over the page (#coach-sheet), from the Coach's line on Today.
+// conversation also opens as a sheet over the page (#coach-sheet), from the Coach's question under
+// the date.
 
 import { h } from './dom.js';
 import { GeminiError, MESSAGES } from '../gemini.js';
-import { shapePrompt, parseShape, digestOf, digestDue, digestPrompt, parseDigest } from '../coach.js';
-import { addDays, weekStart } from '../dates.js';
+import { digestOf, digestDue, digestPrompt, parseDigest } from '../coach.js';
+import { addDays, weekStart, shortWeekday, shortDate } from '../dates.js';
 import { canUndo } from '../changes.js';
 import {
-  talkId, talkOf, entryOf, entryId, talksOn, heard, openerDue, unfinished, nextOwnSlot, slotName, talkSystem, talkContents, firstCoachTurn,
+  talkId, talkOf, entryOf, entryId, talksOn, heard, openerDue, nextOwnSlot, talkSystem, talkContents, firstCoachTurn,
   plainEntry, waitingOpener, conversationContents, OPENERS, PLAIN_OPENERS, WRAP_UP, MESSAGE_MAX, ENTRY_MAX,
 } from '../talk.js';
 import { prepareCoachTurn, describeEdits, netEdits } from '../coach-session.js';
@@ -44,7 +46,7 @@ function syncFirst(ctx, ms = ctx.coach.syncWaitMs ?? 5000) {
   });
 }
 
-// Ask Gemini for JSON (goal shaping, the digest), then check the reply. Resolves { reply, model }.
+// Ask Gemini for JSON (the digest), then check the reply. Resolves { reply, model }.
 // Rejects with an Error whose message is the line to show: Gemini's own plain-English message, or
 // the catch-all — never another error's raw text.
 async function consult(ctx, prompt, parse) {
@@ -317,15 +319,6 @@ export async function openMoment(ctx, slot) {
   }
 }
 
-// Talk: a new conversation of George's own, shown and ready to type in.
-export function startTalk(ctx) {
-  const active = talksOn(ctx.store.doc(), ctx.store.today()).filter((t) => !t.done && heard(t)).at(-1);
-  for (const t of talksOn(ctx.store.doc(), ctx.store.today())) if (!t.done && !heard(t)) ctx.store.updateJournal(t.id, { done: true });
-  Object.assign(ctx.ui.coach, { talk: active?.slot ?? nextOwnSlot(ctx.store.doc(), ctx.store.today()), talkError: '', editing: null });
-  ctx.render();
-  queueMicrotask(() => document.querySelector('[data-focus^="coach-talk"]')?.focus());
-}
-
 // ---- Drawing it ------------------------------------------------------------------------------------
 
 function didLine(ctx, d) {
@@ -382,11 +375,16 @@ function renderBox(ctx, where, talk) {
   const c = ctx.ui.coach;
   const send = () => sendMessage(ctx);
   // One line in the panel and three in the big view, growing with what's typed (up to a cap in
-  // styles.css), so an empty box doesn't take the panel's room.
+  // styles.css), so an empty box doesn't take the panel's room. A scrollbar only once it's full.
   const box = field('textarea', {
-    rows: where === 'panel' ? 1 : 3, placeholder: 'Add a task, plan a goal, or talk about your day…', 'aria-label': 'Message to the Coach', 'data-focus': `coach-talk-${where}`,
+    rows: where === 'panel' ? 1 : 3, placeholder: 'Message the Coach…', 'aria-label': 'Message to the Coach', 'data-focus': `coach-talk-${where}`,
+    title: 'Add a task for any day, log something, plan a goal or a habit, or talk about your day',
   }, c.draft, (v) => { c.draft = v; grow(); });
-  const grow = () => { box.style.height = 'auto'; box.style.height = `${box.scrollHeight + 2}px`; };
+  const grow = () => {
+    box.style.height = 'auto';
+    box.style.height = `${box.scrollHeight + 2}px`;
+    box.style.overflowY = box.scrollHeight > box.clientHeight + 2 ? 'auto' : 'hidden';
+  };
   if (c.draft) queueMicrotask(grow);
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
@@ -433,6 +431,8 @@ function conversationStream(ctx, segments, where) {
   return stream;
 }
 
+const dayLabel = (day) => `${shortWeekday(day)} ${shortDate(day)}`;
+
 // The conversation, as the panel and the phone sheet both show it.
 export function renderTalk(ctx, where = 'panel') {
   const c = ctx.ui.coach;
@@ -442,16 +442,16 @@ export function renderTalk(ctx, where = 'panel') {
   const slot = shownSlot(ctx);
   const talk = slot ? talkOf(doc, today, slot) : null;
   const entry = slot ? entryOf(doc, today, slot) : null;
-  const slots = [...talksOn(doc, today).map((t) => t.slot), ...(slot && !talk ? [slot] : [])];
-  const pick = (s) => { Object.assign(c, { talk: s, editing: null }); ctx.render(); };
   return h('div', { class: 'talk-area' },
     !talk?.messages?.length && !c.talkBusy
-      ? h('p', { class: 'muted' }, 'Tell me what is on your mind, add a task for any day, or describe a goal.')
+      ? h('p', { class: 'muted' }, 'Tell me what is on your mind, add a task for any day, log what you did, or plan a goal or a habit.')
       : null,
     conversationStream(ctx, Object.values(doc.journal).filter((t) => t.kind === 'talk' && t.status === 'active' && t.day >= addDays(today, -2)
       && t.day <= today && (heard(t) || (t.id === talk?.id && waitingOpener(doc, today, nowOf(ctx), hours(ctx))?.slot === t.slot)))
       .sort((a, b) => (a.messages[0]?.at ?? a.updated).localeCompare(b.messages[0]?.at ?? b.updated))
-      .map((t) => h('div', { class: 'conversation-segment' }, t.day !== today ? h('p', { class: 'muted' }, t.day) : null,
+      .map((t, i, all) => h('div', { class: 'conversation-segment' },
+        // A day's heading once, where its first conversation starts (today's needs none).
+        t.day !== today && t.day !== all[i - 1]?.day ? h('p', { class: 'muted day-label' }, dayLabel(t.day)) : null,
         messageList(ctx, t, 'stream'), t.proposal ? renderProposal(ctx, t) : null)), where),
     talk && !entry ? (talk.handoffs ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)) : null,
     entry ? renderEntry(ctx, entry) : null,
@@ -502,74 +502,9 @@ export function renderCoach(ctx) {
   return h('section', { class: 'panel coach' },
     h('h2', {}, 'Coach',
       ctx.coach.fake ? h('span', { class: 'fake' }, `fake · ${ctx.coach.fake}`) : null,
-      ctx.coach.keys().length ? h('span', { class: 'panel-links' }, link('Talk', () => startTalk(ctx)),
+      ctx.coach.keys().length ? h('span', { class: 'panel-links' },
         h('button', { class: 'link pop-out', type: 'button', title: 'Open the conversation big', 'aria-label': 'Open the conversation big', onclick: () => openCoachSheet(ctx) }, '⤢')) : null),
     renderTalk(ctx, 'panel'));
-}
-
-// ---- Shape a goal -----------------------------------------------------------------------------
-
-// Job C: a big goal in plain words becomes a suggested goal with milestones, habits and weekly
-// targets — all suggestions, written in one commit, only once the reply has passed its parser.
-export async function shapeGoal(ctx, text) {
-  const { store, ui } = ctx;
-  const c = ui.coach;
-  if (c.shapeBusy) return;
-  if (!String(text ?? '').trim()) {
-    c.shapeError = 'Say what you want to achieve first.';
-    ctx.render();
-    return;
-  }
-  const today = store.today();
-  c.shapeError = '';
-  c.shapeBusy = true;
-  ctx.render();
-  try {
-    const { reply: plan } = await consult(ctx, shapePrompt(store.doc(), today, text), (data) => parseShape(data, today));
-    await ctx.whenIdle();
-    store.addPlan({
-      goal: { title: plan.title, targetDate: plan.targetDate, why: plan.why },
-      milestones: plan.milestones,
-      habits: plan.habits,
-      targets: plan.targets,
-    });
-    // Only clear and close the box if what's typed is still what was sent — if he's carried on
-    // typing a new idea while this one was being shaped, that text must survive.
-    if (c.shapeText === text) {
-      c.shapeOpen = false;
-      c.shapeText = '';
-    }
-  } catch (e) {
-    await ctx.whenIdle();
-    c.shapeError = e.message;
-  } finally {
-    c.shapeBusy = false;
-    ctx.render();
-  }
-}
-
-// The inline box under the Goals heading, or null while it's closed.
-export function renderShapeBox(ctx) {
-  const c = ctx.ui.coach;
-  if (!c.shapeOpen) return null;
-  // Blur before asking: otherwise the busy render's restoreFocus (js/ui/side.js) puts the caret
-  // straight back in this box, typing() stays true, and whenIdle() never resolves.
-  const shape = () => { box.blur(); shapeGoal(ctx, c.shapeText); };
-  const box = h('textarea', {
-    rows: 3, placeholder: 'What do you want to achieve?', 'aria-label': 'What do you want to achieve?',
-    'data-focus': 'coach-shape',
-  });
-  box.value = c.shapeText;
-  box.addEventListener('input', () => { c.shapeText = box.value; });
-  box.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); shape(); }
-  });
-  return h('form', { class: 'shape', onsubmit: (e) => { e.preventDefault(); shape(); } },
-    box,
-    h('div', { class: 'buttons' },
-      h('button', { class: 'btn primary', type: 'submit', disabled: c.shapeBusy }, c.shapeBusy ? 'Shaping…' : 'Shape'),
-      link('Cancel', () => { c.shapeOpen = false; c.shapeError = ''; ctx.render(); })),
-    c.shapeError ? h('p', { class: 'error', role: 'status' }, c.shapeError) : null);
 }
 
 // ---- Last week's digest -----------------------------------------------------------------------

@@ -1,8 +1,8 @@
 # Today — a personal dashboard
 
 Open the laptop, it's already on screen: what have I got today, tick things off as I go.
-One screen: today's list (tasks, habits, weekly targets), this week's bars, goals, and the last
-three weeks. Works offline and syncs between the laptop and the phone through a private GitHub
+One screen: today's list (tasks and habits), the Coach, goals, Hebrew, the gym and the last three
+weeks. Works offline and syncs between the laptop and the phone through a private GitHub
 repo.
 
 Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The designs are in
@@ -11,14 +11,14 @@ Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The
 
 ## Using it
 
-- **Add a task:** type in the box under the list and press Enter. Pick *Tomorrow* or a date if
-  it isn't for today.
-- **Habits, weekly targets and goals:** *New habit, quota or goal…* under the list, or *+ goal*
-  in the Goals panel. Click any row's title to edit it. Archive instead of deleting — history is kept.
-- **Weekly targets:** **+** adds 1 (shift-click to type an amount). For time targets, **+** asks
-  for an amount: `45m`, `1.5h`, `1h30`. Click the count to see or remove this week's entries.
-  They sit at the foot of the list under *This week*; a habit done a number of times a week shows
-  a dot for each time.
+- **Anything new goes through the Coach:** a task for any day, a goal, a habit or a weekly target
+  ("add call Mum on Friday", "I want a habit of stretching three times a week"). Tasks go straight
+  on; goals, habits and targets arrive as suggestions to accept. There is no add box or + button.
+- **Logging:** tell the Coach what you did ("sent two applications"). Cardio fills itself from
+  Hevy and the Hebrew targets from the Hebrew app, so those are never logged by hand.
+- **Editing:** click any row's title (or a target's name in *This week*) to edit it. Archive
+  instead of deleting — history is kept. A habit done a number of times a week shows a dot for each
+  time.
 - **Unfinished tasks carry over** with an amber *from Tue* marker until they're done.
 - **The day starts at 4am**, so a late night still counts as the day before (change it in ⚙).
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
@@ -37,10 +37,12 @@ load — the theme is set before the page even paints.
 
 ## Arranging the widgets
 
-Today's list always stays in the first column; the Coach, This week, Goals and Last 3 weeks are
-widgets you can move around the columns beside it — one column from 760px wide, two from 1500px.
-This week starts hidden, since its targets are at the foot of the list; bring it back from Arrange.
-Click **Arrange** in the header:
+Today's list always stays in the first column; the Coach, Upcoming, Goals, This week, Hebrew, Gym
+and the rest are widgets you can move around the columns beside it — one column from 760px wide,
+two from 1500px. Weekly targets aren't rows on the list: each shows in the widget it belongs to —
+Cardio in Gym, the three Hebrew ones in Hebrew — and *This week* holds only the rest. A target in an
+area on time off is paused: it isn't shown, and it doesn't count as behind. *This week* disappears
+when it has nothing to show. Click **Arrange** in the header:
 
 - **Drag** a widget's grip (⋮⋮) onto another to put it there, or onto a column's *Drop here* to
   send it to the end. On a touch screen, or whenever the window only shows one widget column, ↑ ↓
@@ -54,11 +56,10 @@ Click **Arrange** in the header:
 
 The first panel on the right is a coach that runs on Google's Gemini.
 
-- **Shape a goal.** Click *Shape with AI* in the Goals panel, say what you want to achieve in plain
-  words, and press **Shape**. Gemini proposes a goal with milestones, plus up to two habits and two
-  weekly targets. It all arrives as a suggestion, and the goal card shows what's proposed. ✓ on the
-  card takes on the goal and its milestones. The habits and targets wait at the top of Today, to be
-  accepted one by one. ✕ turns the whole plan down.
+- **New work.** The Coach's box is the one place anything new comes in. It adds tasks on any day,
+  logs what you say you did against a weekly target, and drafts goals (with milestones), habits and
+  weekly targets as suggestions: a goal waits in Goals for ✓, a habit or target at the top of Today.
+  Changing or retiring an existing habit or target is still Claude's job.
 - **Evening check-in.** From 6pm (change the hour in ⚙), the panel offers *Start today's
   check-in*. Gemini asks two or three questions about today, built from what actually happened.
   Answer each in a line or two and press **Send** (or Ctrl+Enter). It replies with short feedback
@@ -96,7 +97,14 @@ heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-
 Paste a fine-grained GitHub token (Contents read only) for the Hebrew app's own sync repo into
 ⚙ → *Hebrew progress*, and the goal *Hebrew* appears with a daily habit, three weekly targets
 (learning time, speaking practice, words said live) and a ladder of milestones leading up to a
-10-minute conversation — all filled in from the app's real numbers each time it syncs. The daily
+10-minute conversation — all filled in from the app's real numbers each time it syncs.
+
+The **Hebrew widget** shows it in one place: the week as seven cells shaded by minutes practised,
+the three targets as numbers (with the share of spoken reps the app marked right), the words the app
+is teaching you by band (strong, progressing, weak, new), the next rung of the ladder with how far
+along it is, and the words you most recently said live. Each sync keeps a small summary of this on
+the goal (`hebrewNow`: the four ladder numbers, the latest bands, the last 14 days and the last 8
+words said live), so the phone shows it too, without its own Hebrew token. The daily
 habit ticks itself on any day the Hebrew app shows a session; the targets show real minutes, reps
 and words against target the same way any other weekly target does. Read-only: the dashboard never
 writes back to that repo, and this can never conflict with the Hebrew app's own sync. Once created,

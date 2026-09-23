@@ -5,8 +5,8 @@
 
 import { addDays, weekStart, longDate, shortWeekday, shortDate } from './dates.js';
 import { rowsForDay, weekTotal, countsOn, streak, goalProgress, dayScore } from './schedule.js';
-import { dayRecord, offLine, briefFor, clockLabel } from './calendar.js';
-import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, sessionLine } from './gym.js';
+import { dayRecord, offLine, briefFor, clockLabel, excused } from './calendar.js';
+import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, sessionLine, cardioQuotaId } from './gym.js';
 import { scheduleView, scheduleBlocks, dayClosed } from './plan-state.js';
 import { formatAmount } from './parse.js';
 import { clip } from './coach.js';
@@ -294,9 +294,13 @@ export function talkContext(doc, today, now, { first = false } = {}) {
   const guide = guideFor(doc, today);
   if (guide) lines.push(`Claude's guide for this week: ${guide}`);
   lines.push(...gymContext(doc, today));
-  const quotas = values(doc.items).filter((q) => q.type === 'quota' && q.status === 'active' && countsOn(q, today));
+  // Weekly targets in an area on time off today are paused, so they aren't mentioned; the ones
+  // filled by the Hebrew app or Hevy are marked, so the Coach never logs them by hand.
+  const cardio = cardioQuotaId(doc);
+  const quotas = values(doc.items).filter((q) => q.type === 'quota' && q.status === 'active' && countsOn(q, today) && !excused(doc, q, today));
   if (quotas.length) {
-    lines.push(`This week's targets: ${quotas.map((q) => `${clip(q.title, 60)} ${formatAmount(weekTotal(doc, q.id, today), q.unit ?? 'count')} of ${formatAmount(q.target, q.unit ?? 'count')}`).join('; ')}`);
+    const auto = (q) => (q.source === 'hebrew' ? ' (from the Hebrew app)' : q.id === cardio ? ' (from Hevy)' : '');
+    lines.push(`This week's targets: ${quotas.map((q) => `${shortId(q.id)} "${clip(q.title, 60)}" ${formatAmount(weekTotal(doc, q.id, today), q.unit ?? 'count')} of ${formatAmount(q.target, q.unit ?? 'count')}${auto(q)}`).join('; ')}`);
   }
   const goals = values(doc.goals).filter((g) => g.status === 'active');
   if (goals.length) lines.push(`Goals: ${goals.map((g) => `${clip(g.title, 60)} (${goalProgress(doc, g).pct}%)`).join('; ')}`);
@@ -316,7 +320,7 @@ export const TALK_SYSTEM = [
   "Execute explicit task instructions, including future dates, using tools. Add goals with add_goal. For an open-ended review ('the layout looks wrong', 'make tomorrow relevant') first use propose_changes and prepare specific changes for George to apply. Do not substitute unrelated tasks. Read original dates and pass expectedDay to move_task. Do not introduce earlier work, a different date, or extra tasks without a clear request.",
   "All tools work on one draft until your turn finishes. Do not promise success before tool results. Any failed mutation cancels the whole batch. Undo means undo_last_action; never attempt to reconstruct an earlier plan by moving items from memory. Recorded action receipts and their undo status are the evidence of changes, even when an earlier reply claimed otherwise.",
   "When George says the day is over or he is going to bed, call close_day. A closed day accepts no new work; capture future ideas normally. Only call reopen_day on his explicit request. You can still record something he says he already completed. Never reopen today to evade a tool refusal.",
-  "For a flexible request such as 'over the weekend', choose and state a sensible weekend date, or ask one question if the choice matters. Goals are drafts that he can accept. Hand app bugs, habits, weekly targets or whole days off to Claude. Use item titles in conversation; IDs are for tools.",
+  "For a flexible request such as 'over the weekend', choose and state a sensible weekend date, or ask one question if the choice matters. Goals are drafts that he can accept. New habits and weekly targets are suggestions too: suggest_habit and suggest_target, which he accepts on Today. When he says he did something a weekly target counts, log it. Hand app bugs, changes to an existing habit or target, and whole days off to Claude. Use item titles in conversation; IDs are for tools.",
   "His gym sessions are his own to plan: never plan them.",
   "At a natural end use finish to save a journal entry about George, not about yourself. Leave feeling blank if unknown. Do not force closure after every task or question. He can continue the conversation afterwards.",
 ].join('\n');

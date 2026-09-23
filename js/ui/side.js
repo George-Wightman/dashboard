@@ -1,14 +1,15 @@
-// The widgets' panels: this week's quotas, goals, and the last three weeks. js/ui/widgets.js
+// The widgets' panels: this week's targets, goals, and the last three weeks. js/ui/widgets.js
 // arranges them (with the Coach, from js/ui/coach.js) and uses the focus helpers at the end.
 
 import { h } from './dom.js';
-import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail } from '../schedule.js';
+import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail, countsOn } from '../schedule.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
 import { shortDate, shortWeekday } from '../dates.js';
-import { offLine } from '../calendar.js';
-import { dayLines } from '../gym.js';
+import { offLine, excused } from '../calendar.js';
+import { dayLines, cardioQuotaId, workouts } from '../gym.js';
+import { HEBREW_IDS } from '../hebrewSync.js';
 import { SOURCE_NAMES } from './sources.js';
-import { renderShapeBox, renderDigest } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
+import { renderDigest } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 import { proposedItems, proposalLine } from '../coach.js';
 
 const values = (map) => Object.values(map ?? {});
@@ -21,10 +22,24 @@ function bar(pct, label, met = false) {
     h('span', { style: `width:${pct}%` }));
 }
 
+// The weekly targets This week shows: the ones no other widget does, and none in an area on time
+// off today (paused, not behind). Cardio shows in Gym and Hebrew's three in Hebrew — unless that
+// widget is hidden (or Gym has no workouts yet), when they come back here. `hidden` is the hidden
+// widgets' ids.
+export function weekTargets(doc, today, hidden = []) {
+  const gymShows = !hidden.includes('gym') && workouts(doc).length > 0;
+  const hebrewShows = !hidden.includes('hebrew') && doc.goals[HEBREW_IDS.goal]?.status === 'active';
+  const cardio = cardioQuotaId(doc);
+  return values(doc.items)
+    .filter((i) => i.type === 'quota' && i.status === 'active' && countsOn(i, today) && !excused(doc, i, today))
+    .filter((i) => !(gymShows && i.id === cardio) && !(hebrewShows && i.goalId === HEBREW_IDS.goal))
+    .sort(byOrder);
+}
+
 export function renderWeek(ctx) {
   const doc = ctx.store.doc();
   const today = ctx.store.today();
-  const quotas = values(doc.items).filter((i) => i.type === 'quota' && i.status === 'active').sort(byOrder);
+  const quotas = weekTargets(doc, today, ctx.layout?.().hidden ?? []);
   if (!quotas.length) return null;
   return h('section', { class: 'panel' },
     h('h2', {}, 'This week'),
@@ -32,8 +47,11 @@ export function renderWeek(ctx) {
       const total = weekTotal(doc, q.id, today);
       const pct = Math.min(100, Math.round((total / q.target) * 100));
       const met = total >= q.target;
+      const unit = q.unit === 'count' && q.unitLabel ? ` ${q.unitLabel}` : '';
       return h('div', { class: 'bar-row' },
-        h('div', { class: 'bar-label' }, h('span', {}, q.title), h('span', { class: met ? 'met' : 'muted' }, formatProgress(total, q.target, q.unit))),
+        h('div', { class: 'bar-label' },
+          h('button', { class: 'link bar-title', type: 'button', title: 'Edit this target', onclick: () => ctx.openEditor({ map: 'items', id: q.id }) }, q.title),
+          h('span', { class: met ? 'met' : 'muted' }, `${formatProgress(total, q.target, q.unit)}${unit}`)),
         bar(pct, q.title, met));
     }));
 }
@@ -145,22 +163,15 @@ function renderGoal(goal, ctx) {
 }
 
 export function renderGoals(ctx) {
-  const { store, ui } = ctx;
+  const { store } = ctx;
   const doc = store.doc();
   const goals = values(doc.goals)
     .filter((g) => g.status === 'active' || g.status === 'suggested')
     .sort((a, b) => (a.status === b.status ? byOrder(a, b) : a.status === 'suggested' ? -1 : 1));
-  const toggleShape = () => {
-    ui.coach.shapeOpen = !ui.coach.shapeOpen;
-    ctx.render();
-    if (ui.coach.shapeOpen) document.querySelector('#side [data-focus="coach-shape"]')?.focus();
-  };
+  // New goals come from the Coach ("I want to …"), as a suggestion to accept here.
   return h('section', { class: 'panel' },
-    h('h2', {}, 'Goals', h('span', { class: 'panel-links' },
-      h('button', { class: 'link', type: 'button', 'aria-expanded': String(ui.coach.shapeOpen), onclick: toggleShape }, 'Shape with AI'),
-      h('button', { class: 'link', type: 'button', onclick: () => ctx.openEditor({ map: 'goals' }) }, '+ goal'))),
-    renderShapeBox(ctx),
-    goals.length ? goals.map((g) => renderGoal(g, ctx)) : h('p', { class: 'muted' }, 'No goals yet.'));
+    h('h2', {}, 'Goals'),
+    goals.length ? goals.map((g) => renderGoal(g, ctx)) : h('p', { class: 'muted' }, 'No goals yet. Tell the Coach what you want to achieve.'));
 }
 
 function renderDayDetail(ctx, day) {

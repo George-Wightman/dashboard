@@ -13,7 +13,6 @@
 // Any other mode behaves like ok.
 
 import { JOBS, clip } from '../js/coach.js';
-import { addDays } from '../js/dates.js';
 import { TALK_SYSTEM, WRAP_UP } from '../js/talk.js';
 
 export const FAKE_MODES = ['ok', 'slow', 'nokey', 'quota', 'down', 'offline', 'badkey', 'nonsense'];
@@ -38,18 +37,6 @@ function promptOf(init) {
 
 // The canned reply for whichever job's text is in the prompt. Each one passes its parser.
 function answer(prompt) {
-  if (prompt.includes(JOBS.shape)) {
-    const wrote = clip(prompt.match(/^George wrote: (.*)$/m)?.[1] ?? 'A new goal', 60);
-    const today = prompt.match(/^Today's date: (\d{4}-\d{2}-\d{2})$/m)?.[1];
-    return {
-      title: wrote.charAt(0).toUpperCase() + wrote.slice(1),
-      targetDate: today ? addDays(today, 56) : null,
-      milestones: ['Write down what done looks like', 'Take the first small step', 'Review how week one went', 'Reach the halfway point'],
-      habits: [{ title: 'Ten minutes towards it', repeat: { kind: 'weekdays', days: [1, 3, 5] } }],
-      targets: [{ title: 'Time on it', target: 90, unit: 'minutes', unitLabel: '' }],
-      why: 'A fake plan: small weekly steps you can actually hit.',
-    };
-  }
   if (prompt.includes(JOBS.feedback)) {
     return {
       feedback: 'Fake feedback: you finished the thing that mattered most today.\n\nTomorrow, start with the task you carried over, before opening email.',
@@ -107,6 +94,11 @@ function talkAnswer(body) {
   }
   if (/going to bed/i.test(said)) return call('close_day', {});
   if (/\bundo\b/i.test(said)) return call('undo_last_action', {});
+  const habit = said.match(/\bnew habit:? (.+)/i);
+  if (habit) return call('suggest_habit', { title: clip(habit[1], 60), repeat: '3 a week' });
+  const logged = said.match(/\blog (\d+(?:\.\d+)?[hm]?)\b/i);
+  const target = (body.systemInstruction?.parts?.[0]?.text ?? '').match(/This week's targets: (\S+) "/)?.[1];
+  if (logged && target) return call('log', { id: target, amount: logged[1] });
   const dated = said.match(/\badd (.+) on (\d{4}-\d{2}-\d{2})/i);
   if (dated) return call('add_task', { title: clip(dated[1], 60), day: dated[2] });
   const add = said.match(/\badd (.+)/i);

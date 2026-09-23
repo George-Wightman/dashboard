@@ -71,8 +71,9 @@ function liftCard(s, today) {
     h('div', {}, `Last: ${kgText(s.last.kg)} × ${s.last.reps} · ${when(s.last.day, today)}`));
 }
 
+// The key is on hover, not a line of its own: teal where he lifted, the lower line cardio.
 function weekCells(doc, today) {
-  return h('div', { class: 'gym-week' }, weekStrip(doc, today).map((c) => {
+  return h('div', { class: 'gym-week', title: 'Teal: lifted · line: cardio minutes' }, weekStrip(doc, today).map((c) => {
     const said = [c.lifted ? 'lifted' : null, c.cardio ? `${Math.round(c.cardio)} min cardio` : null].filter(Boolean).join(', ');
     const label = `${shortWeekday(c.day)}: ${c.future ? 'to come' : said || 'no session'}`;
     return h('div', { class: c.day === today ? 'gym-day today' : 'gym-day', title: label, 'aria-label': label, role: 'img' },
@@ -110,7 +111,6 @@ export function renderGym(ctx) {
   return h('section', { class: 'panel gym' },
     h('h2', {}, 'Gym', h('span', { class: 'count' }, `${sessions} session${sessions === 1 ? '' : 's'} this week`)),
     weekCells(doc, today),
-    h('p', { class: 'gym-note' }, 'Teal: lifted · line: cardio'),
     cardioRow(doc, today, config, strip),
     lifts.length ? h('div', { class: 'gym-lifts' }, lifts.map((s) => liftCard(s, today))) : null,
     todays.length ? h('div', { class: 'gym-today' }, h('strong', {}, 'Today'), todays.map((l) => h('p', {}, l))) : null);

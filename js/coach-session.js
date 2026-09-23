@@ -12,6 +12,7 @@ export function describeEdits(edits, doc = null) {
   return edits.map((e) => {
     const r = e.after ?? e.before;
     if (e.map === 'items') {
+      if (!e.before && r.status === 'suggested') return `Suggested ${r.type === 'quota' ? 'the weekly target' : `the ${r.type}`} "${r.title}"`;
       if (!e.before) return `Added "${r.title}"${r.date ? ` for ${r.date}` : ''}`;
       return `"${r.title}": ${fieldChanges(e.before, e.after).filter((f) => !['source', 'scheduleHold'].includes(f.field))
         .map((f) => `${f.field}: ${f.from ?? 'none'} → ${f.to ?? 'none'}`).join('; ') || 'scheduling updated'}`;
@@ -41,7 +42,7 @@ export function prepareCoachTurn(store, now, { onHandoff, onFinish, message = ''
     draft, declarations: tools.declarations,
     run(name, args) {
       if (only && !only.includes(name)) return { ok: false, error: 'That action is not allowed during a journal wrap-up' };
-      const capture = ['add_task', 'add_goal'].includes(name) ? name + stableStringify(args) : null;
+      const capture = ['add_task', 'add_goal', 'log', 'suggest_habit', 'suggest_target'].includes(name) ? name + stableStringify(args) : null;
       if (capture && captures.has(capture)) return captures.get(capture);
       const res = tools.run(name, args);
       if (name === 'undo_last_action' && res.ok) { undo = true; undoResult = res.did; }

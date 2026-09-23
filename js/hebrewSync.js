@@ -23,6 +23,9 @@
 // Coach transcripts (hvr_coach, hvr_convo) are deliberately device-local in that app and never
 // reach the file, so conversations can be counted by their outcome but never by their number.
 
+import { stableStringify } from './doc.js';
+import { addDays } from './dates.js';
+
 export const HEBREW_IDS = {
   goal: 'hebrew-goal', habit: 'hebrew-habit', minutes: 'hebrew-minutes', spoken: 'hebrew-spoken', live: 'hebrew-live',
 };
@@ -259,6 +262,48 @@ function applyAutoMilestones(store, metrics) {
   }
 }
 
+// WHAT THE HEBREW WIDGET DRAWS (js/ui/hebrew.js), kept on the goal as `hebrewNow` so every device
+// shows it, not only the one holding the Hebrew token: the four ladder numbers, the latest word
+// bands, the last two weeks' practice day by day, and the words most recently said live. Small on
+// purpose — two weeks of days and eight words.
+export const RECENT_DAYS = 14;
+const RECENT_WORDS = 8;
+
+export function hebrewSummary({ stats, landed }, metrics, today) {
+  const days = Object.keys(stats).sort();
+  let bands = null;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const b = stats[days[i]]?.bands;
+    if (b && typeof b === 'object') { bands = pick(b, ['strong', 'progressing', 'weak', 'new']); break; }
+  }
+  const from = addDays(today, 1 - RECENT_DAYS);
+  const daily = {};
+  for (const day of days) {
+    if (day < from || day > today || !(stats[day]?.sessions > 0)) continue;
+    daily[day] = pick(stats[day], ['sec', 'spoken', 'spokenOk', 'cards', 'clean']);
+  }
+  const recent = Object.entries(landed)
+    .filter(([word, ts]) => word.trim() && typeof ts === 'number' && localDay(ts))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, RECENT_WORDS)
+    .map(([word, ts]) => ({ word: word.trim().slice(0, 40), day: localDay(ts) }));
+  return { ...metrics, bands, daily, recent };
+}
+
+// Only the named keys that hold a finite number, as whole numbers.
+function pick(obj, keys) {
+  const out = {};
+  for (const k of keys) if (Number.isFinite(obj?.[k])) out[k] = Math.round(obj[k]);
+  return out;
+}
+
+// Written only when it has changed, so a sync that finds nothing new saves nothing.
+function saveSummary(store, summary) {
+  const goal = store.doc().goals[HEBREW_IDS.goal];
+  if (!goal || stableStringify(goal.hebrewNow ?? null) === stableStringify(summary)) return;
+  store.updateGoal(HEBREW_IDS.goal, { hebrewNow: summary });
+}
+
 // Fetch, parse and apply once. Like js/sync.js's syncOnce, this never throws: every failure comes
 // back as { ok: false, error }. No file yet is not a failure — there's nothing to apply yet.
 export async function syncHebrewProgress({ store, client }) {
@@ -283,5 +328,6 @@ export async function syncHebrewProgress({ store, client }) {
   if (Object.keys(snapshot.stats).length) calibrate(store, metrics);
   applyDailyStats(store, snapshot);
   applyAutoMilestones(store, metrics);
+  saveSummary(store, hebrewSummary(snapshot, metrics, store.today()));
   return { ok: true, words: latestWords(snapshot.stats), ...metrics };
 }

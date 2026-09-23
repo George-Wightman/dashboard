@@ -13,11 +13,13 @@ import { renderAgenda } from './agenda.js';
 import { renderWeek, renderGoals, renderHistory, keptFocus, restoreFocus } from './side.js';
 import { renderGym } from './gym.js';
 import { renderMuscles, renderCardioTrend } from './training.js';
+import { renderHebrew } from './hebrew.js';
 import { visibleColumns, moveWidget, nudgeWidget, hideWidget, showWidget } from '../layout.js';
 
 // The registry. A widget's render(ctx) returns its element, or null when it has nothing to show
-// (This week with no weekly targets), and is then left out (outside Arrange mode, which shows a
-// placeholder instead so an empty widget can still be moved). A new widget is one more line here:
+// (This week when every target is shown elsewhere or paused), and is then left out (outside
+// Arrange mode, which shows a placeholder instead so an empty widget can still be moved). A new
+// widget is one more line here:
 // normalizeLayout puts an id it hasn't seen before at the end of the first column.
 export const WIDGETS = [
   { id: 'coach', title: 'Coach', render: renderCoach },
@@ -25,6 +27,7 @@ export const WIDGETS = [
   { id: 'week', title: 'This week', render: renderWeek },
   { id: 'goals', title: 'Goals', render: renderGoals },
   { id: 'history', title: 'Last 3 weeks', render: renderHistory },
+  { id: 'hebrew', title: 'Hebrew', render: renderHebrew },
   { id: 'gym', title: 'Gym', render: renderGym },
   { id: 'muscles', title: 'Muscles', render: renderMuscles },
   { id: 'cardio', title: 'Cardio trend', render: renderCardioTrend },

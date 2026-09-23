@@ -4,14 +4,15 @@
 // as { ok: false, error } in words it can pass on; hand_to_claude and finish are handed to the
 // panel (js/ui/coach.js), which keeps them with the conversation.
 
-import { addDays, daysBetween } from './dates.js';
+import { addDays, daysBetween, weekStart } from './dates.js';
 import { rowsForDay } from './schedule.js';
 import { checkTimeOff, nextOffId } from './calendar.js';
-import { parseLength, parseClock, checkNotes, formatAmount } from './parse.js';
+import { parseLength, parseClock, parseAmount, checkNotes, formatAmount } from './parse.js';
 import { dayClosed } from './plan-state.js';
 import { diffDocs, undoLine, canUndo } from './changes.js';
-import { clip } from './coach.js';
+import { clip, cleanTarget } from './coach.js';
 import { findItem, dayText, gymText, findText, journalText, cleanEntry, cleanHandoff } from './talk.js';
+import { cardioQuotaId } from './gym.js';
 
 const S = (description) => ({ type: 'STRING', description });
 const decl = (name, description, properties = {}, required = []) => ({ name, description, parameters: { type: 'OBJECT', properties, required } });
@@ -40,7 +41,18 @@ export const TOOL_DECLARATIONS = [
   decl('block_hours', "Block out hours on a specified date when he's busy, so the calendar plans round them.", {
     day: DAY, start: S('like "13:00"'), end: S('like "17:00"'), reason: S('a few words'),
   }, ['day', 'start', 'end']),
-  decl('hand_to_claude', "Pass something to Claude: anything you can't do (habits, weekly targets, whole days off, app changes), or anything Claude should know.", {
+  decl('log', "Log an amount he says he did against one of this week's targets, like 2 applications or 45m. Not for a target that fills itself from the Hebrew app or Hevy.", {
+    id: ID, amount: S('a number, or a time like "45m" or "1.5h" for a time target'), day: S('"today" (the default), "yesterday", or a date this week as YYYY-MM-DD'),
+    note: S('a few words, only if he gave them'),
+  }, ['id', 'amount']),
+  decl('suggest_habit', 'Suggest a new habit. It waits at the top of Today for George to accept or turn down, so it never starts on its own.', {
+    title: S('a few words'), repeat: S('"daily", weekdays like "Mon Wed Fri", or "3 a week"'), area: S('an area already in use, like "Health"'),
+  }, ['title']),
+  decl('suggest_target', 'Suggest a new weekly target: a number of things, or an amount of time, each week. It waits at the top of Today for George to accept or turn down.', {
+    title: S('a few words'), target: S('how many a week, or a time like "2h"'), unitLabel: S('what is counted, like "applications"; leave out for time'),
+    area: S('an area already in use, like "Job search"'),
+  }, ['title', 'target']),
+  decl('hand_to_claude', "Pass something to Claude: anything you can't do (whole days off, changing or retiring a habit or target, app changes), or anything Claude should know.", {
     text: S('what George wants, in a sentence or two'),
   }, ['text']),
   decl('propose_changes', 'Use before inferred planning or a broad calendar review. Changes become one proposal for George to Apply, not immediate edits.'),
@@ -91,6 +103,25 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, o
     return parseClock(String(v)) ?? refuse(`${what} should look like 14:00`);
   };
 
+  // A habit's repeat as he says it: "daily", some weekdays ("Mon Wed Fri", "weekdays", "weekends"),
+  // or a number of times a week ("3 a week", "twice a week").
+  const WEEKDAY = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  function repeatOf(v) {
+    const s = String(v ?? '').trim().toLowerCase();
+    if (!s || s === 'daily' || s === 'every day' || s === 'each day') return { kind: 'daily' };
+    if (s === 'weekdays') return { kind: 'weekdays', days: [1, 2, 3, 4, 5] };
+    if (s === 'weekends') return { kind: 'weekdays', days: [6, 7] };
+    const times = s.match(/^(once|twice|\d)\s*(?:times?\s*)?(?:a|per)\s*week$/);
+    if (times) {
+      const n = times[1] === 'once' ? 1 : times[1] === 'twice' ? 2 : Number(times[1]);
+      if (n >= 1 && n <= 7) return { kind: 'perWeek', n };
+    }
+    const days = s.split(/[\s,&]+/).filter((w) => w && w !== 'and').map((w) => WEEKDAY.indexOf(w.slice(0, 3)) + 1);
+    if (days.length && days.every((d) => d > 0)) return { kind: 'weekdays', days: [...new Set(days)].sort((a, b) => a - b) };
+    return refuse('A habit repeats "daily", on weekdays like "Mon Wed Fri", or "3 a week"');
+  }
+  const areaOf = (v) => String(v ?? '').trim().slice(0, 40);
+
   // One change, logged as the Coach's.
   function change(summary, fn) {
     const before = structuredClone(store.doc());
@@ -102,7 +133,7 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, o
 
   function tick(ref, on) {
     const it = item(ref);
-    if (it.type === 'quota') refuse(`"${it.title}" is a weekly target — he logs his time or count on it himself`);
+    if (it.type === 'quota') refuse(`"${it.title}" is a weekly target — log an amount on it instead`);
     const row = rowsForDay(store.doc(), today()).find((r) => r.item.id === it.id);
     if (!row && it.type !== 'task') refuse(`"${it.title}" isn't on today's list`);
     const log = it.type === 'task' ? Object.values(store.doc().logs).find((l) => l.kind === 'done' && l.itemId === it.id && l.status === 'active') : null;
@@ -199,6 +230,44 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, o
       const targetDate = a.targetDate ? dayOf(a.targetDate) : null;
       const milestones = Array.isArray(a.milestones) ? a.milestones.slice(0, 8).map(String) : [];
       return change('Drafted goal "' + title + '"', () => store.addPlan({ goal: { title, targetDate, why: String(a.why ?? '').slice(0, 600) }, milestones }));
+    },
+    log: (a) => {
+      const it = item(a.id);
+      if (it.type !== 'quota') refuse(`"${it.title}" isn't a weekly target${it.type === 'task' || it.type === 'habit' ? ' — tick it instead' : ''}`);
+      if (it.status !== 'active') refuse(`"${it.title}" isn't an active weekly target`);
+      if (it.source === 'hebrew') refuse(`"${it.title}" fills itself from the Hebrew app`);
+      if (it.id === cardioQuotaId(store.doc())) refuse(`"${it.title}" fills itself from his Hevy workouts`);
+      const raw = String(a.amount ?? '').trim();
+      // "2", or "2 applications" as a model may pass it; a time as "45m", "1.5h" or plain minutes.
+      const amount = it.unit === 'minutes' ? parseAmount(raw, 'minutes') : parseAmount(raw.match(/^\d+(?:\.\d+)?/)?.[0], 'count');
+      if (amount == null) refuse(it.unit === 'minutes' ? 'A time looks like "45m" or "1.5h"' : 'An amount is a number above 0');
+      const s = String(a.day ?? 'today').trim().toLowerCase();
+      const day = s === 'yesterday' ? addDays(today(), -1) : dayOf(s);
+      if (day > today()) refuse("Only what he's already done can be logged");
+      if (day < weekStart(today())) refuse('Only this week can be logged');
+      const note = clip(typeof a.note === 'string' ? a.note : '', 120);
+      const unit = it.unit === 'count' && it.unitLabel ? ` ${it.unitLabel}` : '';
+      return change(`Logged ${formatAmount(amount, it.unit)}${unit} on "${it.title}"${day === today() ? '' : ` for ${dayName(day)}`}`,
+        () => store.logAmount({ itemId: it.id, amount, day, note, source: 'gemini' }));
+    },
+    suggest_habit: (a) => {
+      const title = String(a.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (!title) refuse('A habit needs a title');
+      const repeat = repeatOf(a.repeat);
+      const area = areaOf(a.area);
+      return change(`Suggested the habit "${title}"`, () => store.addPlan({ habits: [{ title, repeat, ...(area ? { area } : {}) }] }));
+    },
+    suggest_target: (a) => {
+      const raw = String(a.target ?? '').trim();
+      const minutes = /[hm]\s*$|\dh\d/i.test(raw);
+      const target = cleanTarget({
+        title: a.title, target: minutes ? parseAmount(raw, 'minutes') : parseAmount(raw, 'count'),
+        unit: minutes ? 'minutes' : 'count', unitLabel: a.unitLabel,
+      }) ?? refuse('A weekly target needs a title and an amount above 0: a number, or a time like "2h"');
+      const area = areaOf(a.area);
+      const unit = target.unitLabel ? ` ${target.unitLabel}` : '';
+      return change(`Suggested the weekly target "${target.title}" (${formatAmount(target.target, target.unit)}${unit} a week)`,
+        () => store.addPlan({ targets: [{ ...target, ...(area ? { area } : {}) }] }));
     },
     hand_to_claude: ({ text }) => {
       const t = cleanHandoff(text);

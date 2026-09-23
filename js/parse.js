@@ -54,24 +54,6 @@ export function parseClock(text) {
   return h <= 23 && min <= 59 ? `${String(h).padStart(2, '0')}:${m[2]}` : null;
 }
 
-const LENGTH_WORD = /^(\d+(\.\d+)?h|\d+m|\d+h\d{1,2}m?)$/i;
-
-// The add box: a trailing length and/or time come off the title ("Draft cover letter 2h", "Call
-// NatCen 14:00", "Mock interview 14:00 1h"). A bare number stays in the title ("Read 20"), and the
-// title always keeps at least one word.
-export function splitTaskInput(text) {
-  const words = String(text ?? '').trim().split(/\s+/);
-  let minutes = null;
-  let time = null;
-  while (words.length > 1) {
-    const last = words[words.length - 1];
-    if (time == null && parseClock(last)) { time = parseClock(last); words.pop(); continue; }
-    if (minutes == null && LENGTH_WORD.test(last) && parseLength(last)) { minutes = parseLength(last); words.pop(); continue; }
-    break;
-  }
-  return { title: words.join(' '), minutes, time };
-}
-
 export function checkLength(v) {
   if (v == null || v === '') return null;
   if (!(Number.isInteger(v) && v >= LENGTH_MIN && v <= LENGTH_MAX)) throw new Error('A length should be from 5 minutes to 12 hours');

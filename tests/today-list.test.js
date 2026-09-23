@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { sourceLabel, LOGOS, SOURCE_NAMES } from '../js/ui/sources.js';
-import { splitRows, pipState, compactProgress } from '../js/ui/today.js';
+import { listRows, pipState } from '../js/ui/today.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -37,28 +37,28 @@ test('the logos are drawn in the app\'s own colour, never the companies\'', () =
   }
 });
 
-test('splitRows: weekly targets go to the foot, in order; suggestions stay on top', () => {
+test('listRows: weekly targets live in their widgets, not the list; a suggested one still waits here', () => {
   const r = (id, kind, extra = {}) => ({ item: { id }, kind, suggested: false, done: false, ...extra });
   const rows = [
     r('s1', 'quota', { suggested: true }), r('t1', 'task'), r('q1', 'quota'), r('h1', 'habit'),
     r('t2', 'task', { done: true }), r('q2', 'quota', { done: true }),
   ];
-  const { main, week } = splitRows(rows);
-  assert.deepEqual(main.map((x) => x.item.id), ['s1', 't1', 'h1', 't2']);
-  assert.deepEqual(week.map((x) => x.item.id), ['q1', 'q2']);
-  assert.deepEqual(splitRows([]), { main: [], week: [] });
+  assert.deepEqual(listRows(rows).map((x) => x.item.id), ['s1', 't1', 'h1', 't2']);
+  assert.deepEqual(listRows([]), []);
+});
+
+test('nothing is added from the list: no add box, no + on a row; the Coach takes new work', () => {
+  const html = read('index.html');
+  assert.doesNotMatch(html, /id="add"|add-title|add-more/);
+  const js = read('js/ui/today.js');
+  assert.doesNotMatch(js, /'plus'|logAmount|list-section/);
+  assert.match(js, /Tell the Coach what you want to get done/);
 });
 
 test('pipState: one dot per time a week, filled for each tick, never more dots than times', () => {
   assert.deepEqual(pipState(0, 3), [false, false, false]);
   assert.deepEqual(pipState(2, 5), [true, true, false, false, false]);
   assert.deepEqual(pipState(7, 5), [true, true, true, true, true]);
-});
-
-test('compactProgress: the count a weekly target shows in its row', () => {
-  assert.equal(compactProgress(0, 3, 'count'), '0/3');
-  assert.equal(compactProgress(4, 3, 'count'), '4/3');
-  assert.equal(compactProgress(0, 300, 'minutes'), '0/5h');
 });
 
 test('the list lines up: a grid of four columns, each row a subgrid, one-line titles', () => {
@@ -72,10 +72,9 @@ test('the list lines up: a grid of four columns, each row a subgrid, one-line ti
   assert.doesNotMatch(read('js/ui/today.js'), /added by \$\{/);
 });
 
-test("the list shows today's times in the day's order; lengths and times in the add box and the edit panel", () => {
+test("the list shows today's times in the day's order; lengths and times in the edit panel", () => {
   const today = read('js/ui/today.js');
-  assert.match(today, /timedOrder\(main, slots\)/);
-  assert.match(today, /splitTaskInput\(/);
+  assert.match(today, /timedOrder\(rows, slots\)/);
   assert.match(today, /if \(!row\.suggested && !slot && !row\.blocked\) enableDrag/);
   assert.match(read('styles.css'), /\.row \.time \{[^}]*font-variant-numeric: tabular-nums;/);
   const edit = read('js/ui/edit.js');

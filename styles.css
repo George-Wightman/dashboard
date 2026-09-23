@@ -70,6 +70,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .planner-notes { width: min(88vw, 1500px); margin: -.35rem auto .6rem; font-size: .85rem; color: var(--muted); }
 .planner-notes p { margin: .1rem 0; display: flex; gap: .5rem; align-items: baseline; }
 .planner-notes button.link { font-size: 1rem; line-height: 1; padding: 0 .2rem; }
+.planner-notes .hide-note { flex: none; width: 1rem; padding: 0; text-align: center; }
 .planner-notes .brief { color: var(--ink); }
 .planner-notes .brief .src svg { width: .9rem; height: .9rem; }
 .planner-notes .off { color: var(--ink); font-weight: 500; }
@@ -94,12 +95,10 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   .top { flex-wrap: wrap; }
 }
 
-/* The list (js/ui/today.js): a grid of four columns — tick, main, progress, + — with every row a
-   subgrid of it, so counts and + line up down the page. A row's .main holds the title, from the
-   left, ending in "…" rather than wrapping, and its .meta (logo and tag) packed to the right. A row
-   with no progress lets .main run on over the empty cells (.no-prog, .bare). Under 760px (below)
-   the logo, tag and progress become a second line.
-   Weekly targets sit at the foot, under a "This week" heading. */
+/* The list (js/ui/today.js): a grid of four columns — tick, main, and two for a suggestion's ✕ —
+   with every row a subgrid of it. A row's .main holds the title, from the left, ending in "…"
+   rather than wrapping, and its .meta (streak, logo and tag) packed to the right; it runs on over
+   the empty cells (.no-prog, .bare). Under 760px (below) the logo and tag become a second line. */
 .list {
   display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) repeat(2, auto); column-gap: .75rem;
   list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -111,7 +110,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center;
   min-height: 2.35rem; padding: .3rem .9rem; border-top: 1px solid var(--border);
 }
-.row:first-child, .list-section + .row { border-top: 0; }
+.row:first-child { border-top: 0; }
 .row > * { grid-row: 1; }
 .row > :first-child { grid-column: 1; justify-self: center; }
 .row .main { grid-column: 2; display: flex; align-items: center; gap: .75rem; min-width: 0; }
@@ -138,13 +137,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .row.dragging { opacity: .4; }
 .row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .row input[type=checkbox] { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.row .spacer { width: 1rem; }
-.row .plus, .row .accept, .row .dismiss { width: 1.4rem; height: 1.4rem; padding: 0; font-size: .85rem; }
-.list-section {
-  grid-column: 1 / -1; padding: .55rem .9rem .15rem; border-top: 1px solid var(--border);
-  font-size: .7rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
-}
-.list-section:first-child { border-top: 0; }
+.row .accept, .row .dismiss { width: 1.4rem; height: 1.4rem; padding: 0; font-size: .85rem; }
 .src { display: inline-flex; color: var(--muted); }
 .src svg { width: .95rem; height: .95rem; }
 .tag { background: var(--accent-soft); color: var(--accent); border-radius: 999rem; padding: .05rem .5rem; font-size: .75rem; }
@@ -152,25 +145,16 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .streak { color: var(--gold); }
 .met { color: var(--gold); font-weight: 500; }
 .by { font-style: italic; }
-.count { display: inline-flex; align-items: center; gap: .4rem; font-variant-numeric: tabular-nums; cursor: pointer; }
-.mini-bar { width: 2.6rem; height: .25rem; background: var(--border); border-radius: .15rem; overflow: hidden; }
-.mini-bar > span { display: block; height: 100%; background: var(--accent); }
-.count.met .mini-bar > span { background: var(--gold); }
 .pips { display: inline-flex; gap: .2rem; }
 .pip { display: block; width: .45rem; height: .45rem; border: 1.5px solid var(--muted); border-radius: 50%; }
 .pip.on { background: var(--accent); border-color: var(--accent); }
 .pips.met .pip { background: var(--gold); border-color: var(--gold); }
-.plus, .accept, .dismiss {
+.accept, .dismiss {
   width: 1.8rem; height: 1.8rem; line-height: 1; cursor: pointer;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
-.plus:hover, .accept:hover { border-color: var(--accent); color: var(--accent); }
+.accept:hover { border-color: var(--accent); color: var(--accent); }
 .dismiss:hover { border-color: var(--bad); color: var(--bad); }
-.amount-input { width: 5.5rem; padding: .2rem .4rem; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius-sm); }
-.amount-input.invalid { border-color: var(--bad); }
-.entries-row { grid-column: 1 / -1; padding: 0 .9rem .4rem; }
-.entries { list-style: none; margin: 0 0 0 2.15rem; padding: 0; font-size: .85rem; color: var(--muted); }
-.entries li { display: flex; gap: .5rem; align-items: center; padding: .1rem 0; }
 .empty { grid-column: 1 / -1; padding: 1rem .9rem; color: var(--muted); }
 
 @media (max-width: 759px) {
@@ -188,12 +172,6 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   .row .act { grid-column: 3; grid-row: 1; }
 }
 
-/* Add box */
-.add { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .75rem; }
-.add input[type=text] { flex: 1; min-width: 12rem; padding: .55rem .75rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
-.add select, .add input[type=date] { padding: .5rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
-.add input:focus, .add select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-
 /* The widget area (js/ui/widgets.js): its columns of widgets. From 1500px (js/app.js asks the same
    question) the page has three columns, 1.8fr 1fr 1fr: #side spans the second and third as a
    subgrid, one widget column in each. */
@@ -209,6 +187,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 }
 .bar-row { margin-bottom: .6rem; font-size: .9rem; }
 .bar-label { display: flex; justify-content: space-between; gap: .5rem; }
+.bar-label .bar-title { min-width: 0; color: var(--ink); font-size: inherit; text-align: left; }
 .bar { height: .4rem; margin-top: .2rem; background: var(--border); border-radius: .2rem; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--accent); }
 .bar.met > span { background: var(--gold); }
@@ -241,7 +220,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 
 /* The Gym panel (js/ui/gym.js): the week, the Cardio target, a card per key lift, today's session. */
 .gym h2 .count { font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
-.gym-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .3rem; }
+.gym-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .3rem; margin-bottom: .7rem; }
 .gym-day { display: flex; flex-direction: column; align-items: center; gap: .2rem; font-size: .7rem; color: var(--muted); }
 .gym-day.today .dow { color: var(--ink); font-weight: 600; }
 .gym-cell { position: relative; width: 100%; height: 1.4rem; overflow: hidden; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); }
@@ -263,6 +242,37 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .spark .dot.pr { fill: var(--gold); }
 .gym-today { margin-top: .8rem; padding-top: .6rem; font-size: .85rem; border-top: 1px solid var(--border); }
 .gym-today p { margin: .15rem 0 0; color: var(--muted); }
+
+/* Hebrew (js/ui/hebrew.js): the week shaded by minutes practised, this week's numbers, the word
+   bands, the next rung and the words said live lately. */
+.hebrew h2 .streak { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.heb-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .3rem; }
+.heb-day { display: flex; flex-direction: column; align-items: center; gap: .2rem; font-size: .7rem; color: var(--muted); }
+.heb-day.today .dow { color: var(--ink); font-weight: 600; }
+.heb-cell { width: 100%; height: 1.4rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.heb-cell.lvl1 { background: var(--lvl1); border-color: var(--lvl1); }
+.heb-cell.lvl2 { background: var(--lvl2); border-color: var(--lvl2); }
+.heb-cell.lvl3 { background: var(--lvl3); border-color: var(--lvl3); }
+.heb-cell.lvl4 { background: var(--lvl4); border-color: var(--lvl4); }
+.heb-cell.future { border-style: dashed; }
+.heb-day.today .heb-cell { box-shadow: 0 0 0 1.5px var(--muted); }
+.heb-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: .7rem 0; font-size: .8rem; }
+.heb-stat { display: flex; flex-direction: column; min-width: 0; }
+.heb-num { font-family: var(--display); font-size: 1.35rem; line-height: 1.2; color: var(--ink); font-variant-numeric: tabular-nums; }
+.heb-num.met { color: var(--gold); }
+.heb-num .of { font-family: inherit; font-size: .8rem; color: var(--muted); }
+.heb-extra { font-size: .72rem; color: var(--muted); }
+.heb-bands { font-size: .8rem; }
+.heb-band-bar { display: flex; gap: .12rem; height: .55rem; margin: .25rem 0; border-radius: .3rem; overflow: hidden; }
+.heb-band-key { display: flex; flex-wrap: wrap; gap: .2rem .7rem; font-size: .72rem; color: var(--muted); }
+.heb-band-key i { display: inline-block; width: .55rem; height: .55rem; margin-right: .25rem; border-radius: .15rem; vertical-align: -.02rem; }
+.band.strong { background: var(--lvl4); }
+.band.progressing { background: var(--lvl3); }
+.band.weak { background: var(--lvl2); }
+.band.new { background: var(--border); }
+.heb-rung { margin-top: .7rem; font-size: .85rem; }
+.heb-words { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .6rem; margin-top: .7rem; font-size: .8rem; }
+.heb-said { font-size: 1rem; color: var(--ink); }
 
 /* Muscles and Cardio trend (js/ui/training.js): a radar of sets per muscle group, the groups
    longest rested, and eight weeks of cardio as bars against the target. */
@@ -414,7 +424,7 @@ button.link.update-ready { color: var(--accent); }
   margin: 0 0 .75rem; padding: .5rem .75rem; font-size: .85rem; color: var(--muted);
   background: var(--panel); border: 1px dashed var(--border); border-radius: var(--radius);
 }
-.today.arranging .list, .today.arranging .add { opacity: .5; pointer-events: none; }
+.today.arranging .list { opacity: .5; pointer-events: none; }
 .widget-frame { padding: .5rem; border: 1px dashed var(--border); border-radius: var(--radius); }
 .widget-frame.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .widget-frame > :not(.widget-bar) { pointer-events: none; }
@@ -500,7 +510,7 @@ button.link.update-ready { color: var(--accent); }
 .row .meta .prog { display: inline-flex; }
 .talk-box { background: none; }
 .talk-box.panel { display: flex; align-items: flex-end; gap: .5rem; padding-top: .4rem; }
-.talk-box.panel textarea { flex: 1; min-height: 2.2rem; max-height: 10rem; resize: none; }
+.talk-box.panel textarea { flex: 1; min-height: 2.2rem; max-height: 10rem; resize: none; overflow-y: hidden; }
 .talk-box.panel .buttons { margin: 0; flex: none; }
 .coach .panel-links .pop-out { font-size: 1rem; line-height: 1; }
 .panel.coach .conversation-stream { max-height: 18rem; }

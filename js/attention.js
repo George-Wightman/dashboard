@@ -4,7 +4,7 @@
 
 import { doneIndex, doneDays, weekTotal } from './schedule.js';
 import { addDays, weekday, shortWeekday, shortDate } from './dates.js';
-import { readPlannerConfig, plannerNotes } from './calendar.js';
+import { readPlannerConfig, plannerNotes, excused } from './calendar.js';
 import { formatProgress } from './parse.js';
 import { blockers } from './workflow.js';
 
@@ -30,7 +30,8 @@ export function attention(doc, today) {
 
   const gone = weekday(today) - 1;
   if (gone > 0) {
-    for (const q of items.filter((x) => x.type === 'quota')) {
+    // A target in an area on time off is paused, not behind.
+    for (const q of items.filter((x) => x.type === 'quota' && !excused(doc, x, today))) {
       const total = weekTotal(doc, q.id, today);
       if (total < (q.target * gone) / 7) {
         const label = q.unit === 'count' && q.unitLabel ? ` ${q.unitLabel}` : '';

@@ -1,43 +1,26 @@
-// The list: everything on today, one row each, and the add box beneath it. Every row fills the
-// list's four columns — tick, the title with its logo and tag, progress, + — so counts line up
-// down the page (styles.css). The title starts from the left and the logo and tag sit at the
-// right; a row with no progress or + lets them run on to the edge. Weekly targets sit at the foot, under "This week".
+// The list: today's tasks and habits, one row each — the tick, then the title from the left and
+// its logo and tag at the right. Nothing is added here: the Coach takes new work (js/ui/coach.js).
+// Weekly targets aren't rows either: each is shown by the widget it belongs to — Cardio in Gym,
+// Hebrew's in Hebrew, the rest in This week (js/ui/side.js).
 
 import { h } from './dom.js';
 import { todayRows, streak, doneBetween } from '../schedule.js';
-import { carryLabel, addDays, weekStart, shortWeekday, forLabel } from '../dates.js';
-import { formatProgress, formatAmount, parseAmount, splitTaskInput } from '../parse.js';
-import { SOURCE_NAMES, sourceMark } from './sources.js';
+import { carryLabel, addDays, weekStart, forLabel } from '../dates.js';
+import { sourceMark } from './sources.js';
 import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { openOutcome } from './outcome.js';
-
-// Today's rows as the list shows them: everything else first (suggestions stay on top), then the
-// weekly targets for the "This week" section, each part in todayRows' order.
-export function splitRows(rows) {
-  const isWeek = (r) => r.kind === 'quota' && !r.suggested;
-  return { main: rows.filter((r) => !isWeek(r)), week: rows.filter(isWeek) };
-}
 
 // A weekly habit's dots: one per time a week, filled for each tick so far.
 export function pipState(ticks, n) {
   return Array.from({ length: n }, (_, i) => i < ticks);
 }
 
-// "0/3", "1.5/5h": a weekly target's count in its row.
-export const compactProgress = (total, target, unit) => formatProgress(total, target, unit).replace(' / ', '/');
-
 function streakText(item, s) {
   if (s.current < 2) return null;
-  if (item.type === 'quota' || item.repeat?.kind === 'perWeek') return `${s.current}-week streak`;
+  if (item.repeat?.kind === 'perWeek') return `${s.current}-week streak`;
   if (item.repeat?.kind === 'daily') return `${s.current}-day streak`;
   return `${s.current} in a row`;
-}
-
-function quotaLabel(row) {
-  const { item } = row;
-  const unit = item.unit === 'count' && item.unitLabel ? ` ${item.unitLabel}` : '';
-  return `${formatProgress(row.total, item.target, item.unit)}${unit} this week`;
 }
 
 // The title, one line; the whole of it on hover, but only when it has been cut short.
@@ -46,66 +29,6 @@ function titleEl(item, onclick) {
     class: 'title', onclick,
     onmouseenter: (e) => { const el = e.currentTarget; el.title = el.scrollWidth > el.clientWidth ? item.title : ''; },
   }, item.title);
-}
-
-function amountInput(item, ctx) {
-  const { store, ui } = ctx;
-  const minutes = item.unit === 'minutes';
-  const input = h('input', {
-    class: 'amount-input', type: 'text', inputmode: minutes ? 'text' : 'decimal',
-    placeholder: minutes ? '45m · 1.5h' : 'amount', 'aria-label': `Amount for ${item.title}`,
-  });
-  const close = () => { ui.amountFor = null; ctx.render(); };
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    const value = parseAmount(input.value, item.unit);
-    if (value == null) {
-      input.classList.add('invalid');
-      input.title = minutes ? 'Try 45m, 1.5h or 1h30' : 'Type a number above 0';
-      return;
-    }
-    ui.amountFor = null;
-    store.logAmount({ itemId: item.id, amount: value });
-  });
-  input.addEventListener('blur', () => { if (ui.amountFor === item.id) close(); });
-  queueMicrotask(() => input.focus());
-  return input;
-}
-
-// A weekly target's progress cell (the count and a thin bar, or the amount box while logging)
-// and its + button.
-function quotaCells(row, ctx) {
-  const { store, ui } = ctx;
-  const { item } = row;
-  if (ui.amountFor === item.id) return { prog: amountInput(item, ctx), act: null };
-
-  const pct = Math.min(100, Math.round((row.total / item.target) * 100));
-  const count = h('span', {
-    class: row.done ? 'count met' : 'count', title: `${quotaLabel(row)} · click to see the entries`,
-    'aria-label': quotaLabel(row),
-    onclick: () => { ui.entriesFor = ui.entriesFor === item.id ? null : item.id; ctx.render(); },
-  }, compactProgress(row.total, item.target, item.unit),
-  h('span', { class: 'mini-bar', 'aria-hidden': 'true' }, h('span', { style: `width:${pct}%` })));
-
-  const openInput = () => { ui.amountFor = item.id; ctx.render(); };
-  const plus = h('button', {
-    class: 'plus', type: 'button', 'aria-label': `Add to ${item.title}`,
-    title: item.unit === 'minutes' ? 'Log time' : 'Click for +1 · Shift-click to type an amount',
-  }, '+');
-  plus.addEventListener('click', (e) => {
-    if (item.unit === 'minutes' || e.shiftKey) openInput();
-    else store.logAmount({ itemId: item.id, amount: 1 });
-  });
-  let pressTimer = null;
-  plus.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'touch' && item.unit === 'count') pressTimer = setTimeout(openInput, 500);
-  });
-  const cancelPress = () => clearTimeout(pressTimer);
-  plus.addEventListener('pointerup', cancelPress);
-  plus.addEventListener('pointerleave', cancelPress);
-  return { prog: count, act: plus };
 }
 
 // A weekly habit's dots (teal as ticked, all gold once met); a count for more than seven a week.
@@ -119,9 +42,9 @@ function weekDots(doc, item, today) {
     pipState(ticks, n).map((on) => h('i', { class: on ? 'pip on' : 'pip' })));
 }
 
-// The progress cell: a streak, then a weekly habit's dots or a weekly target's count. Null when
-// there's none of those.
-function progressCell(row, ctx, quota) {
+// A habit's streak and weekly dots, which sit just left of its logo and tag. Null when it has
+// neither.
+function progressCell(row, ctx) {
   const doc = ctx.store.doc();
   const today = ctx.store.today();
   const { item } = row;
@@ -132,28 +55,7 @@ function progressCell(row, ctx, quota) {
     if (text) parts.push(h('span', { class: 'streak', title: `Best: ${s.best}` }, text));
   }
   if (item.repeat?.kind === 'perWeek') parts.push(weekDots(doc, item, today));
-  if (quota) parts.push(quota.prog);
   return parts.length ? h('span', { class: 'prog' }, parts) : null;
-}
-
-function entriesList(row, ctx) {
-  const { store } = ctx;
-  const doc = store.doc();
-  const start = weekStart(store.today());
-  const end = addDays(start, 6);
-  const logs = Object.values(doc.logs)
-    .filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === row.item.id && l.day >= start && l.day <= end)
-    .sort((a, b) => ((a.at ?? '') < (b.at ?? '') ? -1 : 1));
-  const items = logs.length
-    ? logs.map((l) => h('li', {},
-      h('span', {}, [
-        `${shortWeekday(l.day)} · ${formatAmount(l.amount, row.item.unit)}`,
-        l.note ? ` · ${l.note}` : '',
-        SOURCE_NAMES[l.source] ? ` · ${SOURCE_NAMES[l.source]}` : '',
-      ].join('')),
-      h('button', { class: 'link', type: 'button', 'aria-label': 'Remove this entry', onclick: () => store.removeLog(l.id) }, 'remove')))
-    : [h('li', {}, 'Nothing logged this week yet.')];
-  return h('li', { class: 'entries-row' }, h('ul', { class: 'entries' }, items));
 }
 
 // Every suggestion shows at the top of Today, whatever its date; one for a later day (tomorrow's
@@ -182,8 +84,7 @@ function mainCell(titleCell, mark, area, lead = null) {
   return h('span', { class: 'main' }, titleCell, meta);
 }
 
-// A row's notes mark: tap (or hover) to open the note under the row, as a weekly target opens its
-// entries.
+// A row's notes mark: tap (or hover) to open the note under the row.
 function noteMark(item, ctx) {
   const open = ctx.ui.noteFor === item.id;
   return h('button', {
@@ -197,17 +98,9 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
   if (row.suggested) return renderSuggestion(row, ctx);
   const { store } = ctx;
   const { item } = row;
-  const quota = row.kind === 'quota' && !row.blocked ? quotaCells(row, ctx) : null;
-  // Only a weekly target keeps the progress column (its count and bar line up with the others);
-  // a habit's streak and dots go in with its logo and tag.
-  const cell = progressCell(row, ctx, quota);
-  const prog = quota ? cell : null;
-  const act = quota?.act ? h('span', { class: 'act' }, quota.act) : null;
-  const cls = ['row', row.done && 'done', quota && 'quota', !prog && 'no-prog', !prog && !act && 'bare'].filter(Boolean).join(' ');
+  const cls = ['row', row.done && 'done', 'no-prog', 'bare'].filter(Boolean).join(' ');
   return h('li', { class: cls, 'data-id': item.id },
-    quota
-      ? h('span', { class: 'spacer' })
-      : h('input', { type: 'checkbox', checked: row.done, disabled: !!row.blocked, 'aria-label': `Done: ${item.title}`,
+    h('input', { type: 'checkbox', checked: row.done, disabled: !!row.blocked, 'aria-label': `Done: ${item.title}`,
         onchange: (e) => {
           if (!row.done && item.details?.outcomeForm?.length) { e.target.checked = false; openOutcome(ctx, item.id, true); return; }
           try { store.toggleDone(item.id, store.today()); }
@@ -223,12 +116,10 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
       row.blocked ? h('span', { class: 'carry', title: row.blocked.join('; ') }, 'Waiting') : null,
       item.details?.deadline ? h('span', { class: 'carry', title: 'Target deadline (does not reschedule automatically)' }, `by ${item.details.deadline}`) : null,
       row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
-    sourceMark(item.source, 'added'), item.area, quota ? null : cell),
-    prog,
-    act);
+    sourceMark(item.source, 'added'), item.area, progressCell(row, ctx)));
 }
 
-// Dragging reorders within a row's own group: done or not, and the "This week" section or not.
+// Dragging reorders within a row's own group: done or not.
 function enableDrag(li, row, ctx) {
   li.draggable = true;
   li.addEventListener('dragstart', (e) => {
@@ -246,7 +137,7 @@ function enableDrag(li, row, ctx) {
     if (!dragged || dragged === row.item.id) return;
     const draggedEl = [...document.querySelectorAll('#list li.row')].find((el) => el.dataset.id === dragged);
     if (!draggedEl) return;
-    const group = (el) => `${el.classList.contains('done')}/${el.classList.contains('quota')}`;
+    const group = (el) => el.classList.contains('done');
     const groupIds = [...document.querySelectorAll('#list li.row[draggable="true"]')]
       .filter((el) => group(el) === group(draggedEl))
       .map((el) => el.dataset.id);
@@ -254,14 +145,17 @@ function enableDrag(li, row, ctx) {
   });
 }
 
+// Today's rows as the list shows them: everything but a weekly target that has been taken on (a
+// suggested one still waits here for ✓ or ✕).
+export const listRows = (rows) => rows.filter((r) => r.kind !== 'quota' || r.suggested);
+
 export function renderToday(ctx) {
   const list = document.getElementById('list');
-  const rows = todayRows(ctx.store.doc(), ctx.store.today());
+  const rows = listRows(todayRows(ctx.store.doc(), ctx.store.today()));
   if (!rows.length) {
-    list.replaceChildren(h('li', { class: 'empty' }, 'Nothing on today. Add a task below, or set up a habit.'));
+    list.replaceChildren(h('li', { class: 'empty' }, 'Nothing on today. Tell the Coach what you want to get done.'));
     return;
   }
-  const { main, week } = splitRows(rows);
   const doc = ctx.store.doc();
   const slots = todaySlots(doc, ctx.store.today());
   const { config } = readPlannerConfig(doc);
@@ -273,47 +167,14 @@ export function renderToday(ctx) {
   const add = (row) => {
     const slot = row.suggested ? null : slots.get(row.item.id) ?? null;
     const isGym = !row.suggested && row.item.id === gymId;
-    const li = renderRow(row, ctx, slot, !row.suggested && row.kind !== 'quota' && isPriority(doc, row.item, config),
+    const li = renderRow(row, ctx, slot, !row.suggested && isPriority(doc, row.item, config),
       isGym ? hevyTick(doc, gymId, today) : null);
     // A row with a time follows the day's order, so only the others can be dragged.
     if (!row.suggested && !slot && !row.blocked) enableDrag(li, row, ctx);
     els.push(li);
     if (isGym) for (const line of dayLines(doc, today)) els.push(h('li', { class: 'gym-line' }, line));
     if (row.item.notes && ctx.ui.noteFor === row.item.id) els.push(h('li', { class: 'note-row' }, row.item.notes));
-    if (row.kind === 'quota' && ctx.ui.entriesFor === row.item.id) els.push(entriesList(row, ctx));
   };
-  timedOrder(main, slots).forEach(add);
-  if (week.length) els.push(h('li', { class: 'list-section' }, 'This week'));
-  week.forEach(add);
+  timedOrder(rows, slots).forEach(add);
   list.replaceChildren(...els);
-}
-
-export function initAddBox(ctx) {
-  const title = document.getElementById('add-title');
-  const when = document.getElementById('add-when');
-  const date = document.getElementById('add-date');
-
-  when.addEventListener('change', () => {
-    date.hidden = when.value !== 'date';
-    if (!date.hidden && !date.value) date.value = addDays(ctx.store.today(), 1);
-  });
-
-  function add() {
-    const text = title.value.trim();
-    if (!text) return;
-    const today = ctx.store.today();
-    let day = today;
-    if (when.value === 'tomorrow') day = addDays(today, 1);
-    if (when.value === 'date' && date.value) day = date.value;
-    const { title: name, minutes, time } = splitTaskInput(text);
-    ctx.store.addItem({ type: 'task', title: name, date: day, ...(minutes ? { minutes } : {}), ...(time ? { time } : {}) });
-    title.value = '';
-    title.focus();
-  }
-
-  title.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); add(); }
-  });
-  document.getElementById('add').addEventListener('submit', (e) => { e.preventDefault(); add(); });
-  document.getElementById('add-more').addEventListener('click', () => ctx.openEditor({ map: 'items', type: 'habit' }));
 }

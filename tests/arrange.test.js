@@ -51,7 +51,7 @@ test('styles.css styles the frames, the drop targets and dims the list while arr
   ]) {
     assert.ok(css.includes(selector), selector);
   }
-  assert.match(css, /\.today\.arranging \.list, \.today\.arranging \.add \{ opacity: \.5; pointer-events: none; \}/);
+  assert.match(css, /\.today\.arranging \.list \{ opacity: \.5; pointer-events: none; \}/);
   assert.match(css, /\.widget-frame > :not\(\.widget-bar\) \{ pointer-events: none; \}/);
 });
 
@@ -65,7 +65,6 @@ test("js/app.js wires the Arrange button, the header's Arrange/Done label, and E
   assert.match(src, /classList\.toggle\('arranging', ui\.arranging\)/);
   assert.match(src, /getElementById\('arrange-note'\)\.hidden = !ui\.arranging;/);
   assert.match(src, /getElementById\('list'\)\.inert = ui\.arranging;/);
-  assert.match(src, /getElementById\('add'\)\.inert = ui\.arranging;/);
   assert.match(src, /key !== 'Escape' \|\| !ui\.arranging/);
   assert.match(src, /querySelector\('dialog\[open\]'\)/);
   assert.match(src, /getElementById\('editor'\)\.hidden/);

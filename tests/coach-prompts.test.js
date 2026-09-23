@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SYSTEM, JOBS, coachContext, questionsPrompt, feedbackPrompt, shapePrompt, digestPrompt,
-  parseQuestions, parseFeedback, parseShape, parseDigest,
+  SYSTEM, JOBS, coachContext, questionsPrompt, feedbackPrompt, digestPrompt,
+  parseQuestions, parseFeedback, parseDigest, cleanRepeat, cleanTarget,
 } from '../js/coach.js';
 import { GeminiError, MESSAGES } from '../js/gemini.js';
 import { fixture, done, amount } from './helpers.js';
@@ -33,8 +33,7 @@ test('the system instruction and job texts are the agreed ones', () => {
   assert.ok(JOBS.questions.startsWith('Ask George 2 or 3 short questions about today'));
   assert.ok(JOBS.questions.endsWith('Shape: {"questions": ["…", "…"]}'));
   assert.ok(JOBS.feedback.startsWith('Reply with feedback of at most 90 words.'));
-  assert.ok(JOBS.shape.startsWith('Turn this into a plan George can start this week.'));
-  assert.ok(JOBS.shape.endsWith('"why": "one sentence"}'));
+  assert.equal(JOBS.shape, undefined);
   assert.ok(JOBS.digest.startsWith("Write last week's digest, for George and for Claude"));
 });
 
@@ -58,23 +57,6 @@ test('job B: the context, his questions and answers, then the feedback job', () 
     '',
     JOBS.feedback,
   ].join('\n'));
-});
-
-test('job C: the context, the date, what he already tracks, his words, then the shaping job', () => {
-  const doc = small();
-  const { system, prompt } = shapePrompt(doc, TODAY, '  I want to run a 10k\nby Christmas  ');
-  assert.equal(system, SYSTEM);
-  assert.equal(prompt, [
-    coachContext(doc, TODAY),
-    '',
-    "Today's date: 2026-09-11",
-    'Already tracked: Land an analyst role; Hebrew practice; Email Sarah; Idea',
-    'Days of the week are numbered 1 (Monday) to 7 (Sunday). Time targets are in minutes.',
-    'George wrote: I want to run a 10k by Christmas',
-    '',
-    JOBS.shape,
-  ].join('\n'));
-  assert.match(shapePrompt(fixture(), TODAY, 'x').prompt, /Already tracked: nothing yet/);
 });
 
 test("job D: the week's numbers and that week's check-ins, then the digest job", () => {
@@ -155,40 +137,9 @@ test('parseFeedback caps the feedback at 900 and tomorrow at 2 tasks of 80 chara
   }
 });
 
-test('parseShape cleans a full plan and drops what it did not ask for', () => {
-  const out = parseShape({
-    title: '  Run a 10k ', targetDate: '2026-12-20',
-    milestones: ['Run 3k', 'Run 5k', 'Run 7k', 'Run 8k', 'Run 9k', 'Run 10k', 'One too many'],
-    habits: [
-      { title: 'Stretch', repeat: { kind: 'weekdays', days: [5, 1, 3, 3, 9] }, colour: 'red' },
-      { title: 'Walk', repeat: { kind: 'perWeek', n: 3 } },
-      { title: 'Third habit', repeat: { kind: 'daily' } },
-    ],
-    targets: [
-      { title: 'Running', target: 90.4, unit: 'minutes', unitLabel: 'ignored for time' },
-      { title: 'Parkruns', target: '2', unit: 'count', unitLabel: 'runs' },
-      { title: 'Third target', target: 1, unit: 'count' },
-    ],
-    why: '  Small steps first. ', extra: true,
-  }, TODAY);
-  assert.deepEqual(out, {
-    title: 'Run a 10k',
-    targetDate: '2026-12-20',
-    milestones: ['Run 3k', 'Run 5k', 'Run 7k', 'Run 8k', 'Run 9k', 'Run 10k'],
-    habits: [
-      { title: 'Stretch', repeat: { kind: 'weekdays', days: [1, 3, 5] } },
-      { title: 'Walk', repeat: { kind: 'perWeek', n: 3 } },
-    ],
-    targets: [
-      { title: 'Running', target: 90, unit: 'minutes', unitLabel: '' },
-      { title: 'Parkruns', target: 2, unit: 'count', unitLabel: 'runs' },
-    ],
-    why: 'Small steps first.',
-  });
-});
-
-test('parseShape: a repeat that is not daily, weekdays or perWeek becomes daily', () => {
-  const repeatOf = (repeat) => parseShape({ title: 'G', habits: [{ title: 'H', repeat }] }, TODAY).habits[0].repeat;
+test('cleanRepeat: a repeat that is not daily, weekdays or perWeek becomes daily', () => {
+  const repeatOf = cleanRepeat;
+  assert.deepEqual(repeatOf({ kind: 'weekdays', days: [5, 1, 3, 3, 9] }), { kind: 'weekdays', days: [1, 3, 5] });
   assert.deepEqual(repeatOf({ kind: 'weekly', day: 3 }), { kind: 'daily' });
   assert.deepEqual(repeatOf({ kind: 'monthly', date: 1 }), { kind: 'daily' });
   assert.deepEqual(repeatOf(undefined), { kind: 'daily' });
@@ -197,18 +148,8 @@ test('parseShape: a repeat that is not daily, weekdays or perWeek becomes daily'
   assert.deepEqual(repeatOf({ kind: 'perWeek', n: 'lots' }), { kind: 'daily' });
 });
 
-test('parseShape keeps targetDate only when it is a real day on or after today', () => {
-  const dateOf = (targetDate) => parseShape({ title: 'G', targetDate }, TODAY).targetDate;
-  assert.equal(dateOf('2026-09-11'), '2026-09-11');
-  assert.equal(dateOf('2026-09-10'), null);
-  assert.equal(dateOf('2026-02-30'), null);
-  assert.equal(dateOf('2027-02-30'), null);
-  assert.equal(dateOf('next week'), null);
-  assert.equal(dateOf(null), null);
-});
-
-test('parseShape drops a target that is not a positive number in count or minutes', () => {
-  const targetsOf = (targets) => parseShape({ title: 'G', targets }, TODAY).targets;
+test('cleanTarget drops a target that is not a positive number in count or minutes', () => {
+  const targetsOf = (targets) => targets.map(cleanTarget).filter(Boolean);
   assert.deepEqual(targetsOf([
     { title: 'Zero', target: 0, unit: 'count' },
     { title: 'Negative', target: -3, unit: 'count' },
@@ -219,16 +160,13 @@ test('parseShape drops a target that is not a positive number in count or minute
     { title: '', target: 3, unit: 'count' },
   ]), []);
   assert.deepEqual(targetsOf([{ title: 'No unit', target: 3 }]), [{ title: 'No unit', target: 3, unit: 'count', unitLabel: '' }]);
-});
-
-test('parseShape needs a title; everything else may be empty', () => {
-  assert.deepEqual(parseShape({ title: 'Just a title' }, TODAY), {
-    title: 'Just a title', targetDate: null, milestones: [], habits: [], targets: [], why: '',
-  });
-  assert.equal(parseShape({ title: 't'.repeat(100) }, TODAY).title.length, 80);
-  for (const bad of [null, [], 'plan', {}, { title: '  ' }, { title: 5 }]) {
-    assert.throws(() => parseShape(bad, TODAY), isNonsense, JSON.stringify(bad));
-  }
+  assert.deepEqual(targetsOf([
+    { title: 'Running', target: 90.4, unit: 'minutes', unitLabel: 'ignored for time' },
+    { title: 'Parkruns', target: '2', unit: 'count', unitLabel: 'runs' },
+  ]), [
+    { title: 'Running', target: 90, unit: 'minutes', unitLabel: '' },
+    { title: 'Parkruns', target: 2, unit: 'count', unitLabel: 'runs' },
+  ]);
 });
 
 test('parseDigest caps the summary at 1200 and wins and slips at 3', () => {

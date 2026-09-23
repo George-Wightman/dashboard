@@ -1,6 +1,6 @@
 import { h } from './dom.js';
 import { scheduleView, localDate } from '../plan-state.js';
-import { clockLabel, momentLabel } from '../calendar.js';
+import { clockLabel } from '../calendar.js';
 import { shortWeekday, addDays } from '../dates.js';
 import { openOutcome } from './outcome.js';
 
@@ -44,9 +44,10 @@ export function renderAgenda(ctx) {
   const titleEl = (title, id) => (id
     ? h('button', { type: 'button', class: 'link agenda-title', onclick: () => openTaskCard(ctx, id) }, title)
     : h('span', { class: 'agenda-title' }, title));
+  // No "synced" time of its own: the header's is the one to read, and the header warns when the
+  // planner stops. Only a planner that has never run says so here.
   return h('section', { class: 'panel agenda' },
-    h('h2', {}, 'Upcoming', h('span', { class: 'muted agenda-sync', title: 'When the calendar planner last confirmed the schedule' },
-      plan.lastSynced ? `synced ${momentLabel(plan.lastSynced, now)}` : 'planner not synced')),
+    h('h2', {}, 'Upcoming', plan.lastSynced ? null : h('span', { class: 'muted agenda-sync' }, 'planner not synced')),
     ctx.ui.agendaError ? h('p', { class: 'error', role: 'status' }, ctx.ui.agendaError) : null,
     next ? h('div', { class: 'agenda-next' }, h('span', { class: 'agenda-when' }, `Next · ${whenLabel(localDate(next.start), today, next.start)}`), titleEl(next.title, next.id)) : null,
     shown.map((e) => h('div', { class: 'agenda-entry', 'data-task': e.item.id },

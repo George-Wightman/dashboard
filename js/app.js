@@ -8,7 +8,7 @@ import { ensureCommitment } from './commit.js';
 import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents } from './sync.js';
 import { syncHebrewProgress } from './hebrewSync.js';
-import { renderToday, initAddBox } from './ui/today.js';
+import { renderToday } from './ui/today.js';
 import { openTaskCard } from './ui/agenda.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
@@ -26,7 +26,7 @@ import { LOGOS } from './ui/sources.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
-  entriesFor: null, amountFor: null, noteFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
+  noteFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
   // Arrange mode (js/ui/widgets.js): toggled by #arrange-button, Escape, or Done.
   arranging: false,
   // The Coach panel's page-only state (js/ui/coach.js). Typed text lives here, not only in the
@@ -34,7 +34,6 @@ const ui = {
   // moments this page has already asked Gemini to open ("day|slot"), `sheet` the phone sheet.
   coach: {
     talk: null, draft: '', talkBusy: '', talkError: '', editing: null, sheet: false, tried: {},
-    shapeOpen: false, shapeText: '', shapeBusy: false, shapeError: '',
     digestOpen: false, digestBusy: false, digestError: '', digestTried: false,
     collapsedEntries: new Set(),
   },
@@ -96,8 +95,8 @@ const ctx = {
     expandedGoals: ui.expandedGoals.size,
     historyDay: ui.historyDay,
     coach: {
-      checkin: talkNow(ctx), busy: ui.coach.talkBusy, shapeBusy: ui.coach.shapeBusy, digestBusy: ui.coach.digestBusy,
-      error: ui.coach.talkError, shapeError: ui.coach.shapeError, digestError: ui.coach.digestError,
+      checkin: talkNow(ctx), busy: ui.coach.talkBusy, digestBusy: ui.coach.digestBusy,
+      error: ui.coach.talkError, digestError: ui.coach.digestError,
     },
     sync: { state: sync.state, error: sync.error, lastSynced: readLastSynced(localStorage) },
     hebrewKey: hebrewKeys(localStorage).length > 0,
@@ -129,8 +128,8 @@ const ctx = {
       return talkGemini({ keys: ctx.coach.keys(), ...opts, ...(fetch ? { fetch } : {}) });
     },
   },
-  // Reply on the Coach's line under the date: its conversation, as a sheet on a phone, else the
-  // panel scrolled into view with the box ready.
+  // Reply on the Coach's question under the date: its conversation, as a sheet on a phone, else
+  // the panel scrolled into view with the box ready.
   openTalk(slot) {
     ui.coach.talk = slot;
     if (matchMedia('(max-width: 759px)').matches) { openCoachSheet(ctx); return; }
@@ -183,6 +182,7 @@ function renderHeader() {
 
   // Under the date: Claude's brief, the Coach's question when one is waiting, any time off today,
   // then the planner's latest notes — each hidden with × for the rest of the day on this device.
+  // The × leads each line, so it sits in the same place however long the note is.
   const notes = visibleNotes(plannerNotes(store.doc(), today), hiddenNotes(), today);
   const hidden = new Set(hiddenNotes());
   const shown = (text) => text && !hidden.has(`${today}|${text}`);
@@ -190,10 +190,10 @@ function renderHeader() {
   const off = offLine(store.doc(), today);
   const waiting = ctx.coach.keys().length ? waitingOpener(store.doc(), today, new Date(), store.settings()) : null;
   const line = (cls, text, lead = null, action = null) => h('p', { class: cls },
+    h('button', { class: 'link hide-note', type: 'button', title: 'Hide this note', 'aria-label': `Hide: ${text}`, onclick: () => hideNote(today, text) }, '×'),
     lead,
     h('span', {}, text),
-    action,
-    h('button', { class: 'link', type: 'button', title: 'Hide this note', 'aria-label': `Hide: ${text}`, onclick: () => hideNote(today, text) }, '×'));
+    action);
   const mark = (logo, label) => {
     const el = h('span', { class: 'src', title: label, role: 'img', 'aria-label': label });
     el.innerHTML = LOGOS[logo]; // a fixed string from js/ui/sources.js, never data
@@ -202,7 +202,6 @@ function renderHeader() {
   const reply = waiting ? h('button', { class: 'link', type: 'button', onclick: () => ctx.openTalk(waiting.slot) }, 'Reply') : null;
   const notesEl = document.getElementById('planner-notes');
   notesEl.replaceChildren(...[
-    ctx.coach.keys().length ? h('p', {}, h('button', { class: 'link', type: 'button', onclick: () => ctx.openTalk() }, 'Add or plan with the Coach')) : null,
     shown(brief) ? line('brief', brief, mark('claude', 'From Claude')) : null,
     waiting && shown(waiting.text) ? line('coach-line', waiting.text, mark('gemini', 'From the Coach'), reply) : null,
     shown(off) ? line('off', off) : null,
@@ -228,10 +227,9 @@ function renderHeader() {
   arrangeButton.setAttribute('aria-pressed', String(ui.arranging));
   document.querySelector('.today').classList.toggle('arranging', ui.arranging);
   document.getElementById('arrange-note').hidden = !ui.arranging;
-  // pointer-events: none (styles.css) dims the list and add box to the mouse while arranging;
+  // pointer-events: none (styles.css) dims the list to the mouse while arranging;
   // inert keeps Tab off them too, and comes off again as soon as render() runs with Arrange off.
   document.getElementById('list').inert = ui.arranging;
-  document.getElementById('add').inert = ui.arranging;
 }
 
 // The look (js/look.js): data-theme on <html>, and the title bar's colour. index.html's inline
@@ -315,8 +313,7 @@ async function runHebrewSync() {
 }
 
 // Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the
-// re-rendered area (#list, #side): the add box lives outside it, so a sync there can't wipe it,
-// and a half-typed task title shouldn't hold up sync all day. The Coach's message box doesn't count
+// re-rendered area (#list, #side). The Coach's message box doesn't count
 // either: its text and caret come back after every redraw, and a reply must land while he types on.
 function typing() {
   const el = document.activeElement;
@@ -325,7 +322,7 @@ function typing() {
 }
 
 function canRun() {
-  return !ui.editorDirty && !ui.amountFor && !typing();
+  return !ui.editorDirty && !typing();
 }
 
 // A promise that resolves once nothing is being typed or edited — immediately if canRun() is
@@ -440,7 +437,6 @@ store.subscribe((reason) => {
   if (reason === 'settings') wake();
 });
 
-initAddBox(ctx);
 document.getElementById('settings-button').addEventListener('click', () => ctx.openSettings());
 document.getElementById('sync-status').addEventListener('click', () => (sync.state === 'failing' ? ctx.openSettings() : scheduler.now()));
 document.getElementById('flag-button').addEventListener('click', () => openFlagPanel(ctx));
