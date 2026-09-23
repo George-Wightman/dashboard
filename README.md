@@ -230,7 +230,8 @@ Your dashboard, booked into your Google Calendar. A small script in your own Goo
 
 - **Each task has its own named event.** Tasks fit individually around appointments, with long tasks
   split into numbered sessions. Area calendars and colours remain. Weekly target time beyond
-  concrete tasks becomes separate unscheduled time. A task's length defaults to 30 minutes;
+  concrete tasks becomes separate unscheduled time — except Hebrew learning time, which counts what
+  you did in the Hebrew app and is never booked. A task's length defaults to 30 minutes;
   add a length or set a time in the editor when it needs one.
 - **Today and tomorrow are exact; later days are rough** — `~` and a paler colour — and at 20:00 each
   evening the day after tomorrow turns exact.

@@ -118,9 +118,11 @@ export function demand({ doc, today, days, config, links, covered = new Map(), u
     perWeekDays.set(h.id, picks);
   }
 
-  // A weekly time target's share of each day, by area, over the days not off for it.
+  // A weekly time target's share of each day, by area, over the days not off for it. Not the Hebrew
+  // app's: it counts the time George spent in the app, and he books that himself. Filling the gaps
+  // with "Hebrew learning time — unscheduled time" shuffled his real work round it.
   const shares = new Map();
-  for (const q of active.filter((i) => i.type === 'quota' && i.unit === 'minutes' && !linkedAreas.has(norm(i.area)))) {
+  for (const q of active.filter((i) => i.type === 'quota' && i.unit === 'minutes' && i.source !== 'hebrew' && !linkedAreas.has(norm(i.area)))) {
     const remaining = Math.max(0, q.target - weekTotal(doc, q.id, today));
     const daysLeft = days.filter((d) => weekStart(d) === thisMonday && (d !== today || !todayClosed) && !off(q, d));
     for (const d of days) {

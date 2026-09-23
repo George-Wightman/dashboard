@@ -93,6 +93,15 @@ test("a weekly time target: what's left spread over the week's days, next week a
   assert.equal(closed.find((b) => b.day === '2026-09-16').minutes, 60, '300 over the 5 days left');
 });
 
+test("the Hebrew app's time target books nothing: it counts what he did in the app", () => {
+  const doc = fixture({ items: [
+    { id: 'hebrew-minutes', type: 'quota', title: 'Hebrew learning time', area: 'Hebrew', target: 90, unit: 'minutes', source: 'hebrew' },
+    { id: 'hebrew-habit', type: 'habit', title: 'Hebrew practice', area: 'Hebrew', repeat: { kind: 'daily' }, time: '21:30', minutes: 20, source: 'hebrew' },
+  ] });
+  assert.deepEqual(run(doc), []);
+  assert.equal(fixedTasks({ doc, days: DAYS, config }).length, 7, 'the evening session stays');
+});
+
 test('habits: due days, times-a-week spread over the week, linked ones never booked', () => {
   const doc = fixture({
     items: [
