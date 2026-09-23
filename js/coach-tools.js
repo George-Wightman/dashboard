@@ -32,6 +32,9 @@ export const TOOL_DECLARATIONS = [
   decl('set_task', "Set a title, length, time or notes on an active task. Notes replace any it has; \"\" clears a field.", {
     id: ID, title: S('new title, only when asked'), minutes: S('its length, like "45m" or "2h"'), time: S('a set start, like "14:00"'), notes: S('the notes'),
   }, ['id']),
+  decl('release_task', "Record that a task he deleted from today after committing to it genuinely isn't needed any more, so it stops counting as missed. Only on his say-so, with his reason.", {
+    id: ID, reason: S('why it is no longer needed, in his words'),
+  }, ['id', 'reason']),
   decl('tick', "Tick off a task or habit on today's list that he says he has done.", { id: ID }, ['id']),
   decl('untick', "Take the tick off something on today's list.", { id: ID }, ['id']),
   decl('block_hours', "Block out hours on a specified date when he's busy, so the calendar plans round them.", {
@@ -146,6 +149,14 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, o
       if (it.type !== 'habit') refuse(`"${it.title}" is a weekly target — it can't be skipped`);
       const why = clip(typeof reason === 'string' ? reason : '', 120);
       return change(`Let "${it.title}" off today${why ? ` — ${why}` : ''}`, () => store.skipItem(it.id, today(), why, 'coach'));
+    },
+    release_task: ({ id, reason }) => {
+      const why = clip(typeof reason === 'string' ? reason : '', 120);
+      if (!why) refuse('release_task needs his reason');
+      const it = item(id);
+      if (it.type !== 'task') refuse(`"${it.title}" isn't a task`);
+      if (it.status === 'active') refuse(`"${it.title}" is still on his list — only a deleted task can be released`);
+      return change(`Released "${it.title}" — ${why}`, () => store.updateItem(it.id, { released: why }));
     },
     set_task: (a) => {
       const it = task(a.id);

@@ -26,6 +26,14 @@ Put the week's tasks and the next stage of each goal across the days. Every task
 Do it in one `apply` with several `edit` ops. The calendar follows within ten minutes — never book
 blocks yourself.
 
+## Today locks after the morning check-in
+
+Once George has answered the Coach's morning check-in (or at 11:00), today's list is what he committed
+to. A task moved off today after that is **pushed** (a miss the second time), and one deleted is a
+**miss** unless the Coach releases it as no longer needed. So reshuffling today after the lock isn't
+free: do it when he asks, and say that it will show as pushed. `day <date>` shows the lock, and what
+was pushed, deleted or optional. Times-a-week habits only count on days the week needs them.
+
 ## Work that has to happen in order is a series
 
 Role play 1 before 2 before 3; mock interview 1 before 2. Give those tasks one `series` name

@@ -190,9 +190,62 @@ export function streak(doc, item, today) {
 
 // ---- Completion, history, goals --------------------------------------------------------------
 
+// The day's score as two numbers — what the header and the history show. dayScore has the detail.
 export function dayCompletion(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
+  const { done, total } = dayScore(doc, day, idx, offs);
+  return { done, total };
+}
+
+// A times-a-week habit counts on a day only when the week needs it: as many still to do as days left,
+// that day included and days off for it not. Otherwise skipping it is a rest day.
+function neededOn(doc, item, day, idx, offs) {
+  const monday = weekStart(day);
+  const left = item.repeat.n - doneBetween(doc, item.id, monday, day, idx);
+  if (left <= 0) return false;
+  let daysLeft = 0;
+  for (let d = day; d <= addDays(monday, 6); d = addDays(d, 1)) if (!(offs.length && excused(doc, item, d, offs))) daysLeft++;
+  return left >= daysLeft;
+}
+
+// How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
+// times-a-week habit it didn't need; plus what George committed to after the morning check-in
+// (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
+// time and a miss the second; deleting is a miss unless the Coach released it as no longer needed. A
+// task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
+export function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = rowsForDay(doc, day, idx, offs);
-  return { done: rows.filter((r) => r.done).length, total: rows.length };
+  const counted = [];
+  const optional = [];
+  for (const r of rows) {
+    if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
+    else counted.push(r);
+  }
+  const pushed = [];
+  const missed = [];
+  const dropped = [];
+  const released = [];
+  const commitment = doc.calendar?.[`commit:${day}`];
+  if (commitment?.tasks?.length) {
+    const onDay = new Set(rows.map((r) => r.item.id));
+    const earlier = values(doc.calendar).filter((c) => c?.day < day && typeof c.id === 'string' && c.id.startsWith('commit:'));
+    for (const id of commitment.tasks) {
+      const item = doc.items?.[id];
+      if (!item || onDay.has(id)) continue;
+      if (doneDays(doc, id, idx).has(day)) continue;
+      if (item.status !== 'active') {
+        if (item.released) released.push({ item });
+        else dropped.push({ item });
+      } else if (item.date > day) {
+        const before = earlier.some((c) => c.tasks?.includes(id) && !doneDays(doc, id, idx).has(c.day));
+        (before ? missed : pushed).push({ item, to: item.date });
+      }
+    }
+  }
+  const done = counted.filter((r) => r.done).length;
+  return {
+    done, total: counted.length + missed.length + dropped.length,
+    open: counted.filter((r) => !r.done), pushed, missed, dropped, released, optional,
+  };
 }
 
 // The current week and the two before it, Monday first: 21 cells. A day of time off for

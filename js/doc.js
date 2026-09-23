@@ -56,6 +56,7 @@ export function recordProblem(map, id, r) {
   if (!optional('time', (v) => v === '' || clock(v), true)) return 'Invalid time';
   if (!optional('priority', (v) => typeof v === 'boolean')) return 'Invalid priority';
   if (!optional('series', (v) => string(v) && v.length <= 60, true)) return 'Invalid series';
+  if (!optional('released', (v) => string(v) && v.length <= 200)) return 'Invalid release reason';
   if (!optional('fromEvent', (v) => string(v) && v.length <= 1100)) return 'Invalid source event';
   if (r._sync !== undefined) {
     const m = r._sync;

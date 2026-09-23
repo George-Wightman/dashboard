@@ -4,7 +4,7 @@
 // do; js/ui/coach.js is the panel.
 
 import { addDays, weekStart, longDate, shortWeekday, shortDate } from './dates.js';
-import { rowsForDay, weekTotal, countsOn, streak, goalProgress } from './schedule.js';
+import { rowsForDay, weekTotal, countsOn, streak, goalProgress, dayScore } from './schedule.js';
 import { dayRecord, offLine, briefFor, clockLabel } from './calendar.js';
 import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, sessionLine } from './gym.js';
 import { scheduleView, scheduleBlocks, dayClosed } from './plan-state.js';
@@ -244,6 +244,24 @@ function shapeLines(doc, today, first) {
   return out;
 }
 
+// What George committed to today and what has become of it (js/schedule.js's dayScore), so the Coach
+// can hold him to it: moving or deleting work after the morning lock doesn't make the day a success.
+export function commitmentLines(doc, today) {
+  const score = dayScore(doc, today);
+  const commitment = doc.calendar?.[`commit:${today}`];
+  const named = (list, extra = () => '') => list.map((e) => `${shortId(e.item.id)} "${clip(e.item.title, 70)}"${extra(e)}`).join(' · ');
+  const out = [commitment
+    ? `Today's list locked at ${clockLabel(commitment.at)} with ${commitment.tasks.length} task${commitment.tasks.length === 1 ? '' : 's'}: that is what George committed to.`
+    : "Today's list hasn't locked yet: until the morning check-in is done, moving work is planning, not slipping."];
+  out.push(`Today's score so far: ${score.done} of ${score.total} done.`);
+  if (score.open.length) out.push(`Committed and not done yet: ${named(score.open)}`);
+  if (score.pushed.length) out.push(`Pushed off today after committing (not a fail yet, but ask why): ${named(score.pushed, (e) => ` → ${shortWeekday(e.to)}`)}`);
+  if (score.missed.length) out.push(`Pushed for a second time, so counted as missed: ${named(score.missed)}`);
+  if (score.dropped.length) out.push(`Deleted after committing, counted as missed unless he says it's no longer needed (then call release_task): ${named(score.dropped)}`);
+  if (score.optional.length) out.push(`Optional today — times-a-week habits on pace, so leaving them is a rest day, not a fail: ${named(score.optional)}`);
+  return out;
+}
+
 // Everything the Coach is told at the start of each turn, as compact text. `first` marks the
 // Coach's first message of a conversation — an opener, or its first reply in one George started.
 export function talkContext(doc, today, now, { first = false } = {}) {
@@ -258,6 +276,7 @@ export function talkContext(doc, today, now, { first = false } = {}) {
   ];
   const ticked = tickedToday(doc, today);
   lines.push(`Ticked off today (the only record of what George has done): ${ticked.length ? ticked.map((i) => `"${clip(i.title, 80)}"`).join(' · ') : 'nothing yet'}`);
+  lines.push(...commitmentLines(doc, today));
   const cal = blocksText(doc, today, now);
   lines.push(cal.length ? `Calendar today: ${cal.join(' · ')}` : 'Calendar today: nothing booked by the planner');
   const next = scheduleView(doc, today).entries.filter((e) => e.day > tomorrow).slice(0, 25);
@@ -292,6 +311,7 @@ export const TALK_SYSTEM = [
   "The shared schedule below is the Dashboard and Google Calendar's common plan. Requested date, actual calendar booking and deadline are different. Read get_day or find before reviewing work. A missing booking is unscheduled, not a reason to pull work into today. Never guess why a calendar task moved or claim to see external appointments that are absent from your context.",
   "Claude's intent lines say why today matters and how to approach it. They never state what is scheduled, and they are written in advance, so the planner may have moved the work they refer to. The lists and bookings are the only source of what is happening; where they disagree with an intent line, the lists are right.",
   "Only ticks say what George has done. Something is done when it is in 'Ticked off today' or he tells you so; a calendar block, even one whose time has passed, is a plan and not evidence. Never congratulate him on, or assume he did, anything that isn't ticked. If nothing is ticked, ask rather than guess.",
+  "Hold George to what he committed to. Once today's list has locked, work he pushes to another day or deletes doesn't make the day a success: pushed, missed and deleted items are not wins. In the evening, and whenever he reviews the day, name them and ask what happened — briefly, curious rather than lecturing — and never call a day a success while any remain. A daily habit left undone is a miss; an optional times-a-week habit left undone is a rest day and needs no comment. If he says a deleted task genuinely isn't needed any more, call release_task with his reason.",
   "Talk about the day as it actually is. Do not volunteer that work has moved, slipped or been rebooked unless the context marks today as significantly different, or George raises it himself. When he asks, answer in full from the bookings.",
   "Execute explicit task instructions, including future dates, using tools. Add goals with add_goal. For an open-ended review ('the layout looks wrong', 'make tomorrow relevant') first use propose_changes and prepare specific changes for George to apply. Do not substitute unrelated tasks. Read original dates and pass expectedDay to move_task. Do not introduce earlier work, a different date, or extra tasks without a clear request.",
   "All tools work on one draft until your turn finishes. Do not promise success before tool results. Any failed mutation cancels the whole batch. Undo means undo_last_action; never attempt to reconstruct an earlier plan by moving items from memory. Recorded action receipts and their undo status are the evidence of changes, even when an earlier reply claimed otherwise.",
@@ -312,7 +332,7 @@ export const firstCoachTurn = (doc, day, slot) => !(talkOf(doc, day, slot)?.mess
 export const OPENERS = {
   morning: "It's the morning. Open a short conversation with George: one or two sentences, ending in one question about what today looks like and anything the plan should know. Reply with just your message.",
   afternoon: "It's the afternoon. Use the current shared schedule to offer a brief, natural check-in. Do not assume a task has failed or needs moving merely because its slot passed. Ask one useful question. Reply with just your message.",
-  evening: "It's the evening. Open a short conversation with George: one or two sentences about how today went — name something specific he ticked off today; if he has ticked nothing, don't claim anything was done — ending in one question about today or tomorrow. Reply with just your message.",
+  evening: "It's the evening. Open a short conversation with George: one or two sentences about how today went — name something specific he ticked off today; if he has ticked nothing, don't claim anything was done; if anything he committed to was pushed, deleted or missed, ask about it rather than calling the day a success — ending in one question about today or tomorrow. Reply with just your message.",
 };
 export const PLAIN_OPENERS = {
   morning: "Morning — what's today looking like?",

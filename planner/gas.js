@@ -13,6 +13,7 @@ import { addDays, logicalDay } from '../js/dates.js';
 import { taskInput } from '../js/plan-state.js';
 import { reconcileCalendar } from './reconcile.js';
 import { adoptEvents } from './adopt.js';
+import { ensureCommitment } from '../js/commit.js';
 import { plan, fillIds } from './plan.js';
 import { resolveCalendars } from './calendars.js';
 import { P, atText } from './events.js';
@@ -278,6 +279,8 @@ export function createPlanner({
       const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
       reconcileCalendar(store, events, removed);
       adoptEvents(store, events, { calendars: cals, config, today, lastDay: addDays(today, config.days - 1) });
+      // The 11:00 fallback for locking the day's list, when the app hasn't (js/commit.js).
+      ensureCommitment(store, today, t);
       // Persist inbound edits before making outbound Calendar changes. Never
       // export from a draft that failed to reach the other interfaces.
       if (session.changed()) {

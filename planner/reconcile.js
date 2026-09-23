@@ -28,7 +28,7 @@ export function reconcileCalendar(store, events, removed = []) {
           const [from] = String(props[P.at] ?? '').split('/');
           const when = Date.parse(from) ? ` (${shortWeekday(localDate(from))} ${shortDate(localDate(from))}, ${clockLabel(from)})` : '';
           store.archiveItem(id);
-          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. Undo it in ⚙ → changes if that was a mistake.`, null, 'calendar', 'note');
+          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. If it was on today's list after the morning check-in, it counts as missed unless you tell the Coach it's no longer needed. Undo it in ⚙ → changes if the delete was a mistake.`, null, 'calendar', 'note');
           if (store.doc().calendar[`conflict:${id}`]?.open) store.putCalendar(`conflict:${id}`, { open: false });
           continue;
         }

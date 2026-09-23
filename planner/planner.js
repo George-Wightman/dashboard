@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '62cfd703';
+var PLANNER_BUILD = '9a6c0988';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -444,6 +444,7 @@ function recordProblem(map, id, r) {
   if (!optional('time', (v) => v === '' || clock(v), true)) return 'Invalid time';
   if (!optional('priority', (v) => typeof v === 'boolean')) return 'Invalid priority';
   if (!optional('series', (v) => string(v) && v.length <= 60, true)) return 'Invalid series';
+  if (!optional('released', (v) => string(v) && v.length <= 200)) return 'Invalid release reason';
   if (!optional('fromEvent', (v) => string(v) && v.length <= 1100)) return 'Invalid source event';
   if (r._sync !== undefined) {
     const m = r._sync;
@@ -2927,7 +2928,7 @@ function reconcileCalendar(store, events, removed = []) {
           const [from] = String(props[P.at] ?? '').split('/');
           const when = Date.parse(from) ? ` (${shortWeekday(localDate(from))} ${shortDate(localDate(from))}, ${clockLabel(from)})` : '';
           store.archiveItem(id);
-          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. Undo it in ⚙ → changes if that was a mistake.`, null, 'calendar', 'note');
+          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. If it was on today's list after the morning check-in, it counts as missed unless you tell the Coach it's no longer needed. Undo it in ⚙ → changes if the delete was a mistake.`, null, 'calendar', 'note');
           if (store.doc().calendar[`conflict:${id}`]?.open) store.putCalendar(`conflict:${id}`, { open: false });
           continue;
         }
@@ -3246,9 +3247,62 @@ function streak(doc, item, today) {
 
 // ---- Completion, history, goals --------------------------------------------------------------
 
+// The day's score as two numbers — what the header and the history show. dayScore has the detail.
 function dayCompletion(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
+  const { done, total } = dayScore(doc, day, idx, offs);
+  return { done, total };
+}
+
+// A times-a-week habit counts on a day only when the week needs it: as many still to do as days left,
+// that day included and days off for it not. Otherwise skipping it is a rest day.
+function neededOn(doc, item, day, idx, offs) {
+  const monday = weekStart(day);
+  const left = item.repeat.n - doneBetween(doc, item.id, monday, day, idx);
+  if (left <= 0) return false;
+  let daysLeft = 0;
+  for (let d = day; d <= addDays(monday, 6); d = addDays(d, 1)) if (!(offs.length && excused(doc, item, d, offs))) daysLeft++;
+  return left >= daysLeft;
+}
+
+// How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
+// times-a-week habit it didn't need; plus what George committed to after the morning check-in
+// (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
+// time and a miss the second; deleting is a miss unless the Coach released it as no longer needed. A
+// task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
+function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = rowsForDay(doc, day, idx, offs);
-  return { done: rows.filter((r) => r.done).length, total: rows.length };
+  const counted = [];
+  const optional = [];
+  for (const r of rows) {
+    if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
+    else counted.push(r);
+  }
+  const pushed = [];
+  const missed = [];
+  const dropped = [];
+  const released = [];
+  const commitment = doc.calendar?.[`commit:${day}`];
+  if (commitment?.tasks?.length) {
+    const onDay = new Set(rows.map((r) => r.item.id));
+    const earlier = values(doc.calendar).filter((c) => c?.day < day && typeof c.id === 'string' && c.id.startsWith('commit:'));
+    for (const id of commitment.tasks) {
+      const item = doc.items?.[id];
+      if (!item || onDay.has(id)) continue;
+      if (doneDays(doc, id, idx).has(day)) continue;
+      if (item.status !== 'active') {
+        if (item.released) released.push({ item });
+        else dropped.push({ item });
+      } else if (item.date > day) {
+        const before = earlier.some((c) => c.tasks?.includes(id) && !doneDays(doc, id, idx).has(c.day));
+        (before ? missed : pushed).push({ item, to: item.date });
+      }
+    }
+  }
+  const done = counted.filter((r) => r.done).length;
+  return {
+    done, total: counted.length + missed.length + dropped.length,
+    open: counted.filter((r) => !r.done), pushed, missed, dropped, released, optional,
+  };
 }
 
 // The current week and the two before it, Monday first: 21 cells. A day of time off for
@@ -3299,7 +3353,7 @@ function goalProgress(doc, goal) {
   const ticked = live.filter((m) => m.done).length;
   return { numeric: false, done: ticked, total: live.length, pct: live.length ? Math.round((ticked / live.length) * 100) : 0 };
 }
-return { countsOn, doneIndex, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
+return { countsOn, doneIndex, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, dayScore, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
 })();
 
 // ---- planner/demand.js
@@ -4346,6 +4400,40 @@ function adoptEvents(store, events, { calendars, config, today, lastDay }) {
 return { adoptableCalendars, adoptEvents };
 })();
 
+// ---- js/commit.js
+const __js_commit = (() => {
+// What George committed to for a day (docs/superpowers/specs/2026-09-23-honest-day-score-design.md):
+// the tasks on its list once the morning check-in is done — he has answered the Coach and it has
+// replied — or at 11:00 if he hasn't. Before then he can reshuffle freely; after, a task moved off the
+// day is "pushed" and one deleted is "dropped" (js/schedule.js's dayScore). Written once, by the app
+// or the planner, whichever gets there first. Pure apart from ensureCommitment's write.
+
+const { rowsForDay } = __js_schedule;
+
+const LOCK_HOUR = 11;
+const commitKey = (day) => `commit:${day}`;
+
+// Whether the day's list should lock now. `now` is within `day` (its logical day).
+function lockDue(doc, day, now) {
+  if (doc?.calendar?.[commitKey(day)]) return false;
+  if (now.getHours() >= LOCK_HOUR) return true;
+  const talk = doc?.journal?.[`talk:${day}:morning`];
+  const messages = talk?.status === 'active' ? talk.messages ?? [] : [];
+  const firstReply = messages.findIndex((m) => m.who === 'george');
+  return firstReply >= 0 && messages.slice(firstReply + 1).some((m) => m.who === 'coach');
+}
+
+// Locks the day's list if it's time, and returns the commitment it wrote (null when it didn't).
+function ensureCommitment(store, day, now) {
+  const doc = store.doc();
+  if (!lockDue(doc, day, now)) return null;
+  const tasks = rowsForDay(doc, day).filter((r) => r.item.type === 'task' && r.item.status === 'active').map((r) => r.item.id);
+  store.putCalendar(commitKey(day), { day, at: now.toISOString(), tasks });
+  return store.doc().calendar[commitKey(day)];
+}
+return { LOCK_HOUR, commitKey, lockDue, ensureCommitment };
+})();
+
 // ---- planner/tag.js
 const __planner_tag = (() => {
 // Giving an untagged task an area, so it can share a block: one question to Gemini, answered from
@@ -5217,6 +5305,7 @@ const { addDays, logicalDay } = __js_dates;
 const { taskInput } = __js_plan_state;
 const { reconcileCalendar } = __planner_reconcile;
 const { adoptEvents } = __planner_adopt;
+const { ensureCommitment } = __js_commit;
 const { plan, fillIds } = __planner_plan;
 const { resolveCalendars } = __planner_calendars;
 const { P, atText } = __planner_events;
@@ -5482,6 +5571,8 @@ function createPlanner({
       const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
       reconcileCalendar(store, events, removed);
       adoptEvents(store, events, { calendars: cals, config, today, lastDay: addDays(today, config.days - 1) });
+      // The 11:00 fallback for locking the day's list, when the app hasn't (js/commit.js).
+      ensureCommitment(store, today, t);
       // Persist inbound edits before making outbound Calendar changes. Never
       // export from a draft that failed to reach the other interfaces.
       if (session.changed()) {

@@ -3,7 +3,8 @@
 import { createStore, DATA_KEY } from './data.js';
 import { askGemini, talkGemini, geminiKeys, hebrewKeys } from './gemini.js';
 import { longDate, weekStart } from './dates.js';
-import { dayCompletion } from './schedule.js';
+import { dayCompletion, dayScore } from './schedule.js';
+import { ensureCommitment } from './commit.js';
 import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents } from './sync.js';
 import { syncHebrewProgress } from './hebrewSync.js';
@@ -169,8 +170,8 @@ function hideNote(day, text) {
 function renderHeader() {
   const today = store.today();
   document.getElementById('date').textContent = longDate(today);
-  const { done, total } = dayCompletion(store.doc(), today);
-  document.getElementById('count').textContent = total ? `${done} of ${total} done` : '';
+  const { done, total, pushed } = dayScore(store.doc(), today);
+  document.getElementById('count').textContent = total ? `${done} of ${total} done${pushed.length ? ` · ${pushed.length} pushed` : ''}` : '';
   document.title = total ? `Today · ${done}/${total}` : 'Today';
 
   const warning = document.getElementById('save-warning');
@@ -420,7 +421,14 @@ function wake() {
   updater.check();
 }
 
+// The day's list locks once the morning check-in is done (js/commit.js): checked after every change,
+// since the Coach's reply is what completes it, and once a minute for the 11:00 fallback.
+function lockDay() {
+  try { ensureCommitment(store, store.today(), new Date()); } catch { /* the planner locks it too */ }
+}
+
 store.subscribe((reason) => {
+  queueMicrotask(lockDay);
   // A request may have started before typing began. Gate the redraw when it
   // finishes too; the saved data can safely advance while an input stays put.
   if (reason === 'sync' && !canRun()) { renderHeader(); whenIdle().then(render); }
@@ -501,6 +509,7 @@ window.addEventListener('storage', (e) => {
 setInterval(() => {
   applyLook();
   checkRollover();
+  lockDay();
   maybeOpenMoment();
   if (talkNow(ctx) !== shownTalk && !typing()) render();
   if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });

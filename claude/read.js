@@ -3,7 +3,7 @@
 
 import {
   todayRows, streak, weekTotal, doneBetween, doneIndex, milestonesOf, goalProgress, history, dayDetail,
-  dayCompletion,
+  dayCompletion, dayScore,
 } from '../js/schedule.js';
 import { longDate, weekStart, addDays, shortWeekday, carryLabel, forLabel } from '../js/dates.js';
 import { formatProgress } from '../js/parse.js';
@@ -33,8 +33,8 @@ const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
 const live = (doc) => values(doc.items).filter((i) => i.status === 'active').sort(byOrder);
 
 export function header(doc, today) {
-  const { done, total } = dayCompletion(doc, today);
-  return `Today is ${longDate(today)} (${today}) · ${done} of ${total} done`;
+  const { done, total, pushed } = dayScore(doc, today);
+  return `Today is ${longDate(today)} (${today}) · ${done} of ${total} done${pushed.length ? ` · ${pushed.length} pushed` : ''}`;
 }
 
 function rowLine(doc, row, today, idx) {
@@ -205,11 +205,20 @@ function find(doc, day, words) {
 function day(doc, today, arg) {
   const d = toDay(arg || 'today', today);
   const { rows, amounts } = dayDetail(doc, d);
-  const { done, total } = dayCompletion(doc, d);
-  const out = [header(doc, today), `${longDate(d)} (${d}) · ${done} of ${total} done`];
+  const score = dayScore(doc, d);
+  const out = [header(doc, today), `${longDate(d)} (${d}) · ${score.done} of ${score.total} done`];
   const off = offLine(doc, d);
   if (off) out.push(off);
   for (const r of rows) out.push(`  ${r.done ? '[x]' : '[ ]'} ${TYPE_NAMES[r.item.type]} ${q(r.item.title)} ${tag(r.item.id)}`);
+  // What he committed to that left the day, and what didn't need doing (js/schedule.js's dayScore).
+  const named = (list, extra = () => '') => list.map((e) => `${q(e.item.title)} ${tag(e.item.id)}${extra(e)}`).join(', ');
+  const commitment = doc.calendar?.[`commit:${d}`];
+  if (commitment) out.push(`  Locked at ${clockLabel(commitment.at)} with ${commitment.tasks.length} task${commitment.tasks.length === 1 ? '' : 's'}.`);
+  if (score.pushed.length) out.push(`  Pushed after the lock (not counted): ${named(score.pushed, (e) => ` → ${dayName(e.to, today)}`)}`);
+  if (score.missed.length) out.push(`  Pushed a second time (counted as missed): ${named(score.missed)}`);
+  if (score.dropped.length) out.push(`  Deleted after the lock (counted as missed): ${named(score.dropped)}`);
+  if (score.released.length) out.push(`  Released as no longer needed: ${named(score.released, (e) => ` — ${e.item.released}`)}`);
+  if (score.optional.length) out.push(`  Optional (on pace for the week): ${named(score.optional)}`);
   for (const { log, item, goal } of amounts) {
     const on = item ?? goal;
     const label = item ? item.unitLabel : goal?.unitLabel;
