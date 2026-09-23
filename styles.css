@@ -172,6 +172,22 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   .row .act { grid-column: 3; grid-row: 1; }
 }
 
+/* Under Today's list (js/ui/widgets.js): widgets at the list's width, stacked. The charts in them
+   keep a sensible size (.radar, .cardio-bars) rather than stretching. */
+.under { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem; min-width: 0; }
+.under[hidden] { display: none; }
+
+/* Countdown (js/ui/countdown.js): the days left big, then what and when. */
+.count-list { list-style: none; margin: 0; padding: 0; }
+.count-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; align-items: baseline; gap: .6rem; padding: .3rem 0; border-top: 1px solid var(--border); font-size: .9rem; }
+.count-row:first-child { border-top: 0; }
+.count-left { display: flex; align-items: baseline; gap: .3rem; color: var(--muted); }
+.count-n { font-family: var(--display); font-size: 1.35rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.count-row.soon .count-left { color: var(--ink); }
+.count-unit { font-size: .75rem; }
+.count-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count-when { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+
 /* The widget area (js/ui/widgets.js): its columns of widgets. From 1500px (js/app.js asks the same
    question) the page has three columns, 1.8fr 1fr 1fr: #side spans the second and third as a
    subgrid, one widget column in each. */
@@ -277,7 +293,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 /* Muscles and Cardio trend (js/ui/training.js): a radar of sets per muscle group, the groups
    longest rested, and eight weeks of cardio as bars against the target. */
 .muscles h2 .count, .cardio-trend h2 .count { font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
-.radar { display: block; width: 100%; height: auto; overflow: visible; }
+.radar { display: block; width: 100%; max-width: 24rem; height: auto; margin: 0 auto; overflow: visible; }
 .radar .ring { fill: none; stroke: var(--border); stroke-width: 1; }
 .radar .axis { stroke: var(--border); stroke-width: 1; }
 .radar .shape { fill: var(--accent); fill-opacity: .18; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
@@ -289,7 +305,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .rested { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .9rem; margin-top: .4rem; font-size: .8rem; }
 .rested .rest { color: var(--muted); }
 .rested .rest strong { color: var(--ink); font-weight: 500; }
-.cardio-bars { display: block; width: 100%; height: auto; overflow: visible; }
+.cardio-bars { display: block; width: 100%; max-width: 30rem; height: auto; margin: 0 auto; overflow: visible; }
 .cardio-bars .bar { fill: var(--accent); }
 .cardio-bars .bar.current { fill: var(--lvl2); }
 .cardio-bars .bar.met { fill: var(--gold); }
@@ -532,6 +548,8 @@ button.link.update-ready { color: var(--accent); }
 .goal.line .goal-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .goal.line .bar { margin: 0; height: .3rem; }
 .goal.line .pct { text-align: right; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.goal.line .goal-pace { margin-top: .1rem; font-size: .75rem; }
+.under .goal.line .goal-head { grid-template-columns: minmax(0, 1fr) 12rem 2.6rem; }
 .goal.line.open .goal-title { white-space: normal; }
 .history .grid { grid-template-columns: repeat(7, 1.35rem); gap: .2rem; }
 .history .grid .dow { font-size: .6rem; line-height: 1; }

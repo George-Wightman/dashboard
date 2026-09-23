@@ -14,6 +14,11 @@ Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The
 - **Anything new goes through the Coach:** a task for any day, a goal, a habit or a weekly target
   ("add call Mum on Friday", "I want a habit of stretching three times a week"). Tasks go straight
   on; goals, habits and targets arrive as suggestions to accept. There is no add box or + button.
+- **Countdown:** tell the Coach "count down to the assessment centre on 5 October" and the days
+  left show in the Countdown widget until the day; "stop counting down to …" removes one. Nothing
+  is booked for it.
+- **Goals with a number and a date** say what it takes a day to finish on time, under the goal's
+  line: *10 pages a day to finish by Thu 15 Oct*.
 - **Logging:** tell the Coach what you did ("sent two applications"). Cardio fills itself from
   Hevy and the Hebrew targets from the Hebrew app, so those are never logged by hand.
 - **Editing:** click any row's title (or a target's name in *This week*) to edit it. Archive
@@ -37,16 +42,18 @@ load — the theme is set before the page even paints.
 
 ## Arranging the widgets
 
-Today's list always stays in the first column; the Coach, Upcoming, Goals, This week, Hebrew, Gym
-and the rest are widgets you can move around the columns beside it — one column from 760px wide,
-two from 1500px. Weekly targets aren't rows on the list: each shows in the widget it belongs to —
+Today's list always stays in the first column. The Coach, Upcoming, Goals, Countdown, This week,
+Hebrew, Gym and the rest are widgets you can put under the list (Goals and Upcoming start there) or
+in the columns beside it — one column from 760px wide, two from 1500px. Charts keep a sensible size
+when a widget is wide. Weekly targets aren't rows on the list: each shows in the widget it belongs to —
 Cardio in Gym, the three Hebrew ones in Hebrew — and *This week* holds only the rest. A target in an
 area on time off is paused: it isn't shown, and it doesn't count as behind. *This week* disappears
 when it has nothing to show. Click **Arrange** in the header:
 
 - **Drag** a widget's grip (⋮⋮) onto another to put it there, or onto a column's *Drop here* to
-  send it to the end. On a touch screen, or whenever the window only shows one widget column, ↑ ↓
-  buttons replace the grip.
+  send it to the end (under the list included). On a touch screen, or whenever the window only
+  shows one widget column, ↑ ↓ buttons replace the grip; they step through the widgets in reading
+  order, so ↑ on the top widget beside the list moves it under the list.
 - **Hide** takes a widget out of the columns; it waits as a chip under *Add a widget* until you
   bring it back.
 - **Done** (or Escape) leaves Arrange mode. The arrangement is saved as you go, kept separately on

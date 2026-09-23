@@ -1,7 +1,7 @@
-// The widgets: the panels beside Today's list, drawn into the columns George arranges. The
-// arrangement is device-local (js/layout.js, localStorage['dash_layout']); ctx.layout() is the
-// current one and ctx.columnCount() says whether the window shows two widget columns or one.
-// Today's list is not a widget: it always stays in the first column.
+// The widgets: the panels under Today's list (#under) and beside it (#side), drawn where George
+// arranges them. The arrangement is device-local (js/layout.js, localStorage['dash_layout']);
+// ctx.layout() is the current one and ctx.columnCount() says whether the window shows two widget
+// columns beside the list or one. Today's list is not a widget: it always stays in the first column.
 //
 // Arrange mode (ctx.ui.arranging, toggled by setArranging): every visible widget gets a dashed
 // frame with a grip (or ↑ ↓ on touch and in the one-column view) and Hide; hidden ones wait below
@@ -14,7 +14,8 @@ import { renderWeek, renderGoals, renderHistory, keptFocus, restoreFocus } from 
 import { renderGym } from './gym.js';
 import { renderMuscles, renderCardioTrend } from './training.js';
 import { renderHebrew } from './hebrew.js';
-import { visibleColumns, moveWidget, nudgeWidget, hideWidget, showWidget } from '../layout.js';
+import { renderCountdown } from './countdown.js';
+import { visibleColumns, visibleUnder, moveWidget, nudgeWidget, hideWidget, showWidget, UNDER } from '../layout.js';
 
 // The registry. A widget's render(ctx) returns its element, or null when it has nothing to show
 // (This week when every target is shown elsewhere or paused), and is then left out (outside
@@ -24,6 +25,7 @@ import { visibleColumns, moveWidget, nudgeWidget, hideWidget, showWidget } from 
 export const WIDGETS = [
   { id: 'coach', title: 'Coach', render: renderCoach },
   { id: 'agenda', title: 'Upcoming', render: renderAgenda },
+  { id: 'countdown', title: 'Countdown', render: renderCountdown },
   { id: 'week', title: 'This week', render: renderWeek },
   { id: 'goals', title: 'Goals', render: renderGoals },
   { id: 'history', title: 'Last 3 weeks', render: renderHistory },
@@ -52,13 +54,14 @@ export function setArranging(ctx, on) {
 // ---- Arrange mode -------------------------------------------------------------------------------
 
 // ↑ ↓ replace the grip on a touch device, and whenever only one widget column shows — a window
-// under 1500px, where dragging between "columns" would have nothing to land on. matchMedia is
+// under 1500px, where dragging between "columns" would have nothing to land on. They step through
+// the widgets in reading order: under the list, then the columns. matchMedia is
 // read lazily (not every environment that imports this module has one, e.g. the Node tests).
 const isCoarsePointer = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const useNudge = (ctx) => ctx.columnCount() === 1 || isCoarsePointer();
 
 // A frame is a drop target: dragover accepts a widget being dragged (and only that), drop moves
-// it to just before this frame in `col`. Mirrors js/ui/today.js's row drag and drop.
+// it to just before this frame in `col` (UNDER, 0 or 1). Mirrors js/ui/today.js's row drag and drop.
 function enableDropBefore(el, ctx, col, beforeId) {
   el.addEventListener('dragover', (e) => {
     if (!e.dataTransfer.types.includes('text/x-widget')) return;
@@ -110,8 +113,8 @@ function widgetFrame(ctx, id, col) {
 }
 
 // A column's empty drop zone: dropping here puts the widget at the end of `col`.
-function dropZone(ctx, col) {
-  const zone = h('div', { class: 'drop-zone', 'data-col': col }, 'Drop here');
+function dropZone(ctx, col, text = 'Drop here') {
+  const zone = h('div', { class: 'drop-zone', 'data-col': col }, text);
   enableDropBefore(zone, ctx, col, null);
   return zone;
 }
@@ -151,20 +154,35 @@ function renderArranging(ctx, side, count) {
   side.replaceChildren(...columns, ...(addRow ? [addRow] : []));
 }
 
+// Under the list while arranging: its frames, then somewhere to drop (or, with ↑ ↓, a word on how
+// to get a widget here), so the space shows even when it's empty.
+function underFrames(ctx) {
+  const frames = visibleUnder(ctx.layout()).map((id) => widgetFrame(ctx, id, UNDER));
+  const end = useNudge(ctx)
+    ? (frames.length ? null : h('div', { class: 'drop-zone' }, 'Under the list: ↑ on the top widget beside it moves it here'))
+    : dropZone(ctx, UNDER, 'Drop here to put it under the list');
+  return [...frames, ...(end ? [end] : [])];
+}
+
 // ---- Normal mode and the shared entry point ------------------------------------------------------
 
-// Redraws the whole widget area (#side) from the arrangement. A text box marked data-focus gets
-// its focus and caret back afterwards (its text comes back from ctx.ui), so typing carries on.
+// Redraws both widget areas (#under and #side) from the arrangement. A text box marked data-focus
+// gets its focus and caret back afterwards (its text comes back from ctx.ui), so typing carries on.
 export function renderSide(ctx) {
   const side = document.getElementById('side');
-  const kept = keptFocus(side);
+  const under = document.getElementById('under');
+  const kept = keptFocus(side) ?? keptFocus(under);
   const count = ctx.columnCount();
   side.dataset.columns = String(count);
   if (ctx.ui.arranging) {
     renderArranging(ctx, side, count);
+    under.replaceChildren(...underFrames(ctx));
   } else {
     side.replaceChildren(...visibleColumns(ctx.layout(), count).map((ids, i) =>
       h('div', { class: 'widget-col', 'data-col': i }, ids.map((id) => widgetEl(ctx, id)))));
+    under.replaceChildren(...visibleUnder(ctx.layout()).map((id) => widgetEl(ctx, id)).filter(Boolean));
   }
+  under.hidden = !under.children.length;
   restoreFocus(side, kept);
+  restoreFocus(under, kept);
 }

@@ -5,7 +5,7 @@
 
 import { addDays, weekStart, longDate, shortWeekday, shortDate } from './dates.js';
 import { rowsForDay, weekTotal, countsOn, streak, goalProgress, dayScore } from './schedule.js';
-import { dayRecord, offLine, briefFor, clockLabel, excused } from './calendar.js';
+import { dayRecord, offLine, briefFor, clockLabel, excused, countdowns, daysLeft } from './calendar.js';
 import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, sessionLine, cardioQuotaId } from './gym.js';
 import { scheduleView, scheduleBlocks, dayClosed } from './plan-state.js';
 import { formatAmount } from './parse.js';
@@ -288,6 +288,8 @@ export function talkContext(doc, today, now, { first = false } = {}) {
     const off = offLine(doc, d);
     if (off) lines.push(`${name}: ${off}`);
   }
+  const counting = countdowns(doc, today);
+  if (counting.length) lines.push(`Counting down to: ${counting.map((c) => `${c.id} "${clip(c.title, 60)}" ${c.day} (${daysLeft(c.days)})`).join('; ')}`);
   lines.push(...shapeLines(doc, today, first));
   const brief = briefFor(doc, today);
   if (brief) lines.push(`Today's intent (Claude — why today matters, not what is scheduled): ${brief}`);
@@ -320,7 +322,7 @@ export const TALK_SYSTEM = [
   "Execute explicit task instructions, including future dates, using tools. Add goals with add_goal. For an open-ended review ('the layout looks wrong', 'make tomorrow relevant') first use propose_changes and prepare specific changes for George to apply. Do not substitute unrelated tasks. Read original dates and pass expectedDay to move_task. Do not introduce earlier work, a different date, or extra tasks without a clear request.",
   "All tools work on one draft until your turn finishes. Do not promise success before tool results. Any failed mutation cancels the whole batch. Undo means undo_last_action; never attempt to reconstruct an earlier plan by moving items from memory. Recorded action receipts and their undo status are the evidence of changes, even when an earlier reply claimed otherwise.",
   "When George says the day is over or he is going to bed, call close_day. A closed day accepts no new work; capture future ideas normally. Only call reopen_day on his explicit request. You can still record something he says he already completed. Never reopen today to evade a tool refusal.",
-  "For a flexible request such as 'over the weekend', choose and state a sensible weekend date, or ask one question if the choice matters. Goals are drafts that he can accept. New habits and weekly targets are suggestions too: suggest_habit and suggest_target, which he accepts on Today. When he says he did something a weekly target counts, log it. Hand app bugs, changes to an existing habit or target, and whole days off to Claude. Use item titles in conversation; IDs are for tools.",
+  "For a flexible request such as 'over the weekend', choose and state a sensible weekend date, or ask one question if the choice matters. Goals are drafts that he can accept. New habits and weekly targets are suggestions too: suggest_habit and suggest_target, which he accepts on Today. When he says he did something a weekly target counts, log it. A date he wants to count down to is add_countdown. Hand app bugs, changes to an existing habit or target, and whole days off to Claude. Use item titles in conversation; IDs are for tools.",
   "His gym sessions are his own to plan: never plan them.",
   "At a natural end use finish to save a journal entry about George, not about yourself. Leave feeling blank if unknown. Do not force closure after every task or question. He can continue the conversation afterwards.",
 ].join('\n');

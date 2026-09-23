@@ -4,7 +4,7 @@
 // deleted or missed, its notes) and `status`; `config` holds its settings, written by Claude or
 // seeded by the planner.
 
-import { weekday, shortWeekday, shortDate, addDays } from './dates.js';
+import { weekday, shortWeekday, shortDate, addDays, daysBetween } from './dates.js';
 
 export const CALENDAR_DEFAULTS = {
   hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
@@ -224,6 +224,39 @@ export function nextOffId(doc, start) {
   for (let n = 0; doc?.calendar?.[id]; n++) id = `off:${day}${String.fromCharCode(98 + n)}`;
   return id;
 }
+
+// ---- Countdowns ---------------------------------------------------------------------------------
+
+// Dates George is counting down to — the assessment centre, a birthday — kept as `count:<day>:<n>`
+// records beside the planner's. Only the Countdown widget and the Coach read them; the planner
+// books nothing for them.
+
+// A countdown checked: plain English when it's wrong. `day` must be today or later.
+export function checkCountdown({ title, day } = {}, today) {
+  const t = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) throw new Error('A countdown needs a name');
+  if (t.length > 60) throw new Error('A countdown name can be at most 60 characters');
+  if (!realDay(String(day ?? ''))) throw new Error('A countdown needs a date as YYYY-MM-DD');
+  if (day < today) throw new Error("That date has passed — a countdown is for something still to come");
+  return { title: t, day };
+}
+
+export function nextCountdownId(doc, day) {
+  let n = 1;
+  while (doc?.calendar?.[`count:${day}:${n}`]) n++;
+  return `count:${day}:${n}`;
+}
+
+// The countdowns still to come (today's included), soonest first, with the days left.
+export function countdowns(doc, today) {
+  return Object.values(doc?.calendar ?? {})
+    .filter((r) => r.status === 'active' && String(r.id).startsWith('count:') && realDay(r.day ?? '') && r.day >= today && text(r.title))
+    .map((r) => ({ id: r.id, title: r.title, day: r.day, days: daysBetween(today, r.day) }))
+    .sort((a, b) => (a.day === b.day ? a.title.localeCompare(b.title) : a.day < b.day ? -1 : 1));
+}
+
+// '12 days', 'tomorrow', 'today'.
+export const daysLeft = (days) => (days === 0 ? 'today' : days === 1 ? 'tomorrow' : `${days} days`);
 
 // A priority: the item says so, or its area is one of the planner's priority areas.
 export function isPriority(doc, item, config = readPlannerConfig(doc).config) {

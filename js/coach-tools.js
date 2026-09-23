@@ -6,7 +6,7 @@
 
 import { addDays, daysBetween, weekStart } from './dates.js';
 import { rowsForDay } from './schedule.js';
-import { checkTimeOff, nextOffId } from './calendar.js';
+import { checkTimeOff, nextOffId, checkCountdown, nextCountdownId } from './calendar.js';
 import { parseLength, parseClock, parseAmount, checkNotes, formatAmount } from './parse.js';
 import { dayClosed } from './plan-state.js';
 import { diffDocs, undoLine, canUndo } from './changes.js';
@@ -52,6 +52,10 @@ export const TOOL_DECLARATIONS = [
     title: S('a few words'), target: S('how many a week, or a time like "2h"'), unitLabel: S('what is counted, like "applications"; leave out for time'),
     area: S('an area already in use, like "Job search"'),
   }, ['title', 'target']),
+  decl('add_countdown', 'Count down to a date he names — the assessment centre, a birthday, a trip. It shows in his Countdown widget; nothing is booked for it.', {
+    title: S('a few words, like "Assessment centre"'), day: DAY,
+  }, ['title', 'day']),
+  decl('remove_countdown', 'Stop counting down to something, by its id from the countdowns list.', { id: S('the countdown id, like count:2026-10-05:1') }, ['id']),
   decl('hand_to_claude', "Pass something to Claude: anything you can't do (whole days off, changing or retiring a habit or target, app changes), or anything Claude should know.", {
     text: S('what George wants, in a sentence or two'),
   }, ['text']),
@@ -268,6 +272,19 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, o
       const unit = target.unitLabel ? ` ${target.unitLabel}` : '';
       return change(`Suggested the weekly target "${target.title}" (${formatAmount(target.target, target.unit)}${unit} a week)`,
         () => store.addPlan({ targets: [{ ...target, ...(area ? { area } : {}) }] }));
+    },
+    add_countdown: (a) => {
+      let c;
+      try { c = checkCountdown({ title: a.title, day: dayOf(a.day) }, today()); } catch (e) { refuse(e.message); }
+      const n = daysBetween(today(), c.day);
+      return change(`Counting down to "${c.title}" (${c.day}, ${n === 0 ? 'today' : n === 1 ? 'tomorrow' : `${n} days`})`,
+        () => store.putCalendar(nextCountdownId(store.doc(), c.day), c, 'gemini'));
+    },
+    remove_countdown: ({ id }) => {
+      const key = String(id ?? '').trim().replace(/^#/, '');
+      const rec = key.startsWith('count:') ? store.doc().calendar[key] : null;
+      if (!rec || rec.status !== 'active') refuse(`There's no countdown ${key || '(no id)'} — use an id from the countdowns list`);
+      return change(`Stopped counting down to "${rec.title}"`, () => store.putCalendar(key, { status: 'archived', archivedOn: today() }, 'gemini'));
     },
     hand_to_claude: ({ text }) => {
       const t = cleanHandoff(text);

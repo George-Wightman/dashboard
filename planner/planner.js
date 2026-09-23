@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'd15a0225';
+var PLANNER_BUILD = '33de3363';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2099,7 +2099,7 @@ const __js_calendar = (() => {
 // deleted or missed, its notes) and `status`; `config` holds its settings, written by Claude or
 // seeded by the planner.
 
-const { weekday, shortWeekday, shortDate, addDays } = __js_dates;
+const { weekday, shortWeekday, shortDate, addDays, daysBetween } = __js_dates;
 
 const CALENDAR_DEFAULTS = {
   hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
@@ -2320,6 +2320,39 @@ function nextOffId(doc, start) {
   return id;
 }
 
+// ---- Countdowns ---------------------------------------------------------------------------------
+
+// Dates George is counting down to — the assessment centre, a birthday — kept as `count:<day>:<n>`
+// records beside the planner's. Only the Countdown widget and the Coach read them; the planner
+// books nothing for them.
+
+// A countdown checked: plain English when it's wrong. `day` must be today or later.
+function checkCountdown({ title, day } = {}, today) {
+  const t = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) throw new Error('A countdown needs a name');
+  if (t.length > 60) throw new Error('A countdown name can be at most 60 characters');
+  if (!realDay(String(day ?? ''))) throw new Error('A countdown needs a date as YYYY-MM-DD');
+  if (day < today) throw new Error("That date has passed — a countdown is for something still to come");
+  return { title: t, day };
+}
+
+function nextCountdownId(doc, day) {
+  let n = 1;
+  while (doc?.calendar?.[`count:${day}:${n}`]) n++;
+  return `count:${day}:${n}`;
+}
+
+// The countdowns still to come (today's included), soonest first, with the days left.
+function countdowns(doc, today) {
+  return Object.values(doc?.calendar ?? {})
+    .filter((r) => r.status === 'active' && String(r.id).startsWith('count:') && realDay(r.day ?? '') && r.day >= today && text(r.title))
+    .map((r) => ({ id: r.id, title: r.title, day: r.day, days: daysBetween(today, r.day) }))
+    .sort((a, b) => (a.day === b.day ? a.title.localeCompare(b.title) : a.day < b.day ? -1 : 1));
+}
+
+// '12 days', 'tomorrow', 'today'.
+const daysLeft = (days) => (days === 0 ? 'today' : days === 1 ? 'tomorrow' : `${days} days`);
+
 // A priority: the item says so, or its area is one of the planner's priority areas.
 function isPriority(doc, item, config = readPlannerConfig(doc).config) {
   return item.priority === true || config.priorityAreas.some((a) => norm(a) === norm(item.area));
@@ -2412,7 +2445,7 @@ function plannerSummary(doc, now) {
   lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
   return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
 }
-return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
+return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
 })();
 
 // ---- js/gemini.js

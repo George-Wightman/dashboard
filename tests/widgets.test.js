@@ -6,20 +6,20 @@ import { DEFAULT_LAYOUT, normalizeLayout, visibleColumns } from '../js/layout.js
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('the widgets: Coach, Upcoming, This week, Goals, Last 3 weeks, Hebrew, Gym, Muscles, Cardio trend', () => {
+test('the widgets: Coach, Upcoming, Countdown, This week, Goals, Last 3 weeks, Hebrew, Gym, Muscles, Cardio trend', () => {
   assert.deepEqual(WIDGETS.map((w) => [w.id, w.title]), [
-    ['coach', 'Coach'], ['agenda', 'Upcoming'], ['week', 'This week'], ['goals', 'Goals'], ['history', 'Last 3 weeks'], ['hebrew', 'Hebrew'],
-    ['gym', 'Gym'], ['muscles', 'Muscles'], ['cardio', 'Cardio trend'],
+    ['coach', 'Coach'], ['agenda', 'Upcoming'], ['countdown', 'Countdown'], ['week', 'This week'], ['goals', 'Goals'], ['history', 'Last 3 weeks'],
+    ['hebrew', 'Hebrew'], ['gym', 'Gym'], ['muscles', 'Muscles'], ['cardio', 'Cardio trend'],
   ]);
-  assert.deepEqual(WIDGET_IDS, ['coach', 'agenda', 'week', 'goals', 'history', 'hebrew', 'gym', 'muscles', 'cardio']);
+  assert.deepEqual(WIDGET_IDS, ['coach', 'agenda', 'countdown', 'week', 'goals', 'history', 'hebrew', 'gym', 'muscles', 'cardio']);
   for (const w of WIDGETS) assert.equal(typeof w.render, 'function', w.id);
 });
 
 test('the default arrangement places every widget, and only widgets; none starts hidden', () => {
   assert.deepEqual(normalizeLayout(DEFAULT_LAYOUT, WIDGET_IDS), DEFAULT_LAYOUT);
-  assert.deepEqual([...DEFAULT_LAYOUT.columns.flat(), ...DEFAULT_LAYOUT.hidden].sort(), [...WIDGET_IDS].sort());
+  assert.deepEqual([...DEFAULT_LAYOUT.under, ...DEFAULT_LAYOUT.columns.flat(), ...DEFAULT_LAYOUT.hidden].sort(), [...WIDGET_IDS].sort());
   assert.deepEqual(DEFAULT_LAYOUT.hidden, []);
-  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['coach', 'agenda', 'goals', 'week', 'muscles', 'cardio', 'history', 'hebrew', 'gym']]);
+  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['countdown', 'coach', 'week', 'muscles', 'cardio', 'history', 'hebrew', 'gym']]);
 });
 
 test('styles.css and js/app.js agree on the page width and the columns', () => {
@@ -34,7 +34,8 @@ test('styles.css and js/app.js agree on the page width and the columns', () => {
 
 test('the widget area keeps its id, so typing protection and focus restore still find it', () => {
   assert.match(read('index.html'), /<aside id="side" class="side" aria-label="Widgets"><\/aside>/);
-  assert.match(read('js/app.js'), /closest\('#list, #side'\)/);
+  assert.match(read('index.html'), /<ul id="list" class="list"><\/ul>\s*<div id="under" class="under" aria-label="Widgets under the list" hidden><\/div>/);
+  assert.match(read('js/app.js'), /closest\('#list, #under, #side'\)/);
   assert.match(read('js/ui/coach.js'), /'data-focus': `coach-talk-\$\{where\}`/);
-  assert.match(read('js/ui/widgets.js'), /keptFocus\(side\)[\s\S]*restoreFocus\(side, kept\)/);
+  assert.match(read('js/ui/widgets.js'), /keptFocus\(side\) \?\? keptFocus\(under\)[\s\S]*restoreFocus\(side, kept\);\s*restoreFocus\(under, kept\);/);
 });

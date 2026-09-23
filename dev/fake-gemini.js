@@ -94,6 +94,8 @@ function talkAnswer(body) {
   }
   if (/going to bed/i.test(said)) return call('close_day', {});
   if (/\bundo\b/i.test(said)) return call('undo_last_action', {});
+  const counting = said.match(/\bcount down to (.+) on (\d{4}-\d{2}-\d{2})/i);
+  if (counting) return call('add_countdown', { title: clip(counting[1], 60), day: counting[2] });
   const habit = said.match(/\bnew habit:? (.+)/i);
   if (habit) return call('suggest_habit', { title: clip(habit[1], 60), repeat: '3 a week' });
   const logged = said.match(/\blog (\d+(?:\.\d+)?[hm]?)\b/i);

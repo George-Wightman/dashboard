@@ -4,7 +4,7 @@
 import { h } from './dom.js';
 import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail, countsOn } from '../schedule.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
-import { shortDate, shortWeekday } from '../dates.js';
+import { shortDate, shortWeekday, daysBetween } from '../dates.js';
 import { offLine, excused } from '../calendar.js';
 import { dayLines, cardioQuotaId, workouts } from '../gym.js';
 import { HEBREW_IDS } from '../hebrewSync.js';
@@ -142,6 +142,19 @@ function renderSuggestedGoal(goal, ctx) {
     proposed.length ? h('div', { class: 'muted plan-note' }, 'Habits and targets also wait at the top of Today.') : null);
 }
 
+// For a goal measured by a number with a target date still to come: what it takes a day, today
+// included, to finish on time — '12 pages a day to finish by Thu 15 Oct'. Null for any other goal,
+// and once it's done.
+export function goalPace(goal, progress, today) {
+  if (!progress.numeric || !goal.targetDate || goal.targetDate < today || progress.done >= progress.total) return null;
+  const days = daysBetween(today, goal.targetDate) + 1;
+  const left = progress.total - progress.done;
+  const by = `${shortWeekday(goal.targetDate)} ${shortDate(goal.targetDate)}`;
+  if (goal.unit === 'minutes') return `${formatAmount(Math.ceil(left / days), 'minutes')} a day to finish by ${by}`;
+  const label = goal.unitLabel ? ` ${goal.unitLabel}` : '';
+  return `${Math.ceil(left / days)}${label} a day to finish by ${by}`;
+}
+
 function renderGoal(goal, ctx) {
   const { store, ui } = ctx;
   if (goal.status === 'suggested') return renderSuggestedGoal(goal, ctx);
@@ -158,6 +171,8 @@ function renderGoal(goal, ctx) {
       class: 'goal-head', role: 'button', tabindex: 0, 'aria-expanded': String(open), onclick: toggle, title: goal.title,
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } },
     }, h('span', { class: 'goal-title' }, goal.title), bar(progress.pct, goal.title), h('span', { class: 'muted pct' }, `${progress.pct}%`)));
+  const pace = goalPace(goal, progress, store.today());
+  if (pace) card.append(h('div', { class: 'muted goal-pace' }, pace));
   if (open) card.append(renderGoalBody(goal, progress, ctx));
   return card;
 }

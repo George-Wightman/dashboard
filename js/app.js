@@ -134,7 +134,7 @@ const ctx = {
     ui.coach.talk = slot;
     if (matchMedia('(max-width: 759px)').matches) { openCoachSheet(ctx); return; }
     render();
-    const panel = document.querySelector('#side .coach');
+    const panel = document.querySelector('#side .coach, #under .coach');
     panel?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     panel?.querySelector('[data-focus^="coach-talk"]')?.focus();
   },
@@ -313,12 +313,12 @@ async function runHebrewSync() {
 }
 
 // Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the
-// re-rendered area (#list, #side). The Coach's message box doesn't count
+// re-rendered areas (#list, #under, #side). The Coach's message box doesn't count
 // either: its text and caret come back after every redraw, and a reply must land while he types on.
 function typing() {
   const el = document.activeElement;
   return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
-    && !!el.closest('#list, #side') && !String(el.dataset.focus ?? '').startsWith('coach-talk');
+    && !!el.closest('#list, #under, #side') && !String(el.dataset.focus ?? '').startsWith('coach-talk');
 }
 
 function canRun() {
