@@ -32,7 +32,8 @@ const JOURNAL_FIELDS = {
   guide: { text: '' },
 };
 const SLOTTED = new Set(['talk', 'entry']);
-const SLOT = /^(morning|afternoon|evening|own-\d{1,2})$/;
+// The Mind's own conversations (js/mind.js): mind-n opened by the planner, deep-n by Claude's runs.
+const SLOT = /^(morning|afternoon|evening|own-\d{1,2}|mind-\d{1,3}|deep-\d{1,2})$/;
 const WEEKLY = new Set(['digest', 'guide']);
 
 function readJson(storage, key) {
