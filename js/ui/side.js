@@ -1,15 +1,17 @@
-// The widgets' panels: this week's targets, goals, and the last three weeks. js/ui/widgets.js
-// arranges them (with the Coach, from js/ui/coach.js) and uses the focus helpers at the end.
+// The widgets' panels: this week's targets, goals, and the last three weeks (and, opened big, every
+// week since the start with each day's misses named). js/ui/widgets.js arranges them (with the
+// Coach, from js/ui/coach.js) and uses the focus helpers at the end.
 
 import { h } from './dom.js';
-import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail, countsOn } from '../schedule.js';
+import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail, dayScore, countsOn } from '../schedule.js';
 import { formatProgress, formatAmount, parseAmount } from '../parse.js';
-import { shortDate, shortWeekday, daysBetween } from '../dates.js';
+import { shortDate, shortWeekday, daysBetween, weekStart } from '../dates.js';
 import { offLine, excused } from '../calendar.js';
 import { dayLines, cardioQuotaId, workouts } from '../gym.js';
 import { HEBREW_IDS } from '../hebrewSync.js';
 import { SOURCE_NAMES } from './sources.js';
 import { renderDigest } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
+import { bigSection } from './big.js';
 import { proposedItems, proposalLine } from '../coach.js';
 
 const values = (map) => Object.values(map ?? {});
@@ -209,30 +211,31 @@ function renderDayDetail(ctx, day) {
   return box;
 }
 
-export function renderHistory(ctx) {
-  const { store, ui } = ctx;
-  const today = store.today();
-  const cells = history(store.doc(), today);
-  const grid = h('div', { class: 'grid' },
+// The squares, a row a week. With `pick` each day is a button that opens its detail; without (the
+// big view, which lists every day anyway) they only say what they are on hover.
+function historyGrid(ctx, cells, pick = true) {
+  const { ui } = ctx;
+  const today = ctx.store.today();
+  const toggle = (day) => () => { ui.historyDay = ui.historyDay === day ? null : day; ctx.render(); };
+  return h('div', { class: 'grid' },
     ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => h('span', { class: 'dow' }, d)),
     cells.map((c) => {
       if (c.future) return h('span', { class: 'cell future', 'aria-hidden': 'true' });
-      if (c.off) {
-        const label = `${shortWeekday(c.day)} ${shortDate(c.day)}: time off — ${c.off}`;
-        return h('button', {
-          class: ['cell off', c.day === today && 'today', c.day === ui.historyDay && 'selected'].filter(Boolean).join(' '),
-          type: 'button', title: label, 'aria-label': label,
-          onclick: () => { ui.historyDay = ui.historyDay === c.day ? null : c.day; ctx.render(); },
-        });
-      }
-      const cls = ['cell', `lvl${level(c.done, c.total)}`, c.day === today && 'today', c.day === ui.historyDay && 'selected']
+      const label = c.off
+        ? `${shortWeekday(c.day)} ${shortDate(c.day)}: time off — ${c.off}`
+        : `${shortWeekday(c.day)} ${shortDate(c.day)}: ${c.done} of ${c.total} done`;
+      const cls = [c.off ? 'cell off' : `cell lvl${level(c.done, c.total)}`, c.day === today && 'today', pick && c.day === ui.historyDay && 'selected']
         .filter(Boolean).join(' ');
-      const label = `${shortWeekday(c.day)} ${shortDate(c.day)}: ${c.done} of ${c.total} done`;
-      return h('button', {
-        class: cls, type: 'button', title: label, 'aria-label': label,
-        onclick: () => { ui.historyDay = ui.historyDay === c.day ? null : c.day; ctx.render(); },
-      });
+      return pick
+        ? h('button', { class: cls, type: 'button', title: label, 'aria-label': label, onclick: toggle(c.day) })
+        : h('span', { class: cls, title: label, role: 'img', 'aria-label': label });
     }));
+}
+
+export function renderHistory(ctx) {
+  const { store, ui } = ctx;
+  const cells = history(store.doc(), store.today());
+  const grid = historyGrid(ctx, cells);
   // The squares carry the colour; the counts are on hover, and this week's total is in the heading.
   const week = cells.slice(-7).filter((c) => !c.future && !c.off);
   const done = week.reduce((n, c) => n + c.done, 0);
@@ -243,6 +246,60 @@ export function renderHistory(ctx) {
   const digest = renderDigest(ctx);
   if (digest) section.append(digest);
   return section;
+}
+
+// ---- Last 3 weeks, opened big ----------------------------------------------------------------------
+
+// How many weeks the big view shows: every week since the dashboard's first record (its first
+// item, or the first day anything was logged), at least three and at most a year.
+export function historyWeeks(doc, today) {
+  const days = [
+    ...Object.values(doc.items ?? {}).map((i) => i.created),
+    ...Object.values(doc.logs ?? {}).filter((l) => l.status === 'active').map((l) => l.day),
+  ].filter((d) => typeof d === 'string' && d <= today).sort();
+  if (!days.length) return 3;
+  const weeks = Math.floor(daysBetween(weekStart(days[0]), today) / 7) + 1;
+  return Math.min(52, Math.max(3, weeks));
+}
+
+// What a past day left undone, by name, as the day's score counts it (js/schedule.js's dayScore):
+// what wasn't ticked, what was deleted after he'd committed to it, and what he pushed to a later
+// day — moving work never makes a day a success. A times-a-week habit on a rest day isn't a miss.
+export function dayMisses(doc, day) {
+  const s = dayScore(doc, day);
+  return [
+    ...[...s.open, ...s.missed].map((r) => ({ title: r.item.title, how: 'missed' })),
+    ...s.dropped.map((r) => ({ title: r.item.title, how: 'deleted' })),
+    ...s.pushed.map((r) => ({ title: r.item.title, how: `moved to ${shortWeekday(r.to)}` })),
+  ];
+}
+
+// Each day so far, newest first: how it went, and what was missed by name. Today is still going,
+// so it only says how far it's got.
+function dayRows(ctx, cells) {
+  const doc = ctx.store.doc();
+  const today = ctx.store.today();
+  return h('ul', { class: 'day-list' }, [...cells].reverse().filter((c) => !c.future).map((c) => {
+    const when = `${shortWeekday(c.day)} ${shortDate(c.day)}`;
+    if (c.off) return h('li', { class: 'day-row' }, h('strong', {}, when), h('span', { class: 'muted' }, `Time off — ${c.off}`));
+    const misses = c.day < today ? dayMisses(doc, c.day) : [];
+    const score = c.total ? `${c.done} of ${c.total}${c.day === today ? ' so far' : ''}` : 'nothing scheduled';
+    return h('li', { class: 'day-row' },
+      h('strong', {}, when),
+      h('span', { class: c.total && c.done === c.total && !misses.length ? 'met' : 'muted' }, score),
+      misses.length ? h('span', { class: 'day-missed' }, misses.map((m) => h('span', { class: 'miss' },
+        m.how === 'missed' ? `✗ ${m.title}` : `✗ ${m.title} (${m.how})`))) : null);
+  }));
+}
+
+export function renderHistoryBig(ctx) {
+  const doc = ctx.store.doc();
+  const today = ctx.store.today();
+  const weeks = historyWeeks(doc, today);
+  const cells = history(doc, today, weeks);
+  return h('div', { class: 'big history' },
+    bigSection(weeks >= 52 ? 'The last year' : `Every week since ${shortDate(cells[0].day)}`, historyGrid(ctx, cells, false)),
+    bigSection('Day by day', dayRows(ctx, cells)));
 }
 
 // A re-render replaces the whole widget area. A text box marked data-focus gets its focus and

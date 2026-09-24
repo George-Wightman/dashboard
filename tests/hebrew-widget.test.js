@@ -98,7 +98,7 @@ test('This week shows only the targets no other widget does, and none that are p
 });
 
 test('the panel is wired in: registered, offline-shelled, and styled from the palette', () => {
-  assert.match(read('js/ui/widgets.js'), /\{ id: 'hebrew', title: 'Hebrew', render: renderHebrew \}/);
+  assert.match(read('js/ui/widgets.js'), /\{ id: 'hebrew', title: 'Hebrew', render: renderHebrew, big: renderHebrewBig \}/);
   assert.match(read('sw.js'), /'js\/ui\/hebrew\.js'/);
   const css = read('styles.css');
   for (const sel of ['.heb-week', '.heb-cell.lvl4', '.heb-stats', '.heb-band-bar', '.band.strong', '.heb-said']) assert.ok(css.includes(sel), sel);

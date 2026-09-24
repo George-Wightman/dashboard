@@ -14,6 +14,7 @@ import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
 import { talkNow, writeDigest, openMoment, openCoachSheet, paintCoachSheet } from './ui/coach.js';
+import { paintBig } from './ui/big.js';
 import { openerDue, waitingOpener, TALK_KEEP_DAYS } from './talk.js';
 import { resolveLook, THEME_COLORS } from './look.js';
 import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
@@ -27,13 +28,15 @@ import { LOGOS } from './ui/sources.js';
 const store = createStore({ storage: localStorage });
 const ui = {
   noteFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
+  // The widget opened big (js/ui/big.js): its registry entry, or null.
+  big: null,
   // Arrange mode (js/ui/widgets.js): toggled by #arrange-button, Escape, or Done.
   arranging: false,
   // The Coach panel's page-only state (js/ui/coach.js). Typed text lives here, not only in the
   // textareas, so a re-render never loses it. `talk` is the conversation on show, `tried` the
   // moments this page has already asked Gemini to open ("day|slot"), `sheet` the phone sheet.
   coach: {
-    talk: null, draft: '', talkBusy: '', talkError: '', editing: null, sheet: false, tried: {},
+    talk: null, draft: '', talkBusy: '', talkError: '', editing: null, sheet: false, sheetView: 'talk', librarySearch: '', tried: {},
     digestOpen: false, digestBusy: false, digestError: '', digestTried: false,
     collapsedEntries: new Set(),
   },
@@ -251,6 +254,7 @@ function render() {
   renderToday(ctx);
   renderSide(ctx);
   paintCoachSheet(ctx);
+  paintBig(ctx);
   shownTalk = talkNow(ctx);
   if (!ui.openedLinkedTask && params.has('task') && store.doc().items[params.get('task')]) {
     ui.openedLinkedTask = true;

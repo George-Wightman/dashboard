@@ -14,6 +14,14 @@ Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The
 - **Anything new goes through the Coach:** a task for any day, a goal, a habit or a weekly target
   ("add call Mum on Friday", "I want a habit of stretching three times a week"). Tasks go straight
   on; goals, habits and targets arrive as suggestions to accept. There is no add box or + button.
+- **Open a widget big:** click the heading of Gym, Hebrew or Last 3 weeks (a ⤢ shows on hover) for
+  the long view that doesn't fit on the page. Gym adds a board of personal bests, the last year of
+  sessions as a grid, and sets per muscle group week by week. Hebrew adds the whole ladder to the
+  10-minute conversation — tick the conversations right there — and the last two weeks day by day.
+  Last 3 weeks shows every week since you started, and each day with what was missed, by name. The
+  Coach's heading (or its ⤢) opens the conversation big, with **Journal** to switch to: every
+  journal entry, weekly digest and check-in, newest first, with a search box. Escape, ✕ or a click
+  outside closes it.
 - **Countdown:** tell the Coach "count down to the assessment centre on 5 October" and the days
   left show in the Countdown widget until the day; "stop counting down to …" removes one. Nothing
   is booked for it.

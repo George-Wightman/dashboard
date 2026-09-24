@@ -373,6 +373,63 @@ export function cardioWeeks(doc, today, config = gymConfig(doc), count = 8) {
   return { weeks, target: quota ? Number(doc.items[quota].target) : null };
 }
 
+// ---- The long view (Gym opened big, js/ui/gym.js) ----------------------------------------------
+
+// Every lift he has done, with its best ever: estimated 1RM, the set behind it, and the day. The
+// ones he does most first (then the heavier), `limit` of them.
+export function prBoard(doc, today, limit = 12) {
+  const byLift = new Map();
+  for (const w of workouts(doc)) {
+    if (w.day > today) continue;
+    const seen = new Set();
+    for (const e of w.exercises ?? []) {
+      if (e.kind !== 'lift' || e.e1rm == null || !Array.isArray(e.best)) continue;
+      const key = norm(e.name);
+      const row = byLift.get(key) ?? { name: e.name, sessions: 0, e1rm: 0, best: null, day: null, last: null };
+      if (!seen.has(key)) { row.sessions++; seen.add(key); }
+      if (e.e1rm > row.e1rm) Object.assign(row, { e1rm: e.e1rm, best: e.best, day: w.day });
+      row.last = w.day;
+      byLift.set(key, row);
+    }
+  }
+  return [...byLift.values()]
+    .sort((a, b) => b.sessions - a.sessions || b.e1rm - a.e1rm || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
+
+// The `weeks` weeks up to this one, Monday to Sunday, each day with whether he lifted, cardio
+// minutes and sessions — the year of training as a grid.
+export function sessionDays(doc, today, weeks = 52) {
+  const first = addDays(weekStart(today), -7 * (weeks - 1));
+  const byDay = new Map();
+  for (const w of workouts(doc)) {
+    if (w.day < first || w.day > today) continue;
+    const d = byDay.get(w.day) ?? { sessions: 0, lifted: false, cardio: 0 };
+    d.sessions++;
+    d.lifted ||= (w.exercises ?? []).some((e) => e.kind === 'lift');
+    d.cardio = round1(d.cardio + cardioOf(w).minutes);
+    byDay.set(w.day, d);
+  }
+  return Array.from({ length: weeks * 7 }, (_, i) => {
+    const day = addDays(first, i);
+    return { day, future: day > today, ...(byDay.get(day) ?? { sessions: 0, lifted: false, cardio: 0 }) };
+  });
+}
+
+// Working sets per muscle group, week by week for the `count` weeks up to this one (so far):
+// { weeks: [monday…], groups: [{ name, sets: [n per week] }] }, groups in MUSCLE_GROUPS order.
+export function groupWeeks(doc, today, count = 8) {
+  const thisWeek = weekStart(today);
+  const weeks = Array.from({ length: count }, (_, i) => addDays(thisWeek, 7 * (i - count + 1)));
+  const at = new Map(weeks.map((m, i) => [m, i]));
+  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, weeks.map(() => 0)]));
+  for (const [day, group, n] of groupSets(doc, today)) {
+    const i = at.get(weekStart(day));
+    if (i != null) sets.get(group)[i] += n;
+  }
+  return { weeks, groups: MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) })) };
+}
+
 // A week's training in a line, for the Coach and the digest: sessions, cardio, key lifts.
 export function trainingWeek(doc, day, config = gymConfig(doc)) {
   const start = weekStart(day);

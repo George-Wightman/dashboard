@@ -2,13 +2,15 @@
 // The week as seven cells, shaded by minutes practised; this week's three targets as numbers, with
 // how much of what he said aloud was right; the words the app is teaching him, by how well he
 // holds them; the next rung of the ladder towards the 10-minute conversation; and the words he
-// has most recently said live. Nothing until the Hebrew goal exists.
+// has most recently said live. Nothing until the Hebrew goal exists. Opened big (renderHebrewBig)
+// it adds the whole ladder — the conversations ticked right there — and the last two weeks day by day.
 
 import { h } from './dom.js';
 import { weekTotal, streak, milestonesOf } from '../schedule.js';
-import { addDays, weekStart, shortWeekday } from '../dates.js';
+import { addDays, weekStart, shortWeekday, shortDate } from '../dates.js';
 import { formatAmount } from '../parse.js';
-import { HEBREW_IDS } from '../hebrewSync.js';
+import { HEBREW_IDS, RECENT_DAYS } from '../hebrewSync.js';
+import { bigSection } from './big.js';
 
 const active = (doc, id) => (doc.items[id]?.status === 'active' ? doc.items[id] : null);
 
@@ -46,12 +48,22 @@ export function weekAccuracy(now, today) {
 
 // The first rung not yet reached, and — for one the app counts — how far along it is.
 export function nextRung(doc) {
-  const m = milestonesOf(doc, HEBREW_IDS.goal).find((x) => x.status === 'active' && !x.done);
-  if (!m) return null;
+  const r = ladder(doc).find((x) => x.state === 'next');
+  return r ? { title: r.title, have: r.have, n: r.n, byHand: r.byHand } : null;
+}
+
+// Every rung of the ladder, in order, for the big view: done, the next, or still to come; with
+// how far along a counted one is.
+export function ladder(doc) {
   const now = doc.goals[HEBREW_IDS.goal]?.hebrewNow;
-  const { kind, n } = m.auto ?? {};
-  const have = kind && n > 0 && Number.isFinite(now?.[kind]) ? now[kind] : null;
-  return { title: m.title, have, n: have == null ? null : n, byHand: !m.auto };
+  let next = true;
+  return milestonesOf(doc, HEBREW_IDS.goal).filter((m) => m.status === 'active').map((m) => {
+    const { kind, n } = m.auto ?? {};
+    const have = kind && n > 0 && Number.isFinite(now?.[kind]) ? now[kind] : null;
+    const state = m.done ? 'done' : next ? 'next' : 'later';
+    if (!m.done) next = false;
+    return { id: m.id, title: m.title, state, byHand: !m.auto, have, n: have == null ? null : n };
+  });
 }
 
 function weekCells(doc, today) {
@@ -132,4 +144,61 @@ export function renderHebrew(ctx) {
     bands(now),
     rung(doc),
     recentWords(now));
+}
+
+// ---- Opened big ----------------------------------------------------------------------------------
+
+// The last RECENT_DAYS days that saw practice, newest first: minutes, reps said aloud and the share
+// right. Minutes are the app's logs; the reps come from the summary each sync keeps.
+export function recentDays(doc, today) {
+  const daily = doc.goals[HEBREW_IDS.goal]?.hebrewNow?.daily ?? {};
+  return Array.from({ length: RECENT_DAYS }, (_, i) => addDays(today, -i))
+    .map((day) => {
+      const s = daily[day] ?? {};
+      const spoken = s.spoken ?? 0;
+      return { day, minutes: minutesOn(doc, day), spoken, right: spoken ? Math.round(((s.spokenOk ?? 0) / spoken) * 100) : null };
+    })
+    .filter((d) => d.minutes > 0 || d.spoken > 0);
+}
+
+const MARK = { done: '✓', next: '→', later: '·' };
+
+function ladderList(ctx) {
+  const rungs = ladder(ctx.store.doc());
+  if (!rungs.length) return null;
+  return h('ol', { class: 'heb-ladder' }, rungs.map((r) => {
+    const pct = r.state === 'next' && r.have != null ? Math.min(100, Math.round((r.have / r.n) * 100)) : null;
+    // A conversation is his to tick, here as in Goals; a counted rung ticks itself.
+    const mark = r.byHand
+      ? h('input', { type: 'checkbox', checked: r.state === 'done', 'aria-label': r.title, onchange: () => ctx.store.toggleMilestone(r.id) })
+      : h('span', { class: 'rung-mark', 'aria-hidden': 'true' }, MARK[r.state]);
+    return h('li', { class: `rung ${r.state}` },
+      mark,
+      h('span', { class: 'rung-title' }, r.title,
+        pct != null ? h('span', { class: 'bar', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': r.title },
+          h('span', { style: `width:${pct}%` })) : null),
+      h('span', { class: 'muted rung-count' }, r.state !== 'done' && r.have != null ? `${r.have} / ${r.n}` : ''));
+  }));
+}
+
+function daysTable(doc, today) {
+  const days = recentDays(doc, today);
+  if (!days.length) return h('p', { class: 'muted' }, 'No practice in the last two weeks.');
+  return h('table', { class: 'big-table' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Day'), h('th', { class: 'num' }, 'Minutes'), h('th', { class: 'num' }, 'Spoken'), h('th', { class: 'num' }, 'Right'))),
+    h('tbody', {}, days.map((d) => h('tr', {},
+      h('td', {}, `${shortWeekday(d.day)} ${shortDate(d.day)}`),
+      h('td', { class: 'num' }, d.minutes ? formatAmount(d.minutes, 'minutes') : '·'),
+      h('td', { class: 'num' }, d.spoken ? String(d.spoken) : '·'),
+      h('td', { class: 'num' }, d.right == null ? '·' : `${d.right}%`)))));
+}
+
+export function renderHebrewBig(ctx) {
+  const base = renderHebrew(ctx);
+  if (!base) return null;
+  base.querySelector('h2')?.remove();
+  return h('div', { class: 'big hebrew' },
+    bigSection('This week', base),
+    bigSection('The ladder to a 10-minute conversation', ladderList(ctx)),
+    bigSection('The last two weeks', daysTable(ctx.store.doc(), ctx.store.today())));
 }

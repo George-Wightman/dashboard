@@ -63,6 +63,25 @@ export function guideFor(doc, day) {
   return rec?.text ? rec.text : null;
 }
 
+// The Coach's library (its big view): every journal entry, weekly digest and evening check-in,
+// newest first — a digest filed under its Monday comes after that week's entries — keeping only
+// those with every word of `words` somewhere in them.
+const LIBRARY_KINDS = new Set(['entry', 'digest', 'checkin']);
+const libraryText = (r) => [
+  r.feeling, r.text, ...(r.pointers ?? []), ...(r.forClaude ?? []),
+  r.summary, ...(r.wins ?? []), ...(r.slipped ?? []), r.focus,
+  ...(r.questions ?? []), ...(r.answers ?? []), r.feedback,
+].filter(Boolean).join(' ').toLowerCase();
+
+export function libraryOf(doc, words = '') {
+  const want = String(words).toLowerCase().split(/\s+/).filter(Boolean);
+  const when = (r) => (r.kind === 'digest' ? addDays(r.day, 6) : r.day);
+  return values(doc?.journal)
+    .filter((r) => r.status === 'active' && LIBRARY_KINDS.has(r.kind))
+    .filter((r) => want.every((w) => libraryText(r).includes(w)))
+    .sort((a, b) => (when(a) === when(b) ? (a.updated < b.updated ? 1 : -1) : when(a) < when(b) ? 1 : -1));
+}
+
 // Saved journal entries from the last `days` days, newest first.
 export function recentEntries(doc, today, { days = 7, limit = 3 } = {}) {
   const from = addDays(today, -days);

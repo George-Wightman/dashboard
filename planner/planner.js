@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '33de3363';
+var PLANNER_BUILD = '44884b1d';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -3320,13 +3320,13 @@ function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   };
 }
 
-// The current week and the two before it, Monday first: 21 cells. A day of time off for
-// everything carries `off`, its reason, instead of reading as 0/0.
-function history(doc, today) {
+// The current week and the ones before it — `weeks` in all, three by default — Monday first, a cell
+// a day. A day of time off for everything carries `off`, its reason, instead of reading as 0/0.
+function history(doc, today, weeks = 3) {
   const idx = doneIndex(doc);
   const offs = timeOff(doc);
-  const start = addDays(weekStart(today), -14);
-  return Array.from({ length: 21 }, (_, i) => {
+  const start = addDays(weekStart(today), -7 * (weeks - 1));
+  return Array.from({ length: weeks * 7 }, (_, i) => {
     const day = addDays(start, i);
     if (day > today) return { day, future: true, done: 0, total: 0 };
     const off = offs.find((o) => offCovers(o, day) && !o.areas?.length);
@@ -4845,6 +4845,63 @@ function cardioWeeks(doc, today, config = gymConfig(doc), count = 8) {
   return { weeks, target: quota ? Number(doc.items[quota].target) : null };
 }
 
+// ---- The long view (Gym opened big, js/ui/gym.js) ----------------------------------------------
+
+// Every lift he has done, with its best ever: estimated 1RM, the set behind it, and the day. The
+// ones he does most first (then the heavier), `limit` of them.
+function prBoard(doc, today, limit = 12) {
+  const byLift = new Map();
+  for (const w of workouts(doc)) {
+    if (w.day > today) continue;
+    const seen = new Set();
+    for (const e of w.exercises ?? []) {
+      if (e.kind !== 'lift' || e.e1rm == null || !Array.isArray(e.best)) continue;
+      const key = norm(e.name);
+      const row = byLift.get(key) ?? { name: e.name, sessions: 0, e1rm: 0, best: null, day: null, last: null };
+      if (!seen.has(key)) { row.sessions++; seen.add(key); }
+      if (e.e1rm > row.e1rm) Object.assign(row, { e1rm: e.e1rm, best: e.best, day: w.day });
+      row.last = w.day;
+      byLift.set(key, row);
+    }
+  }
+  return [...byLift.values()]
+    .sort((a, b) => b.sessions - a.sessions || b.e1rm - a.e1rm || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
+
+// The `weeks` weeks up to this one, Monday to Sunday, each day with whether he lifted, cardio
+// minutes and sessions — the year of training as a grid.
+function sessionDays(doc, today, weeks = 52) {
+  const first = addDays(weekStart(today), -7 * (weeks - 1));
+  const byDay = new Map();
+  for (const w of workouts(doc)) {
+    if (w.day < first || w.day > today) continue;
+    const d = byDay.get(w.day) ?? { sessions: 0, lifted: false, cardio: 0 };
+    d.sessions++;
+    d.lifted ||= (w.exercises ?? []).some((e) => e.kind === 'lift');
+    d.cardio = round1(d.cardio + cardioOf(w).minutes);
+    byDay.set(w.day, d);
+  }
+  return Array.from({ length: weeks * 7 }, (_, i) => {
+    const day = addDays(first, i);
+    return { day, future: day > today, ...(byDay.get(day) ?? { sessions: 0, lifted: false, cardio: 0 }) };
+  });
+}
+
+// Working sets per muscle group, week by week for the `count` weeks up to this one (so far):
+// { weeks: [monday…], groups: [{ name, sets: [n per week] }] }, groups in MUSCLE_GROUPS order.
+function groupWeeks(doc, today, count = 8) {
+  const thisWeek = weekStart(today);
+  const weeks = Array.from({ length: count }, (_, i) => addDays(thisWeek, 7 * (i - count + 1)));
+  const at = new Map(weeks.map((m, i) => [m, i]));
+  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, weeks.map(() => 0)]));
+  for (const [day, group, n] of groupSets(doc, today)) {
+    const i = at.get(weekStart(day));
+    if (i != null) sets.get(group)[i] += n;
+  }
+  return { weeks, groups: MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) })) };
+}
+
 // A week's training in a line, for the Coach and the digest: sessions, cardio, key lifts.
 function trainingWeek(doc, day, config = gymConfig(doc)) {
   const start = weekStart(day);
@@ -4893,7 +4950,7 @@ function gymStatusLines(doc, when = (iso) => iso) {
   if (s.lastError) out.push(`Problem: ${s.lastError}`);
   return out;
 }
-return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, MUSCLE_GROUPS, muscleGroupOf, muscleWeek, longestRested, cardioWeeks, trainingWeek, gymContext, hevyTick, gymStatusLines };
+return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, MUSCLE_GROUPS, muscleGroupOf, muscleWeek, longestRested, cardioWeeks, prBoard, sessionDays, groupWeeks, trainingWeek, gymContext, hevyTick, gymStatusLines };
 })();
 
 // ---- planner/hevy.js

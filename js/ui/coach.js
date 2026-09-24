@@ -5,7 +5,8 @@
 // working, and a failure is one line of text, never a dialog. What George types lives in
 // ctx.ui.coach, so a re-render (a sync landing, a tick on the left) never loses it. On a phone the
 // conversation also opens as a sheet over the page (#coach-sheet), from the Coach's question under
-// the date.
+// the date; on a laptop that sheet is the Coach opened big, and it has a Journal to switch to —
+// every entry, weekly digest and check-in, newest first, searchable (js/talk.js's libraryOf).
 
 import { h } from './dom.js';
 import { GeminiError, MESSAGES } from '../gemini.js';
@@ -14,7 +15,7 @@ import { addDays, weekStart, shortWeekday, shortDate } from '../dates.js';
 import { canUndo } from '../changes.js';
 import {
   talkId, talkOf, entryOf, entryId, talksOn, heard, openerDue, nextOwnSlot, talkSystem, talkContents, firstCoachTurn,
-  plainEntry, waitingOpener, conversationContents, OPENERS, PLAIN_OPENERS, WRAP_UP, MESSAGE_MAX, ENTRY_MAX,
+  plainEntry, waitingOpener, conversationContents, libraryOf, OPENERS, PLAIN_OPENERS, WRAP_UP, MESSAGE_MAX, ENTRY_MAX,
 } from '../talk.js';
 import { prepareCoachTurn, describeEdits, netEdits } from '../coach-session.js';
 import { dayClosed } from '../plan-state.js';
@@ -481,6 +482,7 @@ export function openCoachSheet(ctx) {
   const dlg = document.getElementById('coach-sheet');
   if (!dlg) return;
   ctx.ui.coach.sheet = true;
+  if (!dlg.open) ctx.ui.coach.sheetView = 'talk';
   dlg.onclose = () => { ctx.ui.coach.sheet = false; };
   paintCoachSheet(ctx);
   if (!dlg.open) dlg.showModal();
@@ -489,13 +491,64 @@ export function openCoachSheet(ctx) {
 
 export function paintCoachSheet(ctx) {
   const dlg = document.getElementById('coach-sheet');
-  if (!dlg || !ctx.ui.coach.sheet) return;
+  const c = ctx.ui.coach;
+  if (!dlg || !c.sheet) return;
   const kept = keptFocus(dlg);
+  const journal = c.sheetView === 'journal';
+  const scroll = journal ? dlg.querySelector('.library-list')?.scrollTop ?? 0 : 0;
+  const flip = () => { c.sheetView = journal ? 'talk' : 'journal'; paintCoachSheet(ctx); };
   dlg.replaceChildren(h('div', { class: 'coach sheet-body' },
-    h('div', { class: 'sheet-head' }, h('h2', {}, 'Coach'),
-      h('button', { class: 'link', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close the Coach', onclick: () => dlg.close() }, '✕')),
-    renderTalk(ctx, 'sheet')));
+    h('div', { class: 'sheet-head' }, h('h2', {}, journal ? 'Coach · Journal' : 'Coach'),
+      h('span', { class: 'panel-links' },
+        link(journal ? 'Conversation' : 'Journal', flip),
+        h('button', { class: 'link', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close the Coach', onclick: () => dlg.close() }, '✕'))),
+    journal ? renderLibrary(ctx) : renderTalk(ctx, 'sheet')));
+  const list = dlg.querySelector('.library-list');
+  if (list) list.scrollTop = scroll;
   restoreFocus(dlg, kept);
+}
+
+// ---- The journal, as a library --------------------------------------------------------------------
+
+const dayOf = (day) => `${shortWeekday(day)} ${shortDate(day)}`;
+const SLOT_NAMES = { morning: 'morning', afternoon: 'afternoon', evening: 'evening' };
+
+function libraryItem(r) {
+  if (r.kind === 'digest') {
+    const line = (label, text) => (text ? h('p', {}, h('strong', {}, label), text) : null);
+    return h('li', { class: 'lib-item digest' },
+      h('div', { class: 'lib-head' }, h('strong', {}, `Week of ${shortDate(r.day)}`), h('span', { class: 'muted' }, 'weekly digest')),
+      h('p', {}, r.summary),
+      line('Went well: ', (r.wins ?? []).join(' · ')),
+      line('Slipped: ', (r.slipped ?? []).join(' · ')),
+      line('This week: ', r.focus));
+  }
+  if (r.kind === 'checkin') {
+    return h('li', { class: 'lib-item checkin' },
+      h('div', { class: 'lib-head' }, h('strong', {}, dayOf(r.day)), h('span', { class: 'muted' }, 'check-in')),
+      (r.questions ?? []).map((q, i) => h('div', { class: 'lib-qa' }, h('p', { class: 'muted' }, q), h('p', {}, r.answers?.[i] || '(no answer)'))),
+      r.feedback ? h('p', { class: 'lib-feedback' }, r.feedback) : null);
+  }
+  return h('li', { class: 'lib-item entry' },
+    h('div', { class: 'lib-head' }, h('strong', {}, dayOf(r.day)),
+      h('span', { class: 'muted' }, [SLOT_NAMES[r.slot], r.feeling].filter(Boolean).join(' · '))),
+    h('p', {}, r.text),
+    r.pointers?.length ? h('ul', { class: 'lib-pointers' }, r.pointers.map((p) => h('li', {}, p))) : null,
+    (r.forClaude ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)));
+}
+
+export function renderLibrary(ctx) {
+  const c = ctx.ui.coach;
+  const search = field('input', {
+    type: 'search', placeholder: 'Search the journal', 'aria-label': 'Search the journal', 'data-focus': 'journal-search', class: 'lib-search',
+  }, c.librarySearch ?? '', (v) => { c.librarySearch = v; paintCoachSheet(ctx); });
+  const found = libraryOf(ctx.store.doc(), c.librarySearch ?? '');
+  const words = String(c.librarySearch ?? '').trim();
+  return h('div', { class: 'library' },
+    search,
+    found.length
+      ? h('ul', { class: 'library-list' }, found.map(libraryItem))
+      : h('p', { class: 'muted' }, words ? `Nothing in the journal mentions "${words}".` : 'Nothing in the journal yet. Each conversation leaves an entry when it ends.'));
 }
 
 export function renderCoach(ctx) {

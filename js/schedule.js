@@ -248,13 +248,13 @@ export function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   };
 }
 
-// The current week and the two before it, Monday first: 21 cells. A day of time off for
-// everything carries `off`, its reason, instead of reading as 0/0.
-export function history(doc, today) {
+// The current week and the ones before it — `weeks` in all, three by default — Monday first, a cell
+// a day. A day of time off for everything carries `off`, its reason, instead of reading as 0/0.
+export function history(doc, today, weeks = 3) {
   const idx = doneIndex(doc);
   const offs = timeOff(doc);
-  const start = addDays(weekStart(today), -14);
-  return Array.from({ length: 21 }, (_, i) => {
+  const start = addDays(weekStart(today), -7 * (weeks - 1));
+  return Array.from({ length: weeks * 7 }, (_, i) => {
     const day = addDays(start, i);
     if (day > today) return { day, future: true, done: 0, total: 0 };
     const off = offs.find((o) => offCovers(o, day) && !o.areas?.length);

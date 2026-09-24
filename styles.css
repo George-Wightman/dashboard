@@ -172,6 +172,69 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
   .row .act { grid-column: 3; grid-row: 1; }
 }
 
+/* A widget's heading opens it big (js/ui/big.js): the ⤢ beside its title shows on hover. */
+.panel h2.opens { cursor: pointer; }
+.panel h2.opens:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.head-title { display: inline-flex; align-items: center; gap: .35rem; }
+.open-mark { font-size: .9rem; letter-spacing: 0; opacity: 0; transition: opacity .15s; }
+.panel h2.opens:hover .open-mark, .panel h2.opens:focus-visible .open-mark { opacity: 1; color: var(--accent); }
+@media (hover: none) { .open-mark { opacity: .6; } }
+
+/* Opened big: the Coach's window, scrolling inside, its sections one under another. */
+.widget-sheet .sheet-body, .coach-sheet .sheet-body { display: flex; flex-direction: column; height: 100%; }
+.big-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: .25rem; }
+.big-section { margin: 0 0 1.75rem; }
+.big-section h3 { margin: 0 0 .6rem; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.big-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.big-table th { text-align: left; font-weight: 500; font-size: .75rem; color: var(--muted); padding: .25rem .5rem .35rem 0; border-bottom: 1px solid var(--border); }
+.big-table td { padding: .3rem .5rem .3rem 0; border-bottom: 1px solid var(--border); }
+.big-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.big-table td.recent { color: var(--gold); }
+.group-weeks td.heat { text-align: center; border-radius: .2rem; }
+.group-weeks th.num { text-align: center; }
+.heat.lvl1 { background: var(--lvl1); }
+.heat.lvl2 { background: var(--lvl2); }
+.heat.lvl3 { background: var(--lvl3); color: var(--bg); }
+.heat.lvl4 { background: var(--lvl4); color: var(--bg); }
+.year-months, .year-grid { display: grid; gap: .15rem; }
+.year-months { font-size: .65rem; color: var(--muted); margin-bottom: .2rem; white-space: nowrap; }
+.year-grid { grid-template-rows: repeat(7, auto); grid-auto-flow: column; }
+.year-cell { aspect-ratio: 1; background: var(--panel); border: 1px solid var(--border); border-radius: .15rem; }
+.year-cell.lift { background: var(--accent); border-color: var(--accent); }
+.year-cell.cardio { background: var(--lvl2); border-color: var(--lvl2); }
+.year-cell.future { visibility: hidden; }
+.year-cell.today { outline: 1.5px solid var(--muted); }
+.heb-ladder { list-style: none; margin: 0; padding: 0; }
+.rung { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) auto; align-items: center; gap: .5rem; padding: .3rem 0; border-top: 1px solid var(--border); font-size: .9rem; }
+.rung:first-child { border-top: 0; }
+.rung-mark { text-align: center; color: var(--muted); }
+.rung.done .rung-mark { color: var(--gold); }
+.rung.done .rung-title { color: var(--muted); }
+.rung.next .rung-title { font-weight: 500; }
+.rung.next .rung-mark { color: var(--accent); }
+.rung input[type=checkbox] { justify-self: center; width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
+.rung-title .bar { margin-top: .3rem; }
+.rung-count { font-size: .8rem; font-variant-numeric: tabular-nums; }
+.day-list { list-style: none; margin: 0; padding: 0; }
+.day-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; padding: .35rem 0; border-top: 1px solid var(--border); font-size: .85rem; }
+.day-row:first-child { border-top: 0; }
+.day-row strong { min-width: 5.5rem; font-weight: 500; }
+.day-missed { display: flex; flex-wrap: wrap; gap: .15rem .75rem; flex-basis: 100%; padding-left: 6.25rem; }
+.day-missed .miss { color: var(--muted); }
+.history.big .grid { grid-template-columns: repeat(7, 1.6rem); }
+.library { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: .6rem; }
+.lib-search { padding: .45rem .7rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); color: var(--ink); }
+.lib-search:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.library-list { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
+.lib-item { padding: .7rem 0; border-top: 1px solid var(--border); font-size: .9rem; }
+.lib-item:first-child { border-top: 0; }
+.lib-item p { margin: .3rem 0 0; }
+.lib-head { display: flex; gap: .6rem; align-items: baseline; }
+.lib-head .muted { font-size: .8rem; }
+.lib-item.digest { padding-left: .75rem; border-left: 3px solid var(--accent-soft); }
+.lib-qa p.muted { font-size: .8rem; }
+.lib-pointers { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .85rem; }
+
 /* Under Today's list (js/ui/widgets.js): widgets at the list's width, stacked. The charts in them
    keep a sensible size (.radar, .cardio-bars) rather than stretching. */
 .under { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem; min-width: 0; }
