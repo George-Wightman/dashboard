@@ -37,6 +37,10 @@ test('the bundle runs with none of the browser globals, as in Apps Script', asyn
   assert.equal(await context.Planner.run(), 'ok');
   assert.ok(cal.mine().length >= 1);
   assert.equal(repo.doc().calendar.status.version, build);
+  // The Mind ran inside the bundle too: its bearings taken, its notification key made.
+  assert.ok(repo.file('mind.json')?.cursor?.at, 'mind.json written');
+  assert.match(repo.doc().calendar['push-config'].publicKey, /^[\w-]{87}$/);
+  assert.equal(repo.doc().calendar['mind:status'].lastError, null);
 });
 
 test('bundle: named imports (also "as" and across lines), and nothing else', () => {
@@ -66,6 +70,7 @@ test('the loader and its manifest', () => {
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/script.external_request',
     'https://www.googleapis.com/auth/script.scriptapp',
+    'https://www.googleapis.com/auth/drive.readonly',
   ]);
   assert.equal(JSON.parse(read('package.json')).scripts['build-planner'], 'node planner/build.mjs');
 });

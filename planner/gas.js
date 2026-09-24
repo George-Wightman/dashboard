@@ -23,6 +23,7 @@ import { syncHevy } from './hevy.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
+import { createMind } from './mind.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -38,12 +39,13 @@ class MemoryStorage {
 export function createPlanner({
   Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger = { log() {} },
   fetch = (...args) => globalThis.fetch(...args), now = () => new Date(), version = 'dev',
+  DriveApp = null, Utilities = null, mindCrypto = null, clockMs = () => Date.now(),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
   const put = (k, v) => props().setProperty(k, String(v));
   const drop = (k) => props().deleteProperty(k);
-  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY')].filter(Boolean));
+  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
@@ -240,9 +242,21 @@ export function createPlanner({
     if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars });
   }
 
+  // How long the planner's runs have taken today, so the Mind's status can show it against Apps
+  // Script's daily allowance.
+  function countRunTime(startedMs) {
+    try {
+      const day = logicalDay(now(), dayStartHour());
+      const prev = JSON.parse(get('RUN_MS') ?? 'null');
+      put('RUN_MS', JSON.stringify({ day, ms: (prev?.day === day ? prev.ms : 0) + Math.max(0, clockMs() - startedMs) }));
+    } catch { /* only a measurement */ }
+  }
+
   async function run(e) {
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(1000)) return 'busy';
+    const startedMs = clockMs();
+    let mind = null;
     try {
       if (get('PAUSED') === '1') return 'paused';
       const t = now();
@@ -328,6 +342,17 @@ export function createPlanner({
         if (day >= today && day < lastRecorded) store.putCalendar(dayRecordId(day), rec);
       }
       if (!doc.calendar?.config) store.putCalendar('config', JSON.parse(JSON.stringify(CALENDAR_DEFAULTS)));
+      // The Coach's Mind (planner/mind.js): sense, react, call Claude in. It can never stop planning.
+      try {
+        mind = createMind({ UrlFetchApp, DriveApp, Utilities, props: { get, put }, log, fetch, now, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'),
+          dayStartHour: dayStartHour(), startedMs, crypto: mindCrypto, clockMs });
+        await mind.think({ store, calEvents: events });
+      } catch (err) {
+        mind = null;
+        const message = clean(`The Mind stopped: ${err?.message ?? err}`);
+        log(message);
+        try { store.putCalendar('mind:status', { lastRun: t.toISOString(), lastError: message.slice(0, 500) }); } catch { /* the planner carries on */ }
+      }
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
@@ -341,6 +366,15 @@ export function createPlanner({
           return 'failed';
         }
       }
+      // Pings and mind.json only once data.json holds the messages they're about.
+      if (mind) {
+        try {
+          const after = await mind.after({ store });
+          if (after.changed) await syncOnce({ store, client: session.client });
+        } catch (err) {
+          log(clean(`The Mind couldn't finish: ${err?.message ?? err}`));
+        }
+      }
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
     } catch (err) {
@@ -349,6 +383,7 @@ export function createPlanner({
       log(`The planner stopped: ${message}`);
       return 'failed';
     } finally {
+      countRunTime(startedMs);
       lock.releaseLock();
     }
   }
