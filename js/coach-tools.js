@@ -13,6 +13,7 @@ import { diffDocs, undoLine, canUndo } from './changes.js';
 import { clip, cleanTarget } from './coach.js';
 import { findItem, dayText, gymText, findText, journalText, cleanEntry, cleanHandoff } from './talk.js';
 import { cardioQuotaId } from './gym.js';
+import { nextAskId } from './mind.js';
 
 const S = (description) => ({ type: 'STRING', description });
 const decl = (name, description, properties = {}, required = []) => ({ name, description, parameters: { type: 'OBJECT', properties, required } });
@@ -56,6 +57,9 @@ export const TOOL_DECLARATIONS = [
     title: S('a few words, like "Assessment centre"'), day: DAY,
   }, ['title', 'day']),
   decl('remove_countdown', 'Stop counting down to something, by its id from the countdowns list.', { id: S('the countdown id, like count:2026-10-05:1') }, ['id']),
+  decl('think_deeper', "Ask the Coach's deeper mind (Claude) to think something through properly and come back to him in this conversation, usually within half an hour: a re-plan, how something is going across weeks, anything you would otherwise guess at.", {
+    question: S('what to think through: his question, in his words, plus anything you know that matters'),
+  }, ['question']),
   decl('hand_to_claude', "Pass something to Claude: anything you can't do (whole days off, changing or retiring a habit or target, app changes), or anything Claude should know.", {
     text: S('what George wants, in a sentence or two'),
   }, ['text']),
@@ -285,6 +289,12 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, o
       const rec = key.startsWith('count:') ? store.doc().calendar[key] : null;
       if (!rec || rec.status !== 'active') refuse(`There's no countdown ${key || '(no id)'} — use an id from the countdowns list`);
       return change(`Stopped counting down to "${rec.title}"`, () => store.putCalendar(key, { status: 'archived', archivedOn: today() }, 'gemini'));
+    },
+    think_deeper: ({ question }) => {
+      const text = clip(typeof question === 'string' ? question : '', 500);
+      if (!text) refuse('think_deeper needs his question');
+      const id = nextAskId(store.doc(), today());
+      return change(`Asked for a deeper look: "${clip(text, 80)}"`, () => store.putCalendar(id, { text, day: today(), at: store.now().toISOString() }, 'coach'));
     },
     hand_to_claude: ({ text }) => {
       const t = cleanHandoff(text);

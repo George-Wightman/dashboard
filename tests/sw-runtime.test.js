@@ -20,7 +20,7 @@ class Cache {
 }
 
 function harness() {
-  const stores = new Map(), calls = [], clients = [];
+  const stores = new Map(), calls = [], clients = [], shown = [], opened = [];
   const caches = {
     keys: async () => [...stores.keys()],
     open: async (key) => { if (!stores.has(key)) stores.set(key, new Cache()); return stores.get(key); },
@@ -37,9 +37,10 @@ function harness() {
   }
   function restart() {
     handlers = {};
-    const self = { registration: { scope: SCOPE }, location: { origin: 'https://example.test' },
+    const self = { registration: { scope: SCOPE, showNotification: async (title, options) => { shown.push({ title, options }); } },
+      location: { origin: 'https://example.test' },
       addEventListener: (n, fn) => { handlers[n] = fn; }, skipWaiting: async () => {},
-      clients: { matchAll: async () => clients, claim: async () => {} } };
+      clients: { matchAll: async () => clients, claim: async () => {}, openWindow: async (url) => { opened.push(url); } } };
     const fetch = async (input, options) => {
       const url = typeof input === 'string' ? input : input.url;
       calls.push({ url, options });
@@ -68,7 +69,7 @@ function harness() {
     return result ? await result : undefined;
   }
   release('release one'); restart();
-  return { stores, caches, calls, clients, release, restart, event, refresh, request,
+  return { stores, caches, calls, clients, shown, opened, release, restart, event, refresh, request,
     fail: (fn) => { fail = fn; }, corrupt: (path, text) => network.set(new URL(path, SCOPE).href, text),
     name: () => `${APP_VERSION}-${manifest.id}` };
 }
@@ -135,4 +136,36 @@ test('a missing cached file fails closed instead of mixing in the current deploy
   assert.equal((await h.request('js/app.js', 'tab')).status, 503);
   assert.equal(await h.request('https://other.test/js/app.js', 'tab'), undefined);
   assert.equal(await h.request('../hebrew/index.html', 'tab'), undefined);
+});
+
+// ---- The Coach's pings ----------------------------------------------------------------------------
+
+test('a ping shows as a notification carrying where it leads', async () => {
+  const h = harness();
+  const payload = { title: 'Coach', body: 'MILLRACE is ticked. How did it go?', url: './?coach=talk:2026-09-24:mind-1', tag: 'talk:2026-09-24:mind-1' };
+  await h.event('push', { data: { json: () => payload, text: () => JSON.stringify(payload) } });
+  assert.equal(h.shown.length, 1);
+  assert.equal(h.shown[0].title, 'Coach');
+  assert.equal(h.shown[0].options.body, payload.body);
+  assert.equal(h.shown[0].options.tag, payload.tag);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.shown[0].options.data)), { url: payload.url }); // another realm's object
+  await h.event('push', { data: { json: () => { throw new Error('not json'); }, text: () => 'plain words' } });
+  assert.equal(h.shown[1].title, 'Coach');
+  assert.equal(h.shown[1].options.body, 'plain words');
+});
+
+test('a tap opens the app at the conversation, or brings the open one to it', async () => {
+  const h = harness();
+  let closed = false;
+  const notification = { data: { url: './?coach=talk:2026-09-24:mind-1' }, close: () => { closed = true; } };
+  await h.event('notificationclick', { notification });
+  assert.equal(closed, true);
+  assert.deepEqual(h.opened, [`${SCOPE}?coach=talk:2026-09-24:mind-1`]);
+  const posted = [];
+  let focused = false;
+  h.clients.push({ id: 'tab', url: SCOPE, focus: async () => { focused = true; }, postMessage: (m) => posted.push(m) });
+  await h.event('notificationclick', { notification });
+  assert.equal(focused, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ type: 'open-coach', url: `${SCOPE}?coach=talk:2026-09-24:mind-1` }]);
+  assert.equal(h.opened.length, 1, 'no second window');
 });

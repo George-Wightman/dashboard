@@ -9,6 +9,7 @@ import { LOOK_CHOICES, LOOKS } from '../look.js';
 import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
 import { claudePanel, claudeSummary } from './claude.js';
+import { pushState, turnOn, turnOff } from '../push-client.js';
 
 // The Version section: filled in once the site and GitHub have answered. Asked fresh every time
 // ⚙ opens, so "up to date" is about now, not about when the page was opened.
@@ -44,6 +45,38 @@ function versionSection(ctx) {
   });
 
   return h('section', { class: 'version' }, h('h3', {}, 'Version'), line, reload, changes);
+}
+
+const PUSH_WORDS = {
+  unsupported: ['not available', "This browser can't show notifications from the dashboard."],
+  waiting: ['setting up', 'The calendar planner sets notifications up on its next run. Come back in ten minutes.'],
+  blocked: ['blocked', "Notifications are blocked for this site. Allow them in the browser's site settings, then come back here."],
+  off: ['off on this device', 'Off on this device.'],
+  on: ['on for this device', 'On for this device.'],
+};
+
+// Notifications: whether this device gets the Coach's pings, and the one button to change it. The
+// state takes a moment to read (the browser's own subscription), so it fills itself in.
+function notificationsGroup(ctx) {
+  const now = h('span', { class: 'muted' }, ' · checking');
+  const line = h('p', { class: 'note' }, 'Checking this device…');
+  const error = h('p', { class: 'error', role: 'status' });
+  const buttons = h('div', { class: 'buttons' });
+  const show = async () => {
+    const state = await pushState(ctx);
+    if (!line.isConnected && !now.isConnected) return;
+    now.textContent = ` · ${PUSH_WORDS[state][0]}`;
+    line.textContent = PUSH_WORDS[state][1];
+    const act = (label, fn) => h('button', { class: 'btn', type: 'button', onclick: async () => {
+      error.textContent = '';
+      try { await fn(ctx); } catch (e) { error.textContent = e.message; }
+      show();
+    } }, label);
+    buttons.replaceChildren(...(state === 'off' ? [act('Turn on', turnOn)] : state === 'on' ? [act('Turn off', turnOff)] : []));
+  };
+  show();
+  return h('details', { class: 'group' }, h('summary', {}, 'Notifications', now), line, buttons, error,
+    h('p', { class: 'note' }, 'The Coach pings this device when it notices something worth a word, or has thought something through: at most six a day, and never at night. The ping shows the first line; the rest waits in the Coach. Your Pixel Watch shows what the phone shows.'));
 }
 
 // One folded group: its name, what it's set to now, and its fields.
@@ -182,6 +215,7 @@ export function openSettings(ctx) {
       h('p', { class: 'note' }, `Leave blank to use the Hebrew app's key on this device.${hebrewFound ? ' One was found here.' : ' None was found here.'}`),
       h('label', { class: 'field' }, h('span', {}, 'The evening conversation from (hour, 12–23)'), checkinHour),
       h('p', { class: 'note' }, "The Coach opens a conversation in the morning (7–12), the afternoon (2–5, only if something slipped) and the evening. Conversations and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products.")),
+    notificationsGroup(ctx),
     group('Look', lookName, false,
       h('label', { class: 'field' }, h('span', {}, 'Look'), look)),
     group('Claude', claudeSummary(store.doc(), store.today(), new Date()), false,

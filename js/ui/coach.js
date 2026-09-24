@@ -20,6 +20,8 @@ import {
 import { prepareCoachTurn, describeEdits, netEdits } from '../coach-session.js';
 import { dayClosed } from '../plan-state.js';
 import { keptFocus, restoreFocus } from './side.js';
+import { sourceMark } from './sources.js';
+import { isMindTalk, isMindMessage } from '../mind.js';
 
 const link = (text, onclick) => h('button', { class: 'link', type: 'button', onclick }, text);
 // The time: the page's clock (ctx.now, which the tests set), else the real one.
@@ -329,8 +331,16 @@ function didLine(ctx, d) {
     change?.undoneAt ? h('span', { class: 'muted' }, '· undone') : null);
 }
 
+// A message the Coach's background mind sent carries a small mark — Gemini's star when it noticed
+// something, Claude's spark after a deeper review — with the words only on hover.
+function mindMark(m) {
+  if (!isMindMessage(m) || !['gemini', 'claude'].includes(m.by)) return null;
+  return sourceMark(m.by, m.by === 'claude' ? 'thought through' : 'noticed');
+}
+
 function bubble(ctx, m) {
   return h('li', { class: m.who === 'george' ? 'msg george' : 'msg coach' },
+    mindMark(m),
     h('span', { class: 'msg-text' }, m.text),
     m.did?.length ? h('ul', { class: 'did' }, m.did.map((d) => didLine(ctx, d))) : null);
 }
@@ -448,7 +458,7 @@ export function renderTalk(ctx, where = 'panel') {
       ? h('p', { class: 'muted' }, 'Tell me what is on your mind, add a task for any day, log what you did, or plan a goal or a habit.')
       : null,
     conversationStream(ctx, Object.values(doc.journal).filter((t) => t.kind === 'talk' && t.status === 'active' && t.day >= addDays(today, -2)
-      && t.day <= today && (heard(t) || (t.id === talk?.id && waitingOpener(doc, today, nowOf(ctx), hours(ctx))?.slot === t.slot)))
+      && t.day <= today && (heard(t) || isMindTalk(t) || (t.id === talk?.id && waitingOpener(doc, today, nowOf(ctx), hours(ctx))?.slot === t.slot)))
       .sort((a, b) => (a.messages[0]?.at ?? a.updated).localeCompare(b.messages[0]?.at ?? b.updated))
       .map((t, i, all) => h('div', { class: 'conversation-segment' },
         // A day's heading once, where its first conversation starts (today's needs none).
@@ -474,6 +484,15 @@ function renderProposal(ctx, talk) {
         } }) : null)),
     h('div', { class: 'buttons' }, h('button', { class: 'btn primary', type: 'button', onclick: () => applyProposal(ctx, talk) }, 'Apply'),
       link('Dismiss', () => { ctx.store.updateJournal(talk.id, { proposal: null }); ctx.render(); })));
+}
+
+// A notification opens the Coach at the conversation it was about (`talk:<day>:<slot>`): today's is
+// shown and answered in place; an older one simply opens the Coach.
+export function openAt(ctx, talkId) {
+  const m = /^talk:(\d{4}-\d{2}-\d{2}):([\w-]+)$/.exec(String(talkId ?? ''));
+  if (m && m[1] === ctx.store.today() && talkOf(ctx.store.doc(), m[1], m[2])) ctx.ui.coach.talk = m[2];
+  openCoachSheet(ctx);
+  ctx.render();
 }
 
 // The conversation as a sheet over the page, redrawn with the page (js/app.js's render): the whole

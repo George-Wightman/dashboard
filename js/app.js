@@ -13,7 +13,7 @@ import { openTaskCard } from './ui/agenda.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
-import { talkNow, writeDigest, openMoment, openCoachSheet, paintCoachSheet } from './ui/coach.js';
+import { talkNow, writeDigest, openMoment, openCoachSheet, paintCoachSheet, openAt } from './ui/coach.js';
 import { paintBig } from './ui/big.js';
 import { openerDue, waitingOpener, TALK_KEEP_DAYS } from './talk.js';
 import { resolveLook, THEME_COLORS } from './look.js';
@@ -522,5 +522,21 @@ store.pruneChanges();
 render();
 scheduler.now();
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // A tapped notification with the app already open: sw.js asks this page to show that conversation.
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type !== 'open-coach') return;
+    const talk = new URL(e.data.url, location.href).searchParams.get('coach');
+    if (talk) openAt(ctx, talk);
+  });
+}
+// Opened from a notification: straight to the conversation it was about, then tidy the address.
+if (params.has('coach')) {
+  const talk = params.get('coach');
+  const url = new URL(location.href);
+  url.searchParams.delete('coach');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+  openAt(ctx, talk);
+}
 updater.check();

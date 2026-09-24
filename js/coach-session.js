@@ -22,6 +22,7 @@ export function describeEdits(edits, doc = null) {
     if (e.map === 'logs') return `${r.status === 'active' ? 'Recorded' : 'Removed'} ${r.kind === 'done' ? 'completion' : r.kind} for "${doc?.items?.[r.itemId]?.title ?? r.itemId ?? r.goalId}" on ${r.day}`;
     if (e.id.startsWith('closed:')) return `${r.closed ? 'Closed' : 'Reopened'} ${r.day} for planning`;
     if (e.id.startsWith('count:')) return r.status === 'active' ? `Counting down to "${r.title}" (${r.day})` : `Stopped counting down to "${r.title}"`;
+    if (e.id.startsWith('ask:')) return `Asked for a deeper look: "${String(r.text ?? '').slice(0, 80)}"`;
     return `Updated ${r.title ?? r.day ?? e.id}`;
   });
 }
@@ -43,7 +44,7 @@ export function prepareCoachTurn(store, now, { onHandoff, onFinish, message = ''
     draft, declarations: tools.declarations,
     run(name, args) {
       if (only && !only.includes(name)) return { ok: false, error: 'That action is not allowed during a journal wrap-up' };
-      const capture = ['add_task', 'add_goal', 'log', 'suggest_habit', 'suggest_target', 'add_countdown'].includes(name) ? name + stableStringify(args) : null;
+      const capture = ['add_task', 'add_goal', 'log', 'suggest_habit', 'suggest_target', 'add_countdown', 'think_deeper'].includes(name) ? name + stableStringify(args) : null;
       if (capture && captures.has(capture)) return captures.get(capture);
       const res = tools.run(name, args);
       if (name === 'undo_last_action' && res.ok) { undo = true; undoResult = res.did; }

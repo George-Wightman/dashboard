@@ -10,6 +10,7 @@ import { attention } from '../attention.js';
 import { shortWeekday, shortDate } from '../dates.js';
 import { gymConfig, gymStatusLines, cardioQuotaId, shortLift, kgText } from '../gym.js';
 import { guideFor } from '../talk.js';
+import { mindConfig, mindStatus, picture } from '../mind.js';
 
 export const CLAUDE_CAN = [
   'Add, change, tick and archive anything on the dashboard — every change is listed below, with Undo',
@@ -24,7 +25,25 @@ export const CLAUDE_CAN = [
   "Give the Coach a guide for the week, read your journal, and pick up what the Coach hands over",
   'Set task readiness, dependencies, checklists and success criteria; configure simple follow-up rules',
   'Request or schedule goal reviews that suggest a few next steps for you to accept',
+  "Run the Coach's deep reviews: keep a picture of you, speak through the Coach, and propose changes you apply with one tap",
 ];
+
+// The Coach's mind: whether it's on, when it last reacted and last thought something through, and
+// anything that went wrong.
+export function mindLines(doc, now) {
+  const config = mindConfig(doc);
+  const status = mindStatus(doc);
+  const when = (iso) => (iso ? momentLabel(iso, now) : 'not yet');
+  const pic = picture(doc);
+  return [
+    config.enabled ? 'On: the background notices, and the Coach speaks first' : 'Off: the planner is watching, but nothing is said until Claude switches it on',
+    `Last reacted ${when(status?.lastReflex)} · last reviewed ${when(status?.lastDeep)}`,
+    ...(status?.today ? [`Today: ${[[status.today.messages, 'background message'], [status.today.pings, 'ping'], [status.today.gemini, 'Gemini call']]
+      .map(([n = 0, what]) => `${n} ${what}${n === 1 ? '' : 's'}`).join(', ')}`] : []),
+    ...(pic ? [`Claude's picture of you was last written ${when(pic.at)}`] : []),
+    ...(status?.lastError ? [`Problem: ${status.lastError}`] : []),
+  ];
+}
 
 // The Gym section: the connection, then what Claude has set.
 export function gymLines(doc, now) {
@@ -89,6 +108,7 @@ export function claudePanel(ctx) {
     section('Priorities, colours and hours', lines(steering, 'Nothing set.')),
     section('Calendar planner', ...plannerSummary(doc, new Date()).lines.map((l) => h('p', { class: 'note' }, l))),
     section('Gym', lines(gymLines(doc, new Date()), '')),
+    section("The Coach's mind", lines(mindLines(doc, new Date()), '')),
     followups,
     section('Needs attention', lines(attention(doc, today), 'Nothing right now.')),
     section('What Claude can do', lines(CLAUDE_CAN, '')),

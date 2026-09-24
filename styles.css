@@ -440,6 +440,9 @@ button.link.update-ready { color: var(--accent); }
 .talk.capped { max-height: 16rem; overflow-y: auto; overscroll-behavior: contain; padding-right: .25rem; }
 .msg { max-width: 88%; padding: .45rem .65rem; font-size: .9rem; line-height: 1.4; border-radius: var(--radius); }
 .msg-text { white-space: pre-line; }
+/* The mark on a message from the Coach's background mind (js/ui/coach.js). */
+.msg > .src { float: right; margin: .1rem 0 0 .4rem; opacity: .75; }
+.msg > .src svg { width: .8rem; height: .8rem; }
 .msg.coach { align-self: flex-start; background: var(--accent-soft); color: var(--ink); }
 .msg.george { align-self: flex-end; background: var(--panel); border: 1px solid var(--border); }
 .msg .did { margin: .35rem 0 0; padding: .3rem 0 0; font-size: .78rem; color: var(--muted); list-style: none; border-top: 1px solid var(--border); }

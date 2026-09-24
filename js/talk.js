@@ -10,7 +10,7 @@ import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, session
 import { scheduleView, scheduleBlocks, dayClosed } from './plan-state.js';
 import { formatAmount } from './parse.js';
 import { clip } from './coach.js';
-import { picture, mindMessages } from './mind.js';
+import { picture, mindMessages, mindAlive, isMindTalk } from './mind.js';
 
 export const MORNING = [7, 12];
 export const AFTERNOON = [14, 17];
@@ -130,6 +130,9 @@ export function slippedItems(doc, today, now) {
 // The moment whose opener is due now, or null: one opener a moment, none once George has talked
 // in that window, and the afternoon's only when something slipped.
 export function openerDue(doc, { today, now, dayStartHour = 4, checkinHour = 18 }) {
+  // While the background Mind is running (js/mind.js), it writes the openers — from the planner, so
+  // they reach the phone and never come twice from two open pages.
+  if (mindAlive(doc, now)) return null;
   const hours = { dayStartHour, checkinHour };
   const slot = momentAt(now, hours);
   if (!slot || dayClosed(doc, today) || talkOf(doc, today, slot)) return null;
@@ -142,7 +145,7 @@ export function openerDue(doc, { today, now, dayStartHour = 4, checkinHour = 18 
 // The opener waiting on Today: the latest conversation the Coach opened that George hasn't answered.
 export function waitingOpener(doc, today, now = null, hours = {}) {
   const t = talksOn(doc, today).filter((x) => !x.done && x.messages?.length && !heard(x) && !dayClosed(doc, today)
-    && (!now || x.slot === momentAt(now, hours)) && !talksOn(doc, today).some((other) => heard(other) && firstAt(other) > firstAt(x))).at(-1);
+    && (!now || isMindTalk(x) || x.slot === momentAt(now, hours)) && !talksOn(doc, today).some((other) => heard(other) && firstAt(other) > firstAt(x))).at(-1);
   return t ? { slot: t.slot, text: t.messages[0].text } : null;
 }
 
@@ -364,6 +367,8 @@ export const TALK_SYSTEM = [
   "When George says the day is over or he is going to bed, call close_day. A closed day accepts no new work; capture future ideas normally. Only call reopen_day on his explicit request. You can still record something he says he already completed. Never reopen today to evade a tool refusal.",
   "For a flexible request such as 'over the weekend', choose and state a sensible weekend date, or ask one question if the choice matters. Goals are drafts that he can accept. New habits and weekly targets are suggestions too: suggest_habit and suggest_target, which he accepts on Today. When he says he did something a weekly target counts, log it. A date he wants to count down to is add_countdown. Hand app bugs, changes to an existing habit or target, and whole days off to Claude. Use item titles in conversation; IDs are for tools.",
   "His gym sessions are his own to plan: never plan them.",
+  "Some of your messages came from your background mind: noticing something he did (Gemini) or a deeper review (Claude), marked as such. They are yours; carry them on naturally, and don't repeat them.",
+  "When he asks for something that needs real thought — a re-plan, how something is going across weeks, anything you would have to guess at — call think_deeper with his question and tell him you'll think it through properly and come back to him in the conversation, usually within half an hour.",
   "At a natural end use finish to save a journal entry about George, not about yourself. Leave feeling blank if unknown. Do not force closure after every task or question. He can continue the conversation afterwards.",
 ].join('\n');
 
@@ -416,7 +421,7 @@ export function talkContents(talk, extra = [], doc = null) {
 // Storage remains segmented by day for history and merging; model context is continuous.
 export function conversationContents(doc, today, extra = []) {
   const talks = Object.values(doc.journal ?? {}).filter((t) => t.kind === 'talk' && t.status === 'active' && !t.pruned
-    && t.day >= addDays(today, -7) && t.day <= today && (heard(t) || t === talksOn(doc, today).at(-1)))
+    && t.day >= addDays(today, -7) && t.day <= today && (heard(t) || t === talksOn(doc, today).at(-1) || (isMindTalk(t) && t.day >= addDays(today, -1))))
     .sort((a, b) => firstAt(a).localeCompare(firstAt(b)));
   const messages = talks.flatMap((t) => t.messages ?? []).slice(-40);
   let size = 0;
