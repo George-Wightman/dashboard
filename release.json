@@ -1,5 +1,5 @@
 {
-  "id": "f3e00f7f32051794f395c64bc170e09ecfe5062e68f61e745cd92a320ca58841",
+  "id": "ab26aad91ac71b32aec8a577f8a0804570ce0f572f3556888dfca0ff3ce23f59",
   "files": {
     "./": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
     "index.html": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
@@ -34,6 +34,7 @@
     "js/coach-session.js": "774ea50d4e1b559e9f3ff3ba1ef4fd47e0e6e34fe05bec579fca27333f56fa7d",
     "js/ui/agenda.js": "e2092354b8eb9372b0645bad05fc23908ce611e05426810e1535828ba47d635e",
     "js/mind.js": "5da4243040b00294937881b6478252b78225faadd746b61e34c73f142d39db3b",
+    "js/mind-state.js": "cc98259540088124b10ce383cd6dfcd57c28441340f195262e6ce990c4bdc06b",
     "js/workflow.js": "e61f7bb887cd5d5d8938c43acdfca5f6042d579a111dee18acc4d9456cbd0e9b",
     "js/goal-review.js": "e22b7b900b3c22904a8317f2856bf8699ad26f5ad2aec6a0f64d1004f7beb915",
     "js/ui/outcome.js": "8db7fd76ec0b9a70a8c707c4aef198addb0c8cda8d6d27b0cb26d0f75aeec907",
