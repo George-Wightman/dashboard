@@ -10,6 +10,7 @@ import { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, session
 import { scheduleView, scheduleBlocks, dayClosed } from './plan-state.js';
 import { formatAmount } from './parse.js';
 import { clip } from './coach.js';
+import { picture, mindMessages } from './mind.js';
 
 export const MORNING = [7, 12];
 export const AFTERNOON = [14, 17];
@@ -18,7 +19,9 @@ export const ENTRY_MAX = 600;
 export const GUIDE_MAX = 600;
 export const MESSAGE_MAX = 2000;
 const POINTERS_MAX = 5;
-const CONTEXT_MAX = 14000;
+const CONTEXT_MAX = 18000;
+// How much of Claude's picture of George the Coach is given each turn (js/mind.js keeps up to 4,000).
+export const PICTURE_IN_CONTEXT = 3000;
 
 const values = (map) => Object.values(map ?? {});
 const live = (r) => (r && r.status === 'active' ? r : null);
@@ -281,6 +284,23 @@ export function commitmentLines(doc, today) {
   return out;
 }
 
+// What the Coach's background mind knows (docs/superpowers/specs/2026-09-25-coach-mind-design.md):
+// Claude's picture of George, which can lag behind the lists (the lists win), and what the Coach said
+// in the background that he hasn't answered yet.
+export function mindLines(doc, today, now) {
+  const out = [];
+  const pic = picture(doc);
+  if (pic) {
+    const at = pic.at ? ` (written ${shortWeekday(pic.at.slice(0, 10))} ${clockLabel(pic.at)})` : '';
+    out.push(`Claude's picture of George${at} — his standing understanding; where it disagrees with the lists, the lists are right:
+${String(pic.text).trim().slice(0, PICTURE_IN_CONTEXT)}`);
+  }
+  const heardAfter = (talkId, at) => (doc.journal[talkId]?.messages ?? []).some((m) => m.who === 'george' && String(m.at ?? '') > String(at ?? ''));
+  const waiting = mindMessages(doc, addDays(today, -1)).filter((x) => !heardAfter(x.talkId, x.m.at)).slice(-3);
+  if (waiting.length) out.push(`Things you said in the background that he hasn't answered yet: ${waiting.map((x) => `"${clip(x.m.text, 200)}" (${clockLabel(x.m.at)})`).join(' · ')}`);
+  return out;
+}
+
 // Everything the Coach is told at the start of each turn, as compact text. `first` marks the
 // Coach's first message of a conversation — an opener, or its first reply in one George started.
 export function talkContext(doc, today, now, { first = false } = {}) {
@@ -314,6 +334,7 @@ export function talkContext(doc, today, now, { first = false } = {}) {
   if (brief) lines.push(`Today's intent (Claude — why today matters, not what is scheduled): ${brief}`);
   const guide = guideFor(doc, today);
   if (guide) lines.push(`Claude's guide for this week: ${guide}`);
+  lines.push(...mindLines(doc, today, now));
   lines.push(...gymContext(doc, today));
   // Weekly targets in an area on time off today are paused, so they aren't mentioned; the ones
   // filled by the Hebrew app or Hevy are marked, so the Coach never logs them by hand.
