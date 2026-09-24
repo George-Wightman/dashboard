@@ -64,6 +64,11 @@ function resolve(root, segments) {
   return null;
 }
 
+// What gets read first when there's more than fits: what George wrote about the work (a debrief, his
+// reflections, notes), then the rest of the task's own folder, then the folder above.
+const WRITTEN_UP = /debrief|reflect|feedback|summary|notes|write-?up/i;
+const rankOf = (name, own) => (WRITTEN_UP.test(name) ? 0 : own ? 1 : 2);
+
 function readable(f) {
   return TEXT_NAMES.test(f.getName()) || TEXT_TYPES.test(String(f.getMimeType?.() ?? ''));
 }
@@ -90,13 +95,13 @@ export function readArtefacts({ DriveApp, paths = [], now, days = 3, maxChars = 
         for (const f of all(folder.getFiles())) {
           const modified = f.getLastUpdated();
           if (!readable(f) || modified.getTime() < since || found.has(f.getId())) continue;
-          found.set(f.getId(), { f, where, modified });
+          found.set(f.getId(), { f, where, modified, rank: rankOf(f.getName(), where === places[0].path) });
         }
       }
     }
     let left = maxChars;
     const files = [];
-    for (const { f, where, modified } of [...found.values()].sort((a, b) => b.modified - a.modified)) {
+    for (const { f, where, modified } of [...found.values()].sort((a, b) => a.rank - b.rank || b.modified - a.modified)) {
       if (left <= 0) break;
       const raw = f.getBlob().getDataAsString();
       const html = /\.html?$/i.test(f.getName()) || /html/.test(String(f.getMimeType?.() ?? ''));

@@ -5,7 +5,7 @@
 
 import { addDays, logicalDay, daysBetween, shortWeekday, shortDate } from '../js/dates.js';
 import { scheduleView, scheduleBlocks, localDate } from '../js/plan-state.js';
-import { dayRecord, clockLabel } from '../js/calendar.js';
+import { dayRecord, clockLabel, isPriority } from '../js/calendar.js';
 import { milestonesOf } from '../js/schedule.js';
 import { isMindMessage, isMindTalk, openAsks } from '../js/mind.js';
 import { P } from './events.js';
@@ -21,7 +21,7 @@ const values = (map) => Object.values(map ?? {});
 const live = (r) => r?.status === 'active';
 const dayName = (day) => `${shortWeekday(day)} ${shortDate(day)}`;
 const q = (t) => `"${String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, 100)}"`;
-const WHO = { claude: 'Claude', coach: 'the Coach', calendar: 'George, in Google Calendar', me: 'George', hevy: 'Hevy', hebrew: 'the Hebrew app', workflow: 'a follow-up rule', planner: 'the planner', gemini: 'the Coach' };
+const WHO = { claude: 'Claude', coach: 'the Coach', calendar: 'George (in Google Calendar)', me: 'George', hevy: 'Hevy', hebrew: 'the Hebrew app', workflow: 'a follow-up rule', planner: 'the planner', gemini: 'the Coach' };
 const who = (by) => WHO[by] ?? by;
 
 // A short, stable hash for an id: FNV-1a, 8 hex digits.
@@ -142,7 +142,7 @@ function goalFacts(doc, goal, today) {
 function tickLevel(doc, item, today) {
   const goal = live(doc.goals[item.goalId]) ? doc.goals[item.goalId] : null;
   const left = goal?.targetDate ? daysBetween(today, goal.targetDate) : null;
-  if (item.type === 'task' && (item.priority || drivePaths(item.notes).length || (left != null && left >= 0 && left <= DUE_SOON_DAYS))) return 3;
+  if (item.type === 'task' && (isPriority(doc, item) || drivePaths(item.notes).length || (left != null && left >= 0 && left <= DUE_SOON_DAYS))) return 3;
   return goal ? 2 : 1;
 }
 
@@ -231,7 +231,7 @@ export function sense({ doc, cursor, calEvents = [], now, dayStartHour = 4 }) {
     if (cursor.day === today && cursor.slipped?.[key]) continue;
     const item = doc.items[s.itemId];
     const goal = doc.goals[item.goalId];
-    add({ id: `slip:${today}:${item.id}`, kind: 'slip', level: item.priority || s.size >= 2 ? 3 : 2, by: 'me',
+    add({ id: `slip:${today}:${item.id}`, kind: 'slip', level: isPriority(doc, item) || s.size >= 2 ? 3 : 2, by: 'me',
       refs: { itemId: item.id, goalId: live(goal) ? goal.id : null },
       text: `${q(item.title)} was booked until ${s.end ? clockLabel(s.end) : 'earlier'} and isn't ticked`, facts: goalFacts(doc, goal, today) });
   }
