@@ -649,6 +649,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     doc: () => doc,
     settings: () => settings,
     today,
+    now: () => now(),
     saveError: () => [...saveErrors.values()].join('; ') || null,
     loadError: () => loadError,
     subscribe(fn) {

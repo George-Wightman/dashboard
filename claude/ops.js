@@ -16,6 +16,7 @@ import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
+import { makeMindOps } from './mind.js';
 
 const extraDetails = (op) => op.details === undefined ? {} : { details: checkDetails(op.details) };
 
@@ -700,6 +701,11 @@ export const FIELDS = {
   off: ['start', 'end', 'areas', 'reason', 'cancel'],
   brief: ['text', 'day'],
   guide: ['text', 'week'],
+  // The Coach's deep mind (claude/mind.js). `mind` checks its own settings, so it isn't listed.
+  picture: ['text', 'opener'],
+  say: ['text', 'notify', 'ref'],
+  propose: ['text', 'ops', 'notify', 'ref'],
+  handled: ['events', 'summary'],
 };
 
 // Plan entries retain the same practical controls as their standalone counterparts.
@@ -735,17 +741,21 @@ export function fieldWarnings(op) {
   return out;
 }
 
+// The Mind's ops, given runOp so a proposal can run plan ops on a copy of the document.
+const MIND_OPS = makeMindOps((store, op) => runOp(store, op));
+
 export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
   log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide,
   details, rule, report, review,
+  ...MIND_OPS,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff
 // changes no record at all, so there is nothing for George to see or undo.
-export const UNLOGGED = new Set(['undo', 'handoff']);
+export const UNLOGGED = new Set(['undo', 'handoff', 'handled']);
 
 export function runOp(store, op) {
   if (!op || typeof op !== 'object' || Array.isArray(op)) throw new Error('Each op is an object like {"op": "task", "title": "…"}');

@@ -162,6 +162,18 @@ Flags are grouped as *For Claude*, *Feature*, *Bug*, and *Note*.
   to focus on and ask about this week (the assessment centre on Thursday, cardio towards 150 minutes,
   go easy on Mondays). The Coach is given it every time it talks.
 
+### The Coach's mind
+
+The Coach also has a background mind: the planner senses what happens every ten minutes (ticks,
+pushes, moved blocks, new calendar events, the debriefs behind finished work) and Gemini reacts in the
+Coach; a Claude routine runs a deep review at 06:30 and 21:30 and when the planner calls it in. Its
+messages carry a small mark in the conversation, and it can ping George's phone.
+
+- `mind` shows what it has seen and its picture of George. In a chat, `say` and `propose` speak
+  through the Coach; `{"op": "mind", "enabled": true}` and the other settings are yours to change
+  (`reference`, *The Coach's mind*).
+- A deep run follows `claude/mind/ROUTINE.md` and uses `apply --mind`.
+
 ## The gym (Hevy)
 
 George logs every workout in Hevy. The planner's script copies them into the dashboard every 10

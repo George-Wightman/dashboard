@@ -30,6 +30,7 @@ Pick the row, not the whole file. The detail for each command is below.
 | Make a simple conditional follow-up | `reference workflows`, `workflows` | `rule`, `report` |
 | Review goal direction and suggest next steps | `reference reviews`, `inspect <goal-id>` | `review` |
 | Check a batch without writing | `preview` with the same JSON as apply | `apply` after checking the result |
+| Speak through the Coach, or change its mind's settings | `mind` | `say`, `propose`, `picture`, `mind` |
 
 Three jobs have a playbook of their own, and they are the three that go wrong most. Read the playbook
 **first**, before any of the reads above:
@@ -278,6 +279,49 @@ towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 12
 1RM target in kg, one lift per op, `null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
 "Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts followed closely (Hevy's exercise names).
 `{"op": "gym", "habit": "Gym"}` — the habit a workout ticks (by id or the start of its title).
+
+## The Coach's mind
+
+The Coach has a background mind (docs/superpowers/specs/2026-09-25-coach-mind-design.md): the planner
+senses what happens every ten minutes and Gemini reacts, and a Claude routine runs a deep review at
+06:30 and 21:30 (and when the planner calls it in). These ops are how Claude speaks through it. In a
+deep run, use `apply --mind`, which allows only `picture`, `say`, `propose`, `brief`, `guide`, `flag`,
+`handoff` and `handled` — at most one picture, two says, one proposal and one handled. In an ordinary
+chat they work too.
+
+### `mind` (read)
+`bash run.sh mind` — the deep run's context: your picture of George, the Mind's settings and today's
+budget, every event since the last deep run (with the files George wrote and health in full), today as
+the Coach sees it, the week, goals, attention, the last three days' conversations, the journal and open
+flags.
+
+### `picture`
+`{"op": "picture", "text": "…", "opener": {"day": "tomorrow", "text": "…"}}` — replaces Claude's
+standing understanding of George (up to 4,000 characters), in five short sections: **Now**, **Patterns**
+(each with the dates that show it), **Risks**, **Open threads**, **How to talk to him**. The Coach and
+every Reflex read it, and Gemini reads it, so health appears only as labels ("short night"), never
+numbers. `opener` is tomorrow's (or today's) morning message, posted at the morning time if it still
+stands up.
+
+### `say`
+`{"op": "say", "text": "…", "notify": true}` — a message from the Coach in a conversation of its own
+(at most 600 characters). It is checked first: nothing called done that isn't ticked, no clock time the
+plan or George didn't give, no optional habit called a miss, no near-repeat. `notify` pings his phone.
+
+### `propose`
+`{"op": "propose", "text": "why", "ops": [{"op": "edit", "id": "…", "set": {"date": "2026-09-27"}}]}` —
+plan changes George applies (or dismisses) with one tap in the Coach. `ops` are `task`, `edit` or
+`archive`, 1 to 12; nothing changes until he presses Apply.
+
+### `handled`
+`{"op": "handled", "events": "all", "summary": "…"}` — last in a deep run: marks the events it looked
+at (`"all"`, or a list of ids from `mind`) and records a one-paragraph summary of what it saw, did and
+is watching.
+
+### `mind`
+`{"op": "mind", "enabled": true}` — the Mind's settings: `enabled`, `morningAt`, `checkinAt`,
+`quietFrom`, `quietUntil` (times like "07:00"), `pingsPerDay` (6), `messagesPerDay` (8), `gapMinutes`
+(45), `geminiPerDay` (120), `deepPerDay` (3), and `models` (`{"think": "…", "check": "…"}`).
 
 ## Optional advanced controls
 

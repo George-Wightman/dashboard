@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '247579f2';
+var PLANNER_BUILD = '0a5033af';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1821,6 +1821,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     doc: () => doc,
     settings: () => settings,
     today,
+    now: () => now(),
     saveError: () => [...saveErrors.values()].join('; ') || null,
     loadError: () => loadError,
     subscribe(fn) {

@@ -4,6 +4,6 @@
 
 import { createGitHubClient } from '../js/sync.js';
 
-export function makeClient({ token, repo, fetch }) {
-  return createGitHubClient({ token, repo, ...(fetch ? { fetch } : {}) });
+export function makeClient({ token, repo, fetch, path }) {
+  return createGitHubClient({ token, repo, ...(fetch ? { fetch } : {}), ...(path ? { path } : {}) });
 }
