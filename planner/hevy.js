@@ -16,7 +16,9 @@ const OVERLAP_MS = 5 * 60000; // events are asked for from a little before the l
 const QUIET_MS = 55 * 60000; // a check that found nothing is recorded at most hourly
 
 class HevyError extends Error {}
-const nonsense = () => new HevyError("Hevy's reply didn't make sense");
+// With what didn't make sense, so the log says which part (on 24-25 Sep it said only the first half).
+const nonsense = (what = '') => new HevyError(`Hevy's reply didn't make sense${what ? ` (${what})` : ''}`);
+const shape = (v) => (v === undefined ? 'missing' : v === null ? 'null' : Array.isArray(v) ? 'a list' : typeof v);
 const pageCount = (r) => Math.max(0, Math.floor(Number(r?.page_count) || 0));
 
 // One GET. A 404 is a page past the end (null); anything else that isn't a 200 is a HevyError.
@@ -33,7 +35,7 @@ async function hevyGet(fetch, key, path) {
   try {
     return await res.json();
   } catch {
-    throw nonsense();
+    throw nonsense(`${path.split('?')[0]} wasn't JSON`);
   }
 }
 
@@ -107,7 +109,7 @@ export async function syncHevy({
       for (let page = 1, count = 1; page <= count && page <= TEMPLATE_PAGES; page++) {
         const r = await hevyGet(fetch, key, `/exercise_templates?page=${page}&pageSize=100`);
         if (r == null) break;
-        if (!Array.isArray(r.exercise_templates)) throw nonsense();
+        if (!Array.isArray(r.exercise_templates)) throw nonsense(`exercise_templates was ${shape(r.exercise_templates)}`);
         for (const x of r.exercise_templates) {
           if (x && typeof x.id === 'string') list[x.id] = [String(x.title ?? ''), String(x.type ?? ''), String(x.primary_muscle_group ?? '')];
         }
@@ -124,8 +126,8 @@ export async function syncHevy({
       let rec;
       try {
         rec = workoutRecord(w, templates, keyLifts, dayStartHour);
-      } catch {
-        throw nonsense();
+      } catch (e) {
+        throw nonsense(`workout ${String(w?.id ?? '?').slice(0, 8)}: ${e?.message ?? e}`);
       }
       store.putGym(`w:${rec.hevyId}`, rec);
     };
@@ -135,7 +137,7 @@ export async function syncHevy({
       for (let n = 0; n < pages && page != null; n++) {
         const r = await hevyGet(fetch, key, `/workouts?page=${page}&pageSize=10`);
         if (r == null) { page = null; break; }
-        if (!Array.isArray(r.workouts)) throw nonsense();
+        if (!Array.isArray(r.workouts)) throw nonsense(`workouts was ${shape(r.workouts)}`);
         for (const w of r.workouts) await upsert(w);
         page = page >= pageCount(r) ? null : page + 1;
       }
@@ -145,8 +147,11 @@ export async function syncHevy({
       for (let page = 1, count = 1; page <= count; page++) {
         const r = await hevyGet(fetch, key, `/workouts/events?page=${page}&pageSize=10&since=${encodeURIComponent(since)}`);
         if (r == null) break;
-        if (!Array.isArray(r.events)) throw nonsense();
-        for (const e of r.events) {
+        // No events since then can come back as a reply with no list at all: nothing new, not
+        // nonsense. From 24 Sep every quiet check failed this way, and only a check that found a
+        // workout got through.
+        if (r.events != null && !Array.isArray(r.events)) throw nonsense(`events was ${shape(r.events)}`);
+        for (const e of r.events ?? []) {
           if (e?.type === 'updated' && e.workout) await upsert(e.workout);
           else if (e?.type === 'deleted' && typeof e.id === 'string') drop(store, e.id, today);
         }

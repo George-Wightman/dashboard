@@ -594,6 +594,10 @@ button.link.update-ready { color: var(--accent); }
 .talk-box.panel { display: flex; align-items: flex-end; gap: .5rem; padding-top: .4rem; }
 .talk-box.panel textarea { flex: 1; min-height: 2.2rem; max-height: 10rem; resize: none; overflow-y: hidden; }
 .talk-box.panel .buttons { margin: 0; flex: none; }
+.talk-box .btn.mic { display: inline-flex; align-items: center; justify-content: center; padding: .35rem .5rem; }
+.talk-box .btn.mic.on { background: var(--accent); color: var(--bg); animation: mic-pulse 1.2s ease-in-out infinite; }
+@keyframes mic-pulse { 50% { opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .talk-box .btn.mic.on { animation: none; } }
 .coach .panel-links .pop-out { font-size: 1rem; line-height: 1; }
 .panel.coach .conversation-stream { max-height: 18rem; }
 .coach-sheet .sheet-body { display: flex; flex-direction: column; height: 100%; }

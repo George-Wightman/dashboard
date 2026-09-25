@@ -6,7 +6,7 @@ process.env.TZ = 'Europe/London';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openerDue, waitingOpener, talkContext, conversationContents, TALK_SYSTEM, PICTURE_IN_CONTEXT } from '../js/talk.js';
-import { sendMessage } from '../js/ui/coach.js';
+import { sendMessage, autoWrapUp, speechRecognition, WRAP_AFTER_MINUTES } from '../js/ui/coach.js';
 import { pushState, turnOn, turnOff, deviceId, b64urlToBytes } from '../js/push-client.js';
 import { at } from '../planner/time.js';
 import { makeStore, clock } from './helpers.js';
@@ -136,6 +136,31 @@ test("George's merge: the Coach drops what he merged, with his reason, and it is
 test('the rules make the Coach say exactly how something reached Claude, and do what it can itself', () => {
   assert.match(TALK_SYSTEM, /hand_to_claude only leaves a note in his Flags for Claude's next regular run \(06:30 or 21:30\): it isn't sent, doesn't ping Claude/);
   assert.match(TALK_SYSTEM, /make the change yourself with your tools in the same turn: drop_task/);
+});
+
+test('no Finish button: a conversation he spoke in wraps itself up after an hour of quiet', async () => {
+  const s = store('11:00');
+  s.saveJournal({ kind: 'talk', day: THU, slot: 'own-1', messages: [
+    { who: 'george', text: 'Dropping gym today, merging the practice.', at: at(THU, '10:30').toISOString() },
+    { who: 'coach', text: 'Done: both merged into the mock interview.', at: at(THU, '10:31').toISOString() }] });
+  mindTalk(s, 'mind-1', 'Unanswered, so nothing to wrap.', '09:00');
+  let asked = 0;
+  const finish = async (opts) => { asked++; opts.run('finish', { text: 'Merged the practice sessions into one mock interview; gym dropped.', feeling: 'decisive' }); return { text: '', calls: [], model: 'm' }; };
+  let ctx = flowCtx(s, clock(at(THU, '11:00')), finish);
+  assert.equal(await autoWrapUp(ctx), false, 'only half an hour quiet');
+  ctx = flowCtx(s, clock(new Date(at(THU, '10:31').getTime() + WRAP_AFTER_MINUTES * 60000)), finish);
+  assert.equal(await autoWrapUp(ctx), true);
+  assert.equal(asked, 1);
+  assert.equal(s.doc().journal[`talk:${THU}:own-1`].done, true);
+  assert.match(s.doc().journal[`entry:${THU}:own-1`].text, /Merged the practice sessions/);
+  assert.equal(s.doc().journal[`talk:${THU}:mind-1`].done, false, 'never answered: left alone');
+  assert.equal(await autoWrapUp(ctx), false, 'nothing more to wrap');
+});
+
+test("the mic: the browser's own speech recognition, or no mic at all", () => {
+  const Webkit = function Webkit() {};
+  assert.equal(speechRecognition({ webkitSpeechRecognition: Webkit }), Webkit);
+  assert.equal(speechRecognition({}), null);
 });
 
 test('a reply to a Mind message goes into its conversation', async () => {

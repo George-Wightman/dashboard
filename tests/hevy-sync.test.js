@@ -104,6 +104,17 @@ test("a workout naming a template the dashboard doesn't know fetches the templat
   assert.equal(hevy.calls.filter((u) => u.includes('/exercise_templates')).length, 2);
 });
 
+test("a check that finds nothing new can come back with no list at all: nothing new, not nonsense", async () => {
+  const { store, hevy, sync, now } = setup();
+  await sync();
+  now.advance(10 * 60000);
+  const real = hevy.handle.bind(hevy);
+  hevy.handle = (url, headers) => (url.includes('/workouts/events') ? { status: 200, body: { page: 1, page_count: 0 } } : real(url, headers));
+  const s = await sync();
+  assert.equal(s.lastError, null);
+  assert.equal(gymStatus(store.doc()).lastError, null);
+});
+
 test('a refused key and a reply that makes no sense are kept as sentences', async () => {
   const { store, sync, hevy } = setup();
   const refused = await syncHevy({ fetch: hevy.fetch, key: 'not-the-key', store, now: () => at(THU, '20:00') });
@@ -111,7 +122,7 @@ test('a refused key and a reply that makes no sense are kept as sentences', asyn
   assert.equal(gymStatus(store.doc()).lastError, refused.lastError);
   hevy.fail = { status: 200, body: { page: 1, page_count: 1, workouts: 'nope', exercise_templates: [] } };
   const odd = await sync();
-  assert.equal(odd.lastError, "Hevy's reply didn't make sense");
+  assert.equal(odd.lastError, "Hevy's reply didn't make sense (workouts was string)", 'saying which part');
   hevy.fail = { status: 502, body: {} };
   assert.equal((await sync()).lastError, "Couldn't reach Hevy (it answered 502)");
 });
@@ -137,6 +148,16 @@ test('the planner run: Hevy first when the key is set, skipped without it, the k
   assert.equal(await createPlanner({ ...bad, version: 't' }).run(), 'ok', "Hevy failing doesn't stop the planner");
   assert.match(refused.doc().gym.status.lastError, /Hevy refused the key/);
   assert.ok(bad.lines.some((l) => /^Hevy: Hevy refused the key/.test(l)));
+  // While it's failing, Hevy is tried every half hour, not every run.
+  let t = at(THU, '19:10');
+  const again = appsScript({ cal: new FakeCalendar(), repo: refused, gemini: route, props: { ...props, HEVY_KEY, HEVY_TRIED: String(at(THU, '19:00').getTime()) }, now: () => t });
+  const planner = createPlanner({ ...again, version: 't' });
+  const before = hevy.calls.length;
+  await planner.run();
+  assert.equal(hevy.calls.length, before, 'ten minutes after a failure: not asked');
+  t = at(THU, '19:31');
+  await planner.run();
+  assert.ok(hevy.calls.length > before, 'half an hour on: asked again');
 
   const without = appsScript({ cal: new FakeCalendar(), repo: new FakeRepo(doc), gemini: route, props, now: () => at(THU, '19:00') });
   const calls = hevy.calls.length;

@@ -13,7 +13,7 @@ import { openTaskCard } from './ui/agenda.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
-import { talkNow, writeDigest, openMoment, openCoachSheet, paintCoachSheet, openAt } from './ui/coach.js';
+import { talkNow, writeDigest, openMoment, openCoachSheet, paintCoachSheet, openAt, autoWrapUp } from './ui/coach.js';
 import { paintBig } from './ui/big.js';
 import { openerDue, waitingOpener, TALK_KEEP_DAYS } from './talk.js';
 import { resolveLook, THEME_COLORS } from './look.js';
@@ -383,6 +383,12 @@ function maybeOpenMoment() {
   openMoment(ctx, slot);
 }
 
+// A conversation he spoke in, quiet for an hour, wraps itself up (there's no Finish button).
+function maybeWrapUp() {
+  if (!ctx.coach.keys().length || navigator.onLine === false || ui.coach.talkBusy || typing()) return;
+  autoWrapUp(ctx).catch(() => {});
+}
+
 // Each sync pass (on open, on focus, after a change) is followed by the digest check and the
 // Coach's moment, so what another device already wrote has been pulled in before deciding.
 const scheduler = createSyncScheduler({
@@ -511,6 +517,7 @@ setInterval(() => {
   checkRollover();
   lockDay();
   maybeOpenMoment();
+  maybeWrapUp();
   if (talkNow(ctx) !== shownTalk && !typing()) render();
   if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });
   scheduler.poll().catch(() => {});

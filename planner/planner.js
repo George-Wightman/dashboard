@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'd92e4e1e';
+var PLANNER_BUILD = '9e12fd22';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -4980,7 +4980,9 @@ const OVERLAP_MS = 5 * 60000; // events are asked for from a little before the l
 const QUIET_MS = 55 * 60000; // a check that found nothing is recorded at most hourly
 
 class HevyError extends Error {}
-const nonsense = () => new HevyError("Hevy's reply didn't make sense");
+// With what didn't make sense, so the log says which part (on 24-25 Sep it said only the first half).
+const nonsense = (what = '') => new HevyError(`Hevy's reply didn't make sense${what ? ` (${what})` : ''}`);
+const shape = (v) => (v === undefined ? 'missing' : v === null ? 'null' : Array.isArray(v) ? 'a list' : typeof v);
 const pageCount = (r) => Math.max(0, Math.floor(Number(r?.page_count) || 0));
 
 // One GET. A 404 is a page past the end (null); anything else that isn't a 200 is a HevyError.
@@ -4997,7 +4999,7 @@ async function hevyGet(fetch, key, path) {
   try {
     return await res.json();
   } catch {
-    throw nonsense();
+    throw nonsense(`${path.split('?')[0]} wasn't JSON`);
   }
 }
 
@@ -5071,7 +5073,7 @@ async function syncHevy({
       for (let page = 1, count = 1; page <= count && page <= TEMPLATE_PAGES; page++) {
         const r = await hevyGet(fetch, key, `/exercise_templates?page=${page}&pageSize=100`);
         if (r == null) break;
-        if (!Array.isArray(r.exercise_templates)) throw nonsense();
+        if (!Array.isArray(r.exercise_templates)) throw nonsense(`exercise_templates was ${shape(r.exercise_templates)}`);
         for (const x of r.exercise_templates) {
           if (x && typeof x.id === 'string') list[x.id] = [String(x.title ?? ''), String(x.type ?? ''), String(x.primary_muscle_group ?? '')];
         }
@@ -5088,8 +5090,8 @@ async function syncHevy({
       let rec;
       try {
         rec = workoutRecord(w, templates, keyLifts, dayStartHour);
-      } catch {
-        throw nonsense();
+      } catch (e) {
+        throw nonsense(`workout ${String(w?.id ?? '?').slice(0, 8)}: ${e?.message ?? e}`);
       }
       store.putGym(`w:${rec.hevyId}`, rec);
     };
@@ -5099,7 +5101,7 @@ async function syncHevy({
       for (let n = 0; n < pages && page != null; n++) {
         const r = await hevyGet(fetch, key, `/workouts?page=${page}&pageSize=10`);
         if (r == null) { page = null; break; }
-        if (!Array.isArray(r.workouts)) throw nonsense();
+        if (!Array.isArray(r.workouts)) throw nonsense(`workouts was ${shape(r.workouts)}`);
         for (const w of r.workouts) await upsert(w);
         page = page >= pageCount(r) ? null : page + 1;
       }
@@ -5109,8 +5111,11 @@ async function syncHevy({
       for (let page = 1, count = 1; page <= count; page++) {
         const r = await hevyGet(fetch, key, `/workouts/events?page=${page}&pageSize=10&since=${encodeURIComponent(since)}`);
         if (r == null) break;
-        if (!Array.isArray(r.events)) throw nonsense();
-        for (const e of r.events) {
+        // No events since then can come back as a reply with no list at all: nothing new, not
+        // nonsense. From 24 Sep every quiet check failed this way, and only a check that found a
+        // workout got through.
+        if (r.events != null && !Array.isArray(r.events)) throw nonsense(`events was ${shape(r.events)}`);
+        for (const e of r.events ?? []) {
           if (e?.type === 'updated' && e.workout) await upsert(e.workout);
           else if (e?.type === 'deleted' && typeof e.id === 'string') drop(store, e.id, today);
         }
@@ -5682,6 +5687,7 @@ function mergeBudget(a, b) {
   if (a.day !== b.day) return a.day > b.day ? { ...a } : { ...b };
   const out = { day: a.day };
   for (const k of ['gemini', 'messages', 'pings', 'deep']) out[k] = Math.max(a[k] ?? 0, b[k] ?? 0);
+  if (a.minor != null || b.minor != null) out.minor = Math.max(a.minor ?? 0, b.minor ?? 0);
   out.lastSaid = later(a.lastSaid, b.lastSaid);
   out.geminiBlocked = [...new Set([...blockedList(a), ...blockedList(b)])].sort();
   out.byModel = {};
@@ -6145,8 +6151,10 @@ function sense({ doc, cursor, calEvents = [], now, dayStartHour = 4 }) {
       reported.add(item.id);
     }
     if (!reported.has(item.id) && by === 'calendar' && live(item) && (item.date !== was.date || item.time !== was.time)) {
-      const leftToday = was.date === today && item.date !== today;
-      const level = item.date !== was.date || leftToday ? 3 : 2;
+      // His own rearranging. A move within the day is his to make: noted, never remarked on (on 25 Sep
+      // four of the Coach's eight messages were "you moved X — how are you managing?"). A move to
+      // another day can change what the days hold, so it's looked at once the calendar settles.
+      const level = item.date !== was.date ? 2 : 1;
       add({ id: `moved:${item.id}:${item.date}|${item.time ?? ''}`, kind: 'moved', level, by, refs,
         text: `George moved ${q(item.title)} in Google Calendar from ${was.date ? dayName(was.date) : '?'}${was.time ? ` ${was.time}` : ''} to ${dayName(item.date)}${item.time ? ` ${item.time}` : ''}`,
         facts: goalFacts(doc, goal, today) });
@@ -6159,7 +6167,9 @@ function sense({ doc, cursor, calEvents = [], now, dayStartHour = 4 }) {
     if (cursor.day === today && cursor.slipped?.[key]) continue;
     const item = doc.items[s.itemId];
     const goal = doc.goals[item.goalId];
-    add({ id: `slip:${today}:${item.id}`, kind: 'slip', level: isPriority(doc, item) || s.size >= 2 ? 3 : 2, by: 'me',
+    // Noted for the evening and the deep runs, never chased one block at a time: he often ticks
+    // afterwards, through Claude.
+    add({ id: `slip:${today}:${item.id}`, kind: 'slip', level: 1, by: 'me',
       refs: { itemId: item.id, goalId: live(goal) ? goal.id : null },
       text: `${q(item.title)} was booked until ${s.end ? clockLabel(s.end) : 'earlier'} and isn't ticked`, facts: goalFacts(doc, goal, today) });
   }
@@ -7288,6 +7298,11 @@ const { unhandled, budget, spend } = __js_mind_state;
 
 const WAIT_MINUTES = 20;
 const FRESH_HOURS = 3;
+// His calendar edits are one subject, looked at once they have stopped for this long.
+const SETTLE_MINUTES = 30;
+// Of the day's messages: at most this many about level-2 things, and this many kept for the evening.
+const MINOR_PER_DAY = 2;
+const EVENING_RESERVE = 2;
 const DRAFT_MAX = 450;
 const MIN = 60000;
 const NOT_REFLEXES = new Set(['ask', 'risk', 'reply']);
@@ -7298,7 +7313,8 @@ const MIND_SYSTEM = [
   "Only ticks say what George has done. Something is done only when it is in 'Ticked off today' or an event says it was ticked. A calendar block, even one whose time has passed, is a plan and not evidence.",
   "Hold him to what he committed to. Work he pushed or deleted after the morning lock is not a win: ask what happened, briefly, curious rather than lecturing. A times-a-week habit that is on pace is a rest day and needs no comment.",
   'His gym sessions are his own to plan. Never invent a clock time or a date: use only the ones in the plan, the events or the files.',
-  "When a task was ticked by Claude, George did that work in a session with Claude: talk about the work, not about Claude.",
+  "When a task was ticked by Claude, George did that work in a session with Claude, which has all the detail: talk about the work, not about Claude, and never ask him to retell how it went. Speak only when a file he wrote is attached, or it changes what comes next.",
+  "When he has been rearranging his calendar, judge the day as it stands now, not each move: speak only if committed work has left today, the rest of the day no longer fits, or two things still overlap. Never ask how he is managing a move.",
   "Don't repeat what the Coach has said recently (it is listed). Saying nothing is a good answer when there is nothing worth saying.",
   'Reply with JSON only, in exactly the shape asked for.',
 ].join('\n');
@@ -7318,13 +7334,22 @@ const OPENER_JOBS = {
 // ---- What to look at -----------------------------------------------------------------------------
 
 // The events worth a reflex now, as subjects: level 3 straight away, level 2 once the burst has
-// settled (20 minutes since its newest event), nothing older than three hours, at most `max`.
+// settled (20 minutes since its newest event), nothing older than three hours, at most `max`. His own
+// calendar edits wait until the calendar has been still for SETTLE_MINUTES, and then are one subject
+// (on 25 Sep he moved blocks thirteen times in three hours, and one message was about a clash he fixed
+// seven minutes later). Their level-1 moves ride along, so the day is judged with all of them.
+const byCalendar = (e) => e.by === 'calendar' || e.kind === 'calendar';
+
 function pickGroups(mind, now, max = 2) {
   const t = now.getTime();
   const groups = new Map();
-  for (const e of unhandled(mind, 'reflex')) {
-    if (e.level < 2 || NOT_REFLEXES.has(e.kind) || t - Date.parse(e.at) >= FRESH_HOURS * 3600000) continue;
-    const key = e.refs?.goalId ?? e.refs?.itemId ?? e.refs?.calendar ?? e.kind;
+  const fresh = unhandled(mind, 'reflex').filter((e) => !NOT_REFLEXES.has(e.kind) && t - Date.parse(e.at) < FRESH_HOURS * 3600000);
+  const edits = fresh.filter(byCalendar);
+  const settling = edits.length && t - Math.max(...edits.map((e) => Date.parse(e.at))) < SETTLE_MINUTES * MIN;
+  const rearranged = !settling && edits.some((e) => e.level >= 2);
+  for (const e of fresh) {
+    if (byCalendar(e) ? settling || !rearranged : e.level < 2) continue;
+    const key = byCalendar(e) ? 'rearranged' : e.refs?.goalId ?? e.refs?.itemId ?? e.refs?.calendar ?? e.kind;
     const g = groups.get(key) ?? { key, events: [] };
     g.events.push(e);
     groups.set(key, g);
@@ -7495,11 +7520,18 @@ async function runReflexes({ gemini, store, mind, now, config, timeLeft = () => 
     if (result.say) {
       const b = budget(mind, today);
       const gapOk = group.level >= 3 || !b.lastSaid || now.getTime() - Date.parse(b.lastSaid) >= config.gapMinutes * MIN;
-      if (b.messages < config.messagesPerDay && gapOk) {
+      // Minor things get a small share, and some of the day is kept for the evening: on 25 Sep all
+      // eight were gone by 14:47, and nothing could be said when two committed sessions moved at 19:37.
+      const minorOk = group.level >= 3 || (b.minor ?? 0) < MINOR_PER_DAY;
+      const h = now.getHours();
+      const beforeEvening = (h < dayStartHour ? h + 24 : h) * 60 + now.getMinutes() < minutes(config.checkinAt);
+      const roomOk = b.messages < config.messagesPerDay - (beforeEvening ? EVENING_RESERVE : 0);
+      if (roomOk && gapOk && minorOk) {
         const slot = nextMindSlot(doc, today, 'mind');
         const m = { who: 'coach', text: result.text, at, from: 'mind', by: 'gemini', notify: !!(result.notify && group.level >= 3 && !quiet), ref: ids };
         store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: result.depth === 'deep' ? config.models.think : config.models.check }, 'mind');
         spend(mind, today, 'messages');
+        if (group.level < 3) spend(mind, today, 'minor');
         mind.budget.lastSaid = at;
         said.push({ talkId: `talk:${today}:${slot}`, m });
         spoke = true;
@@ -7567,7 +7599,7 @@ async function writeOpener({ gemini, store, slot, now, config, quiet = false, da
   store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: by === 'gemini' ? config.models.think : '' }, 'mind');
   return { talkId: `talk:${today}:${slot}`, m };
 }
-return { WAIT_MINUTES, FRESH_HOURS, DRAFT_MAX, MIND_SYSTEM, pickGroups, anglesFor, groupText, recentCoach, readPrompt, draftPrompt, deepPrompt, checkPrompt, openerPrompt, runChain, runReflexes, backgroundOpenerDue, writeOpener };
+return { WAIT_MINUTES, FRESH_HOURS, SETTLE_MINUTES, MINOR_PER_DAY, EVENING_RESERVE, DRAFT_MAX, MIND_SYSTEM, pickGroups, anglesFor, groupText, recentCoach, readPrompt, draftPrompt, deepPrompt, checkPrompt, openerPrompt, runChain, runReflexes, backgroundOpenerDue, writeOpener };
 })();
 
 // ---- planner/aes.js
@@ -8339,6 +8371,7 @@ const { mergeDocs } = __js_merge;
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
 const TAG_PER_RUN = 5;
+const HEVY_RETRY_MS = 30 * 60000;
 
 class MemoryStorage {
   constructor(initial = {}) { this.map = new Map(Object.entries(initial)); }
@@ -8479,9 +8512,13 @@ function createPlanner({
 
   // Hevy first, so a workout's tick is planned around in the same run. With no HEVY_KEY it's
   // skipped; its problems go in the gym's status for the dashboard and never stop the planner.
+  // While Hevy keeps failing it's tried every half hour, not every run.
   async function hevy(store) {
     const key = get('HEVY_KEY');
     if (!key) return;
+    const failing = store.doc().gym?.status?.lastError;
+    if (failing && now().getTime() - Number(get('HEVY_TRIED') ?? 0) < HEVY_RETRY_MS) return;
+    put('HEVY_TRIED', now().getTime());
     const s = await syncHevy({ fetch, key, store, now, dayStartHour: dayStartHour(), scrub: clean });
     if (s.lastError) log(`Hevy: ${s.lastError}`);
   }
@@ -8593,6 +8630,10 @@ function createPlanner({
       if (get('PAUSED') === '1') return 'paused';
       const t = now();
       if (e && e.calendarId && Number(get('LAST_WRITE') ?? 0) > t.getTime() - ECHO_MS) return 'echo';
+      // Overnight (00:00 to 06:00) only the first run of each hour does anything: nothing then needs a
+      // ten-minute answer, and Apps Script allows 90 minutes of runs a day (69 were gone by 21:00 on
+      // 25 Sep). A calendar edit still runs at once.
+      if (!(e && e.calendarId) && t.getHours() < 6 && t.getMinutes() >= 10) return 'night';
       const session = await open();
       const { store } = session;
       const claude = await claudeWork(store);

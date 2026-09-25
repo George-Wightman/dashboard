@@ -30,6 +30,7 @@ import { mergeDocs } from '../js/merge.js';
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
 const TAG_PER_RUN = 5;
+const HEVY_RETRY_MS = 30 * 60000;
 
 class MemoryStorage {
   constructor(initial = {}) { this.map = new Map(Object.entries(initial)); }
@@ -170,9 +171,13 @@ export function createPlanner({
 
   // Hevy first, so a workout's tick is planned around in the same run. With no HEVY_KEY it's
   // skipped; its problems go in the gym's status for the dashboard and never stop the planner.
+  // While Hevy keeps failing it's tried every half hour, not every run.
   async function hevy(store) {
     const key = get('HEVY_KEY');
     if (!key) return;
+    const failing = store.doc().gym?.status?.lastError;
+    if (failing && now().getTime() - Number(get('HEVY_TRIED') ?? 0) < HEVY_RETRY_MS) return;
+    put('HEVY_TRIED', now().getTime());
     const s = await syncHevy({ fetch, key, store, now, dayStartHour: dayStartHour(), scrub: clean });
     if (s.lastError) log(`Hevy: ${s.lastError}`);
   }
@@ -284,6 +289,10 @@ export function createPlanner({
       if (get('PAUSED') === '1') return 'paused';
       const t = now();
       if (e && e.calendarId && Number(get('LAST_WRITE') ?? 0) > t.getTime() - ECHO_MS) return 'echo';
+      // Overnight (00:00 to 06:00) only the first run of each hour does anything: nothing then needs a
+      // ten-minute answer, and Apps Script allows 90 minutes of runs a day (69 were gone by 21:00 on
+      // 25 Sep). A calendar edit still runs at once.
+      if (!(e && e.calendarId) && t.getHours() < 6 && t.getMinutes() >= 10) return 'night';
       const session = await open();
       const { store } = session;
       const claude = await claudeWork(store);

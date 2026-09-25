@@ -408,11 +408,87 @@ function renderBox(ctx, where, talk) {
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
   });
+  // No Finish button (25 Sep): a conversation wraps itself up after an hour's quiet (autoWrapUp), or
+  // when the Coach sees a natural end.
   return h('form', { class: `talk-box ${where}`, onsubmit: (e) => { e.preventDefault(); send(); } },
     box,
     h('div', { class: 'buttons' },
-      h('button', { class: 'btn primary', type: 'submit', disabled: !!c.talkBusy }, 'Send'),
-      talk && heard(talk) && !talk.done ? link('Finish', () => finishTalk(ctx)) : null));
+      micButton(ctx, where, grow),
+      h('button', { class: 'btn primary', type: 'submit', disabled: !!c.talkBusy }, 'Send')));
+}
+
+// ---- Speaking to the Coach ---------------------------------------------------------------------------
+
+// The browser's own speech-to-text (Chrome on the phone and the laptop): what he says is added to the
+// draft as he speaks; tap the mic again, or stop talking, and it's there to read and Send. Nothing is
+// sent by itself. No mic where the browser has no speech recognition.
+const MIC = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
+let listening = null;
+
+export function speechRecognition(g = globalThis) {
+  return g.SpeechRecognition ?? g.webkitSpeechRecognition ?? null;
+}
+
+function micButton(ctx, where, grow) {
+  const Recognition = speechRecognition();
+  if (!Recognition) return null;
+  const c = ctx.ui.coach;
+  const on = !!listening;
+  const button = h('button', {
+    class: `btn mic${on ? ' on' : ''}`, type: 'button', 'aria-pressed': String(on),
+    'aria-label': on ? 'Stop listening' : 'Speak to the Coach', title: on ? 'Stop listening' : 'Speak instead of typing',
+    onclick: () => {
+      if (listening) { listening.stop(); return; }
+      const r = new Recognition();
+      r.lang = 'en-GB';
+      r.interimResults = true;
+      r.continuous = true;
+      const before = c.draft ? `${String(c.draft).trimEnd()} ` : '';
+      r.onresult = (e) => {
+        let heardText = '';
+        for (let i = 0; i < e.results.length; i++) heardText += e.results[i][0].transcript;
+        c.draft = `${before}${heardText.trim()}`;
+        const box = document.querySelector(`[data-focus="coach-talk-${where}"]`);
+        if (box) { box.value = c.draft; grow(); }
+      };
+      r.onerror = (e) => {
+        if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') c.talkError = 'The microphone is blocked for this page: allow it in the browser to speak to the Coach.';
+      };
+      r.onend = () => { listening = null; ctx.render(); };
+      listening = r;
+      try { r.start(); } catch { listening = null; }
+      ctx.render();
+    },
+  });
+  button.innerHTML = MIC; // a fixed string, never data
+  return button;
+}
+
+// ---- Wrapping up on its own ------------------------------------------------------------------------
+
+// A conversation he spoke in is wrapped up once it has been quiet for an hour: its journal entry
+// written as Finish used to, one conversation at a time, never while the Coach is busy. Yesterday's
+// too. js/app.js calls this once a minute. Returns whether it wrapped one.
+export const WRAP_AFTER_MINUTES = 60;
+
+export async function autoWrapUp(ctx) {
+  const { store, ui } = ctx;
+  const c = ui.coach;
+  if (c.talkBusy || listening) return false;
+  const now = nowOf(ctx).getTime();
+  const today = store.today();
+  const quiet = (t) => now - Date.parse(t.messages?.at(-1)?.at ?? t.updated) >= WRAP_AFTER_MINUTES * 60000;
+  const t = [...talksOn(store.doc(), addDays(today, -1)), ...talksOn(store.doc(), today)].find((x) => !x.done && heard(x) && quiet(x));
+  if (!t) return false;
+  Object.assign(c, { talkBusy: 'entry', talkError: '' });
+  ctx.render();
+  try {
+    await wrapUp(ctx, t);
+  } finally {
+    c.talkBusy = '';
+    ctx.render();
+  }
+  return true;
 }
 
 const BUSY = { opening: 'The Coach is thinking of something to ask…', thinking: 'Thinking…', entry: 'Writing the journal entry…' };

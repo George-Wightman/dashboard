@@ -188,3 +188,15 @@ test('the planner writes down which calendars George has, and which it watches',
   assert.equal(status.calendars.filter((c) => c.primary).length, 1, 'exactly one is the primary');
   assert.equal(byName.Tasks.primary, true);
 });
+
+test('overnight only the first run of each hour does anything; a calendar edit still runs at once', async () => {
+  const { planner, repo, setNow } = setup({ clock: at(TUE, '02:30') });
+  assert.equal(await planner.run(), 'night');
+  assert.equal(repo.puts, 0, 'nothing read or written');
+  setNow(at(TUE, '03:02'));
+  assert.equal(await planner.run(), 'ok');
+  setNow(at(TUE, '03:40'));
+  assert.equal(await planner.run({ calendarId: WORK }), 'ok');
+  setNow(at(TUE, '06:20'));
+  assert.equal(await planner.run(), 'ok');
+});
