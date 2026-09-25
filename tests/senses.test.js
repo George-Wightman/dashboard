@@ -96,11 +96,11 @@ test('moved: George dragging a block in Google Calendar', () => {
     edits: [{ map: 'items', id: 'scen', before: null, after: null }] }] });
   const [e] = sense({ doc: after, cursor, now: at(THU, '09:40') }).events;
   assert.equal(e.kind, 'moved');
-  assert.equal(e.level, 2);
+  assert.equal(e.level, 1, 'a move within the day is his to make: noted, never remarked on');
   assert.equal(e.id, `moved:scen:${THU}|15:00`);
   const later = doc({ items: [{ ...scen, date: '2026-09-26', time: null }], changes: [{ id: 'c3', source: 'calendar', at: at(THU, '09:30').toISOString(), summary: 'x',
     edits: [{ map: 'items', id: 'scen', before: null, after: null }] }] });
-  assert.equal(sense({ doc: later, cursor, now: at(THU, '09:40') }).events[0].level, 3);
+  assert.equal(sense({ doc: later, cursor, now: at(THU, '09:40') }).events[0].level, 2, 'to another day: looked at once the calendar settles');
 });
 
 test('slipped: a block that ended half an hour ago with its work unticked, once', () => {
@@ -109,9 +109,9 @@ test('slipped: a block that ended half an hour ago with its work unticked, once'
   const cursor = baseline(doc({ calendar: cal }), [], at(THU, '14:00'));
   assert.deepEqual(sense({ doc: doc({ calendar: cal }), cursor, now: at(THU, '15:50') }).events, [], 'twenty minutes is still grace');
   let r = sense({ doc: doc({ calendar: cal }), cursor, now: at(THU, '16:05') });
-  assert.deepEqual(r.events.map((e) => `${e.id}:${e.level}`), [`slip:${THU}:star:2`]);
+  assert.deepEqual(r.events.map((e) => `${e.id}:${e.level}`), [`slip:${THU}:star:1`], 'noted, never chased');
   r = sense({ doc: doc({ calendar: cal }), cursor: r.cursor, now: at(THU, '17:20') });
-  assert.deepEqual(r.events.map((e) => `${e.id}:${e.level}`).sort(), [`slip:${THU}:rp3:3`, `slip:${THU}:scen:3`]);
+  assert.deepEqual(r.events.map((e) => `${e.id}:${e.level}`).sort(), [`slip:${THU}:rp3:1`, `slip:${THU}:scen:1`]);
   assert.deepEqual(sense({ doc: doc({ calendar: cal }), cursor: r.cursor, now: at(THU, '17:40') }).events, []);
 });
 

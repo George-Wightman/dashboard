@@ -13,6 +13,11 @@ import { unhandled, budget, spend } from '../js/mind-state.js';
 
 export const WAIT_MINUTES = 20;
 export const FRESH_HOURS = 3;
+// His calendar edits are one subject, looked at once they have stopped for this long.
+export const SETTLE_MINUTES = 30;
+// Of the day's messages: at most this many about level-2 things, and this many kept for the evening.
+export const MINOR_PER_DAY = 2;
+export const EVENING_RESERVE = 2;
 export const DRAFT_MAX = 450;
 const MIN = 60000;
 const NOT_REFLEXES = new Set(['ask', 'risk', 'reply']);
@@ -23,7 +28,8 @@ export const MIND_SYSTEM = [
   "Only ticks say what George has done. Something is done only when it is in 'Ticked off today' or an event says it was ticked. A calendar block, even one whose time has passed, is a plan and not evidence.",
   "Hold him to what he committed to. Work he pushed or deleted after the morning lock is not a win: ask what happened, briefly, curious rather than lecturing. A times-a-week habit that is on pace is a rest day and needs no comment.",
   'His gym sessions are his own to plan. Never invent a clock time or a date: use only the ones in the plan, the events or the files.',
-  "When a task was ticked by Claude, George did that work in a session with Claude: talk about the work, not about Claude.",
+  "When a task was ticked by Claude, George did that work in a session with Claude, which has all the detail: talk about the work, not about Claude, and never ask him to retell how it went. Speak only when a file he wrote is attached, or it changes what comes next.",
+  "When he has been rearranging his calendar, judge the day as it stands now, not each move: speak only if committed work has left today, the rest of the day no longer fits, or two things still overlap. Never ask how he is managing a move.",
   "Don't repeat what the Coach has said recently (it is listed). Saying nothing is a good answer when there is nothing worth saying.",
   'Reply with JSON only, in exactly the shape asked for.',
 ].join('\n');
@@ -43,13 +49,22 @@ const OPENER_JOBS = {
 // ---- What to look at -----------------------------------------------------------------------------
 
 // The events worth a reflex now, as subjects: level 3 straight away, level 2 once the burst has
-// settled (20 minutes since its newest event), nothing older than three hours, at most `max`.
+// settled (20 minutes since its newest event), nothing older than three hours, at most `max`. His own
+// calendar edits wait until the calendar has been still for SETTLE_MINUTES, and then are one subject
+// (on 25 Sep he moved blocks thirteen times in three hours, and one message was about a clash he fixed
+// seven minutes later). Their level-1 moves ride along, so the day is judged with all of them.
+const byCalendar = (e) => e.by === 'calendar' || e.kind === 'calendar';
+
 export function pickGroups(mind, now, max = 2) {
   const t = now.getTime();
   const groups = new Map();
-  for (const e of unhandled(mind, 'reflex')) {
-    if (e.level < 2 || NOT_REFLEXES.has(e.kind) || t - Date.parse(e.at) >= FRESH_HOURS * 3600000) continue;
-    const key = e.refs?.goalId ?? e.refs?.itemId ?? e.refs?.calendar ?? e.kind;
+  const fresh = unhandled(mind, 'reflex').filter((e) => !NOT_REFLEXES.has(e.kind) && t - Date.parse(e.at) < FRESH_HOURS * 3600000);
+  const edits = fresh.filter(byCalendar);
+  const settling = edits.length && t - Math.max(...edits.map((e) => Date.parse(e.at))) < SETTLE_MINUTES * MIN;
+  const rearranged = !settling && edits.some((e) => e.level >= 2);
+  for (const e of fresh) {
+    if (byCalendar(e) ? settling || !rearranged : e.level < 2) continue;
+    const key = byCalendar(e) ? 'rearranged' : e.refs?.goalId ?? e.refs?.itemId ?? e.refs?.calendar ?? e.kind;
     const g = groups.get(key) ?? { key, events: [] };
     g.events.push(e);
     groups.set(key, g);
@@ -220,11 +235,18 @@ export async function runReflexes({ gemini, store, mind, now, config, timeLeft =
     if (result.say) {
       const b = budget(mind, today);
       const gapOk = group.level >= 3 || !b.lastSaid || now.getTime() - Date.parse(b.lastSaid) >= config.gapMinutes * MIN;
-      if (b.messages < config.messagesPerDay && gapOk) {
+      // Minor things get a small share, and some of the day is kept for the evening: on 25 Sep all
+      // eight were gone by 14:47, and nothing could be said when two committed sessions moved at 19:37.
+      const minorOk = group.level >= 3 || (b.minor ?? 0) < MINOR_PER_DAY;
+      const h = now.getHours();
+      const beforeEvening = (h < dayStartHour ? h + 24 : h) * 60 + now.getMinutes() < minutes(config.checkinAt);
+      const roomOk = b.messages < config.messagesPerDay - (beforeEvening ? EVENING_RESERVE : 0);
+      if (roomOk && gapOk && minorOk) {
         const slot = nextMindSlot(doc, today, 'mind');
         const m = { who: 'coach', text: result.text, at, from: 'mind', by: 'gemini', notify: !!(result.notify && group.level >= 3 && !quiet), ref: ids };
         store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: result.depth === 'deep' ? config.models.think : config.models.check }, 'mind');
         spend(mind, today, 'messages');
+        if (group.level < 3) spend(mind, today, 'minor');
         mind.budget.lastSaid = at;
         said.push({ talkId: `talk:${today}:${slot}`, m });
         spoke = true;

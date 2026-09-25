@@ -235,3 +235,75 @@ test('writeOpener: Claude\'s morning opener when it holds up, otherwise Gemini, 
   assert.equal(r.m.text, 'How did today go?');
   assert.equal(r.m.notify, false);
 });
+
+// ---- 25 Sep: his own rearranging, and the day's allowance -------------------------------------
+
+test('his calendar edits wait until the calendar has been still for half an hour, then are one subject', () => {
+  const now = at(THU, '11:30');
+  const m = emptyMind();
+  const e = (id, kind, level, minsAgo, refs = {}) => ({ id, at: new Date(now.getTime() - minsAgo * 60000).toISOString(), kind, level, by: 'calendar', refs, reflex: null, deep: null });
+  m.events.m1 = e('m1', 'moved', 1, 90, { itemId: 'self', goalId: 'ac' });
+  m.events.m2 = e('m2', 'moved', 2, 50, { itemId: 'rp4', goalId: 'ac' });
+  m.events.m3 = e('m3', 'moved', 1, 10, { itemId: 'mock', goalId: 'ac' });
+  assert.deepEqual(pickGroups(m, now), [], 'still rearranging: ten minutes since the last move');
+  const later = new Date(now.getTime() + 25 * 60000);
+  const [g] = pickGroups(m, later);
+  assert.equal(g.key, 'rearranged');
+  assert.deepEqual(g.events.map((x) => x.id).sort(), ['m1', 'm2', 'm3'], 'the whole morning, judged together');
+  // Moves within the day alone are never a subject.
+  const quiet = emptyMind();
+  quiet.events.m1 = e('m1', 'moved', 1, 90, { itemId: 'self' });
+  assert.deepEqual(pickGroups(quiet, later), []);
+  assert.match(MIND_SYSTEM, /judge the day as it stands now, not each move/);
+  assert.match(MIND_SYSTEM, /never ask him to retell how it went/);
+});
+
+test('minor things get two messages a day, and two are kept for the evening', async () => {
+  const minor = (w) => ({ ...tickEvent(w), id: 'minor', level: 2, at: new Date(w.now.getTime() - 25 * 60000).toISOString() });
+  let w = world(at(THU, '14:00'));
+  let m = emptyMind();
+  m.events.x = minor(w);
+  m.budget = { ...m.budget, day: THU, messages: 2, minor: 2 };
+  let r = await runReflexes({ gemini: fakeGemini(GOOD), store: w.store, mind: m, now: w.now, config });
+  assert.equal(r.said.length, 0, 'two minor messages already today');
+
+  w = world(at(THU, '14:00'));
+  m = emptyMind();
+  m.events.t = { ...tickEvent(w), id: 't' };
+  m.budget = { ...m.budget, day: THU, messages: config.messagesPerDay - 2 };
+  r = await runReflexes({ gemini: fakeGemini(GOOD), store: w.store, mind: m, now: w.now, config });
+  assert.equal(r.said.length, 0, 'the last two are kept for the evening');
+
+  w = world(at(THU, '19:30'));
+  m = emptyMind();
+  m.events.t = { ...tickEvent(w), id: 't' };
+  m.budget = { ...m.budget, day: THU, messages: config.messagesPerDay - 2 };
+  r = await runReflexes({ gemini: fakeGemini(GOOD), store: w.store, mind: m, now: w.now, config });
+  assert.equal(r.said.length, 1, 'and used in the evening');
+
+  w = world(at(THU, '19:30'));
+  m = emptyMind();
+  m.events.x = minor(w);
+  r = await runReflexes({ gemini: fakeGemini(GOOD), store: w.store, mind: m, now: w.now, config });
+  assert.equal(r.said.length, 1);
+  assert.equal(m.budget.minor, 1);
+  assert.equal(r.said[0].m.notify, false, 'minor things never buzz the phone');
+});
+
+test('when Flash hands the question to Lite, Lite goes through its own steps', async () => {
+  const w = world();
+  const ev = { ...tickEvent(w), id: 't' };
+  const rules = [
+    [/Think this through properly/, (q) => ({ data: { say: true, text: 'A one-shot answer from Lite standing in.' }, model: 'lite', role: 'check' })],
+    ...GOOD,
+  ];
+  const gemini = fakeGemini(rules, { flash: true });
+  gemini.ask = async (questions) => questions.map((q) => {
+    const rule = rules.find(([re]) => re.test(q.prompt));
+    const out = typeof rule[1] === 'function' ? rule[1](q) : { data: rule[1], model: q.model, role: q.model };
+    return out;
+  });
+  const r = await runChain({ gemini, doc: w.store.doc(), group: { key: 'g', kind: 'tick', level: 3, events: [ev] }, now: w.now, today: THU });
+  assert.equal(r.depth, 'lite');
+  assert.match(r.text, /MILLRACE is ticked, three role plays in/, "Lite's own draft, not its one-shot answer");
+});

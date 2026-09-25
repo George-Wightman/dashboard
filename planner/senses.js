@@ -217,8 +217,10 @@ export function sense({ doc, cursor, calEvents = [], now, dayStartHour = 4 }) {
       reported.add(item.id);
     }
     if (!reported.has(item.id) && by === 'calendar' && live(item) && (item.date !== was.date || item.time !== was.time)) {
-      const leftToday = was.date === today && item.date !== today;
-      const level = item.date !== was.date || leftToday ? 3 : 2;
+      // His own rearranging. A move within the day is his to make: noted, never remarked on (on 25 Sep
+      // four of the Coach's eight messages were "you moved X — how are you managing?"). A move to
+      // another day can change what the days hold, so it's looked at once the calendar settles.
+      const level = item.date !== was.date ? 2 : 1;
       add({ id: `moved:${item.id}:${item.date}|${item.time ?? ''}`, kind: 'moved', level, by, refs,
         text: `George moved ${q(item.title)} in Google Calendar from ${was.date ? dayName(was.date) : '?'}${was.time ? ` ${was.time}` : ''} to ${dayName(item.date)}${item.time ? ` ${item.time}` : ''}`,
         facts: goalFacts(doc, goal, today) });
@@ -231,7 +233,9 @@ export function sense({ doc, cursor, calEvents = [], now, dayStartHour = 4 }) {
     if (cursor.day === today && cursor.slipped?.[key]) continue;
     const item = doc.items[s.itemId];
     const goal = doc.goals[item.goalId];
-    add({ id: `slip:${today}:${item.id}`, kind: 'slip', level: isPriority(doc, item) || s.size >= 2 ? 3 : 2, by: 'me',
+    // Noted for the evening and the deep runs, never chased one block at a time: he often ticks
+    // afterwards, through Claude.
+    add({ id: `slip:${today}:${item.id}`, kind: 'slip', level: 1, by: 'me',
       refs: { itemId: item.id, goalId: live(goal) ? goal.id : null },
       text: `${q(item.title)} was booked until ${s.end ? clockLabel(s.end) : 'earlier'} and isn't ticked`, facts: goalFacts(doc, goal, today) });
   }

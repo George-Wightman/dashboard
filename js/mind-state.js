@@ -57,6 +57,7 @@ function mergeBudget(a, b) {
   if (a.day !== b.day) return a.day > b.day ? { ...a } : { ...b };
   const out = { day: a.day };
   for (const k of ['gemini', 'messages', 'pings', 'deep']) out[k] = Math.max(a[k] ?? 0, b[k] ?? 0);
+  if (a.minor != null || b.minor != null) out.minor = Math.max(a.minor ?? 0, b.minor ?? 0);
   out.lastSaid = later(a.lastSaid, b.lastSaid);
   out.geminiBlocked = [...new Set([...blockedList(a), ...blockedList(b)])].sort();
   out.byModel = {};
