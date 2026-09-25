@@ -1,5 +1,5 @@
 {
-  "id": "9a27c033acb69c2223791e92b16178917add281cc4d25519a40d0343983a17b3",
+  "id": "20ae7d7be5b281a948627fd08e8a0f4f0006be86dbcc0d2cb353fcf0fbfd6591",
   "files": {
     "./": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
     "index.html": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
@@ -33,7 +33,7 @@
     "js/plan-state.js": "e81038e8eb9edefd1db5ccf1e147395f1f54ff5dea3f21116a628fd4a327a1e1",
     "js/coach-session.js": "8539905b3e7d7c711d5a9b7396c810cb4b898f138b04c83db209450d7fd8ffb9",
     "js/ui/agenda.js": "e2092354b8eb9372b0645bad05fc23908ce611e05426810e1535828ba47d635e",
-    "js/mind.js": "ca3c3b946cdbdc3b6df2510e00b865b395b20587db4c470d0382688fa1398335",
+    "js/mind.js": "bd29c84810841064dfb294ba13f979cc49119a7a14688a1bc988b340f51ac09a",
     "js/mind-state.js": "23ef38512ecdf43cda5f1b51cf91712983a66bd29308ad68bd744ed6af96dd22",
     "js/push-client.js": "dd652fa6be892cecf5b36073ba78f084597e2ccdc023eabb262bee3297995b4f",
     "js/workflow.js": "e61f7bb887cd5d5d8938c43acdfca5f6042d579a111dee18acc4d9456cbd0e9b",

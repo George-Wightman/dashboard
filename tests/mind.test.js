@@ -120,6 +120,17 @@ test('checkMessage: no claiming something is done that is not ticked', () => {
   assert.equal(check(ticked, 'Role play 4 is done too, so that is two.').ok, false, 'a future task is not done either');
 });
 
+test('checkMessage: a run of capitals in a title is one name, not every common word in it (25 Sep)', () => {
+  const mockDay = { id: 'day', type: 'task', title: 'FULL MOCK DAY - 09:00 to 15:00', date: '2026-09-30', order: 5 };
+  const mock1 = { id: 'mock1', type: 'task', title: 'Mock interview 1 - 55 min + debrief', date: THU, order: 6 };
+  const d = doc({ items: [rp3, mockDay, mock1], logs: [done('rp3', THU, { source: 'claude' }), done('mock1', THU, { source: 'claude' })] });
+  assert.equal(check(d, 'SEXTANT and the first mock interview are both ticked and written up.').ok, true);
+  assert.equal(check(d, 'MILLRACE is ticked, and you had a full afternoon of it.').ok, true);
+  const r = check(d, 'The full mock day is done already.');
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join(' '), /FULL MOCK DAY/);
+});
+
 test('checkMessage: a clock time has to be one the plan or George gave', () => {
   const d = doc({ items: [rp3] });
   assert.equal(check(d, 'See you at 15:45 for the next one.').ok, false);

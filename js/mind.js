@@ -171,13 +171,15 @@ const hhmm = (h, m) => `${pad(Number(h))}:${pad(Number(m))}`;
 const localClock = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? hhmm(d.getHours(), d.getMinutes()) : null; };
 
 // The ways a title shows up in a sentence: the whole title, its first part ("Role play 3" of "Role
-// play 3 - MILLRACE, timed"), and any word in capitals ("MILLRACE").
+// play 3 - MILLRACE, timed"), and a name in capitals ("MILLRACE"). A run of capitals is one name:
+// "FULL MOCK DAY" is the mock day, not every sentence with "mock" in it (on 25 Sep "the first mock
+// interview is ticked" was refused three times as a claim that the mock day was done).
 function namesOf(title) {
   const t = String(title ?? '');
   const out = new Set([norm(t)]);
   const first = t.split(/\s[-–+:]\s|,|\(/)[0];
   if (first && norm(first).trim().length >= 5) out.add(norm(first));
-  for (const w of t.match(/\b[A-Z]{4,}\b/g) ?? []) out.add(norm(w));
+  for (const run of t.match(/\b[A-Z]{3,}(?:\s+[A-Z]{3,})*\b/g) ?? []) if (/\s/.test(run) || run.length >= 4) out.add(norm(run));
   return [...out].filter((n) => n.trim().length >= 3);
 }
 const mentions = (sentence, title) => namesOf(title).some((n) => norm(sentence).includes(n));
