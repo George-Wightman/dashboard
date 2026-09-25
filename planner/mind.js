@@ -10,6 +10,7 @@ import { createGitHubClient } from '../js/sync.js';
 import { logicalDay, addDays } from '../js/dates.js';
 import { mindConfig, mindStatus, isQuiet, openAsks, pushSubscriptions, mindMessages, messageKey } from '../js/mind.js';
 import { loadMind, saveMind, pruneMind, budget, spend } from '../js/mind-state.js';
+import { stableStringify } from '../js/doc.js';
 import { sense, planRisk } from './senses.js';
 import { readArtefacts } from './drive.js';
 import { createGemini } from './gemini-gas.js';
@@ -35,7 +36,10 @@ export function createMind({
   const client = createGitHubClient({ token, repo, path: 'mind.json', fetch });
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
   let mind = null;
+  let loadedAs = null;
   const problems = [];
+  // mind.json as it was read, less the cursor's clock: a run that saw nothing new writes nothing.
+  const fingerprint = (m) => stableStringify({ ...m, cursor: m.cursor ? { ...m.cursor, at: null } : null });
   const note = (text) => { problems.push(text); log(`Mind: ${text}`); };
 
   function vapid(store) {
@@ -51,18 +55,21 @@ export function createMind({
     return { privateKey, publicKey };
   }
 
-  function writeStatus(store, t, today) {
+  function writeStatus(store, t, today, speaking = false) {
     const prev = mindStatus(store.doc());
     const b = mind ? budget(mind, today) : null;
     const runMs = (() => { try { const r = JSON.parse(props.get('RUN_MS') ?? 'null'); return r?.day === today ? r.ms : 0; } catch { return 0; } })();
     const content = {
       lastRun: t.toISOString(),
+      // Whether the background can actually speak (switched on, with a Gemini key): only then does
+      // the page leave the openers to it (js/mind.js's mindAlive).
+      speaking,
       lastReflex: mind ? latest(mind.runs, ['reflex', 'opener']) : prev?.lastReflex ?? null,
       lastDeep: mind ? latest(mind.runs, ['deep']) : prev?.lastDeep ?? null,
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
       today: b ? { day: today, gemini: b.gemini, messages: b.messages, pings: b.pings, deep: b.deep, runMs } : prev?.today ?? null,
     };
-    const due = !prev || prev.lastError !== content.lastError || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
+    const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
       || prev.today?.messages !== content.today?.messages || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
     if (due) store.putCalendar('mind:status', content, 'planner');
   }
@@ -112,6 +119,7 @@ export function createMind({
       return;
     }
     mind = loaded.mind;
+    loadedAs = loaded.sha ? fingerprint(mind) : null;
     if (loaded.problem) note(loaded.problem);
     const config = mindConfig(store.doc());
     try { vapid(store); } catch (e) { note(`Couldn't make the notification keys: ${e?.message ?? e}`); }
@@ -151,7 +159,7 @@ export function createMind({
       if (blocked.size >= 2) note("Gemini's free allowance is used up for today");
     }
     fire(store, t, today, config, escalate);
-    writeStatus(store, t, today);
+    writeStatus(store, t, today, !!(config.enabled && key));
   }
 
   // The pings the Mind's new messages asked for, to every device that turned notifications on; then
@@ -190,7 +198,9 @@ export function createMind({
         const message = { title: 'Coach', body: x.m.text.slice(0, 140), url: `./?coach=${x.talkId}`, tag: x.talkId };
         let responses;
         try {
-          responses = UrlFetchApp.fetchAll(live.map((sub) => pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) })));
+          // A body of bytes goes as a Blob: a plain array could be taken for form fields.
+          const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
+          responses = UrlFetchApp.fetchAll(live.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
         } catch (e) {
           note(`Couldn't send a ping: ${e?.message ?? e}`);
           break;
@@ -211,8 +221,10 @@ export function createMind({
       for (const id of gone) { store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner'); changed = true; }
     }
     pruneMind(mind, t);
-    const saved = await saveMind({ client, mind });
-    if (!saved.ok) log(`Mind: couldn't save mind.json: ${saved.error}`);
+    if (loadedAs !== fingerprint(mind)) {
+      const saved = await saveMind({ client, mind });
+      if (!saved.ok) log(`Mind: couldn't save mind.json: ${saved.error}`);
+    }
     return { changed };
   }
 

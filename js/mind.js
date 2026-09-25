@@ -86,7 +86,7 @@ export function picture(doc) {
 // Whether the background is running the Coach: switched on, and heard from recently. While it is,
 // the page leaves the openers to it.
 export function mindAlive(doc, now) {
-  if (!mindConfig(doc).enabled) return false;
+  if (!mindConfig(doc).enabled || mindStatus(doc)?.speaking !== true) return false;
   const last = Date.parse(mindStatus(doc)?.lastRun ?? '');
   return Number.isFinite(last) && now.getTime() - last < ALIVE_MINUTES * 60000;
 }
@@ -155,13 +155,15 @@ export function pushSubscriptions(doc) {
 const DONE_WORDS = /\b(done|ticked|finish(ed|ing)?|complet(ed|ing)|nailed|smashed|got through|wrapped up|knocked (it )?out|crushed)\b/i;
 const NOT_YET = /\b(not|n't|yet|still|haven't|hasn't|didn't|if|when|once|before)\b/i;
 const MISS_WORDS = /\b(miss(ed|ing)?|skip(ped|ping)?|slipped|didn't|did not|haven't|fail(ed)?)\b/i;
-const EMOJI = /\p{Extended_Pictographic}/u;
+// Emoji and pictographs by range rather than \p{…}, and no lookbehind below: this module is bundled
+// into the planner, and one regex its V8 can't parse would stop the whole planner.
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/u;
 const TIME = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g;
 
 const norm = (s) => ` ${String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
 // Clauses rather than sentences, so "MILLRACE is done — what would you change?" is read as a claim
 // followed by a question, not as one question.
-const sentences = (text) => String(text).split(/(?<=[.!?])\s+|\s[—–]\s|;\s|\n+/).map((s) => s.trim()).filter(Boolean);
+const sentences = (text) => String(text).replace(/([.!?])\s+/g, '$1\n').split(/\s[—–]\s|;\s|\n+/).map((s) => s.trim()).filter(Boolean);
 const pad = (n) => String(n).padStart(2, '0');
 const hhmm = (h, m) => `${pad(Number(h))}:${pad(Number(m))}`;
 const localClock = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? hhmm(d.getHours(), d.getMinutes()) : null; };

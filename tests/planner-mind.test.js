@@ -57,7 +57,8 @@ function phone() {
   return { ecdh, auth, record: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc:def', p256dh: b64url(ecdh.getPublicKey()), auth: b64url(auth), label: 'phone' } };
 }
 function openPush(payload, { ecdh, auth }) {
-  const buf = Buffer.from(Uint8Array.from(payload, (b) => b & 255));
+  const bytes = payload.getBytes ? payload.getBytes() : payload; // a Blob, as Apps Script sends it
+  const buf = Buffer.from(Uint8Array.from(bytes, (b) => b & 255));
   const salt = buf.subarray(0, 16);
   const keyid = buf.subarray(21, 21 + buf[20]);
   const ct = buf.subarray(21 + buf[20]);
@@ -244,4 +245,17 @@ test('the Mind failing never stops the planner, and never shows a key', async ()
   assert.ok(!status.lastError.includes(GEMINI_KEY));
   assert.ok(w.env.lines.every((l) => !l.includes(GEMINI_KEY)));
   assert.ok(w.repo.doc().calendar.status.lastRun, 'the planner itself carried on');
+});
+
+test('a quiet run writes nothing to mind.json', async () => {
+  const w = world();
+  await w.planner.run();
+  const sha = w.repo.others.get('mind.json').sha;
+  w.setNow(at(THU, '19:10'));
+  await w.planner.run();
+  assert.equal(w.repo.others.get('mind.json').sha, sha, 'nothing new, no commit');
+  w.edit((d) => { d.logs.t1 = { ...done('rp3', THU, { id: 't1', source: 'me' }), status: 'active', created: THU, updated: at(THU, '19:23').toISOString() }; });
+  w.setNow(at(THU, '19:30'));
+  await w.planner.run();
+  assert.notEqual(w.repo.others.get('mind.json').sha, sha);
 });

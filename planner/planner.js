@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'c5497649';
+var PLANNER_BUILD = '9eb55878';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -5452,7 +5452,7 @@ function picture(doc) {
 // Whether the background is running the Coach: switched on, and heard from recently. While it is,
 // the page leaves the openers to it.
 function mindAlive(doc, now) {
-  if (!mindConfig(doc).enabled) return false;
+  if (!mindConfig(doc).enabled || mindStatus(doc)?.speaking !== true) return false;
   const last = Date.parse(mindStatus(doc)?.lastRun ?? '');
   return Number.isFinite(last) && now.getTime() - last < ALIVE_MINUTES * 60000;
 }
@@ -5521,13 +5521,15 @@ function pushSubscriptions(doc) {
 const DONE_WORDS = /\b(done|ticked|finish(ed|ing)?|complet(ed|ing)|nailed|smashed|got through|wrapped up|knocked (it )?out|crushed)\b/i;
 const NOT_YET = /\b(not|n't|yet|still|haven't|hasn't|didn't|if|when|once|before)\b/i;
 const MISS_WORDS = /\b(miss(ed|ing)?|skip(ped|ping)?|slipped|didn't|did not|haven't|fail(ed)?)\b/i;
-const EMOJI = /\p{Extended_Pictographic}/u;
+// Emoji and pictographs by range rather than \p{…}, and no lookbehind below: this module is bundled
+// into the planner, and one regex its V8 can't parse would stop the whole planner.
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/u;
 const TIME = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g;
 
 const norm = (s) => ` ${String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
 // Clauses rather than sentences, so "MILLRACE is done — what would you change?" is read as a claim
 // followed by a question, not as one question.
-const sentences = (text) => String(text).split(/(?<=[.!?])\s+|\s[—–]\s|;\s|\n+/).map((s) => s.trim()).filter(Boolean);
+const sentences = (text) => String(text).replace(/([.!?])\s+/g, '$1\n').split(/\s[—–]\s|;\s|\n+/).map((s) => s.trim()).filter(Boolean);
 const pad = (n) => String(n).padStart(2, '0');
 const hhmm = (h, m) => `${pad(Number(h))}:${pad(Number(m))}`;
 const localClock = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? hhmm(d.getHours(), d.getMinutes()) : null; };
@@ -7881,6 +7883,7 @@ const { createGitHubClient } = __js_sync;
 const { logicalDay, addDays } = __js_dates;
 const { mindConfig, mindStatus, isQuiet, openAsks, pushSubscriptions, mindMessages, messageKey } = __js_mind;
 const { loadMind, saveMind, pruneMind, budget, spend } = __js_mind_state;
+const { stableStringify } = __js_doc;
 const { sense, planRisk } = __planner_senses;
 const { readArtefacts } = __planner_drive;
 const { createGemini } = __planner_gemini_gas;
@@ -7906,7 +7909,10 @@ function createMind({
   const client = createGitHubClient({ token, repo, path: 'mind.json', fetch });
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
   let mind = null;
+  let loadedAs = null;
   const problems = [];
+  // mind.json as it was read, less the cursor's clock: a run that saw nothing new writes nothing.
+  const fingerprint = (m) => stableStringify({ ...m, cursor: m.cursor ? { ...m.cursor, at: null } : null });
   const note = (text) => { problems.push(text); log(`Mind: ${text}`); };
 
   function vapid(store) {
@@ -7922,18 +7928,21 @@ function createMind({
     return { privateKey, publicKey };
   }
 
-  function writeStatus(store, t, today) {
+  function writeStatus(store, t, today, speaking = false) {
     const prev = mindStatus(store.doc());
     const b = mind ? budget(mind, today) : null;
     const runMs = (() => { try { const r = JSON.parse(props.get('RUN_MS') ?? 'null'); return r?.day === today ? r.ms : 0; } catch { return 0; } })();
     const content = {
       lastRun: t.toISOString(),
+      // Whether the background can actually speak (switched on, with a Gemini key): only then does
+      // the page leave the openers to it (js/mind.js's mindAlive).
+      speaking,
       lastReflex: mind ? latest(mind.runs, ['reflex', 'opener']) : prev?.lastReflex ?? null,
       lastDeep: mind ? latest(mind.runs, ['deep']) : prev?.lastDeep ?? null,
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
       today: b ? { day: today, gemini: b.gemini, messages: b.messages, pings: b.pings, deep: b.deep, runMs } : prev?.today ?? null,
     };
-    const due = !prev || prev.lastError !== content.lastError || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
+    const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
       || prev.today?.messages !== content.today?.messages || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
     if (due) store.putCalendar('mind:status', content, 'planner');
   }
@@ -7983,6 +7992,7 @@ function createMind({
       return;
     }
     mind = loaded.mind;
+    loadedAs = loaded.sha ? fingerprint(mind) : null;
     if (loaded.problem) note(loaded.problem);
     const config = mindConfig(store.doc());
     try { vapid(store); } catch (e) { note(`Couldn't make the notification keys: ${e?.message ?? e}`); }
@@ -8022,7 +8032,7 @@ function createMind({
       if (blocked.size >= 2) note("Gemini's free allowance is used up for today");
     }
     fire(store, t, today, config, escalate);
-    writeStatus(store, t, today);
+    writeStatus(store, t, today, !!(config.enabled && key));
   }
 
   // The pings the Mind's new messages asked for, to every device that turned notifications on; then
@@ -8061,7 +8071,9 @@ function createMind({
         const message = { title: 'Coach', body: x.m.text.slice(0, 140), url: `./?coach=${x.talkId}`, tag: x.talkId };
         let responses;
         try {
-          responses = UrlFetchApp.fetchAll(live.map((sub) => pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) })));
+          // A body of bytes goes as a Blob: a plain array could be taken for form fields.
+          const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
+          responses = UrlFetchApp.fetchAll(live.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
         } catch (e) {
           note(`Couldn't send a ping: ${e?.message ?? e}`);
           break;
@@ -8082,8 +8094,10 @@ function createMind({
       for (const id of gone) { store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner'); changed = true; }
     }
     pruneMind(mind, t);
-    const saved = await saveMind({ client, mind });
-    if (!saved.ok) log(`Mind: couldn't save mind.json: ${saved.error}`);
+    if (loadedAs !== fingerprint(mind)) {
+      const saved = await saveMind({ client, mind });
+      if (!saved.ok) log(`Mind: couldn't save mind.json: ${saved.error}`);
+    }
     return { changed };
   }
 

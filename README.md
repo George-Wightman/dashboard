@@ -107,6 +107,67 @@ http://localhost:8080/?fakegemini. Canned replies stand in for Google, no key is
 heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-second replies),
 `nokey`, `quota`, `down`, `offline`, `badkey` or `nonsense`.
 
+## The Coach's mind
+
+The Coach no longer waits to be spoken to. A background mind notices what happens and says
+something when it's worth it (design: [`docs/superpowers/specs/2026-09-25-coach-mind-design.md`](docs/superpowers/specs/2026-09-25-coach-mind-design.md)).
+
+- **It notices.** Every ten minutes the calendar planner compares the dashboard and your calendars
+  with what it saw last time: what you ticked (and whether you did it yourself, through Claude, the
+  Coach, Hevy or the Hebrew app), committed work pushed off the day or deleted, blocks you dragged in
+  Google Calendar, events you added, moved or removed (with their descriptions), blocks that ended
+  with their work unticked, work the planner had to push along, milestones reached, flags, your
+  replies. When a finished task's notes name a Drive folder, it reads what was written there lately:
+  the debrief, your reflections.
+- **It reacts.** Gemini looks at anything that matters from two or three angles at once (progress
+  against the goal, patterns, the plan for the next few days), drafts one message, and checks it
+  twice before the Coach says it: plain-code checks (nothing called done that isn't ticked, no time
+  the plan or you didn't give, no rest day called a miss, no repeats) and a second opinion. It also
+  writes the morning and evening openers, so they arrive whether or not a page is open.
+- **It thinks.** A Claude routine on your Claude plan runs a deep review at 06:30 and 21:30, and
+  whenever the planner calls it in: when you ask the Coach for real thought ("rework the weekend"),
+  when a reaction decides the plan needs it, or when a goal's work stops fitting before its date. It
+  keeps a standing picture of you (what matters now, patterns with their dates, risks, open threads,
+  how to talk to you) that the Coach and every reaction read, says what's worth saying, and proposes
+  plan changes you apply with one tap. It never changes the plan itself.
+- **It pings.** Turn on ⚙ → **Notifications** on the phone and the laptop, and messages that matter
+  buzz the device (and the Pixel Watch, which mirrors the phone). Tapping one opens the Coach at that
+  message. At most six a day, none from 22:30 to 07:00 or after you close the day.
+
+In the conversation, a message from the background carries a small mark: Gemini's star when it
+noticed something, Claude's spark after a deeper review. Answer it like any other. ⚙ → Claude →
+*The Coach's mind* says whether it's on, when it last reacted and reviewed, and any problem.
+
+**Limits.** At most 8 background messages a day, 45 minutes apart unless something urgent happened;
+120 Gemini calls a day (a quota used up moves the rest of the day to the other model, or stops);
+2 scheduled and at most 3 triggered deep runs a day. Claude changes any of these, and switches the
+mind on or off, with the `mind` op.
+
+**Where things live.** Its memory, the events and the log of what it did, is `mind.json` beside
+`data.json` in `dashboard-sync`, so every device isn't downloading it on every sync. `data.json`
+gains only what the devices show: the messages, proposals, Claude's picture of you, the devices to
+ping, and a status line.
+
+**Privacy.** Gemini is given your lists, calendar descriptions and the Drive files named above,
+as the Coach already was given your lists. Health data (when the watch is connected) reaches Gemini
+only as plain labels ("a short night"); numbers go only to Claude. Pings are encrypted for each
+device, so the push services carry only ciphertext.
+
+**Setting it up (once):**
+
+1. **A Gemini key of its own.** In [Google AI Studio](https://aistudio.google.com/apikey), *Create
+   API key* in a **new project**, so the mind's free allowance is separate from the Hebrew app's. In
+   the *Dashboard planner* script → ⚙ Project Settings → *Script properties*, set `GEMINI_KEY` to it.
+2. **Drive, read-only.** In the script editor, replace `appsscript.json` with
+   [`planner/apps-script/appsscript.json`](planner/apps-script/appsscript.json) (it adds
+   `drive.readonly`), then run `install` and approve.
+3. **The deep review.** A Claude Code routine on your account runs the repo's
+   [`claude/mind/ROUTINE.md`](claude/mind/ROUTINE.md). Its cloud environment needs
+   `DASHBOARD_TOKEN` (a fine-grained token with Contents read and write on `dashboard-sync` only).
+   Add an **API** trigger to it and put its URL and token in the script's properties as
+   `MIND_ROUTINE_URL` and `MIND_ROUTINE_TOKEN`, so the planner can call it in.
+4. **Notifications.** ⚙ → Notifications → *Turn on*, on each device.
+
 ## Hebrew progress
 
 Paste a fine-grained GitHub token (Contents read only) for the Hebrew app's own sync repo into
@@ -434,6 +495,12 @@ script bundles the Apps Script planner and generates the offline release manifes
 | `js/version.js` | Which build this is, whether a newer one is live, and taking the update |
 | `js/changes.js` | Claude's change log: what a change did, and the readers ⚙ uses |
 | `js/calendar.js` | The calendar planner's records: its settings, today's times, its notes and health |
+| `js/mind.js`, `js/mind-state.js` | The Coach's mind: its records in `data.json`, the checks every message passes, and `mind.json` |
+| `planner/senses.js`, `planner/reflex.js`, `planner/mind.js` | The mind in the planner: what changed and who did it, Gemini's reactions and the openers, and its run |
+| `planner/drive.js`, `planner/gemini-gas.js` | Reading the Drive files behind finished work; Gemini from Apps Script, several questions at once |
+| `planner/webpush.js`, `planner/p256.js`, `planner/aes.js` | Web Push from Apps Script (RFC 8291/8292), with the curve and cipher it doesn't have |
+| `js/push-client.js` | Turning notifications on and off on a device |
+| `claude/mind.js`, `claude/mind/ROUTINE.md` | Claude's deep runs: the context pack, the `--mind` ops, and the run's instructions |
 | `claude/` | The command-line tool and the skill Claude runs (`npm run build-skill` zips the skill) |
 | `planner/` | The calendar planner: a pure planning core (`plan.js` and its parts), the Apps Script side (`gas.js`), bundled by `npm run build-planner` into `planner/planner.js`, which the loader in `planner/apps-script/` fetches |
 | `js/ui/*.js`, `js/app.js` | The screen |
@@ -468,3 +535,6 @@ remain useful for recovering earlier history.
 4. Job search + Notion — application counts and deadlines from the Job Tracker
 5. **Gemini coach** — goal shaping, evening check-in, weekly digest — built
 6. **Google Calendar** — the planner books the dashboard into your calendar — built
+7. **The Coach's mind** — it notices, reacts, thinks deeply twice a day, and pings — built
+8. Google Health — the Pixel Watch's walks, sleep and heart, for the mind (labels only to Gemini)
+9. Hebrew both ways — session summaries in, your real week out as practice material

@@ -20,7 +20,7 @@ function store(time = '07:30') {
 }
 const alive = (s, now, mins = 5) => {
   s.putCalendar('mind:config', { enabled: true }, 'claude');
-  s.putCalendar('mind:status', { lastRun: new Date(now.getTime() - mins * 60000).toISOString() });
+  s.putCalendar('mind:status', { speaking: true, lastRun: new Date(now.getTime() - mins * 60000).toISOString() });
 };
 const mindTalk = (s, slot, text, time, by = 'gemini') => s.saveJournal({ kind: 'talk', day: THU, slot,
   messages: [{ who: 'coach', text, at: at(THU, time).toISOString(), from: 'mind', by, notify: true }] }, 'mind');
@@ -32,7 +32,7 @@ test('while the background runs, the page leaves the openers to it; stale, it ta
   assert.equal(openerDue(s.doc(), hours), 'morning');
   alive(s, now, 20);
   assert.equal(openerDue(s.doc(), hours), null);
-  s.putCalendar('mind:status', { lastRun: new Date(now.getTime() - 80 * 60000).toISOString() });
+  s.putCalendar('mind:status', { speaking: true, lastRun: new Date(now.getTime() - 80 * 60000).toISOString() });
   assert.equal(openerDue(s.doc(), hours), 'morning', 'silent for 80 minutes: the page steps in');
 });
 

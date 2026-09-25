@@ -37,12 +37,15 @@ test('mindConfig: the defaults, overlaid only with fields that make sense', () =
 
 test('mindAlive: switched on and heard from in the last 75 minutes', () => {
   const now = at(THU, '12:00');
-  const status = (mins) => ({ 'mind:status': { lastRun: new Date(now.getTime() - mins * 60000).toISOString() } });
+  const status = (mins) => ({ 'mind:status': { speaking: true, lastRun: new Date(now.getTime() - mins * 60000).toISOString() } });
   assert.equal(mindAlive(doc({ calendar: status(5) }), now), false);
   const on = { 'mind:config': { enabled: true } };
   assert.equal(mindAlive(doc({ calendar: { ...on, ...status(74) } }), now), true);
   assert.equal(mindAlive(doc({ calendar: { ...on, ...status(76) } }), now), false);
   assert.equal(mindAlive(doc({ calendar: on }), now), false);
+  // Switched on but with no Gemini key, the background can't speak: the page keeps its openers.
+  const mute = { 'mind:status': { speaking: false, lastRun: new Date(now.getTime() - 5 * 60000).toISOString() } };
+  assert.equal(mindAlive(doc({ calendar: { ...on, ...mute } }), now), false);
 });
 
 test('isQuiet: the night, a closed day, and time off for everything', () => {
