@@ -263,3 +263,85 @@ test('a quiet run writes nothing to mind.json', async () => {
   await w.planner.run();
   assert.notEqual(w.repo.others.get('mind.json').sha, sha);
 });
+
+// ---- Claude's branch and the London-time deep runs (25 Sep review) -----------------------------
+
+test("what Claude's routine left on its claude/ branch is merged in, once: its message, its handled events", async () => {
+  const w = world();
+  await w.planner.run();
+  // A deep run: it read main, said something, and marked the events it looked at — then pushed both
+  // files to its branch, because the gateway won't let it write to main.
+  const data = w.repo.doc();
+  data.journal[`talk:${THU}:deep-1`] = { id: `talk:${THU}:deep-1`, kind: 'talk', day: THU, slot: 'deep-1', status: 'active', source: 'claude', created: THU,
+    updated: at(THU, '19:20').toISOString(), handoffs: [], done: false, model: '', proposal: null,
+    messages: [{ who: 'coach', text: 'That merge makes sense: one mock today, another on Sunday.', at: at(THU, '19:20').toISOString(), from: 'mind', by: 'claude', notify: true }] };
+  const mind = w.repo.file('mind.json');
+  mind.runs['deep:x'] = { id: 'deep:x', at: at(THU, '19:20').toISOString(), engine: 'deep', trigger: 'ask', events: [], summary: 'Merged the practice.' };
+  mind.cursor = { at: 'the routine never moves the cursor' };
+  w.repo.branches.set('claude/modest-pascal', { sha: 'b1', files: { 'data.json': JSON.stringify(data), 'mind.json': JSON.stringify(mind) } });
+  w.setNow(at(THU, '19:30'));
+  assert.equal(await w.planner.run(), 'ok');
+  assert.match(w.repo.doc().journal[`talk:${THU}:deep-1`].messages[0].text, /one mock today/);
+  const after = w.repo.file('mind.json');
+  assert.ok(after.runs['deep:x']);
+  assert.notEqual(after.cursor.at, 'the routine never moves the cursor');
+  assert.equal(w.repo.doc().calendar['mind:status'].lastDeep, at(THU, '19:20').toISOString());
+  // Taken in once: the next run doesn't read the branch's files again.
+  const reads = () => w.env.calls.filter((c) => c.url.includes('?ref=')).length;
+  const before = reads();
+  w.setNow(at(THU, '19:40'));
+  await w.planner.run();
+  assert.equal(reads(), before);
+  // A new push to the same branch is taken in.
+  data.journal[`talk:${THU}:deep-1`].messages.push({ who: 'coach', text: 'And the evening run agrees.', at: at(THU, '19:45').toISOString(), from: 'mind', by: 'claude' });
+  data.journal[`talk:${THU}:deep-1`].updated = at(THU, '19:45').toISOString();
+  w.repo.branches.set('claude/modest-pascal', { sha: 'b2', files: { 'data.json': JSON.stringify(data) } });
+  w.setNow(at(THU, '19:50'));
+  await w.planner.run();
+  assert.equal(w.repo.doc().journal[`talk:${THU}:deep-1`].messages.length, 2);
+});
+
+test('a branch the planner can\'t read is a log line, never a stopped planner', async () => {
+  const w = world();
+  w.repo.branches.set('claude/broken', { sha: 'zz', files: { 'data.json': 'not json' } });
+  assert.equal(await w.planner.run(), 'ok');
+  assert.ok(w.env.lines.some((l) => /Claude's branch/.test(l)));
+});
+
+test('the morning and evening deep runs start at London time, once each, and only with the Mind on', async () => {
+  const w = world({ props: { MIND_ROUTINE_URL: ROUTINE_URL, MIND_ROUTINE_TOKEN: ROUTINE_TOKEN } });
+  w.setNow(at(THU, '06:20'));
+  await w.planner.run();
+  assert.equal(w.env.fires.length, 0);
+  w.setNow(at(THU, '06:35'));
+  await w.planner.run();
+  assert.equal(w.env.fires.length, 1);
+  assert.deepEqual(JSON.parse(w.env.fires[0].opts.payload), { text: 'scheduled: morning' });
+  w.setNow(at(THU, '06:45'));
+  await w.planner.run();
+  assert.equal(w.env.fires.length, 1, 'once');
+  w.setNow(at(THU, '21:40'));
+  await w.planner.run();
+  assert.equal(w.env.fires.length, 2);
+  assert.deepEqual(JSON.parse(w.env.fires[1].opts.payload), { text: 'scheduled: evening' });
+  assert.equal(w.repo.file('mind.json').budget.deep, 0, "the regular runs don't use up George's questions");
+
+  const off = world({ config: { enabled: false }, props: { MIND_ROUTINE_URL: ROUTINE_URL, MIND_ROUTINE_TOKEN: ROUTINE_TOKEN } });
+  off.setNow(at(THU, '06:35'));
+  await off.planner.run();
+  assert.equal(off.env.fires.length, 0);
+});
+
+test('a question in the evening window is that window\'s run too', async () => {
+  const w = world({ props: { MIND_ROUTINE_URL: ROUTINE_URL, MIND_ROUTINE_TOKEN: ROUTINE_TOKEN } });
+  w.setNow(at(THU, '21:00'));
+  await w.planner.run();
+  w.edit((d) => { d.calendar[`ask:${THU}:1`] = { id: `ask:${THU}:1`, status: 'active', source: 'coach', updated: at(THU, '21:31').toISOString(), text: 'Is Sunday too full?', day: THU, at: at(THU, '21:31').toISOString() }; });
+  w.setNow(at(THU, '21:35'));
+  await w.planner.run();
+  assert.equal(w.env.fires.length, 1);
+  assert.match(JSON.parse(w.env.fires[0].opts.payload).text, /^ask: ask:ask:2026-09-24:1 \(and the evening run\)$/);
+  w.setNow(at(THU, '22:30'));
+  await w.planner.run();
+  assert.equal(w.env.fires.length, 1, 'no second evening run');
+});

@@ -2,7 +2,7 @@
 // context pack a deep run reads (`mind`), and the ops it answers with — `picture` (its standing
 // understanding of George), `say` (a message in the Coach), `propose` (plan changes George applies with
 // one tap), `handled` (what it has looked at) — plus `mind`, Claude's control over the Mind's settings.
-// Run with `apply --mind`, a deep run may only use these (and brief, guide, flag, handoff): a guard
+// Run with `apply --mind`, a deep run may only use these (and brief, guide, flag): a guard
 // against a wrong turn, not a security boundary.
 
 import { randomUUID } from 'node:crypto';
@@ -19,7 +19,8 @@ import { netEdits, describeEdits } from '../js/coach-session.js';
 import { READS } from './read.js';
 import { q, toDay, dayName } from './text.js';
 
-export const MIND_MODE_OPS = ['picture', 'say', 'propose', 'brief', 'guide', 'flag', 'handoff', 'handled'];
+// No handoff: its file is written straight to main, which a routine can't reach (claude/branch.js). A flag does the job.
+export const MIND_MODE_OPS = ['picture', 'say', 'propose', 'brief', 'guide', 'flag', 'handled'];
 export const MIND_LIMITS = { picture: 1, say: 2, propose: 1, handled: 1 };
 const PROPOSE_OPS = ['task', 'edit', 'archive'];
 const MAX_PROPOSED = 12;
@@ -103,7 +104,7 @@ export function mindPack(doc, mind, now, today) {
     section('Journal', READS.journal(doc, today)),
     section('Open flags', READS.flags(doc, today, '')),
     section('How to answer', [
-      "One `apply --mind` with at most: one picture, two say, one propose, a brief, a guide, flags or handoffs — and exactly one handled, last.",
+      "One `apply --mind` with at most: one picture, two say, one propose, a brief, a guide, flags — and exactly one handled, last.",
       '{"op": "picture", "text": "Now: …\\nPatterns: …\\nRisks: …\\nOpen threads: …\\nHow to talk to him: …", "opener": {"day": "tomorrow", "text": "…"}}',
       '{"op": "say", "text": "…", "notify": true}',
       '{"op": "propose", "text": "why, in a sentence or two", "ops": [{"op": "edit", "id": "…", "set": {"date": "2026-09-27"}}]}',

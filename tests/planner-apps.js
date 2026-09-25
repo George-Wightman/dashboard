@@ -28,13 +28,23 @@ export class FakeRepo {
     this.n = 1;
     this.puts = 0;
     this.others = new Map();
+    // Claude's branches (planner/branches.js): name → { sha, files: { path: text } }.
+    this.branches = new Map();
   }
 
   doc() { return JSON.parse(this.text); }
   file(path) { const f = this.others.get(path); return f ? JSON.parse(f.text) : null; }
 
   handle(method, url, payload) {
+    if (url === 'https://api.github.com/repos/o/r/git/matching-refs/heads/claude/') {
+      return { status: 200, body: [...this.branches].map(([name, b]) => ({ ref: `refs/heads/${name}`, object: { sha: b.sha } })) };
+    }
     const path = url.startsWith('https://api.github.com/repos/o/r/contents/') ? url.slice('https://api.github.com/repos/o/r/contents/'.length).split('?')[0] : null;
+    const ref = /[?&]ref=([^&]+)/.exec(url)?.[1];
+    if (path && ref) {
+      const text = [...this.branches.values()].find((b) => b.sha === decodeURIComponent(ref))?.files[path];
+      return text == null ? { status: 404, body: { message: 'Not Found' } } : { status: 200, body: { content: Buffer.from(text).toString('base64'), encoding: 'base64', sha: `${ref}-${path}` } };
+    }
     if (path && path !== 'data.json') {
       const f = this.others.get(path);
       if (method === 'get') return f ? { status: 200, body: { content: Buffer.from(f.text).toString('base64'), encoding: 'base64', sha: f.sha } } : { status: 404, body: { message: 'Not Found' } };

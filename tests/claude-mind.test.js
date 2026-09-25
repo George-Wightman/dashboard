@@ -87,7 +87,7 @@ test('apply --mind refuses anything but the Mind\'s ops, and more than its share
   const s = setup();
   let r = await s.run(['apply', '--mind'], { stdin: JSON.stringify([{ op: 'say', text: 'How did MILLRACE go?' }, { op: 'task', title: 'Sneaky' }]) });
   assert.equal(r.code, 1);
-  assert.match(r.text, /only picture, say, propose, brief, guide, flag, handoff, handled are allowed — "task" isn't/);
+  assert.match(r.text, /only picture, say, propose, brief, guide, flag, handled are allowed — "task" isn't/);
   assert.equal(s.remote.puts, 0);
   r = await s.run(['apply', '--mind'], { stdin: JSON.stringify([1, 2, 3].map((n) => ({ op: 'say', text: `Question ${n}?` }))) });
   assert.match(r.text, /at most 2 says/);

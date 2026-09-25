@@ -23,15 +23,21 @@ export function decodeBase64(b64) {
 
 // A 401/403 is usually the key, but a sandbox's egress proxy can answer 403 for a private repo it
 // hasn't been told to allow, and blaming the key then sends everyone off to replace a working one.
-export function accessError(repo, message = '') {
+// GitHub's (or the proxy's) own words always go on the end: on 25 Sep a cloud routine's write was
+// refused by Anthropic's GitHub gateway, and without them it read as a bad key.
+export function accessError(repo, message = '', status = null) {
   if (/for this session|add_repo/i.test(message)) {
     return new Error(`The network this chat runs in is blocking ${repo} — the key was never checked. It said: ${message}`);
   }
-  return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}`);
+  const said = message || status ? ` It said${status ? ` (HTTP ${status})` : ''}: ${message || 'nothing more'}` : '';
+  return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}.${said}`);
 }
 
-export function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
+// `ref` reads a branch instead of the default one (the planner reading what a Claude routine left on
+// its claude/ branch); writes always go to the default branch.
+export function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
   const url = `${API}/repos/${repo}/contents/${path}`;
+  const readUrl = ref ? `${url}?ref=${encodeURIComponent(ref)}` : url;
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
@@ -67,7 +73,7 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
     if (res.status === 401 || res.status === 403) {
       let message = '';
       try { message = (await res.json())?.message ?? ''; } catch { /* no body */ }
-      return accessError(repo, message);
+      return accessError(repo, message, res.status);
     }
     if (res.status === 404 && where === 'put') {
       return new Error(`GitHub can't see ${repo} with this key — check the repo name, and that the key was given access to that repo`);
@@ -77,7 +83,7 @@ export function createGitHubClient({ token, repo, path = 'data.json', fetch = (.
 
   return {
     get: () => bounded(async (signal) => {
-      const res = await fetch(url, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
+      const res = await fetch(readUrl, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
       if (res.status === 404) return null;
       if (!res.ok) throw await explain(res, repo, 'get');
       const body = await res.json();

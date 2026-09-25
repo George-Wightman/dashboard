@@ -9,7 +9,7 @@
 import { createGitHubClient } from '../js/sync.js';
 import { logicalDay, addDays } from '../js/dates.js';
 import { mindConfig, mindStatus, isQuiet, openAsks, pushSubscriptions, mindMessages, messageKey } from '../js/mind.js';
-import { loadMind, saveMind, pruneMind, budget, spend, spendModel } from '../js/mind-state.js';
+import { loadMind, saveMind, pruneMind, budget, spend, spendModel, mergeMind } from '../js/mind-state.js';
 import { stableStringify } from '../js/doc.js';
 import { sense, planRisk } from './senses.js';
 import { readArtefacts } from './drive.js';
@@ -26,12 +26,29 @@ const HEARTBEAT_MS = 55 * 60000;
 const ROUTINE_PREFIX = 'https://api.anthropic.com/v1/claude_code/routines/';
 export const VAPID_SUBJECT = 'https://george-wightman.github.io/dashboard/';
 const FINAL = new Set(['sent', 'quiet', 'gone', 'given-up', 'capped']);
+// Claude's two regular deep runs, at London time. The planner starts them rather than the routine's
+// own schedule, which is UTC and ran an hour late all summer. Each runs once a day, at the first
+// planner run in the two hours from its time.
+export const DEEP_TIMES = [['morning', '06:30'], ['evening', '21:30']];
+const DEEP_WINDOW_MINUTES = 120;
+
+export function scheduledDeepDue(mind, t, today, dayStartHour = 4) {
+  const h = t.getHours();
+  const mins = (h < dayStartHour ? h + 24 : h) * 60 + t.getMinutes();
+  for (const [slot, at] of DEEP_TIMES) {
+    const from = Number(at.slice(0, 2)) * 60 + Number(at.slice(3));
+    if (mins < from || mins >= from + DEEP_WINDOW_MINUTES) continue;
+    if (mind.fired.some((f) => (f.reason === slot || f.slot === slot) && logicalDay(new Date(f.at), dayStartHour) === today)) continue;
+    return slot;
+  }
+  return null;
+}
 
 const latest = (runs, engines) => Object.values(runs).filter((r) => engines.includes(r.engine)).map((r) => r.at).sort().at(-1) ?? null;
 
 export function createMind({
   UrlFetchApp, DriveApp = null, Utilities = null, props, log = () => {}, fetch, now, token, repo, dayStartHour = 4,
-  startedMs = Date.now(), crypto = null, clockMs = () => Date.now(),
+  startedMs = Date.now(), crypto = null, clockMs = () => Date.now(), claudeMinds = [],
 }) {
   const client = createGitHubClient({ token, repo, path: 'mind.json', fetch });
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
@@ -81,7 +98,9 @@ export function createMind({
   }
 
   // Claude's routine, for what needs real thought: George's questions first (one of the day's runs is
-  // kept for them), then re-plans a Reflex asked for and plans at risk. Never while one is outstanding.
+  // kept for them), then re-plans a Reflex asked for and plans at risk, and the morning and evening
+  // runs at their times. Never while one is outstanding. A run started inside a scheduled window
+  // counts as that window's run too.
   function fire(store, t, today, config, escalate) {
     const url = props.get('MIND_ROUTINE_URL');
     const key = props.get('MIND_ROUTINE_TOKEN');
@@ -92,7 +111,8 @@ export function createMind({
     const asks = Object.values(mind.events).filter((e) => e.kind === 'ask' && open(e));
     const others = [...new Set([...escalate, ...Object.values(mind.events).filter((e) => e.kind === 'risk' && open(e)).map((e) => e.id)])]
       .filter((id) => mind.events[id] && open(mind.events[id]));
-    if (!asks.length && !others.length) return;
+    const slot = config.enabled ? scheduledDeepDue(mind, t, today, dayStartHour) : null;
+    if (!asks.length && !others.length && !slot) return;
     const last = mind.fired.at(-1);
     const lastDeep = latest(mind.runs, ['deep']);
     if (last && t.getTime() - Date.parse(last.at) < FIRE_WAIT_MINUTES * 60000 && !(lastDeep && lastDeep > last.at)) return;
@@ -100,19 +120,19 @@ export function createMind({
     const quiet = isQuiet(store.doc(), t, dayStartHour);
     const useAsks = asks.length && b.deep < config.deepPerDay;
     const useOthers = !useAsks && others.length && !quiet && b.deep < config.deepPerDay - 1;
-    if (!useAsks && !useOthers) return;
-    const reason = useAsks ? 'ask' : others.some((id) => mind.events[id].kind === 'risk') ? 'risk' : 'escalate';
-    const ids = useAsks ? asks.map((e) => e.id) : others;
+    if (!useAsks && !useOthers && !slot) return;
+    const reason = useAsks ? 'ask' : useOthers ? (others.some((id) => mind.events[id].kind === 'risk') ? 'risk' : 'escalate') : slot;
+    const ids = useAsks ? asks.map((e) => e.id) : useOthers ? others : [];
     const res = UrlFetchApp.fetch(url, {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true,
       headers: { Authorization: `Bearer ${key}`, 'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'anthropic-version': '2023-06-01' },
-      payload: JSON.stringify({ text: `${reason}: ${ids.join(' ')}` }),
+      payload: JSON.stringify({ text: ids.length ? `${reason}: ${ids.join(' ')}${slot ? ` (and the ${slot} run)` : ''}` : `scheduled: ${slot}` }),
     });
     const code = res.getResponseCode();
     if (code >= 200 && code < 300) {
-      mind.fired.push({ at: t.toISOString(), reason, events: ids });
-      spend(mind, today, 'deep');
-    } else note(`Couldn't start Claude's review (HTTP ${code})`);
+      mind.fired.push({ at: t.toISOString(), reason, events: ids, ...(slot ? { slot } : {}) });
+      if (ids.length) spend(mind, today, 'deep');
+    } else note(`Couldn't start Claude's review (HTTP ${code}: ${String(res.getContentText?.() ?? '').slice(0, 160)})`);
   }
 
   // The Mind's own share of Apps Script's 90 minutes a day, so ⚙ can show where the time goes.
@@ -140,6 +160,9 @@ export function createMind({
     mind = loaded.mind;
     loadedAs = loaded.sha ? fingerprint(mind) : null;
     if (loaded.problem) note(loaded.problem);
+    // What Claude's routine wrote to mind.json on its branch (planner/branches.js): the events it
+    // handled, its run's record.
+    for (const m of claudeMinds) mind = mergeMind(mind, m, { cursorFrom: 'local' });
     const config = mindConfig(store.doc());
     try { vapid(store); } catch (e) { note(`Couldn't make the notification keys: ${e?.message ?? e}`); }
 
@@ -162,7 +185,7 @@ export function createMind({
     if (config.enabled && key) {
       const blocked = new Set(budget(mind, today).geminiBlocked ?? []);
       const gemini = createGemini({
-        UrlFetchApp, key, models: config.models, log,
+        UrlFetchApp, key, models: config.models, log, sleep: (ms) => Utilities?.sleep?.(ms),
         budget: {
           left: () => config.geminiPerDay - budget(mind, today).gemini,
           // Flash has its own daily cap on the Mind's free project; Lite only the overall one.

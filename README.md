@@ -124,8 +124,9 @@ something when it's worth it (design: [`docs/superpowers/specs/2026-09-25-coach-
   twice before the Coach says it: plain-code checks (nothing called done that isn't ticked, no time
   the plan or you didn't give, no rest day called a miss, no repeats) and a second opinion. It also
   writes the morning and evening openers, so they arrive whether or not a page is open.
-- **It thinks.** A Claude routine on your Claude plan runs a deep review at 06:30 and 21:30, and
-  whenever the planner calls it in: when you ask the Coach for real thought ("rework the weekend"),
+- **It thinks.** A Claude routine on your Claude plan runs a deep review at 06:30 and 21:30 (London
+  time: the planner starts both, so the clocks changing doesn't move them), and whenever the planner
+  calls it in: when you ask the Coach for real thought ("rework the weekend"),
   when a reaction decides the plan needs it, or when a goal's work stops fitting before its date. It
   keeps a standing picture of you (what matters now, patterns with their dates, risks, open threads,
   how to talk to you) that the Coach and every reaction read, says what's worth saying, and proposes
@@ -162,10 +163,12 @@ device, so the push services carry only ciphertext.
    [`planner/apps-script/appsscript.json`](planner/apps-script/appsscript.json) (it adds
    `drive.readonly`), then run `install` and approve.
 3. **The deep review.** A Claude Code routine on your account runs the repo's
-   [`claude/mind/ROUTINE.md`](claude/mind/ROUTINE.md). Its cloud environment needs
-   `DASHBOARD_TOKEN` (a fine-grained token with Contents read and write on `dashboard-sync` only).
-   Add an **API** trigger to it and put its URL and token in the script's properties as
-   `MIND_ROUTINE_URL` and `MIND_ROUTINE_TOKEN`, so the planner can call it in.
+   [`claude/mind/ROUTINE.md`](claude/mind/ROUTINE.md), with both `dashboard` and `dashboard-sync`
+   attached and no schedule of its own (the planner starts it). A cloud session can read
+   `dashboard-sync` but may write only to `claude/` branches, so the routine saves its answer to its
+   branch and the planner merges it within ten minutes; it needs no key of its own. Add an **API**
+   trigger to it and put its URL and token in the script's properties as `MIND_ROUTINE_URL` and
+   `MIND_ROUTINE_TOKEN`, so the planner can call it in.
 4. **Notifications.** ⚙ → Notifications → *Turn on*, on each device.
 
 ## Hebrew progress

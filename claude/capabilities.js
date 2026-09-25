@@ -14,7 +14,7 @@ const TOPICS = {
     guide: 'reference workflows' },
   mind: { purpose: "The Coach's background mind: speak through the Coach, propose plan changes, keep a picture of George",
     read: 'mind', ops: ['picture', 'say', 'propose', 'handled', 'mind'],
-    limits: 'apply --mind allows only picture, say, propose, brief, guide, flag, handoff, handled (one picture, two says, one proposal, one handled)',
+    limits: 'apply --mind allows only picture, say, propose, brief, guide, flag, handled (one picture, two says, one proposal, one handled)',
     example: { op: 'say', text: 'MILLRACE is ticked. How did the recommendation land this time?', notify: true },
     guide: 'claude/mind/ROUTINE.md' },
   reviews: { purpose: 'Evidence-based goal direction review through the existing planner Gemini integration',

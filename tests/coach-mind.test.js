@@ -10,6 +10,8 @@ import { sendMessage } from '../js/ui/coach.js';
 import { pushState, turnOn, turnOff, deviceId, b64urlToBytes } from '../js/push-client.js';
 import { at } from '../planner/time.js';
 import { makeStore, clock } from './helpers.js';
+import { dayScore } from '../js/schedule.js';
+import { coachTools } from '../js/coach-tools.js';
 
 const THU = '2026-09-24';
 
@@ -86,6 +88,54 @@ test('think_deeper: an ask for Claude, one undoable change, and a reply that say
   const change = Object.values(s.doc().changes).find((c) => /Asked for a deeper look/.test(c.summary));
   assert.equal(change.source, 'coach');
   assert.match(s.doc().journal[`talk:${THU}:own-1`].messages[1].did[0].text, /Asked for a deeper look: "Is the weekend plan/);
+});
+
+test('a note for Claude is a flag in Flags at once, and the conversation only marks it (25 Sep)', async () => {
+  const s = store('10:30');
+  mindTalk(s, 'mind-2', 'How are you managing the squeeze?', '10:22');
+  const ctx = flowCtx(s, clock(at(THU, '10:30')), async (opts) => {
+    opts.run('hand_to_claude', { text: 'Make the new flags filterable by kind' });
+    return { text: "I've left Claude a note in your Flags for its next run.", calls: [], model: 'm' };
+  });
+  ctx.ui.coach.draft = 'can claude make flags filterable';
+  await sendMessage(ctx);
+  const t = s.doc().journal[`talk:${THU}:mind-2`];
+  const flag = s.doc().flags[t.flagIds[0]];
+  assert.equal(flag.text, 'Make the new flags filterable by kind');
+  assert.deepEqual([flag.source, flag.kind, flag.status, flag.ctx.talk], ['coach', 'claude', 'active', `talk:${THU}:mind-2`]);
+  assert.deepEqual(t.handoffs, ['Make the new flags filterable by kind']);
+});
+
+test("George's merge: the Coach drops what he merged, with his reason, and it isn't counted as missed", async () => {
+  const s = store('10:30');
+  const star = s.addItem({ type: 'task', title: 'STAR paragraphs + Motivational Fit', date: THU });
+  const six = s.addItem({ type: 'task', title: '6 scenarios + Motivational Fit out loud', date: THU });
+  s.putCalendar(`commit:${THU}`, { day: THU, at: at(THU, '09:00').toISOString(), tasks: [star.id, six.id] }, 'me');
+  const ctx = flowCtx(s, clock(at(THU, '10:30')), async (opts) => {
+    for (const id of [star.id, six.id]) assert.equal(opts.run('drop_task', { id, reason: 'merged into the mock interview' }).ok, true);
+    return { text: 'Done: both dropped as merged into the mock interview.', calls: [], model: 'm' };
+  });
+  ctx.ui.coach.draft = 'the STAR practice and the 6 scenarios are the same as the mock interview, merge them';
+  await sendMessage(ctx);
+  // Two tasks at once is a proposal (the 17 Sep rule): one tap on Apply.
+  const talk = Object.values(s.doc().journal).find((j) => j.proposal);
+  assert.match(talk.proposal.summary, /STAR paragraphs/);
+  s.commitDraft(talk.proposal.before, talk.proposal.after, 'Applied');
+  for (const id of [star.id, six.id]) {
+    const it = s.doc().items[id];
+    assert.deepEqual([it.status, it.released], ['archived', 'merged into the mock interview']);
+  }
+  const score = dayScore(s.doc(), THU);
+  assert.deepEqual(score.dropped, []);
+  assert.equal(score.released.length, 2);
+  const tools = coachTools({ store: s });
+  const live = s.addItem({ type: 'task', title: 'Role play 5', date: THU });
+  assert.equal(tools.run('drop_task', { id: live.id }).ok, false, 'never without his reason');
+});
+
+test('the rules make the Coach say exactly how something reached Claude, and do what it can itself', () => {
+  assert.match(TALK_SYSTEM, /hand_to_claude only leaves a note in his Flags for Claude's next regular run \(06:30 or 21:30\): it isn't sent, doesn't ping Claude/);
+  assert.match(TALK_SYSTEM, /make the change yourself with your tools in the same turn: drop_task/);
 });
 
 test('a reply to a Mind message goes into its conversation', async () => {

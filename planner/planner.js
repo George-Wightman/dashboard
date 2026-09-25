@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '5262a417';
+var PLANNER_BUILD = 'd92e4e1e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1199,7 +1199,8 @@ const JOURNAL_FIELDS = {
   brief: { text: '' },
   // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
   // slot; Claude's guide for the Coach, filed under the week's Monday.
-  talk: { slot: '', messages: [], handoffs: [], done: false, model: '', proposal: null },
+  // flagIds: the flags its notes for Claude became, as they were made (js/ui/coach.js keep).
+  talk: { slot: '', messages: [], handoffs: [], flagIds: [], done: false, model: '', proposal: null },
   entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
   guide: { text: '' },
 };
@@ -1913,15 +1914,21 @@ function decodeBase64(b64) {
 
 // A 401/403 is usually the key, but a sandbox's egress proxy can answer 403 for a private repo it
 // hasn't been told to allow, and blaming the key then sends everyone off to replace a working one.
-function accessError(repo, message = '') {
+// GitHub's (or the proxy's) own words always go on the end: on 25 Sep a cloud routine's write was
+// refused by Anthropic's GitHub gateway, and without them it read as a bad key.
+function accessError(repo, message = '', status = null) {
   if (/for this session|add_repo/i.test(message)) {
     return new Error(`The network this chat runs in is blocking ${repo} — the key was never checked. It said: ${message}`);
   }
-  return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}`);
+  const said = message || status ? ` It said${status ? ` (HTTP ${status})` : ''}: ${message || 'nothing more'}` : '';
+  return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}.${said}`);
 }
 
-function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
+// `ref` reads a branch instead of the default one (the planner reading what a Claude routine left on
+// its claude/ branch); writes always go to the default branch.
+function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
   const url = `${API}/repos/${repo}/contents/${path}`;
+  const readUrl = ref ? `${url}?ref=${encodeURIComponent(ref)}` : url;
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
@@ -1957,7 +1964,7 @@ function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args)
     if (res.status === 401 || res.status === 403) {
       let message = '';
       try { message = (await res.json())?.message ?? ''; } catch { /* no body */ }
-      return accessError(repo, message);
+      return accessError(repo, message, res.status);
     }
     if (res.status === 404 && where === 'put') {
       return new Error(`GitHub can't see ${repo} with this key — check the repo name, and that the key was given access to that repo`);
@@ -1967,7 +1974,7 @@ function createGitHubClient({ token, repo, path = 'data.json', fetch = (...args)
 
   return {
     get: () => bounded(async (signal) => {
-      const res = await fetch(url, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
+      const res = await fetch(readUrl, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
       if (res.status === 404) return null;
       if (!res.ok) throw await explain(res, repo, 'get');
       const body = await res.json();
@@ -6267,13 +6274,19 @@ const __planner_gemini_gas = (() => {
 // `spend(model, n)` records calls, and `blocked` (a Set kept in mind.json) holds any model Google has
 // said is used up for the day. A question for a model that's used up, capped, busy for the minute or
 // failing goes to the other one; `notes` collects what happened in plain English for the status line.
+//
+// Only answers count against the allowance. On 25 Sep every one of Flash's 19 calls came back "503:
+// this model is currently experiencing high demand", each was counted, and by the evening the Mind
+// thought Flash was used up when Google had charged it nothing. A server error now gets one more try
+// on the same model after `sleep(ms)` (Utilities.sleep in Apps Script), and only then the other model.
 
 const { ENDPOINT, readReply } = __js_gemini;
 
 const PER_DAY = /PerDay/i;
 const THINKING = /thinking/i;
+const SERVER_WAIT_MS = 5000;
 
-function createGemini({ UrlFetchApp, key, models, budget, log = () => {} }) {
+function createGemini({ UrlFetchApp, key, models, budget, log = () => {}, sleep = () => {} }) {
   const scrub = (text) => String(text).split(key || '\u0000').join('…');
   const other = (role) => (role === 'think' ? 'check' : 'think');
   const noThinking = new Set();
@@ -6300,7 +6313,7 @@ function createGemini({ UrlFetchApp, key, models, budget, log = () => {} }) {
       payload: JSON.stringify(body(b.q, b.role)),
     }));
     const responses = UrlFetchApp.fetchAll(requests);
-    batch.forEach((b, i) => { if (!(responses[i].getResponseCode() === 400 && THINKING.test(responses[i].getContentText()))) budget.spend(models[b.role], 1); });
+    batch.forEach((b, i) => { const code = responses[i].getResponseCode(); if (code >= 200 && code < 300) budget.spend(models[b.role], 1); });
     return responses;
   }
 
@@ -6321,11 +6334,10 @@ function createGemini({ UrlFetchApp, key, models, budget, log = () => {} }) {
         notes.add(`${model} has used its free allowance for today`);
         return { error: 'quota', retry: true };
       }
-      notes.add(`${model} was busy for a minute`);
       return { error: 'busy', retry: true };
     }
     log(`Gemini ${model} answered ${status}: ${scrub(text).slice(0, 200)}`);
-    return { error: status >= 500 ? 'server' : 'rejected', retry: status >= 500 };
+    return { error: status >= 500 ? 'server' : 'rejected', retry: status >= 500, status };
   }
 
   // questions: [{ system, prompt, model: 'think'|'check', think?: true }] → answers in the same order.
@@ -6339,18 +6351,23 @@ function createGemini({ UrlFetchApp, key, models, budget, log = () => {} }) {
       if (role) batch.push({ q, i, role, tried: new Set([role]) });
       else out[i] = { error: budget.blocked.has(models[q.model]) || budget.blocked.has(models[other(q.model)]) ? 'quota' : 'budget' };
     });
-    // At most three rounds: the first answers, then a model without thinking or the other model, then
-    // the other model once more.
-    for (let round = 0; batch.length && round < 3; round++) {
+    // At most four rounds: the first answers; then the same model again (without thinking, or after
+    // a pause when it was overloaded) or the other one; then the other one; then one spare.
+    let wait = false;
+    for (let round = 0; batch.length && round < 4; round++) {
+      if (wait) { sleep(SERVER_WAIT_MS); wait = false; }
       const answers = send(batch);
       const next = [];
       batch.forEach((b, n) => {
         const r = read(answers[n], b.role);
         if (r.data) { out[b.i] = { ...r, role: b.role }; return; }
         if (r.again && budget.left() > next.length) { next.push(b); return; }
+        if (r.error === 'server' && !b.waited && budget.left() > next.length) { next.push({ ...b, waited: true }); wait = true; return; }
         const alt = other(b.role);
         if (r.retry && !b.tried.has(alt) && usable(alt) && budget.left() > next.length) {
-          if (r.error !== 'quota') notes.add(`switched to ${models[alt]} for a moment`);
+          if (r.error === 'server') notes.add(`${models[b.role]} was overloaded (HTTP ${r.status}), so ${models[alt]} answered`);
+          else if (r.error === 'nonsense') notes.add(`${models[b.role]}'s answer couldn't be read, so ${models[alt]} answered`);
+          else if (r.error === 'busy') notes.add(`${models[b.role]} was busy for a minute, so ${models[alt]} answered`);
           next.push({ ...b, role: alt, tried: new Set([...b.tried, alt]) });
           return;
         }
@@ -6369,7 +6386,7 @@ function createGemini({ UrlFetchApp, key, models, budget, log = () => {} }) {
     notes: () => [...notes],
   };
 }
-return { createGemini };
+return { SERVER_WAIT_MS, createGemini };
 })();
 
 // ---- js/coach.js
@@ -7108,6 +7125,7 @@ const TALK_SYSTEM = [
   "Only ticks say what George has done. Something is done when it is in 'Ticked off today' or he tells you so; a calendar block, even one whose time has passed, is a plan and not evidence. Never congratulate him on, or assume he did, anything that isn't ticked. If nothing is ticked, ask rather than guess.",
   "Hold George to what he committed to. Once today's list has locked, work he pushes to another day or deletes doesn't make the day a success: pushed, missed and deleted items are not wins. In the evening, and whenever he reviews the day, name them and ask what happened — briefly, curious rather than lecturing — and never call a day a success while any remain. A daily habit left undone is a miss; an optional times-a-week habit left undone is a rest day and needs no comment. If he says a deleted task genuinely isn't needed any more, call release_task with his reason.",
   "Talk about the day as it actually is. Do not volunteer that work has moved, slipped or been rebooked unless the context marks today as significantly different, or George raises it himself. When he asks, answer in full from the bookings.",
+  "When he tells you how to change his plan — merge, drop, move, add, swap — make the change yourself with your tools in the same turn: drop_task (with his reason) for work he no longer needs, move_task or skip for what moves, add_task for what's new. Then say exactly what you changed. Hand to Claude only what your tools can't do.",
   "Execute explicit task instructions, including future dates, using tools. Add goals with add_goal. For an open-ended review ('the layout looks wrong', 'make tomorrow relevant') first use propose_changes and prepare specific changes for George to apply. Do not substitute unrelated tasks. Read original dates and pass expectedDay to move_task. Do not introduce earlier work, a different date, or extra tasks without a clear request.",
   "All tools work on one draft until your turn finishes. Do not promise success before tool results. Any failed mutation cancels the whole batch. Undo means undo_last_action; never attempt to reconstruct an earlier plan by moving items from memory. Recorded action receipts and their undo status are the evidence of changes, even when an earlier reply claimed otherwise.",
   "When George says the day is over or he is going to bed, call close_day. A closed day accepts no new work; capture future ideas normally. Only call reopen_day on his explicit request. You can still record something he says he already completed. Never reopen today to evade a tool refusal.",
@@ -7115,6 +7133,7 @@ const TALK_SYSTEM = [
   "His gym sessions are his own to plan: never plan them.",
   "Some of your messages came from your background mind: noticing something he did (Gemini) or a deeper review (Claude), marked as such. They are yours; carry them on naturally, and don't repeat them.",
   "When he asks for something that needs real thought — a re-plan, how something is going across weeks, anything you would have to guess at — call think_deeper with his question and tell him you'll think it through properly and come back to him in the conversation, usually within half an hour.",
+  "Say exactly how anything reached Claude, never more. think_deeper calls Claude in now; its answer comes back here. hand_to_claude only leaves a note in his Flags for Claude's next regular run (06:30 or 21:30): it isn't sent, doesn't ping Claude, and changes nothing in his plan or calendar by itself. If he asks whether something reached Claude, answer from the tool you actually called in this conversation; if you called neither, say so.",
   "At a natural end use finish to save a journal entry about George, not about yourself. Leave feeling blank if unknown. Do not force closure after every task or question. He can continue the conversation afterwards.",
 ].join('\n');
 
@@ -7421,8 +7440,10 @@ async function runChain({ gemini, doc, group, now, today, recent = [] }) {
   if (gemini.available?.('think')) {
     const [r] = await gemini.ask([{ ...deepPrompt(context, group), model: 'think', think: true }]);
     calls++;
-    // Deep only if Flash itself answered (the client may have handed the question to Lite).
-    if (r.data) { d = r.data; depth = (r.role ?? r.model) === 'think' ? 'deep' : 'lite'; }
+    // Only Flash's own answer counts. When the client handed the question to Lite (Flash overloaded),
+    // Lite's one-shot answer to a prompt written for a thinking model is its weakest work — every
+    // message on 25 Sep — so Lite goes through its own steps below instead.
+    if (r.data && (r.role ?? 'think') === 'think') { d = r.data; depth = 'deep'; }
   }
   if (!d) {
     const angles = anglesFor(group, doc, today);
@@ -7541,7 +7562,8 @@ async function writeOpener({ gemini, store, slot, now, config, quiet = false, da
   for (const t of talksOn(store.doc(), today)) {
     if (['morning', 'afternoon', 'evening'].includes(t.slot) && !t.done && !(t.messages ?? []).some((x) => x.who === 'george')) store.updateJournal(t.id, { done: true });
   }
-  const m = { who: 'coach', text, at: now.toISOString(), from: 'mind', by, notify: !quiet };
+  // The plain fallback ("How did today go?") is there so the moment isn't missed, not worth a buzz.
+  const m = { who: 'coach', text, at: now.toISOString(), from: 'mind', by, notify: !quiet && by !== 'plain' };
   store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: by === 'gemini' ? config.models.think : '' }, 'mind');
   return { talkId: `talk:${today}:${slot}`, m };
 }
@@ -7946,7 +7968,7 @@ const __planner_mind = (() => {
 const { createGitHubClient } = __js_sync;
 const { logicalDay, addDays } = __js_dates;
 const { mindConfig, mindStatus, isQuiet, openAsks, pushSubscriptions, mindMessages, messageKey } = __js_mind;
-const { loadMind, saveMind, pruneMind, budget, spend, spendModel } = __js_mind_state;
+const { loadMind, saveMind, pruneMind, budget, spend, spendModel, mergeMind } = __js_mind_state;
 const { stableStringify } = __js_doc;
 const { sense, planRisk } = __planner_senses;
 const { readArtefacts } = __planner_drive;
@@ -7963,12 +7985,29 @@ const HEARTBEAT_MS = 55 * 60000;
 const ROUTINE_PREFIX = 'https://api.anthropic.com/v1/claude_code/routines/';
 const VAPID_SUBJECT = 'https://george-wightman.github.io/dashboard/';
 const FINAL = new Set(['sent', 'quiet', 'gone', 'given-up', 'capped']);
+// Claude's two regular deep runs, at London time. The planner starts them rather than the routine's
+// own schedule, which is UTC and ran an hour late all summer. Each runs once a day, at the first
+// planner run in the two hours from its time.
+const DEEP_TIMES = [['morning', '06:30'], ['evening', '21:30']];
+const DEEP_WINDOW_MINUTES = 120;
+
+function scheduledDeepDue(mind, t, today, dayStartHour = 4) {
+  const h = t.getHours();
+  const mins = (h < dayStartHour ? h + 24 : h) * 60 + t.getMinutes();
+  for (const [slot, at] of DEEP_TIMES) {
+    const from = Number(at.slice(0, 2)) * 60 + Number(at.slice(3));
+    if (mins < from || mins >= from + DEEP_WINDOW_MINUTES) continue;
+    if (mind.fired.some((f) => (f.reason === slot || f.slot === slot) && logicalDay(new Date(f.at), dayStartHour) === today)) continue;
+    return slot;
+  }
+  return null;
+}
 
 const latest = (runs, engines) => Object.values(runs).filter((r) => engines.includes(r.engine)).map((r) => r.at).sort().at(-1) ?? null;
 
 function createMind({
   UrlFetchApp, DriveApp = null, Utilities = null, props, log = () => {}, fetch, now, token, repo, dayStartHour = 4,
-  startedMs = Date.now(), crypto = null, clockMs = () => Date.now(),
+  startedMs = Date.now(), crypto = null, clockMs = () => Date.now(), claudeMinds = [],
 }) {
   const client = createGitHubClient({ token, repo, path: 'mind.json', fetch });
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
@@ -8018,7 +8057,9 @@ function createMind({
   }
 
   // Claude's routine, for what needs real thought: George's questions first (one of the day's runs is
-  // kept for them), then re-plans a Reflex asked for and plans at risk. Never while one is outstanding.
+  // kept for them), then re-plans a Reflex asked for and plans at risk, and the morning and evening
+  // runs at their times. Never while one is outstanding. A run started inside a scheduled window
+  // counts as that window's run too.
   function fire(store, t, today, config, escalate) {
     const url = props.get('MIND_ROUTINE_URL');
     const key = props.get('MIND_ROUTINE_TOKEN');
@@ -8029,7 +8070,8 @@ function createMind({
     const asks = Object.values(mind.events).filter((e) => e.kind === 'ask' && open(e));
     const others = [...new Set([...escalate, ...Object.values(mind.events).filter((e) => e.kind === 'risk' && open(e)).map((e) => e.id)])]
       .filter((id) => mind.events[id] && open(mind.events[id]));
-    if (!asks.length && !others.length) return;
+    const slot = config.enabled ? scheduledDeepDue(mind, t, today, dayStartHour) : null;
+    if (!asks.length && !others.length && !slot) return;
     const last = mind.fired.at(-1);
     const lastDeep = latest(mind.runs, ['deep']);
     if (last && t.getTime() - Date.parse(last.at) < FIRE_WAIT_MINUTES * 60000 && !(lastDeep && lastDeep > last.at)) return;
@@ -8037,19 +8079,19 @@ function createMind({
     const quiet = isQuiet(store.doc(), t, dayStartHour);
     const useAsks = asks.length && b.deep < config.deepPerDay;
     const useOthers = !useAsks && others.length && !quiet && b.deep < config.deepPerDay - 1;
-    if (!useAsks && !useOthers) return;
-    const reason = useAsks ? 'ask' : others.some((id) => mind.events[id].kind === 'risk') ? 'risk' : 'escalate';
-    const ids = useAsks ? asks.map((e) => e.id) : others;
+    if (!useAsks && !useOthers && !slot) return;
+    const reason = useAsks ? 'ask' : useOthers ? (others.some((id) => mind.events[id].kind === 'risk') ? 'risk' : 'escalate') : slot;
+    const ids = useAsks ? asks.map((e) => e.id) : useOthers ? others : [];
     const res = UrlFetchApp.fetch(url, {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true,
       headers: { Authorization: `Bearer ${key}`, 'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'anthropic-version': '2023-06-01' },
-      payload: JSON.stringify({ text: `${reason}: ${ids.join(' ')}` }),
+      payload: JSON.stringify({ text: ids.length ? `${reason}: ${ids.join(' ')}${slot ? ` (and the ${slot} run)` : ''}` : `scheduled: ${slot}` }),
     });
     const code = res.getResponseCode();
     if (code >= 200 && code < 300) {
-      mind.fired.push({ at: t.toISOString(), reason, events: ids });
-      spend(mind, today, 'deep');
-    } else note(`Couldn't start Claude's review (HTTP ${code})`);
+      mind.fired.push({ at: t.toISOString(), reason, events: ids, ...(slot ? { slot } : {}) });
+      if (ids.length) spend(mind, today, 'deep');
+    } else note(`Couldn't start Claude's review (HTTP ${code}: ${String(res.getContentText?.() ?? '').slice(0, 160)})`);
   }
 
   // The Mind's own share of Apps Script's 90 minutes a day, so ⚙ can show where the time goes.
@@ -8077,6 +8119,9 @@ function createMind({
     mind = loaded.mind;
     loadedAs = loaded.sha ? fingerprint(mind) : null;
     if (loaded.problem) note(loaded.problem);
+    // What Claude's routine wrote to mind.json on its branch (planner/branches.js): the events it
+    // handled, its run's record.
+    for (const m of claudeMinds) mind = mergeMind(mind, m, { cursorFrom: 'local' });
     const config = mindConfig(store.doc());
     try { vapid(store); } catch (e) { note(`Couldn't make the notification keys: ${e?.message ?? e}`); }
 
@@ -8099,7 +8144,7 @@ function createMind({
     if (config.enabled && key) {
       const blocked = new Set(budget(mind, today).geminiBlocked ?? []);
       const gemini = createGemini({
-        UrlFetchApp, key, models: config.models, log,
+        UrlFetchApp, key, models: config.models, log, sleep: (ms) => Utilities?.sleep?.(ms),
         budget: {
           left: () => config.geminiPerDay - budget(mind, today).gemini,
           // Flash has its own daily cap on the Mind's free project; Lite only the overall one.
@@ -8200,7 +8245,64 @@ function createMind({
 
   return { think, after, problems: () => [...problems] };
 }
-return { MIND_SECONDS, FIRE_WAIT_MINUTES, PUSH_MAX_AGE_HOURS, PUSH_TRIES, VAPID_SUBJECT, createMind };
+return { MIND_SECONDS, FIRE_WAIT_MINUTES, PUSH_MAX_AGE_HOURS, PUSH_TRIES, VAPID_SUBJECT, DEEP_TIMES, scheduledDeepDue, createMind };
+})();
+
+// ---- planner/branches.js
+const __planner_branches = (() => {
+// What Claude's routine left for the dashboard. A cloud routine can read the sync repo but write only
+// to claude/ branches (Anthropic's GitHub gateway; see claude/branch.js), so a deep run pushes its
+// data.json and mind.json to one, and every planner run looks for claude/ branches whose tip it
+// hasn't taken in yet. Their files come back here; gas.js merges data.json into the dashboard and the
+// Mind merges mind.json — the way any device's changes arrive, field by field, newest wins.
+//
+// `merged` is { branch: sha } of tips already taken in (the CLAUDE_MERGED script property), so an
+// unchanged branch costs one small request a run. A tip is read by its sha, so a push landing
+// mid-read is simply taken in next time.
+
+const { createGitHubClient } = __js_sync;
+const { isDoc } = __js_doc;
+const { isMind } = __js_mind_state;
+
+const API = 'https://api.github.com';
+
+// → { found: [{ branch, sha, data, mind }], problems: [text] }. One branch that can't be read is a
+// problem for the log, and the rest are still taken in; it's tried again next run.
+async function claudeBranches({ fetch, token, repo, merged = {} }) {
+  const res = await fetch(`${API}/repos/${repo}/git/matching-refs/heads/claude/`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`GitHub ${res.status} when looking for Claude's branches`);
+  const refs = await res.json();
+  const out = [];
+  const problems = [];
+  for (const r of Array.isArray(refs) ? refs : []) {
+    const branch = String(r?.ref ?? '').replace(/^refs\/heads\//, '');
+    const sha = r?.object?.sha;
+    if (!branch.startsWith('claude/') || !sha || merged[branch] === sha) continue;
+    const read = async (path) => {
+      const got = await createGitHubClient({ token, repo, path, ref: sha, fetch }).get();
+      return got?.doc ?? null;
+    };
+    try {
+      const data = await read('data.json');
+      const mind = await read('mind.json');
+      out.push({ branch, sha, data: isDoc(data) ? data : null, mind: isMind(mind) ? mind : null });
+    } catch (e) {
+      problems.push(`${branch}: ${e?.message ?? e}`);
+    }
+  }
+  return { found: out, problems };
+}
+
+// The CLAUDE_MERGED property once a run has saved what it took in.
+function mergedAfter(merged, found) {
+  const next = { ...merged };
+  for (const b of found) next[b.branch] = b.sha;
+  return next;
+}
+return { claudeBranches, mergedAfter };
 })();
 
 // ---- planner/gas.js
@@ -8231,6 +8333,8 @@ const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner
 const { processWorkflows } = __js_workflow;
 const { runGoalReviews } = __planner_reviews;
 const { createMind } = __planner_mind;
+const { claudeBranches, mergedAfter } = __planner_branches;
+const { mergeDocs } = __js_merge;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -8449,6 +8553,26 @@ function createPlanner({
     if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars });
   }
 
+  // What Claude's routine saved to its claude/ branch (planner/branches.js), merged in before anything
+  // else so the rest of the run and the Mind see it. `done` records the tips as taken in, and is only
+  // called once the dashboard has been saved; until then the next run simply merges them again.
+  async function claudeWork(store) {
+    const merged = readProperty(props(), 'CLAUDE_MERGED');
+    let found = [];
+    try {
+      const r = await claudeBranches({ fetch, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'), merged });
+      found = r.found;
+      for (const p of r.problems) log(`Claude's branch ${p}`);
+    } catch (err) {
+      log(`Claude's branch: ${err?.message ?? err}`);
+    }
+    for (const b of found) if (b.data) store.replaceDoc(mergeDocs(store.doc(), b.data), 'local');
+    return {
+      minds: found.map((b) => b.mind).filter(Boolean),
+      done: () => { if (found.length) writeProperty(props(), 'CLAUDE_MERGED', mergedAfter(merged, found)); },
+    };
+  }
+
   // How long the planner's runs have taken today, so the Mind's status can show it against Apps
   // Script's daily allowance.
   function countRunTime(startedMs) {
@@ -8471,6 +8595,7 @@ function createPlanner({
       if (e && e.calendarId && Number(get('LAST_WRITE') ?? 0) > t.getTime() - ECHO_MS) return 'echo';
       const session = await open();
       const { store } = session;
+      const claude = await claudeWork(store);
       await hevy(store);
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
@@ -8553,7 +8678,7 @@ function createPlanner({
       // The Coach's Mind (planner/mind.js): sense, react, call Claude in. It can never stop planning.
       try {
         mind = createMind({ UrlFetchApp, DriveApp, Utilities, props: { get, put }, log, fetch, now, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'),
-          dayStartHour: dayStartHour(), startedMs, crypto: mindCrypto, clockMs });
+          dayStartHour: dayStartHour(), startedMs, crypto: mindCrypto, clockMs, claudeMinds: claude.minds });
         await mind.think({ store, calEvents: events });
       } catch (err) {
         mind = null;
@@ -8583,6 +8708,7 @@ function createPlanner({
           log(clean(`The Mind couldn't finish: ${err?.message ?? err}`));
         }
       }
+      claude.done();
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
     } catch (err) {

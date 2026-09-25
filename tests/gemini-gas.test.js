@@ -70,12 +70,24 @@ test('Flash is asked to think hard; a model that won\'t take it is asked again w
 });
 
 test('switching models on the fly: a server error, a busy minute, or Flash capped for the day', async () => {
+  // Overloaded once: a pause, and Flash answers after all — and only answers are counted.
   let calls = 0;
+  const waits = [];
   let UrlFetchApp = fakeFetch((model) => (model === MODELS.think && ++calls === 1 ? { status: 503, body: 'overloaded' } : reply({ ok: model })));
-  let g = make(UrlFetchApp);
+  const once = budget();
+  let g = make(UrlFetchApp, once, { sleep: (ms) => waits.push(ms) });
   let out = await g.ask([{ system: 'S', prompt: 'a', model: 'think' }, { system: 'S', prompt: 'b', model: 'think' }]);
-  assert.deepEqual(out.map((r) => [r.data.ok, r.role]), [[MODELS.check, 'check'], [MODELS.think, 'think']]);
-  assert.match(g.notes().join(), /switched to gemini-flash-lite-latest/);
+  assert.deepEqual(out.map((r) => [r.data.ok, r.role]), [[MODELS.think, 'think'], [MODELS.think, 'think']]);
+  assert.deepEqual(waits, [5000]);
+  assert.deepEqual(once.used, { [MODELS.think]: 2 }, 'the 503 cost nothing');
+  // Overloaded all day (25 Sep): Lite answers, and the note says why.
+  UrlFetchApp = fakeFetch((model) => (model === MODELS.think ? { status: 503, body: { error: { code: 503, message: 'This model is currently experiencing high demand.' } } } : reply({ ok: model })));
+  const allDay = budget();
+  g = make(UrlFetchApp, allDay);
+  out = await g.ask([{ system: 'S', prompt: 'a', model: 'think' }]);
+  assert.deepEqual([out[0].data.ok, out[0].role], [MODELS.check, 'check']);
+  assert.deepEqual(allDay.used, { [MODELS.check]: 1 }, "Flash's allowance untouched");
+  assert.match(g.notes().join(), /gemini-flash-latest was overloaded \(HTTP 503\), so gemini-flash-lite-latest answered/);
 
   UrlFetchApp = fakeFetch((model) => (model === MODELS.think ? PER_MINUTE : reply({ ok: model })));
   const b = budget();

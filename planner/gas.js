@@ -24,6 +24,8 @@ import { readProperty, writeProperty, deleteProperty, propertyParts } from './pr
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
 import { createMind } from './mind.js';
+import { claudeBranches, mergedAfter } from './branches.js';
+import { mergeDocs } from '../js/merge.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -242,6 +244,26 @@ export function createPlanner({
     if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars });
   }
 
+  // What Claude's routine saved to its claude/ branch (planner/branches.js), merged in before anything
+  // else so the rest of the run and the Mind see it. `done` records the tips as taken in, and is only
+  // called once the dashboard has been saved; until then the next run simply merges them again.
+  async function claudeWork(store) {
+    const merged = readProperty(props(), 'CLAUDE_MERGED');
+    let found = [];
+    try {
+      const r = await claudeBranches({ fetch, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'), merged });
+      found = r.found;
+      for (const p of r.problems) log(`Claude's branch ${p}`);
+    } catch (err) {
+      log(`Claude's branch: ${err?.message ?? err}`);
+    }
+    for (const b of found) if (b.data) store.replaceDoc(mergeDocs(store.doc(), b.data), 'local');
+    return {
+      minds: found.map((b) => b.mind).filter(Boolean),
+      done: () => { if (found.length) writeProperty(props(), 'CLAUDE_MERGED', mergedAfter(merged, found)); },
+    };
+  }
+
   // How long the planner's runs have taken today, so the Mind's status can show it against Apps
   // Script's daily allowance.
   function countRunTime(startedMs) {
@@ -264,6 +286,7 @@ export function createPlanner({
       if (e && e.calendarId && Number(get('LAST_WRITE') ?? 0) > t.getTime() - ECHO_MS) return 'echo';
       const session = await open();
       const { store } = session;
+      const claude = await claudeWork(store);
       await hevy(store);
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
@@ -346,7 +369,7 @@ export function createPlanner({
       // The Coach's Mind (planner/mind.js): sense, react, call Claude in. It can never stop planning.
       try {
         mind = createMind({ UrlFetchApp, DriveApp, Utilities, props: { get, put }, log, fetch, now, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'),
-          dayStartHour: dayStartHour(), startedMs, crypto: mindCrypto, clockMs });
+          dayStartHour: dayStartHour(), startedMs, crypto: mindCrypto, clockMs, claudeMinds: claude.minds });
         await mind.think({ store, calEvents: events });
       } catch (err) {
         mind = null;
@@ -376,6 +399,7 @@ export function createPlanner({
           log(clean(`The Mind couldn't finish: ${err?.message ?? err}`));
         }
       }
+      claude.done();
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
     } catch (err) {

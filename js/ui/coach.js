@@ -104,8 +104,12 @@ function reflag(store, id, before, forClaude) {
 
 function saveEntry(store, day, slot, entry) {
   const id = entryId(day, slot);
-  const forClaude = talkOf(store.doc(), day, slot)?.handoffs ?? [];
-  const flagIds = reflag(store, id, entryOf(store.doc(), day, slot), forClaude);
+  const t = talkOf(store.doc(), day, slot);
+  const forClaude = t?.handoffs ?? [];
+  // Notes made since 25 Sep were flagged as they were made (keep); those flags become the entry's.
+  const made = t?.flagIds ?? [];
+  const before = entryOf(store.doc(), day, slot) ?? { forClaude: forClaude.slice(forClaude.length - made.length), flagIds: made };
+  const flagIds = reflag(store, id, before, forClaude);
   store.saveJournal({ kind: 'entry', day, slot, ...entry, forClaude, flagIds }, 'gemini');
 }
 
@@ -140,15 +144,19 @@ export function removeEntry(ctx, e) {
 const QUIET_TOOLS = new Set(['get_day', 'get_gym', 'find', 'get_journal', 'finish', 'hand_to_claude']);
 
 // What a turn left, kept with the conversation: the Coach's reply with what it did, any handoffs,
-// and — when it called finish — the conversation marked done and its journal entry saved.
+// and — when it called finish — the conversation marked done and its journal entry saved. A note for
+// Claude is a flag the moment it's made, in George's Flags where he can close it: until 25 Sep it
+// only became one when the conversation was finished, and the Mind's conversations never are.
 function keep(store, day, slot, at, result, did, handoffs, entry) {
   const t = talkOf(store.doc(), day, slot);
   const text = result?.text || (did.length ? 'Done.' : '');
   const reply = text ? [{ who: 'coach', text, at, ...(did.length ? { did } : {}) }] : [];
+  const flagged = handoffs.map((note) => store.addFlag(note, { from: 'coach', talk: talkId(day, slot) }, 'coach', 'claude').id);
   store.saveJournal({
     kind: 'talk', day, slot,
     messages: [...(t?.messages ?? []), ...reply],
     handoffs: [...(t?.handoffs ?? []), ...handoffs],
+    ...(flagged.length ? { flagIds: [...(t?.flagIds ?? []), ...flagged] } : {}),
     ...(result?.model ? { model: result.model } : {}),
     ...(entry ? { done: true } : {}),
   }, 'gemini');
@@ -464,7 +472,10 @@ export function renderTalk(ctx, where = 'panel') {
         // A day's heading once, where its first conversation starts (today's needs none).
         t.day !== today && t.day !== all[i - 1]?.day ? h('p', { class: 'muted day-label' }, dayLabel(t.day)) : null,
         messageList(ctx, t, 'stream'), t.proposal ? renderProposal(ctx, t) : null)), where),
-    talk && !entry ? (talk.handoffs ?? []).map((t) => h('p', { class: 'handoff' }, `For Claude: ${t}`)) : null,
+    // Notes for Claude live in Flags; here only a mark that they went, the notes themselves on hover.
+    talk && !entry && talk.handoffs?.length
+      ? h('p', { class: 'handoff', title: talk.handoffs.map((t) => `For Claude: ${t}`).join('\n') }, `⚑ ${talk.handoffs.length === 1 ? 'A note' : `${talk.handoffs.length} notes`} for Claude, in Flags`)
+      : null,
     entry ? renderEntry(ctx, entry) : null,
     BUSY[c.talkBusy] ? h('p', { class: 'muted', role: 'status' }, BUSY[c.talkBusy]) : null,
     c.talkError ? h('p', { class: 'error', role: 'status' }, c.talkError) : null,

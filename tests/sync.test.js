@@ -91,6 +91,16 @@ test('client.get: 401 or 403 explain the access key, naming the repo', async () 
   await assert.rejects(unauthorized.get(), /o\/r/);
   const forbidden = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(403, { message: 'Forbidden' }) });
   await assert.rejects(forbidden.get(), /refused the access key/);
+  // GitHub's (or a gateway's) own words go on the end, so a refused write isn't mistaken for a bad key.
+  const gateway = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(403, { message: 'Resource not accessible by integration' }) });
+  await assert.rejects(gateway.put({}, 'x'), /It said \(HTTP 403\): Resource not accessible by integration$/);
+});
+
+test('client.get with a ref reads that branch', async () => {
+  const urls = [];
+  const c = createGitHubClient({ token: 't', repo: 'o/r', ref: 'claude/modest-pascal', fetch: async (url) => { urls.push(url); return jsonResponse(404, {}); } });
+  assert.equal(await c.get(), null);
+  assert.equal(urls[0], 'https://api.github.com/repos/o/r/contents/data.json?ref=claude%2Fmodest-pascal');
 });
 
 test('client: a sandbox proxy blocking the repo is not blamed on the key', async () => {

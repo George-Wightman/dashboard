@@ -37,6 +37,9 @@ export const TOOL_DECLARATIONS = [
   decl('release_task', "Record that a task he deleted from today after committing to it genuinely isn't needed any more, so it stops counting as missed. Only on his say-so, with his reason.", {
     id: ID, reason: S('why it is no longer needed, in his words'),
   }, ['id', 'reason']),
+  decl('drop_task', "Take a task off his plan for good when he says it isn't needed — merged into another, done some other way, no longer relevant. Its calendar block goes, and because he chose it, it isn't counted as missed. Only on his say-so, with his reason.", {
+    id: ID, reason: S('why, in his words, e.g. "merged into the mock interview"'),
+  }, ['id', 'reason']),
   decl('tick', "Tick off a task or habit on today's list that he says he has done.", { id: ID }, ['id']),
   decl('untick', "Take the tick off something on today's list.", { id: ID }, ['id']),
   decl('block_hours', "Block out hours on a specified date when he's busy, so the calendar plans round them.", {
@@ -57,10 +60,10 @@ export const TOOL_DECLARATIONS = [
     title: S('a few words, like "Assessment centre"'), day: DAY,
   }, ['title', 'day']),
   decl('remove_countdown', 'Stop counting down to something, by its id from the countdowns list.', { id: S('the countdown id, like count:2026-10-05:1') }, ['id']),
-  decl('think_deeper', "Ask the Coach's deeper mind (Claude) to think something through properly and come back to him in this conversation, usually within half an hour: a re-plan, how something is going across weeks, anything you would otherwise guess at.", {
+  decl('think_deeper', "Call Claude in now to think something through properly: a re-plan, how something is going across weeks, anything you would otherwise guess at. Claude starts within about ten minutes and answers in this conversation, usually within half an hour.", {
     question: S('what to think through: his question, in his words, plus anything you know that matters'),
   }, ['question']),
-  decl('hand_to_claude', "Pass something to Claude: anything you can't do (whole days off, changing or retiring a habit or target, app changes), or anything Claude should know.", {
+  decl('hand_to_claude', "Leave Claude a note in George's Flags: app bugs and changes, changing or retiring a habit or target, whole days off, anything Claude should know. It is not sent anywhere: Claude reads it on its next regular run (06:30 or 21:30). For anything that needs Claude now, use think_deeper.", {
     text: S('what George wants, in a sentence or two'),
   }, ['text']),
   decl('propose_changes', 'Use before inferred planning or a broad calendar review. Changes become one proposal for George to Apply, not immediate edits.'),
@@ -188,6 +191,12 @@ export function coachTools({ store, onHandoff = () => {}, onFinish = () => {}, o
       if (it.type !== 'habit') refuse(`"${it.title}" is a weekly target — it can't be skipped`);
       const why = clip(typeof reason === 'string' ? reason : '', 120);
       return change(`Let "${it.title}" off today${why ? ` — ${why}` : ''}`, () => store.skipItem(it.id, today(), why, 'coach'));
+    },
+    drop_task: ({ id, reason }) => {
+      const why = clip(typeof reason === 'string' ? reason : '', 120);
+      if (!why) refuse('drop_task needs his reason');
+      const it = task(id);
+      return change(`Dropped "${it.title}" — ${why}`, () => store.updateItem(it.id, { status: 'archived', archivedOn: today(), released: why }));
     },
     release_task: ({ id, reason }) => {
       const why = clip(typeof reason === 'string' ? reason : '', 120);

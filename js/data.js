@@ -27,7 +27,8 @@ const JOURNAL_FIELDS = {
   brief: { text: '' },
   // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
   // slot; Claude's guide for the Coach, filed under the week's Monday.
-  talk: { slot: '', messages: [], handoffs: [], done: false, model: '', proposal: null },
+  // flagIds: the flags its notes for Claude became, as they were made (js/ui/coach.js keep).
+  talk: { slot: '', messages: [], handoffs: [], flagIds: [], done: false, model: '', proposal: null },
   entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
   guide: { text: '' },
 };

@@ -12,7 +12,8 @@ import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTra
 import { scrubText, APP_VERSION } from '../js/flags.js';
 import { capabilities } from './capabilities.js';
 import { configFromEnv, checkMindBatch, mindPack, applyHandled } from './mind.js';
-import { loadMind, saveMind } from '../js/mind-state.js';
+import { loadMind, saveMind, mergeMind } from '../js/mind-state.js';
+import { mergeDocs } from '../js/merge.js';
 
 // Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
 // what never to touch. Served from the clone like the reference, so they can't go stale.
@@ -27,7 +28,7 @@ export const USAGE = [
   'Not sure which? `bash run.sh reference` prints the current reference, whose first table maps what you want to do to the command that does it.',
   'Before anything to do with his calendar, planning his week, or training, read the playbook first: bash run.sh reference <calendar|planning|gym>.',
   'For conditional actions or goal reviews: reference workflows or reference reviews.',
-  "The Coach's deep mind: `mind` is its context; `apply --mind` allows only picture, say, propose, brief, guide, flag, handoff and handled. `--config env` reads DASHBOARD_TOKEN from the environment.",
+  "The Coach's deep mind: `mind` is its context; `apply --mind` allows only picture, say, propose, brief, guide, flag and handled. `--config env` reads DASHBOARD_TOKEN from the environment and saves to the routine's claude/ branch of the sync repo, which the planner merges.",
 ].join('\n');
 
 function parseOps(text) {
@@ -44,7 +45,7 @@ function parseOps(text) {
 
 export async function main({
   argv, readText, readStdin, makeClient = githubClient, makeFiles = createFileStore,
-  now = () => new Date(), newId, env = process.env,
+  now = () => new Date(), newId, env = process.env, makeBranchWriter = null,
 }) {
   const out = [];
   let secrets = [];
@@ -128,6 +129,11 @@ export async function main({
     }
     secrets = [config.token];
     const files = makeFiles({ token: config.token, repo: config.repo });
+    // A cloud routine can't write to main (claude/branch.js): its changes go to its claude/ branch of
+    // the sync repo, and the planner merges them in.
+    const branchMode = configPath === 'env' && !!makeBranchWriter && env.DASHBOARD_WRITE !== 'api';
+    let writer = null;
+    const branchWriter = () => (writer ??= makeBranchWriter({ repo: config.repo }));
 
     // What the tool refused, kept in the repo. A weaker model can't be relied on to notice it should
     // report anything, so the tool records its own stumbles: four goes at an op that doesn't exist
@@ -136,7 +142,7 @@ export async function main({
     // Recording one must never make it worse. A trail that won't write is silent, and whoever
     // stumbled gets exactly the error they would have got anyway.
     const trail = async (what, error) => {
-      if (command === 'preview') return;
+      if (command === 'preview' || branchMode) return;
       try {
         const existing = await files.read(TRAIL_PATH);
         const line = scrubText(trailLine({ at: now(), build, what, error }), secrets);
@@ -178,12 +184,17 @@ export async function main({
         return finish(1);
       }
     }
-    const mindClient = () => makeClient({ token: config.token, repo: config.repo, path: 'mind.json' });
+    const writing = branchMode && command === 'apply';
+    const mindMain = () => makeClient({ token: config.token, repo: config.repo, path: 'mind.json' });
+    const mindClient = () => (writing
+      ? branchWriter().client({ main: mindMain(), path: 'mind.json', merge: (a, b) => mergeMind(a, b, { cursorFrom: 'local' }) })
+      : mindMain());
 
     let session;
     try {
+      const main = makeClient({ token: config.token, repo: config.repo });
       session = await openSession({
-        client: makeClient({ token: config.token, repo: config.repo }),
+        client: writing ? branchWriter().client({ main, path: 'data.json', merge: mergeDocs }) : main,
         dayStartHour: config.dayStartHour, now, newId,
       });
     } catch (e) {
@@ -260,7 +271,9 @@ export async function main({
       }
     }
     if (ops.length > handoffs.length) {
-      say(result.pushed ? 'Saved to GitHub — the laptop and phone pick it up at their next sync.' : 'Nothing needed changing.');
+      say(!result.pushed ? 'Nothing needed changing.'
+        : writing ? `Saved to the ${writer.branch} branch of ${config.repo} — the planner merges it into the dashboard within about ten minutes.`
+        : 'Saved to GitHub — the laptop and phone pick it up at their next sync.');
     }
     // Handoffs go last, and each on its own: a file that won't write is worth a line of its own
     // rather than losing the ops that did land.

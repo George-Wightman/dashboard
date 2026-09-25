@@ -165,8 +165,10 @@ export async function runChain({ gemini, doc, group, now, today, recent = [] }) 
   if (gemini.available?.('think')) {
     const [r] = await gemini.ask([{ ...deepPrompt(context, group), model: 'think', think: true }]);
     calls++;
-    // Deep only if Flash itself answered (the client may have handed the question to Lite).
-    if (r.data) { d = r.data; depth = (r.role ?? r.model) === 'think' ? 'deep' : 'lite'; }
+    // Only Flash's own answer counts. When the client handed the question to Lite (Flash overloaded),
+    // Lite's one-shot answer to a prompt written for a thinking model is its weakest work — every
+    // message on 25 Sep — so Lite goes through its own steps below instead.
+    if (r.data && (r.role ?? 'think') === 'think') { d = r.data; depth = 'deep'; }
   }
   if (!d) {
     const angles = anglesFor(group, doc, today);
@@ -285,7 +287,8 @@ export async function writeOpener({ gemini, store, slot, now, config, quiet = fa
   for (const t of talksOn(store.doc(), today)) {
     if (['morning', 'afternoon', 'evening'].includes(t.slot) && !t.done && !(t.messages ?? []).some((x) => x.who === 'george')) store.updateJournal(t.id, { done: true });
   }
-  const m = { who: 'coach', text, at: now.toISOString(), from: 'mind', by, notify: !quiet };
+  // The plain fallback ("How did today go?") is there so the moment isn't missed, not worth a buzz.
+  const m = { who: 'coach', text, at: now.toISOString(), from: 'mind', by, notify: !quiet && by !== 'plain' };
   store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: by === 'gemini' ? config.models.think : '' }, 'mind');
   return { talkId: `talk:${today}:${slot}`, m };
 }
