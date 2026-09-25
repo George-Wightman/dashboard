@@ -10,6 +10,7 @@ import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
 import { claudePanel, claudeSummary } from './claude.js';
 import { pushState, turnOn, turnOff } from '../push-client.js';
+import { mindAlive } from '../mind.js';
 
 // The Version section: filled in once the site and GitHub have answered. Asked fresh every time
 // ⚙ opens, so "up to date" is about now, not about when the page was opened.
@@ -214,7 +215,9 @@ export function openSettings(ctx) {
       h('label', { class: 'field' }, h('span', {}, 'Gemini API key (optional)'), geminiKey),
       h('p', { class: 'note' }, `Leave blank to use the Hebrew app's key on this device.${hebrewFound ? ' One was found here.' : ' None was found here.'}`),
       h('label', { class: 'field' }, h('span', {}, 'The evening conversation from (hour, 12–23)'), checkinHour),
-      h('p', { class: 'note' }, "The Coach opens a conversation in the morning (7–12), the afternoon (2–5, only if something slipped) and the evening. Conversations and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products.")),
+      h('p', { class: 'note' }, mindAlive(store.doc(), new Date())
+        ? "The Coach's mind opens the morning and evening conversations from the background, and speaks up when something happens (⚙ → Claude → The Coach's mind). Conversations send a summary of your list to Google; on Google's free tier they may use it to improve their products."
+        : "The Coach opens a conversation in the morning (7–12), the afternoon (2–5, only if something slipped) and the evening. Conversations and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products.")),
     notificationsGroup(ctx),
     group('Look', lookName, false,
       h('label', { class: 'field' }, h('span', {}, 'Look'), look)),
