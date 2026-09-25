@@ -121,6 +121,25 @@ export function draftPrompt(context, group, notes) {
   };
 }
 
+// Flash, thinking hard, in one call: all three angles, then the decision. One request against the day's
+// allowance however long it thinks, so depth comes from the model rather than from more calls.
+export function deepPrompt(context, group) {
+  return {
+    system: MIND_SYSTEM,
+    prompt: `${context}
+
+${groupText(group)}
+
+Think this through properly before deciding. Look at it from three angles:
+- ${ANGLES.progress}
+- ${ANGLES.pattern}
+- ${ANGLES.plan}
+
+Then decide what the Coach says, if anything. Say something only if it would genuinely help George now: react to what happened, name specifics (the task, what his write-up said, the number), and end with at most one question. One to three sentences, at most ${DRAFT_MAX} characters. If he pushed or deleted committed work, ask why, once, without lecturing.
+Shape: {"notes": {"progress": "…", "pattern": "…", "plan": "…"}, "say": true or false, "text": "the message", "notify": true if it is worth buzzing his phone for (a reaction to something he just did, or a question that matters today), "escalate": true only if the plan for a deadline no longer fits and needs Claude's proper re-plan, "why": "one line on why this is (or isn't) worth saying"}`,
+  };
+}
+
 export const checkPrompt = (context, group, text) => ({
   system: 'You check a message the Coach is about to send George against the record. British English. Reply with JSON only.',
   prompt: `The record:\n${context}\n\n${groupText(group)}\n\nThe message:\n"${text}"\n\nLook for: claiming something is done that isn't ticked; a wrong time, day or number; anything the record or the files don't support; calling a rest day a miss; generic filler; more than one question; lecturing.\nShape: {"ok": true or false, "problems": ["…"], "text": "if not ok, the message corrected in the same voice and at most ${DRAFT_MAX} characters; otherwise empty"}`,
@@ -134,21 +153,35 @@ const cleanText = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, ME
 
 // ---- A chain ------------------------------------------------------------------------------------
 
+// Two ways to reach a draft. With Flash to hand: one call, thinking hard, that weighs every angle and
+// decides. Without it (its day's allowance spent, or busy): Flash-Lite reads the angles in parallel and
+// then drafts. Either way the draft is checked before anything is said.
 export async function runChain({ gemini, doc, group, now, today, recent = [] }) {
   const context = contextFor(doc, today, now, recent);
-  const angles = anglesFor(group, doc, today);
-  let calls = angles.length;
-  const reads = await gemini.ask(angles.map((a) => ({ ...readPrompt(a, context, group), model: 'think' })));
-  const notes = reads.map((r, i) => (r.data ? { angle: angles[i], notes: String(r.data.notes ?? ''), matters: Number(r.data.matters) || 0, escalate: r.data.escalate === true } : null)).filter(Boolean);
-  if (!notes.length) return { say: false, calls, escalate: false, problems: [], error: reads[0]?.error ?? 'failed' };
-  const escalate = notes.some((n) => n.escalate);
-  if (group.level < 3 && Math.max(...notes.map((n) => n.matters)) === 0) return { say: false, calls, escalate, problems: [], why: 'Nothing worth saying' };
-
-  const [draft] = await gemini.ask([{ ...draftPrompt(context, group, notes), model: 'think' }]);
-  calls++;
-  if (!draft.data) return { say: false, calls, escalate, problems: [], error: draft.error };
-  const d = draft.data;
-  if (d.say !== true || !cleanText(d.text)) return { say: false, calls, escalate: escalate || d.escalate === true, problems: [], why: String(d.why ?? '') };
+  let calls = 0;
+  let d = null;
+  let escalate = false;
+  let depth = 'lite';
+  if (gemini.available?.('think')) {
+    const [r] = await gemini.ask([{ ...deepPrompt(context, group), model: 'think', think: true }]);
+    calls++;
+    // Deep only if Flash itself answered (the client may have handed the question to Lite).
+    if (r.data) { d = r.data; depth = (r.role ?? r.model) === 'think' ? 'deep' : 'lite'; }
+  }
+  if (!d) {
+    const angles = anglesFor(group, doc, today);
+    const reads = await gemini.ask(angles.map((a) => ({ ...readPrompt(a, context, group), model: 'check' })));
+    calls += angles.length;
+    const notes = reads.map((r, i) => (r.data ? { angle: angles[i], notes: String(r.data.notes ?? ''), matters: Number(r.data.matters) || 0, escalate: r.data.escalate === true } : null)).filter(Boolean);
+    if (!notes.length) return { say: false, calls, escalate: false, problems: [], error: reads[0]?.error ?? 'failed', depth };
+    escalate = notes.some((n) => n.escalate);
+    if (group.level < 3 && Math.max(...notes.map((n) => n.matters)) === 0) return { say: false, calls, escalate, problems: [], why: 'Nothing worth saying', depth };
+    const [draft] = await gemini.ask([{ ...draftPrompt(context, group, notes), model: 'check' }]);
+    calls++;
+    if (!draft.data) return { say: false, calls, escalate, problems: [], error: draft.error, depth };
+    d = draft.data;
+  }
+  if (d.say !== true || !cleanText(d.text)) return { say: false, calls, escalate: escalate || d.escalate === true, problems: [], why: String(d.why ?? ''), depth };
 
   let text = cleanText(d.text);
   const plain = checkMessage(doc, { today, now, text, recent });
@@ -159,11 +192,11 @@ export async function runChain({ gemini, doc, group, now, today, recent = [] }) 
     const revised = cleanText(critic.data?.text);
     const again = revised ? checkMessage(doc, { today, now, text: revised, recent }) : { ok: false, problems: [] };
     if (!revised || !again.ok) {
-      return { say: false, calls, escalate: escalate || d.escalate === true, problems: [...plain.problems, ...(critic.data?.problems ?? []), ...again.problems].map(String) };
+      return { say: false, calls, escalate: escalate || d.escalate === true, problems: [...plain.problems, ...(critic.data?.problems ?? []), ...again.problems].map(String), depth };
     }
     text = revised;
   }
-  return { say: true, text, notify: d.notify === true, escalate: escalate || d.escalate === true, calls, problems: [], why: String(d.why ?? '') };
+  return { say: true, text, notify: d.notify === true, escalate: escalate || d.escalate === true, calls, problems: [], why: String(d.why ?? ''), depth };
 }
 
 // Every reflex due this run. Writes the Coach's messages into the store (a new mind-n talk each),
@@ -188,14 +221,14 @@ export async function runReflexes({ gemini, store, mind, now, config, timeLeft =
       if (b.messages < config.messagesPerDay && gapOk) {
         const slot = nextMindSlot(doc, today, 'mind');
         const m = { who: 'coach', text: result.text, at, from: 'mind', by: 'gemini', notify: !!(result.notify && group.level >= 3 && !quiet), ref: ids };
-        store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: config.models.think }, 'mind');
+        store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: result.depth === 'deep' ? config.models.think : config.models.check }, 'mind');
         spend(mind, today, 'messages');
         mind.budget.lastSaid = at;
         said.push({ talkId: `talk:${today}:${slot}`, m });
         spoke = true;
       }
     }
-    runs.push({ id: `reflex:${at}:${group.key}`, at, engine: 'reflex', trigger: group.kind, events: ids, calls: result.calls, said: spoke,
+    runs.push({ id: `reflex:${at}:${group.key}`, at, engine: 'reflex', trigger: group.kind, events: ids, calls: result.calls, said: spoke, depth: result.depth,
       summary: result.why ?? '', ...(result.problems?.length ? { problems: result.problems.slice(0, 6) } : {}), ...(result.error ? { error: result.error } : {}) });
   }
   for (const r of runs) mind.runs[r.id] = r;
@@ -239,7 +272,7 @@ export async function writeOpener({ gemini, store, slot, now, config, quiet = fa
     for (let attempt = 0; attempt < 2 && !text; attempt++) {
       const extra = problems.length ? `\n\nYour last draft had these problems, so write it again: ${problems.join('; ')}` : '';
       const p = openerPrompt(slot, context);
-      const [r] = await gemini.ask([{ ...p, prompt: p.prompt + extra, model: 'think' }]);
+      const [r] = await gemini.ask([{ ...p, prompt: p.prompt + extra, model: 'think', think: true }]);
       if (!r.data) break;
       const draft = cleanText(r.data.text);
       const check = checkMessage(doc, { today, now, text: draft, recent });

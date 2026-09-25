@@ -321,7 +321,9 @@ is watching.
 ### `mind`
 `{"op": "mind", "enabled": true}` — the Mind's settings: `enabled`, `morningAt`, `checkinAt`,
 `quietFrom`, `quietUntil` (times like "07:00"), `pingsPerDay` (6), `messagesPerDay` (8), `gapMinutes`
-(45), `geminiPerDay` (120), `deepPerDay` (3), and `models` (`{"think": "…", "check": "…"}`).
+(45), `geminiPerDay` (120), `thinkPerDay` (20 — Flash's calls a day on the Mind's free project), `deepPerDay` (3),
+and `models` (`{"think": "…", "check": "…"}`). Flash thinks hard in one call; when its day's calls are
+used, or it's busy, the Mind switches to Flash-Lite on its own and says so in ⚙ → Claude.
 
 ## Optional advanced controls
 

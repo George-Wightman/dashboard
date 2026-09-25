@@ -19,6 +19,8 @@ export const MIND_DEFAULTS = Object.freeze({
   messagesPerDay: 8,
   gapMinutes: 45,
   geminiPerDay: 120,
+  // Flash (the `think` model) on the Mind's own free project: about 20 calls a day.
+  thinkPerDay: 20,
   deepPerDay: 3,
   models: Object.freeze({ think: 'gemini-flash-latest', check: 'gemini-flash-lite-latest' }),
 });
@@ -29,7 +31,7 @@ export const ALIVE_MINUTES = 75;
 
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const CLOCK_FIELDS = ['morningAt', 'checkinAt', 'quietFrom', 'quietUntil'];
-const COUNT_FIELDS = ['pingsPerDay', 'messagesPerDay', 'gapMinutes', 'geminiPerDay', 'deepPerDay'];
+const COUNT_FIELDS = ['pingsPerDay', 'messagesPerDay', 'gapMinutes', 'geminiPerDay', 'thinkPerDay', 'deepPerDay'];
 const values = (map) => Object.values(map ?? {});
 const live = (r) => r && r.status === 'active';
 const minutesOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));

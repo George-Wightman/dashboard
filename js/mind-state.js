@@ -20,7 +20,7 @@ const later = (a, b) => (!a ? b ?? null : !b ? a : a > b ? a : b);
 export function emptyMind() {
   return {
     schema: 1, cursor: null, events: {}, runs: {}, pushed: {}, fired: [],
-    budget: { day: null, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: null, geminiBlocked: [] },
+    budget: { day: null, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: null, geminiBlocked: [], byModel: {} },
   };
 }
 
@@ -59,6 +59,8 @@ function mergeBudget(a, b) {
   for (const k of ['gemini', 'messages', 'pings', 'deep']) out[k] = Math.max(a[k] ?? 0, b[k] ?? 0);
   out.lastSaid = later(a.lastSaid, b.lastSaid);
   out.geminiBlocked = [...new Set([...blockedList(a), ...blockedList(b)])].sort();
+  out.byModel = {};
+  for (const m of new Set([...Object.keys(a.byModel ?? {}), ...Object.keys(b.byModel ?? {})])) out.byModel[m] = Math.max(a.byModel?.[m] ?? 0, b.byModel?.[m] ?? 0);
   return out;
 }
 
@@ -91,12 +93,19 @@ export function mergeMind(local, remote, { cursorFrom = 'local' } = {}) {
 // The budget for `day`: today's counts, or a fresh set once the day has turned.
 export function budget(m, day) {
   if (m.budget?.day === day) return m.budget;
-  return { day, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: m.budget?.lastSaid ?? null, geminiBlocked: [] };
+  return { day, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: m.budget?.lastSaid ?? null, geminiBlocked: [], byModel: {} };
 }
 
 export function spend(m, day, field, n = 1) {
   m.budget = { ...budget(m, day) };
   m.budget[field] = (m.budget[field] ?? 0) + n;
+  return m.budget;
+}
+
+// A Gemini call on one model: the day's total and that model's own count.
+export function spendModel(m, day, model, n = 1) {
+  spend(m, day, 'gemini', n);
+  m.budget.byModel = { ...(m.budget.byModel ?? {}), [model]: (m.budget.byModel?.[model] ?? 0) + n };
   return m.budget;
 }
 

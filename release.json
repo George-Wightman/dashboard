@@ -1,5 +1,5 @@
 {
-  "id": "f6b601c284ca9ddbdcc7ae95cd1a52eae8ebf00a7b1423d7048506d1e3700c5a",
+  "id": "9054c42496837a005a1c880c70fcca48e716befe4aa571d497320ccf6bcff707",
   "files": {
     "./": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
     "index.html": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
@@ -33,8 +33,8 @@
     "js/plan-state.js": "e81038e8eb9edefd1db5ccf1e147395f1f54ff5dea3f21116a628fd4a327a1e1",
     "js/coach-session.js": "8539905b3e7d7c711d5a9b7396c810cb4b898f138b04c83db209450d7fd8ffb9",
     "js/ui/agenda.js": "e2092354b8eb9372b0645bad05fc23908ce611e05426810e1535828ba47d635e",
-    "js/mind.js": "18026eec007319f0ddb7901b6b270eaf01e9453c3e9323fa2ad51324c9770745",
-    "js/mind-state.js": "1632593e4783984c226478f61ab21946c0514c9b2cd7a88e2d92583f5894ff3c",
+    "js/mind.js": "ca3c3b946cdbdc3b6df2510e00b865b395b20587db4c470d0382688fa1398335",
+    "js/mind-state.js": "a35b2f9d7f900f1a51de414144df30fe0a66b0cd0c67e540d4770591cff2ae6b",
     "js/push-client.js": "dd652fa6be892cecf5b36073ba78f084597e2ccdc023eabb262bee3297995b4f",
     "js/workflow.js": "e61f7bb887cd5d5d8938c43acdfca5f6042d579a111dee18acc4d9456cbd0e9b",
     "js/goal-review.js": "e22b7b900b3c22904a8317f2856bf8699ad26f5ad2aec6a0f64d1004f7beb915",
@@ -49,7 +49,7 @@
     "js/ui/widgets.js": "c8b7c5bf924124988437c3dcd21a749d267a823fd945df34b73281a1399b86d3",
     "js/ui/flags.js": "ec97bdf58df2e1f3e76abd20b1dd771dbd62ba5cd42606b4c573d19cca58bad5",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
-    "js/ui/claude.js": "6826437944f676e738832af242533b00311448587be5002e78026a9ca3e7012e",
+    "js/ui/claude.js": "3b8afd92f760b757cdd314b1c0d08f4136c04a04ebbbb96d212fa657e40a7af6",
     "js/ui/sources.js": "1faf89ebe7fa9856d268c5406add111bac9632f25865f12ae9431ef7dcdfb22f",
     "js/ui/gym.js": "5d559a9b136f4c6c9bd2f7db888776e565ac1cd7b2a125692a18fa0c776bec3e",
     "js/ui/hebrew.js": "b8c73ae4b66902d36ef8637313a32ea1922e07a27b67d4a23174b87097639bb0",

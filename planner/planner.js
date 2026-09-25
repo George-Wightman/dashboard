@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9eb55878';
+var PLANNER_BUILD = '9f739bd2';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -5385,6 +5385,8 @@ const MIND_DEFAULTS = Object.freeze({
   messagesPerDay: 8,
   gapMinutes: 45,
   geminiPerDay: 120,
+  // Flash (the `think` model) on the Mind's own free project: about 20 calls a day.
+  thinkPerDay: 20,
   deepPerDay: 3,
   models: Object.freeze({ think: 'gemini-flash-latest', check: 'gemini-flash-lite-latest' }),
 });
@@ -5395,7 +5397,7 @@ const ALIVE_MINUTES = 75;
 
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const CLOCK_FIELDS = ['morningAt', 'checkinAt', 'quietFrom', 'quietUntil'];
-const COUNT_FIELDS = ['pingsPerDay', 'messagesPerDay', 'gapMinutes', 'geminiPerDay', 'deepPerDay'];
+const COUNT_FIELDS = ['pingsPerDay', 'messagesPerDay', 'gapMinutes', 'geminiPerDay', 'thinkPerDay', 'deepPerDay'];
 const values = (map) => Object.values(map ?? {});
 const live = (r) => r && r.status === 'active';
 const minutesOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
@@ -5636,7 +5638,7 @@ const later = (a, b) => (!a ? b ?? null : !b ? a : a > b ? a : b);
 function emptyMind() {
   return {
     schema: 1, cursor: null, events: {}, runs: {}, pushed: {}, fired: [],
-    budget: { day: null, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: null, geminiBlocked: [] },
+    budget: { day: null, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: null, geminiBlocked: [], byModel: {} },
   };
 }
 
@@ -5675,6 +5677,8 @@ function mergeBudget(a, b) {
   for (const k of ['gemini', 'messages', 'pings', 'deep']) out[k] = Math.max(a[k] ?? 0, b[k] ?? 0);
   out.lastSaid = later(a.lastSaid, b.lastSaid);
   out.geminiBlocked = [...new Set([...blockedList(a), ...blockedList(b)])].sort();
+  out.byModel = {};
+  for (const m of new Set([...Object.keys(a.byModel ?? {}), ...Object.keys(b.byModel ?? {})])) out.byModel[m] = Math.max(a.byModel?.[m] ?? 0, b.byModel?.[m] ?? 0);
   return out;
 }
 
@@ -5707,12 +5711,19 @@ function mergeMind(local, remote, { cursorFrom = 'local' } = {}) {
 // The budget for `day`: today's counts, or a fresh set once the day has turned.
 function budget(m, day) {
   if (m.budget?.day === day) return m.budget;
-  return { day, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: m.budget?.lastSaid ?? null, geminiBlocked: [] };
+  return { day, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: m.budget?.lastSaid ?? null, geminiBlocked: [], byModel: {} };
 }
 
 function spend(m, day, field, n = 1) {
   m.budget = { ...budget(m, day) };
   m.budget[field] = (m.budget[field] ?? 0) + n;
+  return m.budget;
+}
+
+// A Gemini call on one model: the day's total and that model's own count.
+function spendModel(m, day, model, n = 1) {
+  spend(m, day, 'gemini', n);
+  m.budget.byModel = { ...(m.budget.byModel ?? {}), [model]: (m.budget.byModel?.[model] ?? 0) + n };
   return m.budget;
 }
 
@@ -5782,7 +5793,7 @@ async function saveMind({ client, mind, cursorFrom = 'local', maxAttempts = 3 })
   }
   return { ok: false, error: 'mind.json kept changing underneath — will try again next run' };
 }
-return { KEEP_DAYS, MAX_EVENTS, ARTEFACT_CHARS, emptyMind, isMind, mergeMind, budget, spend, unhandled, pruneMind, loadMind, saveMind };
+return { KEEP_DAYS, MAX_EVENTS, ARTEFACT_CHARS, emptyMind, isMind, mergeMind, budget, spend, spendModel, unhandled, pruneMind, loadMind, saveMind };
 })();
 
 // ---- planner/drive.js
@@ -6249,94 +6260,114 @@ return { SLIP_GRACE_MINUTES, DESCRIPTION_MAX, cursorOf, sense, planRisk };
 const __planner_gemini_gas = (() => {
 // Gemini for the Mind, from inside Apps Script (docs/superpowers/specs/2026-09-25-coach-mind-design.md).
 // The page's client (js/gemini.js) waits on timers Apps Script doesn't have; this one sends every
-// question of a step at once with UrlFetchApp.fetchAll, answers in JSON, and keeps to a day's
-// allowance: `budget.left()` says how many calls remain, `spend(n)` records them, and `blocked` (a Set,
-// kept by the caller in mind.json) holds any model whose free quota for the day is gone. A model out of
-// quota hands its questions to the other; a per-minute limit is only a pause for this run.
+// question of a step at once with UrlFetchApp.fetchAll, answers in JSON, and switches models on the
+// fly. Two roles: `think` (Flash, asked to think hard — one call however long it thinks) and `check`
+// (Flash-Lite). The Mind's project allows Flash about 20 calls a day, so `budget` keeps count per
+// model: `left()` is the day's total left, `modelLeft(model)` what a capped model has left,
+// `spend(model, n)` records calls, and `blocked` (a Set kept in mind.json) holds any model Google has
+// said is used up for the day. A question for a model that's used up, capped, busy for the minute or
+// failing goes to the other one; `notes` collects what happened in plain English for the status line.
 
 const { ENDPOINT, readReply } = __js_gemini;
 
 const PER_DAY = /PerDay/i;
-
-function body(system, prompt) {
-  return {
-    systemInstruction: { parts: [{ text: system }] },
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.5 },
-  };
-}
+const THINKING = /thinking/i;
 
 function createGemini({ UrlFetchApp, key, models, budget, log = () => {} }) {
   const scrub = (text) => String(text).split(key || '\u0000').join('…');
-  const other = (name) => (name === 'think' ? 'check' : 'think');
+  const other = (role) => (role === 'think' ? 'check' : 'think');
+  const noThinking = new Set();
+  const notes = new Set();
+  const usable = (role) => !budget.blocked.has(models[role]) && (budget.modelLeft?.(models[role]) ?? Infinity) > 0;
 
-  // Which model a question should go to now: its own, or the other if its own is out for the day.
-  const route = (name) => {
-    if (!budget.blocked.has(models[name])) return name;
-    return budget.blocked.has(models[other(name)]) ? null : other(name);
-  };
+  // The role a question should go to now: its own, or the other one.
+  const route = (role) => (usable(role) ? role : usable(other(role)) ? other(role) : null);
 
-  function send(batch) {
-    const requests = batch.map(({ q, name }) => ({
-      url: `${ENDPOINT}/${models[name]}:generateContent?key=${encodeURIComponent(key)}`,
-      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-      payload: JSON.stringify(body(q.system, q.prompt)),
-    }));
-    budget.spend(requests.length);
-    return UrlFetchApp.fetchAll(requests);
+  function body(q, role) {
+    const generationConfig = { responseMimeType: 'application/json', temperature: 0.5 };
+    if (q.think && role === 'think' && !noThinking.has(models.think)) generationConfig.thinkingConfig = { thinkingLevel: 'HIGH' };
+    return {
+      systemInstruction: { parts: [{ text: q.system }] },
+      contents: [{ role: 'user', parts: [{ text: q.prompt }] }],
+      generationConfig,
+    };
   }
 
-  // One answer: { data, model } or { error, retry }.
-  function read(res, name) {
+  function send(batch) {
+    const requests = batch.map((b) => ({
+      url: `${ENDPOINT}/${models[b.role]}:generateContent?key=${encodeURIComponent(key)}`,
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify(body(b.q, b.role)),
+    }));
+    const responses = UrlFetchApp.fetchAll(requests);
+    batch.forEach((b, i) => { if (!(responses[i].getResponseCode() === 400 && THINKING.test(responses[i].getContentText()))) budget.spend(models[b.role], 1); });
+    return responses;
+  }
+
+  // One answer: { data, model } or { error, retry }. `retry` asks for the other model; `again` for the
+  // same one without its thinking setting (a model that doesn't take it).
+  function read(res, role) {
     const status = res.getResponseCode();
     const text = res.getContentText();
+    const model = models[role];
     if (status >= 200 && status < 300) {
-      try { return { data: readReply(text), model: models[name] }; } catch { return { error: 'nonsense' }; }
+      try { return { data: readReply(text), model }; } catch { return { error: 'nonsense', retry: true }; }
     }
+    if (status === 400 && THINKING.test(text) && !noThinking.has(model)) { noThinking.add(model); return { error: 'rejected', again: true }; }
     if (status === 401 || status === 403 || (status === 400 && /API[ _]key not valid|API_KEY_INVALID/i.test(text))) return { error: 'badkey' };
     if (status === 429) {
       if (PER_DAY.test(text)) {
-        budget.blocked.add(models[name]);
+        budget.blocked.add(model);
+        notes.add(`${model} has used its free allowance for today`);
         return { error: 'quota', retry: true };
       }
-      return { error: 'busy' };
+      notes.add(`${model} was busy for a minute`);
+      return { error: 'busy', retry: true };
     }
-    log(`Gemini ${models[name]} answered ${status}: ${scrub(text).slice(0, 200)}`);
+    log(`Gemini ${model} answered ${status}: ${scrub(text).slice(0, 200)}`);
     return { error: status >= 500 ? 'server' : 'rejected', retry: status >= 500 };
   }
 
+  // questions: [{ system, prompt, model: 'think'|'check', think?: true }] → answers in the same order.
   async function ask(questions) {
     if (!key) return questions.map(() => ({ error: 'nokey' }));
     if (budget.left() < questions.length) return questions.map(() => ({ error: 'budget' }));
     const out = new Array(questions.length).fill(null);
     let batch = [];
     questions.forEach((q, i) => {
-      const name = route(q.model);
-      if (!name) out[i] = { error: 'quota' };
-      else batch.push({ q, i, name });
+      const role = route(q.model);
+      if (role) batch.push({ q, i, role, tried: new Set([role]) });
+      else out[i] = { error: budget.blocked.has(models[q.model]) || budget.blocked.has(models[other(q.model)]) ? 'quota' : 'budget' };
     });
-    if (batch.length) {
+    // At most three rounds: the first answers, then a model without thinking or the other model, then
+    // the other model once more.
+    for (let round = 0; batch.length && round < 3; round++) {
       const answers = send(batch);
-      const again = [];
+      const next = [];
       batch.forEach((b, n) => {
-        const r = read(answers[n], b.name);
-        const alt = r.retry ? route(other(b.name)) : null;
-        if (r.retry && alt && alt !== b.name && budget.left() > again.length) again.push({ ...b, name: alt });
-        else out[b.i] = r.retry && r.error === 'quota' ? { error: 'quota' } : r.data ? r : { error: r.error };
+        const r = read(answers[n], b.role);
+        if (r.data) { out[b.i] = { ...r, role: b.role }; return; }
+        if (r.again && budget.left() > next.length) { next.push(b); return; }
+        const alt = other(b.role);
+        if (r.retry && !b.tried.has(alt) && usable(alt) && budget.left() > next.length) {
+          if (r.error !== 'quota') notes.add(`switched to ${models[alt]} for a moment`);
+          next.push({ ...b, role: alt, tried: new Set([...b.tried, alt]) });
+          return;
+        }
+        out[b.i] = { error: r.error };
       });
-      batch = again;
-      if (batch.length) {
-        const second = send(batch);
-        batch.forEach((b, n) => {
-          const r = read(second[n], b.name);
-          out[b.i] = r.data ? r : { error: r.error };
-        });
-      }
+      batch = next;
     }
+    batch.forEach((b) => { out[b.i] ??= { error: 'failed' }; });
     return out;
   }
 
-  return { ask };
+  return {
+    ask,
+    // Whether a role's own model can take a question now (so a caller can choose how to ask).
+    available: (role) => usable(role),
+    notes: () => [...notes],
+  };
 }
 return { createGemini };
 })();
@@ -7346,6 +7377,25 @@ function draftPrompt(context, group, notes) {
   };
 }
 
+// Flash, thinking hard, in one call: all three angles, then the decision. One request against the day's
+// allowance however long it thinks, so depth comes from the model rather than from more calls.
+function deepPrompt(context, group) {
+  return {
+    system: MIND_SYSTEM,
+    prompt: `${context}
+
+${groupText(group)}
+
+Think this through properly before deciding. Look at it from three angles:
+- ${ANGLES.progress}
+- ${ANGLES.pattern}
+- ${ANGLES.plan}
+
+Then decide what the Coach says, if anything. Say something only if it would genuinely help George now: react to what happened, name specifics (the task, what his write-up said, the number), and end with at most one question. One to three sentences, at most ${DRAFT_MAX} characters. If he pushed or deleted committed work, ask why, once, without lecturing.
+Shape: {"notes": {"progress": "…", "pattern": "…", "plan": "…"}, "say": true or false, "text": "the message", "notify": true if it is worth buzzing his phone for (a reaction to something he just did, or a question that matters today), "escalate": true only if the plan for a deadline no longer fits and needs Claude's proper re-plan, "why": "one line on why this is (or isn't) worth saying"}`,
+  };
+}
+
 const checkPrompt = (context, group, text) => ({
   system: 'You check a message the Coach is about to send George against the record. British English. Reply with JSON only.',
   prompt: `The record:\n${context}\n\n${groupText(group)}\n\nThe message:\n"${text}"\n\nLook for: claiming something is done that isn't ticked; a wrong time, day or number; anything the record or the files don't support; calling a rest day a miss; generic filler; more than one question; lecturing.\nShape: {"ok": true or false, "problems": ["…"], "text": "if not ok, the message corrected in the same voice and at most ${DRAFT_MAX} characters; otherwise empty"}`,
@@ -7359,21 +7409,35 @@ const cleanText = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, ME
 
 // ---- A chain ------------------------------------------------------------------------------------
 
+// Two ways to reach a draft. With Flash to hand: one call, thinking hard, that weighs every angle and
+// decides. Without it (its day's allowance spent, or busy): Flash-Lite reads the angles in parallel and
+// then drafts. Either way the draft is checked before anything is said.
 async function runChain({ gemini, doc, group, now, today, recent = [] }) {
   const context = contextFor(doc, today, now, recent);
-  const angles = anglesFor(group, doc, today);
-  let calls = angles.length;
-  const reads = await gemini.ask(angles.map((a) => ({ ...readPrompt(a, context, group), model: 'think' })));
-  const notes = reads.map((r, i) => (r.data ? { angle: angles[i], notes: String(r.data.notes ?? ''), matters: Number(r.data.matters) || 0, escalate: r.data.escalate === true } : null)).filter(Boolean);
-  if (!notes.length) return { say: false, calls, escalate: false, problems: [], error: reads[0]?.error ?? 'failed' };
-  const escalate = notes.some((n) => n.escalate);
-  if (group.level < 3 && Math.max(...notes.map((n) => n.matters)) === 0) return { say: false, calls, escalate, problems: [], why: 'Nothing worth saying' };
-
-  const [draft] = await gemini.ask([{ ...draftPrompt(context, group, notes), model: 'think' }]);
-  calls++;
-  if (!draft.data) return { say: false, calls, escalate, problems: [], error: draft.error };
-  const d = draft.data;
-  if (d.say !== true || !cleanText(d.text)) return { say: false, calls, escalate: escalate || d.escalate === true, problems: [], why: String(d.why ?? '') };
+  let calls = 0;
+  let d = null;
+  let escalate = false;
+  let depth = 'lite';
+  if (gemini.available?.('think')) {
+    const [r] = await gemini.ask([{ ...deepPrompt(context, group), model: 'think', think: true }]);
+    calls++;
+    // Deep only if Flash itself answered (the client may have handed the question to Lite).
+    if (r.data) { d = r.data; depth = (r.role ?? r.model) === 'think' ? 'deep' : 'lite'; }
+  }
+  if (!d) {
+    const angles = anglesFor(group, doc, today);
+    const reads = await gemini.ask(angles.map((a) => ({ ...readPrompt(a, context, group), model: 'check' })));
+    calls += angles.length;
+    const notes = reads.map((r, i) => (r.data ? { angle: angles[i], notes: String(r.data.notes ?? ''), matters: Number(r.data.matters) || 0, escalate: r.data.escalate === true } : null)).filter(Boolean);
+    if (!notes.length) return { say: false, calls, escalate: false, problems: [], error: reads[0]?.error ?? 'failed', depth };
+    escalate = notes.some((n) => n.escalate);
+    if (group.level < 3 && Math.max(...notes.map((n) => n.matters)) === 0) return { say: false, calls, escalate, problems: [], why: 'Nothing worth saying', depth };
+    const [draft] = await gemini.ask([{ ...draftPrompt(context, group, notes), model: 'check' }]);
+    calls++;
+    if (!draft.data) return { say: false, calls, escalate, problems: [], error: draft.error, depth };
+    d = draft.data;
+  }
+  if (d.say !== true || !cleanText(d.text)) return { say: false, calls, escalate: escalate || d.escalate === true, problems: [], why: String(d.why ?? ''), depth };
 
   let text = cleanText(d.text);
   const plain = checkMessage(doc, { today, now, text, recent });
@@ -7384,11 +7448,11 @@ async function runChain({ gemini, doc, group, now, today, recent = [] }) {
     const revised = cleanText(critic.data?.text);
     const again = revised ? checkMessage(doc, { today, now, text: revised, recent }) : { ok: false, problems: [] };
     if (!revised || !again.ok) {
-      return { say: false, calls, escalate: escalate || d.escalate === true, problems: [...plain.problems, ...(critic.data?.problems ?? []), ...again.problems].map(String) };
+      return { say: false, calls, escalate: escalate || d.escalate === true, problems: [...plain.problems, ...(critic.data?.problems ?? []), ...again.problems].map(String), depth };
     }
     text = revised;
   }
-  return { say: true, text, notify: d.notify === true, escalate: escalate || d.escalate === true, calls, problems: [], why: String(d.why ?? '') };
+  return { say: true, text, notify: d.notify === true, escalate: escalate || d.escalate === true, calls, problems: [], why: String(d.why ?? ''), depth };
 }
 
 // Every reflex due this run. Writes the Coach's messages into the store (a new mind-n talk each),
@@ -7413,14 +7477,14 @@ async function runReflexes({ gemini, store, mind, now, config, timeLeft = () => 
       if (b.messages < config.messagesPerDay && gapOk) {
         const slot = nextMindSlot(doc, today, 'mind');
         const m = { who: 'coach', text: result.text, at, from: 'mind', by: 'gemini', notify: !!(result.notify && group.level >= 3 && !quiet), ref: ids };
-        store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: config.models.think }, 'mind');
+        store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: result.depth === 'deep' ? config.models.think : config.models.check }, 'mind');
         spend(mind, today, 'messages');
         mind.budget.lastSaid = at;
         said.push({ talkId: `talk:${today}:${slot}`, m });
         spoke = true;
       }
     }
-    runs.push({ id: `reflex:${at}:${group.key}`, at, engine: 'reflex', trigger: group.kind, events: ids, calls: result.calls, said: spoke,
+    runs.push({ id: `reflex:${at}:${group.key}`, at, engine: 'reflex', trigger: group.kind, events: ids, calls: result.calls, said: spoke, depth: result.depth,
       summary: result.why ?? '', ...(result.problems?.length ? { problems: result.problems.slice(0, 6) } : {}), ...(result.error ? { error: result.error } : {}) });
   }
   for (const r of runs) mind.runs[r.id] = r;
@@ -7464,7 +7528,7 @@ async function writeOpener({ gemini, store, slot, now, config, quiet = false, da
     for (let attempt = 0; attempt < 2 && !text; attempt++) {
       const extra = problems.length ? `\n\nYour last draft had these problems, so write it again: ${problems.join('; ')}` : '';
       const p = openerPrompt(slot, context);
-      const [r] = await gemini.ask([{ ...p, prompt: p.prompt + extra, model: 'think' }]);
+      const [r] = await gemini.ask([{ ...p, prompt: p.prompt + extra, model: 'think', think: true }]);
       if (!r.data) break;
       const draft = cleanText(r.data.text);
       const check = checkMessage(doc, { today, now, text: draft, recent });
@@ -7481,7 +7545,7 @@ async function writeOpener({ gemini, store, slot, now, config, quiet = false, da
   store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: by === 'gemini' ? config.models.think : '' }, 'mind');
   return { talkId: `talk:${today}:${slot}`, m };
 }
-return { WAIT_MINUTES, FRESH_HOURS, DRAFT_MAX, MIND_SYSTEM, pickGroups, anglesFor, groupText, recentCoach, readPrompt, draftPrompt, checkPrompt, openerPrompt, runChain, runReflexes, backgroundOpenerDue, writeOpener };
+return { WAIT_MINUTES, FRESH_HOURS, DRAFT_MAX, MIND_SYSTEM, pickGroups, anglesFor, groupText, recentCoach, readPrompt, draftPrompt, deepPrompt, checkPrompt, openerPrompt, runChain, runReflexes, backgroundOpenerDue, writeOpener };
 })();
 
 // ---- planner/aes.js
@@ -7882,7 +7946,7 @@ const __planner_mind = (() => {
 const { createGitHubClient } = __js_sync;
 const { logicalDay, addDays } = __js_dates;
 const { mindConfig, mindStatus, isQuiet, openAsks, pushSubscriptions, mindMessages, messageKey } = __js_mind;
-const { loadMind, saveMind, pruneMind, budget, spend } = __js_mind_state;
+const { loadMind, saveMind, pruneMind, budget, spend, spendModel } = __js_mind_state;
 const { stableStringify } = __js_doc;
 const { sense, planRisk } = __planner_senses;
 const { readArtefacts } = __planner_drive;
@@ -7911,6 +7975,8 @@ function createMind({
   let mind = null;
   let loadedAs = null;
   const problems = [];
+  // Not problems: what the Mind wants George to know about how it ran (which model, why).
+  const notices = [];
   // mind.json as it was read, less the cursor's clock: a run that saw nothing new writes nothing.
   const fingerprint = (m) => stableStringify({ ...m, cursor: m.cursor ? { ...m.cursor, at: null } : null });
   const note = (text) => { problems.push(text); log(`Mind: ${text}`); };
@@ -7940,9 +8006,10 @@ function createMind({
       lastReflex: mind ? latest(mind.runs, ['reflex', 'opener']) : prev?.lastReflex ?? null,
       lastDeep: mind ? latest(mind.runs, ['deep']) : prev?.lastDeep ?? null,
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
-      today: b ? { day: today, gemini: b.gemini, messages: b.messages, pings: b.pings, deep: b.deep, runMs } : prev?.today ?? null,
+      note: notices.length ? [...new Set(notices)].join('; ').slice(0, 300) : null,
+      today: b ? { day: today, gemini: b.gemini, flash: b.byModel?.[mindConfig(store.doc()).models.think] ?? 0, messages: b.messages, pings: b.pings, deep: b.deep, runMs } : prev?.today ?? null,
     };
-    const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
+    const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.note !== content.note || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
       || prev.today?.messages !== content.today?.messages || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
     if (due) store.putCalendar('mind:status', content, 'planner');
   }
@@ -8017,7 +8084,13 @@ function createMind({
       const blocked = new Set(budget(mind, today).geminiBlocked ?? []);
       const gemini = createGemini({
         UrlFetchApp, key, models: config.models, log,
-        budget: { left: () => config.geminiPerDay - budget(mind, today).gemini, spend: (n) => spend(mind, today, 'gemini', n), blocked },
+        budget: {
+          left: () => config.geminiPerDay - budget(mind, today).gemini,
+          // Flash has its own daily cap on the Mind's free project; Lite only the overall one.
+          modelLeft: (model) => (model === config.models.think ? config.thinkPerDay - (budget(mind, today).byModel?.[model] ?? 0) : Infinity),
+          spend: (model, n) => spendModel(mind, today, model, n),
+          blocked,
+        },
       });
       const timeLeft = () => clockMs() - startedMs < MIND_SECONDS * 1000;
       const quiet = isQuiet(store.doc(), t, dayStartHour);
@@ -8029,7 +8102,10 @@ function createMind({
       const r = await runReflexes({ gemini, store, mind, now: t, config, timeLeft, quiet, dayStartHour });
       escalate = r.escalate;
       mind.budget = { ...budget(mind, today), geminiBlocked: [...blocked].sort() };
-      if (blocked.size >= 2) note("Gemini's free allowance is used up for today");
+      const flashLeft = config.thinkPerDay - (budget(mind, today).byModel?.[config.models.think] ?? 0);
+      if (blocked.size >= 2) notices.push("Gemini's free allowance is used up for today, so the background is quiet until tomorrow");
+      else if (blocked.has(config.models.think) || flashLeft <= 0) notices.push(`On Flash-Lite for the rest of today: Flash's ${config.thinkPerDay} are used`);
+      notices.push(...gemini.notes().filter((n) => !/used its free allowance/.test(n)));
     }
     fire(store, t, today, config, escalate);
     writeStatus(store, t, today, !!(config.enabled && key));

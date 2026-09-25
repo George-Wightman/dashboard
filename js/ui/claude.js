@@ -39,7 +39,8 @@ export function mindLines(doc, now) {
     config.enabled ? 'On: the background notices, and the Coach speaks first' : 'Off: the planner is watching, but nothing is said until Claude switches it on',
     `Last reacted ${when(status?.lastReflex)} · last reviewed ${when(status?.lastDeep)}`,
     ...(status?.today ? [`Today: ${[[status.today.messages, 'background message'], [status.today.pings, 'ping'], [status.today.gemini, 'Gemini call']]
-      .map(([n = 0, what]) => `${n} ${what}${n === 1 ? '' : 's'}`).join(', ')}`] : []),
+      .map(([n = 0, what]) => `${n} ${what}${n === 1 ? '' : 's'}`).join(', ')}${status.today.flash != null ? ` (${status.today.flash} of ${config.thinkPerDay} on Flash)` : ''}`] : []),
+    ...(status?.note ? [status.note.charAt(0).toUpperCase() + status.note.slice(1)] : []),
     ...(pic ? [`Claude's picture of you was last written ${when(pic.at)}`] : []),
     ...(status?.lastError ? [`Problem: ${status.lastError}`] : []),
   ];

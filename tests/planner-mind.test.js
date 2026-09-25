@@ -41,6 +41,8 @@ function geminiFake(rules) {
   return handler;
 }
 const GOOD = [
+  [/Think this through properly/, { notes: { progress: 'Debrief: recommendation late again.', pattern: 'Same as HALYARD.', plan: 'RP4 Sunday.' },
+    say: true, text: 'MILLRACE is ticked. Your debrief says the recommendation came late again, as in HALYARD. Open RP4 with a two-minute recommendation drill?', notify: true }],
   [/Angle: progress/, { notes: 'Debrief: recommendation late again.', matters: 3 }],
   [/Angle: pattern/, { notes: 'Same as HALYARD.', matters: 2 }],
   [/Angle: plan/, { notes: 'RP4 Sunday.', matters: 1 }],
@@ -214,7 +216,9 @@ test("Gemini's free allowance used up: nothing said, planning untouched, and the
   assert.equal(await w.planner.run(), 'ok');
   assert.equal(Object.keys(w.repo.doc().journal).filter((id) => id.includes(':mind-')).length, 0);
   assert.deepEqual(w.repo.file('mind.json').budget.geminiBlocked.sort(), ['gemini-flash-latest', 'gemini-flash-lite-latest']);
-  assert.match(w.repo.doc().calendar['mind:status'].lastError, /used up/);
+  const status = w.repo.doc().calendar['mind:status'];
+  assert.match(status.note, /used up for today/);
+  assert.equal(status.lastError, null, 'running out of free quota is a note, not a problem');
 });
 
 test("a deep run's writes to mind.json survive the planner's", async () => {

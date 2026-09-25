@@ -24,10 +24,12 @@ export const MIND_LIMITS = { picture: 1, say: 2, propose: 1, handled: 1 };
 const PROPOSE_OPS = ['task', 'edit', 'archive'];
 const MAX_PROPOSED = 12;
 
-// The config a cloud routine runs with: no file, just its environment.
+// The config a cloud routine runs with: no file, just its environment. DASHBOARD_TOKEN if it's set;
+// otherwise the cloud session's own GitHub credential (GITHUB_TOKEN reads "proxy-injected" there, and
+// the GitHub proxy swaps in George's connection for repos attached to the routine).
 export function configFromEnv(env) {
-  const token = String(env.DASHBOARD_TOKEN ?? '').trim();
-  if (!token) throw new Error("DASHBOARD_TOKEN isn't set in this environment, so the dashboard can't be reached");
+  const token = String(env.DASHBOARD_TOKEN || env.GITHUB_TOKEN || env.GH_TOKEN || '').trim();
+  if (!token) throw new Error("DASHBOARD_TOKEN isn't set in this environment, and there's no GitHub credential either, so the dashboard can't be reached");
   return {
     token,
     repo: String(env.DASHBOARD_REPO ?? 'George-Wightman/dashboard-sync').trim(),

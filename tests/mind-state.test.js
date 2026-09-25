@@ -51,9 +51,9 @@ test('mergeMind: events union, each stamp the later, and the cursor from the sid
 test('mergeMind: the budget is the larger count on the same day, and the later day otherwise', () => {
   const a = emptyMind();
   const b = emptyMind();
-  a.budget = { day: '2026-09-24', gemini: 10, messages: 2, pings: 1, deep: 0, lastSaid: '2026-09-24T10:00:00.000Z', geminiBlocked: [] };
-  b.budget = { day: '2026-09-24', gemini: 4, messages: 3, pings: 1, deep: 1, lastSaid: '2026-09-24T11:00:00.000Z', geminiBlocked: ['gemini-flash-latest'] };
-  assert.deepEqual(mergeMind(a, b).budget, { day: '2026-09-24', gemini: 10, messages: 3, pings: 1, deep: 1, lastSaid: '2026-09-24T11:00:00.000Z', geminiBlocked: ['gemini-flash-latest'] });
+  a.budget = { day: '2026-09-24', gemini: 10, messages: 2, pings: 1, deep: 0, lastSaid: '2026-09-24T10:00:00.000Z', geminiBlocked: [], byModel: { flash: 3, lite: 7 } };
+  b.budget = { day: '2026-09-24', gemini: 4, messages: 3, pings: 1, deep: 1, lastSaid: '2026-09-24T11:00:00.000Z', geminiBlocked: ['gemini-flash-latest'], byModel: { flash: 4 } };
+  assert.deepEqual(mergeMind(a, b).budget, { day: '2026-09-24', gemini: 10, messages: 3, pings: 1, deep: 1, lastSaid: '2026-09-24T11:00:00.000Z', geminiBlocked: ['gemini-flash-latest'], byModel: { flash: 4, lite: 7 } });
   b.budget = { ...b.budget, day: '2026-09-25', gemini: 1 };
   assert.equal(mergeMind(a, b).budget.day, '2026-09-25');
   assert.equal(mergeMind(a, b).budget.gemini, 1);

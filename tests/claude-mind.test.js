@@ -54,6 +54,8 @@ function setup() {
 test('--config env: a routine has its key in the environment, not a file', async () => {
   assert.deepEqual(configFromEnv({ DASHBOARD_TOKEN: KEY }), { token: KEY, repo: 'George-Wightman/dashboard-sync', dayStartHour: 4, timeZone: 'Europe/London' });
   assert.throws(() => configFromEnv({}), /DASHBOARD_TOKEN isn't set/);
+  assert.equal(configFromEnv({ GITHUB_TOKEN: 'proxy-injected' }).token, 'proxy-injected', "a cloud session's own GitHub credential will do");
+  assert.equal(configFromEnv({ DASHBOARD_TOKEN: KEY, GITHUB_TOKEN: 'proxy-injected' }).token, KEY);
   const s = setup();
   const r = await main({
     argv: ['--config', 'env', 'today'], readText: () => { throw new Error('no files here'); }, readStdin: async () => '',
@@ -62,7 +64,7 @@ test('--config env: a routine has its key in the environment, not a file', async
   assert.equal(r.code, 0);
   assert.match(r.text, /^Today is Thursday 24 September/);
   const none = await main({ argv: ['--config', 'env', 'today'], readText: () => '', readStdin: async () => '', makeClient: () => s.remote, now: EVENING, env: {} });
-  assert.deepEqual(none, { code: 1, text: "DASHBOARD_TOKEN isn't set in this environment, so the dashboard can't be reached" });
+  assert.deepEqual(none, { code: 1, text: "DASHBOARD_TOKEN isn't set in this environment, and there's no GitHub credential either, so the dashboard can't be reached" });
 });
 
 test('mind: the whole context for a deep run, with only what it has yet to look at', async () => {

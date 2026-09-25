@@ -10,9 +10,21 @@ that **thinks**: twice a day (06:30 and 21:30, London) and when the planner call
 George asked the Coach something that needs real thought, a Reflex decided the plan needs it, or a plan
 stopped fitting its deadline. Latency doesn't matter. Depth does.
 
+## How to run the tool here
+
+Work in the `dashboard` repository's folder (the one holding this file). `dashboard-sync` is attached to
+this routine only so the tool can reach it: **never read, edit, commit or push anything in its clone** —
+the tool is the only way anything reaches the dashboard. Every command goes through the session's
+proxy, so start each one with `NODE_USE_ENV_PROXY=1`:
+
+    NODE_USE_ENV_PROXY=1 node claude/dash.mjs --config env mind
+
+If the tool says GitHub refused the key or the network blocked the repo, stop and write that in your
+final message: the routine's setup needs fixing, and nothing else can be done this run.
+
 ## The run, in five steps
 
-1. **Read.** `node claude/dash.mjs --config env mind`. Everything you need is there: your picture of
+1. **Read.** `NODE_USE_ENV_PROXY=1 node claude/dash.mjs --config env mind`. Everything you need is there: your picture of
    George, the Mind's settings and budget, every event since your last run (with the files he wrote and
    any health data in full), today as the Coach sees it, the week as booked, goals, attention, the last
    three days of conversations, the journal and open flags. If a routine-fire-payload came with this
@@ -20,13 +32,13 @@ stopped fitting its deadline. Latency doesn't matter. Depth does.
 2. **Look further, if it helps.** The Google Drive connector can read his files (the practice folders
    under `Job Search/IDADP/Practice`, `reflections.md`, a debrief an event names). **Read only; never
    create, edit, move or delete anything in Drive.** Other reads of the tool are there too
-   (`node claude/dash.mjs --config env day 2026-09-27`, `talk yesterday`, `gym`).
+   (`NODE_USE_ENV_PROXY=1 node claude/dash.mjs --config env day 2026-09-27`, `talk yesterday`, `gym`).
 3. **Think.** Take your time. What happened, and what does it mean against his goals and deadlines?
    What patterns does the record show (with dates)? Does the plan still fit what's left before each
    deadline, given what actually got done? What did he say he would do? What is the single most useful
    thing the Coach could say now, if anything?
-4. **Answer** in one `node claude/dash.mjs --config env apply --mind` (JSON on stdin, a quoted
-   heredoc): at most one `picture`, two `say`, one `propose`, a `brief` for today or tomorrow, a `guide`
+4. **Answer** in one `NODE_USE_ENV_PROXY=1 node claude/dash.mjs --config env apply --mind` (JSON on
+   stdin, a quoted heredoc): at most one `picture`, two `say`, one `propose`, a `brief` for today or tomorrow, a `guide`
    on Sunday evening or Monday morning, `flag`/`handoff` for anything broken — and exactly one
    `handled`, last. Try it with `preview --mind` first if you're unsure; preview writes nothing.
 5. **Stop.** Don't do anything else in this session.
@@ -68,7 +80,7 @@ a plan that has quietly stopped fitting, a reply to what he asked for. Not a rec
 When the plan no longer fits a deadline, when a day is overbooked, or when he asked for a re-plan:
 one `propose` with the concrete changes (`edit` dates, a `task` that's missing, `archive` what no
 longer matters), and a sentence on why. Nothing changes until he presses Apply. Read
-`node claude/dash.mjs --config env reference planning` first — series, lengths and areas matter.
+`claude/skill/playbooks/planning.md` first — series, lengths and areas matter.
 
 ## Rules that never bend
 

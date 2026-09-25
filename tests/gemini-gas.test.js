@@ -1,5 +1,5 @@
-// Gemini from the planner: several questions at once over UrlFetchApp.fetchAll, a fallback model,
-// and a day's allowance that is respected and remembered.
+// Gemini from the planner: several questions at once over UrlFetchApp.fetchAll, Flash asked to think
+// hard, models switched on the fly, and a day's allowance — per model — respected and remembered.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,6 +10,7 @@ const MODELS = { think: 'gemini-flash-latest', check: 'gemini-flash-lite-latest'
 const reply = (obj) => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] } });
 const PER_DAY = { status: 429, body: { error: { code: 429, message: 'Quota exceeded for metric: generate_content_free_tier_requests, quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier' } } };
 const PER_MINUTE = { status: 429, body: { error: { code: 429, message: 'Quota exceeded, quotaId: GenerateRequestsPerMinutePerProjectPerModel-FreeTier. Please retry in 30s.' } } };
+const NO_THINKING = { status: 400, body: { error: { code: 400, message: 'Thinking level is not supported for this model.' } } };
 
 function fakeFetch(handler) {
   const batches = [];
@@ -20,89 +21,113 @@ function fakeFetch(handler) {
       batches.push(requests);
       return requests.map((req) => respond(handler(req.url.split('/models/')[1].split(':')[0], JSON.parse(req.payload), req)));
     },
-    fetch() { throw new Error('use fetchAll'); },
   };
 }
 
-function budget(left = 100) {
-  const b = { left: () => left, spend: (n) => { left -= n; b.spent += n; }, blocked: new Set(), spent: 0 };
+// The day's allowance: `total` calls in all, Flash capped at `flash`.
+function budget({ total = 100, flash = 20 } = {}) {
+  const used = {};
+  const b = {
+    left: () => total - Object.values(used).reduce((a, n) => a + n, 0),
+    modelLeft: (m) => (m === MODELS.think ? flash - (used[m] ?? 0) : Infinity),
+    spend: (m, n) => { used[m] = (used[m] ?? 0) + n; },
+    blocked: new Set(), used,
+  };
   return b;
 }
+const make = (UrlFetchApp, b = budget(), extra = {}) => createGemini({ UrlFetchApp, key: KEY, models: MODELS, budget: b, ...extra });
 
-test('several questions go out together, and the answers come back in order', async () => {
+test('several questions go out together, answers come back in order, and each model is counted', async () => {
   const UrlFetchApp = fakeFetch((model, body) => reply({ echo: body.contents[0].parts[0].text, model }));
   const b = budget();
-  const gemini = createGemini({ UrlFetchApp, key: KEY, models: MODELS, budget: b });
-  const out = await gemini.ask([
-    { system: 'S', prompt: 'one', model: 'think' },
-    { system: 'S', prompt: 'two', model: 'check' },
-    { system: 'S', prompt: 'three', model: 'think' },
+  const out = await make(UrlFetchApp, b).ask([
+    { system: 'S', prompt: 'one', model: 'think' }, { system: 'S', prompt: 'two', model: 'check' }, { system: 'S', prompt: 'three', model: 'think' },
   ]);
   assert.equal(UrlFetchApp.batches.length, 1);
-  assert.equal(UrlFetchApp.batches[0].length, 3);
-  assert.deepEqual(out.map((r) => r.data.echo), ['one', 'two', 'three']);
-  assert.deepEqual(out.map((r) => r.model), [MODELS.think, MODELS.check, MODELS.think]);
-  assert.equal(b.spent, 3);
+  assert.deepEqual(out.map((r) => [r.data.echo, r.model, r.role]), [['one', MODELS.think, 'think'], ['two', MODELS.check, 'check'], ['three', MODELS.think, 'think']]);
+  assert.deepEqual(b.used, { [MODELS.think]: 2, [MODELS.check]: 1 });
   const req = UrlFetchApp.batches[0][0];
   assert.equal(req.method, 'post');
   assert.equal(req.muteHttpExceptions, true);
-  const body = JSON.parse(req.payload);
-  assert.equal(body.systemInstruction.parts[0].text, 'S');
-  assert.equal(body.generationConfig.responseMimeType, 'application/json');
+  assert.equal(JSON.parse(req.payload).generationConfig.responseMimeType, 'application/json');
 });
 
-test('a server error on the thinking model is asked again on the other one', async () => {
+test('Flash is asked to think hard; a model that won\'t take it is asked again without, and that isn\'t counted', async () => {
   let n = 0;
-  const UrlFetchApp = fakeFetch((model) => (model === MODELS.think && ++n === 1 ? { status: 503, body: 'overloaded' } : reply({ ok: model })));
-  const gemini = createGemini({ UrlFetchApp, key: KEY, models: MODELS, budget: budget() });
-  const out = await gemini.ask([{ system: 'S', prompt: 'a', model: 'think' }, { system: 'S', prompt: 'b', model: 'think' }]);
-  assert.equal(UrlFetchApp.batches.length, 2);
-  assert.equal(UrlFetchApp.batches[1].length, 1);
-  assert.deepEqual(out.map((r) => r.data.ok), [MODELS.check, MODELS.think]);
+  const UrlFetchApp = fakeFetch((model, body) => {
+    if (model === MODELS.think && body.generationConfig.thinkingConfig && ++n === 1) return NO_THINKING;
+    return reply({ thought: !!body.generationConfig.thinkingConfig });
+  });
+  const b = budget();
+  const g = make(UrlFetchApp, b);
+  let [r] = await g.ask([{ system: 'S', prompt: 'deep', model: 'think', think: true }]);
+  assert.equal(JSON.parse(UrlFetchApp.batches[0][0].payload).generationConfig.thinkingConfig.thinkingLevel, 'HIGH');
+  assert.deepEqual(r.data, { thought: false });
+  assert.equal(r.role, 'think');
+  assert.equal(b.used[MODELS.think], 1, 'the refused try is free');
+  [r] = await g.ask([{ system: 'S', prompt: 'lite', model: 'check', think: true }]);
+  assert.equal(JSON.parse(UrlFetchApp.batches.at(-1)[0].payload).generationConfig.thinkingConfig, undefined, 'Lite is never asked to think');
+});
+
+test('switching models on the fly: a server error, a busy minute, or Flash capped for the day', async () => {
+  let calls = 0;
+  let UrlFetchApp = fakeFetch((model) => (model === MODELS.think && ++calls === 1 ? { status: 503, body: 'overloaded' } : reply({ ok: model })));
+  let g = make(UrlFetchApp);
+  let out = await g.ask([{ system: 'S', prompt: 'a', model: 'think' }, { system: 'S', prompt: 'b', model: 'think' }]);
+  assert.deepEqual(out.map((r) => [r.data.ok, r.role]), [[MODELS.check, 'check'], [MODELS.think, 'think']]);
+  assert.match(g.notes().join(), /switched to gemini-flash-lite-latest/);
+
+  UrlFetchApp = fakeFetch((model) => (model === MODELS.think ? PER_MINUTE : reply({ ok: model })));
+  const b = budget();
+  g = make(UrlFetchApp, b);
+  out = await g.ask([{ system: 'S', prompt: 'a', model: 'think' }]);
+  assert.equal(out[0].data.ok, MODELS.check);
+  assert.equal(b.blocked.size, 0, 'a busy minute is not the end of the day');
+  assert.match(g.notes().join(), /was busy for a minute/);
+
+  const capped = budget({ flash: 0 });
+  UrlFetchApp = fakeFetch((model) => reply({ ok: model }));
+  g = make(UrlFetchApp, capped);
+  assert.equal(g.available('think'), false);
+  out = await g.ask([{ system: 'S', prompt: 'a', model: 'think' }]);
+  assert.equal(out[0].data.ok, MODELS.check, 'Flash capped: straight to Lite');
+  assert.equal(UrlFetchApp.batches[0].length, 1);
 });
 
 test("a day's quota used up on one model moves the rest of the day to the other; on both, it stops", async () => {
-  const UrlFetchApp = fakeFetch((model) => (model === MODELS.think ? PER_DAY : reply({ ok: model })));
+  let UrlFetchApp = fakeFetch((model) => (model === MODELS.think ? PER_DAY : reply({ ok: model })));
   const b = budget();
-  const gemini = createGemini({ UrlFetchApp, key: KEY, models: MODELS, budget: b });
-  let out = await gemini.ask([{ system: 'S', prompt: 'a', model: 'think' }]);
+  let g = make(UrlFetchApp, b);
+  let out = await g.ask([{ system: 'S', prompt: 'a', model: 'think' }]);
   assert.equal(out[0].data.ok, MODELS.check);
   assert.deepEqual([...b.blocked], [MODELS.think]);
   UrlFetchApp.batches.length = 0;
-  out = await gemini.ask([{ system: 'S', prompt: 'b', model: 'think' }]);
-  assert.equal(UrlFetchApp.batches[0][0].url.includes(MODELS.check), true, 'straight to the model that still has quota');
-  const none = fakeFetch(() => PER_DAY);
+  out = await g.ask([{ system: 'S', prompt: 'b', model: 'think' }]);
+  assert.ok(UrlFetchApp.batches[0][0].url.includes(MODELS.check), 'straight to the model that still has quota');
+  UrlFetchApp = fakeFetch(() => PER_DAY);
   const b2 = budget();
-  out = await createGemini({ UrlFetchApp: none, key: KEY, models: MODELS, budget: b2 }).ask([{ system: 'S', prompt: 'c', model: 'think' }]);
-  assert.deepEqual(out, [{ error: 'quota' }]);
+  g = make(UrlFetchApp, b2);
+  assert.deepEqual(await g.ask([{ system: 'S', prompt: 'c', model: 'think' }]), [{ error: 'quota' }]);
   assert.deepEqual([...b2.blocked].sort(), [MODELS.think, MODELS.check].sort());
-  assert.deepEqual(await createGemini({ UrlFetchApp: none, key: KEY, models: MODELS, budget: b2 }).ask([{ system: 'S', prompt: 'd', model: 'check' }]), [{ error: 'quota' }]);
+  assert.deepEqual(await g.ask([{ system: 'S', prompt: 'd', model: 'check' }]), [{ error: 'quota' }]);
 });
 
-test('a per-minute limit is only a pause, not the end of the day', async () => {
-  const UrlFetchApp = fakeFetch(() => PER_MINUTE);
-  const b = budget();
-  const out = await createGemini({ UrlFetchApp, key: KEY, models: MODELS, budget: b }).ask([{ system: 'S', prompt: 'a', model: 'check' }]);
-  assert.deepEqual(out, [{ error: 'busy' }]);
-  assert.equal(b.blocked.size, 0);
-});
-
-test('no budget, no key, or nonsense back', async () => {
+test('no budget, no key, a refused key, and nonsense back', async () => {
   const UrlFetchApp = fakeFetch(() => reply({ ok: 1 }));
   const three = [1, 2, 3].map((p) => ({ system: 'S', prompt: String(p), model: 'think' }));
-  assert.deepEqual(await createGemini({ UrlFetchApp, key: KEY, models: MODELS, budget: budget(2) }).ask(three), three.map(() => ({ error: 'budget' })));
+  assert.deepEqual(await make(UrlFetchApp, budget({ total: 2 })).ask(three), three.map(() => ({ error: 'budget' })));
   assert.equal(UrlFetchApp.batches.length, 0);
   assert.deepEqual(await createGemini({ UrlFetchApp, key: '', models: MODELS, budget: budget() }).ask(three.slice(0, 1)), [{ error: 'nokey' }]);
-  const junk = fakeFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'not json at all' }] } }] } }));
-  assert.deepEqual(await createGemini({ UrlFetchApp: junk, key: KEY, models: MODELS, budget: budget() }).ask(three.slice(0, 1)), [{ error: 'nonsense' }]);
   const refused = fakeFetch(() => ({ status: 400, body: { error: { message: 'API key not valid. Please pass a valid API key.' } } }));
-  assert.deepEqual(await createGemini({ UrlFetchApp: refused, key: KEY, models: MODELS, budget: budget() }).ask(three.slice(0, 1)), [{ error: 'badkey' }]);
+  assert.deepEqual(await make(refused).ask(three.slice(0, 1)), [{ error: 'badkey' }]);
+  const junk = fakeFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'not json at all' }] } }] } }));
+  assert.deepEqual(await make(junk).ask(three.slice(0, 1)), [{ error: 'nonsense' }], 'nonsense from both models');
 });
 
 test('the key never reaches the log', async () => {
   const lines = [];
   const UrlFetchApp = fakeFetch(() => ({ status: 500, body: `boom for key ${KEY}` }));
-  await createGemini({ UrlFetchApp, key: KEY, models: MODELS, budget: budget(), log: (t) => lines.push(t) }).ask([{ system: 'S', prompt: 'a', model: 'think' }]);
+  await make(UrlFetchApp, budget(), { log: (t) => lines.push(t) }).ask([{ system: 'S', prompt: 'a', model: 'think' }]);
   assert.ok(lines.length > 0);
   assert.ok(lines.every((l) => !l.includes(KEY)));
 });

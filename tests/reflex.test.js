@@ -36,10 +36,11 @@ function tickEvent(w, extra = {}) {
 }
 
 // A scripted Gemini: each question is answered by the first rule whose pattern its prompt matches.
-function fakeGemini(rules) {
+function fakeGemini(rules, { flash = false } = {}) {
   const asked = [];
   return {
     asked,
+    available: (role) => (role === 'think' ? flash : true),
     async ask(questions) {
       asked.push(questions);
       return questions.map((q) => {
@@ -86,12 +87,32 @@ test('anglesFor: progress and pattern for a tick, plan too when the goal is a we
   assert.deepEqual(anglesFor({ events: [{ kind: 'calendar', refs: {} }] }, w.store.doc(), THU), ['plan']);
 });
 
-test('a role play ticked: the angles are asked together, with the debrief, and the Coach says one specific thing', async () => {
+test('with Flash to hand: one call, thinking hard, weighs every angle with the debrief and decides; Lite checks it', async () => {
+  const w = world();
+  const deep = { notes: { progress: 'Third role play; recommendation late again.', pattern: 'Same as HALYARD.', plan: 'RP4 Sunday.' },
+    say: true, text: 'MILLRACE is ticked, three in. Your debrief says the recommendation came late again, as in HALYARD. Open RP4 with a two-minute drill?', notify: true };
+  const gemini = fakeGemini([[/Think this through properly/, deep], ...GOOD], { flash: true });
+  const r = await runChain({ gemini, doc: w.store.doc(), group: { level: 3, events: [tickEvent(w)] }, now: w.now, today: THU });
+  assert.equal(gemini.asked.length, 2, 'one deep call, one check');
+  const [q] = gemini.asked[0];
+  assert.deepEqual([q.model, q.think, q.system === MIND_SYSTEM], ['think', true, true]);
+  assert.match(q.prompt, /Angle: progress[\s\S]*Angle: pattern[\s\S]*Angle: plan/);
+  assert.match(q.prompt, /Recommendation came late again/);
+  assert.equal(gemini.asked[1][0].model, 'check');
+  assert.deepEqual([r.say, r.depth, r.calls, r.notify], [true, 'deep', 2, true]);
+});
+
+test('without Flash (its allowance spent, or busy): Lite reads the angles in parallel, then drafts', async () => {
   const w = world();
   const gemini = fakeGemini(GOOD);
   const r = await runChain({ gemini, doc: w.store.doc(), group: { level: 3, events: [tickEvent(w)] }, now: w.now, today: THU });
   assert.equal(gemini.asked[0].length, 2, 'both angles in one go');
-  assert.ok(gemini.asked[0].every((q) => q.model === 'think' && q.system === MIND_SYSTEM));
+  assert.ok(gemini.asked[0].every((q) => q.model === 'check' && q.system === MIND_SYSTEM));
+  assert.equal(r.depth, 'lite');
+  // Flash that fails on the day falls back the same way.
+  const failing = fakeGemini([[/Think this through properly/, { error: 'quota' }], ...GOOD], { flash: true });
+  const f = await runChain({ gemini: failing, doc: w.store.doc(), group: { level: 3, events: [tickEvent(w)] }, now: w.now, today: THU });
+  assert.deepEqual([f.say, f.depth, f.calls], [true, 'lite', 5]);
   assert.ok(gemini.asked[0].every((q) => q.prompt.includes('Recommendation came late again')));
   assert.ok(gemini.asked[0][0].prompt.includes('Ticked off today'), 'the Coach\'s whole context comes along');
   assert.equal(gemini.asked[2][0].model, 'check');

@@ -9,7 +9,7 @@
 import { createGitHubClient } from '../js/sync.js';
 import { logicalDay, addDays } from '../js/dates.js';
 import { mindConfig, mindStatus, isQuiet, openAsks, pushSubscriptions, mindMessages, messageKey } from '../js/mind.js';
-import { loadMind, saveMind, pruneMind, budget, spend } from '../js/mind-state.js';
+import { loadMind, saveMind, pruneMind, budget, spend, spendModel } from '../js/mind-state.js';
 import { stableStringify } from '../js/doc.js';
 import { sense, planRisk } from './senses.js';
 import { readArtefacts } from './drive.js';
@@ -38,6 +38,8 @@ export function createMind({
   let mind = null;
   let loadedAs = null;
   const problems = [];
+  // Not problems: what the Mind wants George to know about how it ran (which model, why).
+  const notices = [];
   // mind.json as it was read, less the cursor's clock: a run that saw nothing new writes nothing.
   const fingerprint = (m) => stableStringify({ ...m, cursor: m.cursor ? { ...m.cursor, at: null } : null });
   const note = (text) => { problems.push(text); log(`Mind: ${text}`); };
@@ -67,9 +69,10 @@ export function createMind({
       lastReflex: mind ? latest(mind.runs, ['reflex', 'opener']) : prev?.lastReflex ?? null,
       lastDeep: mind ? latest(mind.runs, ['deep']) : prev?.lastDeep ?? null,
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
-      today: b ? { day: today, gemini: b.gemini, messages: b.messages, pings: b.pings, deep: b.deep, runMs } : prev?.today ?? null,
+      note: notices.length ? [...new Set(notices)].join('; ').slice(0, 300) : null,
+      today: b ? { day: today, gemini: b.gemini, flash: b.byModel?.[mindConfig(store.doc()).models.think] ?? 0, messages: b.messages, pings: b.pings, deep: b.deep, runMs } : prev?.today ?? null,
     };
-    const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
+    const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.note !== content.note || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
       || prev.today?.messages !== content.today?.messages || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
     if (due) store.putCalendar('mind:status', content, 'planner');
   }
@@ -144,7 +147,13 @@ export function createMind({
       const blocked = new Set(budget(mind, today).geminiBlocked ?? []);
       const gemini = createGemini({
         UrlFetchApp, key, models: config.models, log,
-        budget: { left: () => config.geminiPerDay - budget(mind, today).gemini, spend: (n) => spend(mind, today, 'gemini', n), blocked },
+        budget: {
+          left: () => config.geminiPerDay - budget(mind, today).gemini,
+          // Flash has its own daily cap on the Mind's free project; Lite only the overall one.
+          modelLeft: (model) => (model === config.models.think ? config.thinkPerDay - (budget(mind, today).byModel?.[model] ?? 0) : Infinity),
+          spend: (model, n) => spendModel(mind, today, model, n),
+          blocked,
+        },
       });
       const timeLeft = () => clockMs() - startedMs < MIND_SECONDS * 1000;
       const quiet = isQuiet(store.doc(), t, dayStartHour);
@@ -156,7 +165,10 @@ export function createMind({
       const r = await runReflexes({ gemini, store, mind, now: t, config, timeLeft, quiet, dayStartHour });
       escalate = r.escalate;
       mind.budget = { ...budget(mind, today), geminiBlocked: [...blocked].sort() };
-      if (blocked.size >= 2) note("Gemini's free allowance is used up for today");
+      const flashLeft = config.thinkPerDay - (budget(mind, today).byModel?.[config.models.think] ?? 0);
+      if (blocked.size >= 2) notices.push("Gemini's free allowance is used up for today, so the background is quiet until tomorrow");
+      else if (blocked.has(config.models.think) || flashLeft <= 0) notices.push(`On Flash-Lite for the rest of today: Flash's ${config.thinkPerDay} are used`);
+      notices.push(...gemini.notes().filter((n) => !/used its free allowance/.test(n)));
     }
     fire(store, t, today, config, escalate);
     writeStatus(store, t, today, !!(config.enabled && key));
