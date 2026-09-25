@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9f739bd2';
+var PLANNER_BUILD = '5262a417';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -7997,7 +7997,10 @@ function createMind({
   function writeStatus(store, t, today, speaking = false) {
     const prev = mindStatus(store.doc());
     const b = mind ? budget(mind, today) : null;
-    const runMs = (() => { try { const r = JSON.parse(props.get('RUN_MS') ?? 'null'); return r?.day === today ? r.ms : 0; } catch { return 0; } })();
+    const counted = (name) => { try { const r = JSON.parse(props.get(name) ?? 'null'); return r?.day === today ? r : null; } catch { return null; } };
+    const runMs = counted('RUN_MS')?.ms ?? 0;
+    const runs = counted('RUN_MS')?.n ?? 0;
+    const mindMs = counted('MIND_MS')?.ms ?? 0;
     const content = {
       lastRun: t.toISOString(),
       // Whether the background can actually speak (switched on, with a Gemini key): only then does
@@ -8007,7 +8010,7 @@ function createMind({
       lastDeep: mind ? latest(mind.runs, ['deep']) : prev?.lastDeep ?? null,
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
       note: notices.length ? [...new Set(notices)].join('; ').slice(0, 300) : null,
-      today: b ? { day: today, gemini: b.gemini, flash: b.byModel?.[mindConfig(store.doc()).models.think] ?? 0, messages: b.messages, pings: b.pings, deep: b.deep, runMs } : prev?.today ?? null,
+      today: b ? { day: today, gemini: b.gemini, flash: b.byModel?.[mindConfig(store.doc()).models.think] ?? 0, messages: b.messages, pings: b.pings, deep: b.deep, runMs, runs, mindMs } : prev?.today ?? null,
     };
     const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.note !== content.note || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
       || prev.today?.messages !== content.today?.messages || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
@@ -8049,7 +8052,20 @@ function createMind({
     } else note(`Couldn't start Claude's review (HTTP ${code})`);
   }
 
+  // The Mind's own share of Apps Script's 90 minutes a day, so ⚙ can show where the time goes.
+  function countMindTime(since, today) {
+    try {
+      const prev = JSON.parse(props.get('MIND_MS') ?? 'null');
+      props.put('MIND_MS', JSON.stringify({ day: today, ms: (prev?.day === today ? prev.ms : 0) + Math.max(0, clockMs() - since) }));
+    } catch { /* only a measurement */ }
+  }
+
   async function think({ store, calEvents = [] }) {
+    const began = clockMs();
+    try { return await thinking({ store, calEvents }); } finally { countMindTime(began, logicalDay(now(), dayStartHour)); }
+  }
+
+  async function thinking({ store, calEvents = [] }) {
     const t = now();
     const today = logicalDay(t, dayStartHour);
     const loaded = await loadMind(client);
@@ -8116,6 +8132,11 @@ function createMind({
   // Returns { changed } — true when a device's subscription was retired and data.json needs saving again.
   async function after({ store }) {
     if (!mind) return { changed: false };
+    const began = clockMs();
+    try { return await finishing({ store }); } finally { countMindTime(began, logicalDay(now(), dayStartHour)); }
+  }
+
+  async function finishing({ store }) {
     const t = now();
     const today = logicalDay(t, dayStartHour);
     const doc = store.doc();
@@ -8434,7 +8455,8 @@ function createPlanner({
     try {
       const day = logicalDay(now(), dayStartHour());
       const prev = JSON.parse(get('RUN_MS') ?? 'null');
-      put('RUN_MS', JSON.stringify({ day, ms: (prev?.day === day ? prev.ms : 0) + Math.max(0, clockMs() - startedMs) }));
+      const same = prev?.day === day;
+      put('RUN_MS', JSON.stringify({ day, ms: (same ? prev.ms : 0) + Math.max(0, clockMs() - startedMs), n: (same ? prev.n ?? 0 : 0) + 1 }));
     } catch { /* only a measurement */ }
   }
 

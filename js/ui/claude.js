@@ -41,6 +41,7 @@ export function mindLines(doc, now) {
     ...(status?.today ? [`Today: ${[[status.today.messages, 'background message'], [status.today.pings, 'ping'], [status.today.gemini, 'Gemini call']]
       .map(([n = 0, what]) => `${n} ${what}${n === 1 ? '' : 's'}`).join(', ')}${status.today.flash != null ? ` (${status.today.flash} of ${config.thinkPerDay} on Flash)` : ''}`] : []),
     ...(status?.note ? [status.note.charAt(0).toUpperCase() + status.note.slice(1)] : []),
+    ...(status?.today?.runs ? [`Apps Script today: ${Math.round(status.today.runMs / 60000)} of Google's 90 minutes, over ${status.today.runs} planner runs (the mind's share ${Math.round((status.today.mindMs ?? 0) / 60000)} min)`] : []),
     ...(pic ? [`Claude's picture of you was last written ${when(pic.at)}`] : []),
     ...(status?.lastError ? [`Problem: ${status.lastError}`] : []),
   ];

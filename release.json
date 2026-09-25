@@ -1,5 +1,5 @@
 {
-  "id": "9054c42496837a005a1c880c70fcca48e716befe4aa571d497320ccf6bcff707",
+  "id": "0d18d16e332166b4582469f4d1bf9cb7472e24f7e62cf2bdbb31524674aafc5b",
   "files": {
     "./": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
     "index.html": "c4502aae449b3e3c93c6a587dd12d30181583a13a1f1f2e53201b142b08650a4",
@@ -49,7 +49,7 @@
     "js/ui/widgets.js": "c8b7c5bf924124988437c3dcd21a749d267a823fd945df34b73281a1399b86d3",
     "js/ui/flags.js": "ec97bdf58df2e1f3e76abd20b1dd771dbd62ba5cd42606b4c573d19cca58bad5",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
-    "js/ui/claude.js": "3b8afd92f760b757cdd314b1c0d08f4136c04a04ebbbb96d212fa657e40a7af6",
+    "js/ui/claude.js": "8d3123cbea7687c9790554101622b7db550f2ca99fbb49f81d67a7c62d74f79b",
     "js/ui/sources.js": "1faf89ebe7fa9856d268c5406add111bac9632f25865f12ae9431ef7dcdfb22f",
     "js/ui/gym.js": "5d559a9b136f4c6c9bd2f7db888776e565ac1cd7b2a125692a18fa0c776bec3e",
     "js/ui/hebrew.js": "b8c73ae4b66902d36ef8637313a32ea1922e07a27b67d4a23174b87097639bb0",

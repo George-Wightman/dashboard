@@ -248,7 +248,8 @@ export function createPlanner({
     try {
       const day = logicalDay(now(), dayStartHour());
       const prev = JSON.parse(get('RUN_MS') ?? 'null');
-      put('RUN_MS', JSON.stringify({ day, ms: (prev?.day === day ? prev.ms : 0) + Math.max(0, clockMs() - startedMs) }));
+      const same = prev?.day === day;
+      put('RUN_MS', JSON.stringify({ day, ms: (same ? prev.ms : 0) + Math.max(0, clockMs() - startedMs), n: (same ? prev.n ?? 0 : 0) + 1 }));
     } catch { /* only a measurement */ }
   }
 
