@@ -84,7 +84,9 @@ One day: what was on it, what was ticked, and any amounts logged.
 The last three weeks, day by day, as done/total.
 
 ### `catchup [days]`
-Everything since the last catch-up, for the start of a chat: each day's score, what he ticked and
+Everything since the last catch-up, for the start of a chat. First, every open note George left you
+(the *Note for Claude* widget, or ⚑ → For Claude), oldest first, with when and what he was doing.
+Then each day's score, what he ticked and
 when (and who ticked it, when it wasn't him), what wasn't done, what was pushed or counted as missed;
 every check-in in that time; new flags; workouts from Hevy; what he moved or deleted in Google
 Calendar; the planner's notes today; what needs attention. Then it records the catch-up, so the next

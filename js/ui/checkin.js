@@ -5,16 +5,11 @@
 
 import { h } from './dom.js';
 import { waitingCheckins, questionFor, SUMMARY_SYSTEM, summaryPrompt, parseSummary } from '../checkins.js';
+import { micButton, stopListening, grow } from './mic.js';
 
-const MIC = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
 const SAVED_FOR_MS = 6000;
-let listening = null;
 
 export const checkinState = () => ({ drafts: {}, error: '', saved: '', first: null });
-
-export function speechRecognition(g = globalThis) {
-  return g.SpeechRecognition ?? g.webkitSpeechRecognition ?? null;
-}
 
 // A tick from the list or a task card: the tick, then (for a task) the question — or, for a tick
 // taken off, its unanswered question goes too.
@@ -45,7 +40,7 @@ async function tidy(ctx, rec, said) {
 
 function save(ctx, rec) {
   const c = ctx.ui.checkin;
-  listening?.stop();
+  stopListening();
   const said = String(c.drafts[rec.id] ?? '').trim();
   try {
     ctx.store.answerCheckin(rec.id, said);
@@ -63,51 +58,10 @@ function save(ctx, rec) {
 
 function skip(ctx, rec) {
   const c = ctx.ui.checkin;
-  listening?.stop();
+  stopListening();
   delete c.drafts[rec.id];
   Object.assign(c, { error: '', first: null });
   ctx.store.skipCheckin(rec.id);
-}
-
-function grow(box) {
-  box.style.height = 'auto';
-  box.style.height = `${box.scrollHeight + 2}px`;
-}
-
-function micButton(ctx, rec, box) {
-  const Recognition = speechRecognition();
-  if (!Recognition) return null;
-  const c = ctx.ui.checkin;
-  const on = !!listening;
-  const button = h('button', {
-    class: `btn mic${on ? ' on' : ''}`, type: 'button', 'aria-pressed': String(on),
-    'aria-label': on ? 'Stop listening' : 'Speak your answer', title: on ? 'Stop listening' : 'Speak instead of typing',
-    onclick: () => {
-      if (listening) { listening.stop(); return; }
-      const r = new Recognition();
-      r.lang = 'en-GB';
-      r.interimResults = true;
-      r.continuous = true;
-      const before = c.drafts[rec.id] ? `${String(c.drafts[rec.id]).trimEnd()} ` : '';
-      r.onresult = (e) => {
-        let heard = '';
-        for (let i = 0; i < e.results.length; i++) heard += e.results[i][0].transcript;
-        c.drafts[rec.id] = `${before}${heard.trim()}`;
-        const live = document.querySelector(`[data-focus="checkin-${rec.id}"]`) ?? box;
-        live.value = c.drafts[rec.id];
-        grow(live);
-      };
-      r.onerror = (e) => {
-        if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') c.error = 'The microphone is blocked for this page: allow it in the browser to speak.';
-      };
-      r.onend = () => { listening = null; ctx.render(); };
-      listening = r;
-      try { r.start(); } catch { listening = null; }
-      ctx.render();
-    },
-  });
-  button.innerHTML = MIC; // a fixed string, never data
-  return button;
 }
 
 // The card, as the first row of the list — or the "saved" line for a few seconds after. Null when
@@ -126,7 +80,18 @@ export function renderCheckin(ctx) {
   queueMicrotask(() => grow(box));
   return h('li', { class: `checkin${rec.why === 'missed' ? ' missed' : ''}`, 'data-checkin': rec.id },
     h('p', { class: 'checkin-q' }, questionFor(rec.why, rec.title), count > 1 ? h('span', { class: 'muted' }, ` · 1 of ${count}`) : null),
-    h('div', { class: 'checkin-box' }, box, micButton(ctx, rec, box)),
+    h('div', { class: 'checkin-box' }, box, micButton({
+      key: `checkin-${rec.id}`,
+      getText: () => c.drafts[rec.id] ?? '',
+      setText: (text) => {
+        c.drafts[rec.id] = text;
+        const live = document.querySelector(`[data-focus="checkin-${rec.id}"]`) ?? box;
+        live.value = text;
+        grow(live);
+      },
+      onBlocked: (message) => { c.error = message; },
+      render: ctx.render,
+    })),
     c.error ? h('p', { class: 'error', role: 'alert' }, c.error) : null,
     h('div', { class: 'buttons' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => save(ctx, rec) }, 'Save'),

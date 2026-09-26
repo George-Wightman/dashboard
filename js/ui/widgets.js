@@ -9,6 +9,7 @@
 
 import { h } from './dom.js';
 import { renderAgenda } from './agenda.js';
+import { renderNote } from './note.js';
 import { renderWeek, renderGoals, renderHistory, renderHistoryBig, keptFocus, restoreFocus } from './side.js';
 import { renderGym, renderGymBig } from './gym.js';
 import { renderMuscles, renderCardioTrend } from './training.js';
@@ -25,6 +26,7 @@ import { visibleColumns, visibleUnder, moveWidget, nudgeWidget, hideWidget, show
 //
 // A widget with more to show than fits has a `big` view (js/ui/big.js): its heading opens it.
 export const WIDGETS = [
+  { id: 'note', title: 'Note for Claude', render: renderNote },
   { id: 'agenda', title: 'Upcoming', render: renderAgenda },
   { id: 'countdown', title: 'Countdown', render: renderCountdown },
   { id: 'week', title: 'This week', render: renderWeek },

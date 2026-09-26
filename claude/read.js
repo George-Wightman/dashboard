@@ -283,6 +283,14 @@ function catchup(doc, today, arg, now = new Date()) {
     : since ? `Catching up since the last catch-up, ${when(since)}${first > from ? ` (only the last ${CATCHUP_MAX_DAYS} days shown)` : ''}.`
     : 'First catch-up: yesterday and today.');
 
+  // His notes for Claude first (the Note for Claude widget, or ⚑ → For Claude): every open one, old or
+  // new, oldest first, with when and what he was doing. Act on them, then `archive` each.
+  const left = openFlags(doc, 'claude').filter((f) => (f.source ?? 'me') === 'me').reverse();
+  if (left.length) {
+    out.push('Notes George left you (act on each, then archive it):',
+      ...left.map((f) => `  ${when(f.at ?? f.updated)}${f.doing ? `, during ${f.doing}` : ''}: ${q(String(f.text).replace(/\s+/g, ' '), 2000)} ${tag(f.id)}`));
+  }
+
   out.push('Day by day:');
   const idx = doneIndex(doc);
   for (let d = first; d <= today; d = addDays(d, 1)) {
@@ -300,7 +308,7 @@ function catchup(doc, today, arg, now = new Date()) {
   const said = checkinsSince(doc, first).filter((r) => r.day >= first);
   out.push(said.length ? 'Check-ins (what he said; newest first):' : 'No check-ins in that time.', ...said.flatMap((r) => checkinLines(r, today)));
 
-  const flagsNew = Object.values(doc.flags ?? {}).filter((f) => f.status === 'active' && String(f.at ?? f.updated ?? '') > cutoff);
+  const flagsNew = Object.values(doc.flags ?? {}).filter((f) => f.status === 'active' && String(f.at ?? f.updated ?? '') > cutoff && !left.includes(f));
   if (flagsNew.length) {
     out.push('New flags:', ...flagsNew.map((f) => `  ${FLAG_KINDS[flagKind(f)]}: ${q(String(f.text).replace(/\s+/g, ' '), 600)} ${tag(f.id)} · from ${flagSourceName(f)}`));
   }
@@ -353,7 +361,7 @@ function flags(doc, today, arg = '') {
     const group = open.filter((f) => flagKind(f) === kind);
     if (!group.length) continue;
     out.push(`${label} (${group.length}, newest first):`,
-      ...group.map((f) => `  ${q(String(f.text).replace(/\s+/g, ' '), 1000)} ${tag(f.id)} · ${when(f.at ?? f.updated)} · from ${flagSourceName(f)}`));
+      ...group.map((f) => `  ${q(String(f.text).replace(/\s+/g, ' '), 1000)} ${tag(f.id)} · ${when(f.at ?? f.updated)}${f.doing ? ` · during ${f.doing}` : ''} · from ${flagSourceName(f)}`));
   }
   return out.join('\n');
 }

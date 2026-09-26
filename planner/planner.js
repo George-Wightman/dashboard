@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '320e652c';
+var PLANNER_BUILD = '0536188f';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -505,6 +505,7 @@ function recordProblem(map, id, r) {
     if (!optional('messages', (v) => Array.isArray(v) && v.every(validMessage))) return 'Invalid conversation messages';
   }
   if (map === 'flags' && !string(r.text)) return 'Invalid flag text';
+  if (map === 'flags' && !optional('doing', (v) => string(v) && v.length <= 200)) return 'Invalid flag context';
   if (map === 'changes') {
     if (!string(r.summary) || !Array.isArray(r.edits) || !r.edits.every((e) => isPlainObject(e)
       && MAPS.includes(e.map) && e.map !== 'changes' && string(e.id) && !unsafe(e.id)
@@ -759,7 +760,7 @@ const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-const APP_VERSION = 'today-dashboard-v14';
+const APP_VERSION = 'today-dashboard-v15';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -1524,6 +1525,23 @@ function todaySlots(doc, today) {
   return slots;
 }
 
+// What George is doing at `now`, as a few words for a note he leaves Claude: the task whose calendar
+// block he's in, else the task he ticked in the last half hour ("just finished …"), else null.
+function doingNow(doc, today, now) {
+  const t = now.getTime();
+  const title = (id) => (doc.items?.[id]?.title ?? '').trim();
+  for (const b of dayRecord(doc, today)?.blocks ?? []) {
+    if (!(Date.parse(b.start) <= t && t < Date.parse(b.end))) continue;
+    const names = (b.items ?? []).map(title).filter(Boolean);
+    const what = names.length ? names.join(', ') : String(b.title ?? '').replace(/^~ /, '').trim();
+    if (what) return `${what} (${clockLabel(b.start)}–${clockLabel(b.end)})`.slice(0, 200);
+  }
+  const recent = Object.values(doc.logs ?? {}).filter((l) => l.status === 'active' && l.kind === 'done' && l.day === today
+    && l.at && t - Date.parse(l.at) >= 0 && t - Date.parse(l.at) < 30 * 60000 && title(l.itemId))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+  return recent ? `just finished ${title(recent.itemId)}`.slice(0, 200) : null;
+}
+
 const plannerNotes = (doc, today) => [...(dayRecord(doc, today)?.notes ?? [])];
 
 // The notes the header shows: newest first, at most two, without the ones hidden on this device
@@ -1579,7 +1597,7 @@ function plannerSummary(doc, now) {
   lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
   return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
 }
-return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
+return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, doingNow, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
 })();
 
 // ---- js/checkins.js
@@ -2123,11 +2141,13 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // is trimmed and capped at FLAG_TEXT_MAX characters; the context is copied and capped at 4 KB
   // (js/flags.js), whoever built it.
   // `kind` (js/flags.js's FLAG_KINDS) says what it's for; left out, it's read from who wrote it.
-  function addFlag(text, ctx = null, source = 'me', kind = null) {
+  // `doing`: what he was in the middle of, for a note left for Claude (js/calendar.js's doingNow).
+  function addFlag(text, ctx = null, source = 'me', kind = null, { doing = null } = {}) {
     const clean = Array.from(String(text ?? '').trim()).slice(0, FLAG_TEXT_MAX).join('').trim();
     if (!clean) throw new Error('A flag needs some text');
     const checked = kind == null ? {} : { kind: checkFlagKind(kind) };
-    return create('flags', { text: clean, ctx: capContext(ctx), source, at: stamp(), ...checked });
+    const extra = doing ? { doing: String(doing).slice(0, 200) } : {};
+    return create('flags', { text: clean, ctx: capContext(ctx), source, at: stamp(), ...checked, ...extra });
   }
 
   function checkFlagKind(kind) {

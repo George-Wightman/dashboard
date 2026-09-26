@@ -8,7 +8,7 @@ export const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 export const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-export const APP_VERSION = 'today-dashboard-v14';
+export const APP_VERSION = 'today-dashboard-v15';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;

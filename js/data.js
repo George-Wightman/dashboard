@@ -447,11 +447,13 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // is trimmed and capped at FLAG_TEXT_MAX characters; the context is copied and capped at 4 KB
   // (js/flags.js), whoever built it.
   // `kind` (js/flags.js's FLAG_KINDS) says what it's for; left out, it's read from who wrote it.
-  function addFlag(text, ctx = null, source = 'me', kind = null) {
+  // `doing`: what he was in the middle of, for a note left for Claude (js/calendar.js's doingNow).
+  function addFlag(text, ctx = null, source = 'me', kind = null, { doing = null } = {}) {
     const clean = Array.from(String(text ?? '').trim()).slice(0, FLAG_TEXT_MAX).join('').trim();
     if (!clean) throw new Error('A flag needs some text');
     const checked = kind == null ? {} : { kind: checkFlagKind(kind) };
-    return create('flags', { text: clean, ctx: capContext(ctx), source, at: stamp(), ...checked });
+    const extra = doing ? { doing: String(doing).slice(0, 200) } : {};
+    return create('flags', { text: clean, ctx: capContext(ctx), source, at: stamp(), ...checked, ...extra });
   }
 
   function checkFlagKind(kind) {

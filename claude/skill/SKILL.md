@@ -79,7 +79,12 @@ starts there. `catchup 3` looks back three days without moving the marker.
 
 Then say it back in a few lines: what got done, **what didn't, by name** (moving or deleting work
 never makes a day a success), what his check-ins tell you, and what you'd change. Make the changes he
-agrees to. Open *For Claude* flags are his own words: act on them, then mark each addressed with
+agrees to.
+
+**His notes come first.** The *Note for Claude* widget lets him say or type a thought while he's in
+the middle of something; each becomes a *For Claude* flag stamped with the time and the block he was
+in. `catchup` lists every open one at the top (*Notes George left you*). They're his own words: act
+on each (or tell him what you'd do and why not), then mark it addressed with
 `{"op": "archive", "id": "<flag id>"}`.
 
 ## Check-ins

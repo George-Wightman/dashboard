@@ -434,12 +434,24 @@ button.link.update-ready { color: var(--accent); }
   font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .checkin-box textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.checkin .btn.mic { display: inline-flex; align-items: center; justify-content: center; padding: .45rem .6rem; }
 .checkin .btn.mic.on { background: var(--accent); color: var(--bg); animation: mic-pulse 1.2s ease-in-out infinite; }
 @keyframes mic-pulse { 50% { opacity: .6; } }
 @media (prefers-reduced-motion: reduce) { .checkin .btn.mic.on { animation: none; } }
 .checkin .buttons { display: flex; align-items: center; gap: .75rem; margin-top: .45rem; }
 .checkin .error { min-height: 0; margin: .4rem 0 0; }
+/* The note for Claude (js/ui/note.js): one line that grows, the mic, Send. */
+.note-box { display: flex; align-items: flex-end; gap: .5rem; }
+.note-box textarea {
+  flex: 1; min-width: 0; min-height: 2.3rem; max-height: 12rem; padding: .4rem .55rem; resize: none; overflow-y: auto;
+  font: inherit; font-size: .9rem; color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.note-box textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.note-box .btn { flex: none; }
+.note-panel .btn.mic, .checkin .btn.mic { display: inline-flex; align-items: center; justify-content: center; padding: .45rem .6rem; }
+.note-panel .btn.mic.on { background: var(--accent); color: var(--bg); animation: mic-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .note-panel .btn.mic.on { animation: none; } }
+.note-waiting { font-size: .75rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.note-panel .error, .note-sent { min-height: 0; margin: .4rem 0 0; font-size: .8rem; }
 .list li.checkin-saved { grid-column: 1 / -1; display: block; margin: 0 0 .6rem; padding: .35rem .75rem; font-size: .85rem; color: var(--muted); }
 .chip.on { color: var(--accent); border-color: var(--accent); }
 

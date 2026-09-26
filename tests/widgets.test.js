@@ -6,12 +6,12 @@ import { DEFAULT_LAYOUT, normalizeLayout, visibleColumns } from '../js/layout.js
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('the widgets: Upcoming, Countdown, This week, Goals, Last 3 weeks, Hebrew, Gym, Muscles, Cardio trend', () => {
+test('the widgets: Note for Claude, Upcoming, Countdown, This week, Goals, Last 3 weeks, Hebrew, Gym, Muscles, Cardio trend', () => {
   assert.deepEqual(WIDGETS.map((w) => [w.id, w.title]), [
-    ['agenda', 'Upcoming'], ['countdown', 'Countdown'], ['week', 'This week'], ['goals', 'Goals'], ['history', 'Last 3 weeks'],
+    ['note', 'Note for Claude'], ['agenda', 'Upcoming'], ['countdown', 'Countdown'], ['week', 'This week'], ['goals', 'Goals'], ['history', 'Last 3 weeks'],
     ['hebrew', 'Hebrew'], ['gym', 'Gym'], ['muscles', 'Muscles'], ['cardio', 'Cardio trend'],
   ]);
-  assert.deepEqual(WIDGET_IDS, ['agenda', 'countdown', 'week', 'goals', 'history', 'hebrew', 'gym', 'muscles', 'cardio']);
+  assert.deepEqual(WIDGET_IDS, ['note', 'agenda', 'countdown', 'week', 'goals', 'history', 'hebrew', 'gym', 'muscles', 'cardio']);
   for (const w of WIDGETS) assert.equal(typeof w.render, 'function', w.id);
 });
 
@@ -19,7 +19,7 @@ test('the default arrangement places every widget, and only widgets; none starts
   assert.deepEqual(normalizeLayout(DEFAULT_LAYOUT, WIDGET_IDS), DEFAULT_LAYOUT);
   assert.deepEqual([...DEFAULT_LAYOUT.under, ...DEFAULT_LAYOUT.columns.flat(), ...DEFAULT_LAYOUT.hidden].sort(), [...WIDGET_IDS].sort());
   assert.deepEqual(DEFAULT_LAYOUT.hidden, []);
-  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['countdown', 'week', 'muscles', 'cardio', 'history', 'hebrew', 'gym']]);
+  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['note', 'countdown', 'week', 'muscles', 'cardio', 'history', 'hebrew', 'gym']]);
 });
 
 test('styles.css and js/app.js agree on the page width and the columns', () => {

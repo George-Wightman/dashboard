@@ -1,6 +1,6 @@
 // Complete, integrity-checked releases. Open pages stay pinned to their release;
 // a refresh selects the new release for the next navigation, never per-file.
-const CACHE = 'today-dashboard-v14';
+const CACHE = 'today-dashboard-v15';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
@@ -8,7 +8,7 @@ const SHELL = [
   'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/gemini.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/checkins.js',
   'js/plan-state.js', 'js/ui/agenda.js', 'js/push-client.js',
   'js/workflow.js', 'js/goal-review.js', 'js/ui/outcome.js',
-  'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/checkin.js',
+  'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/checkin.js', 'js/ui/mic.js', 'js/ui/note.js',
   'js/ui/widgets.js', 'js/ui/flags.js', 'js/ui/changes.js', 'js/ui/claude.js', 'js/ui/sources.js', 'js/ui/gym.js', 'js/ui/hebrew.js', 'js/ui/countdown.js', 'js/ui/big.js',
   'js/ui/training.js',
 ];

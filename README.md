@@ -21,6 +21,10 @@ Pieces 1, 3 and 6 of 6: the core hub, the Claude skill and the calendar planner.
   Last 3 weeks shows every week since you started, and each day with what was missed, by name.
   Escape, ✕ or a click outside closes it.
 - **Check-ins:** see below.
+- **Note for Claude:** the small box at the top of the widgets. Say it (the mic) or type it, then
+  **Send** (or Ctrl+Enter): a thought for Claude to pick up next time you talk. It's a *For Claude*
+  flag stamped with the time and whatever block you were in, and Claude's catch-up shows these
+  first. The heading says how many are still waiting.
 - **Countdown:** tell Claude "count down to the assessment centre on 5 October" and the days left
   show in the Countdown widget until the day. Nothing is booked for it.
 - **Goals with a number and a date** say what it takes a day to finish on time, under the goal's

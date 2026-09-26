@@ -295,6 +295,23 @@ export function todaySlots(doc, today) {
   return slots;
 }
 
+// What George is doing at `now`, as a few words for a note he leaves Claude: the task whose calendar
+// block he's in, else the task he ticked in the last half hour ("just finished …"), else null.
+export function doingNow(doc, today, now) {
+  const t = now.getTime();
+  const title = (id) => (doc.items?.[id]?.title ?? '').trim();
+  for (const b of dayRecord(doc, today)?.blocks ?? []) {
+    if (!(Date.parse(b.start) <= t && t < Date.parse(b.end))) continue;
+    const names = (b.items ?? []).map(title).filter(Boolean);
+    const what = names.length ? names.join(', ') : String(b.title ?? '').replace(/^~ /, '').trim();
+    if (what) return `${what} (${clockLabel(b.start)}–${clockLabel(b.end)})`.slice(0, 200);
+  }
+  const recent = Object.values(doc.logs ?? {}).filter((l) => l.status === 'active' && l.kind === 'done' && l.day === today
+    && l.at && t - Date.parse(l.at) >= 0 && t - Date.parse(l.at) < 30 * 60000 && title(l.itemId))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+  return recent ? `just finished ${title(recent.itemId)}`.slice(0, 200) : null;
+}
+
 export const plannerNotes = (doc, today) => [...(dayRecord(doc, today)?.notes ?? [])];
 
 // The notes the header shows: newest first, at most two, without the ones hidden on this device

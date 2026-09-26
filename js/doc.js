@@ -117,6 +117,7 @@ export function recordProblem(map, id, r) {
     if (!optional('messages', (v) => Array.isArray(v) && v.every(validMessage))) return 'Invalid conversation messages';
   }
   if (map === 'flags' && !string(r.text)) return 'Invalid flag text';
+  if (map === 'flags' && !optional('doing', (v) => string(v) && v.length <= 200)) return 'Invalid flag context';
   if (map === 'changes') {
     if (!string(r.summary) || !Array.isArray(r.edits) || !r.edits.every((e) => isPlainObject(e)
       && MAPS.includes(e.map) && e.map !== 'changes' && string(e.id) && !unsafe(e.id)

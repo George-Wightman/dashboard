@@ -23,7 +23,7 @@ export const DEFAULT_LAYOUT = Object.freeze({
   v: 4,
   under: Object.freeze(['goals', 'agenda']),
   columns: Object.freeze([
-    Object.freeze(['countdown', 'week', 'muscles', 'cardio']),
+    Object.freeze(['note', 'countdown', 'week', 'muscles', 'cardio']),
     Object.freeze(['history', 'hebrew', 'gym']),
   ]),
   hidden: Object.freeze([]),
@@ -81,6 +81,8 @@ export function normalizeLayout(saved, knownIds) {
     for (const id of ['goals', 'agenda']) if (out.columns.some((c) => c.includes(id))) out = moveWidget(out, id, UNDER);
     if (arrived.includes('countdown')) out = moveWidget(out, 'countdown', 0, out.columns[0][0]);
   }
+  // The note for Claude (2026-09-26) arrives at the top of the first column, not the end.
+  if (arrived.includes('note') && readable) out = moveWidget(out, 'note', 0, out.columns[0][0]);
   return out;
 }
 

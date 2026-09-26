@@ -13,6 +13,7 @@ import {
 } from '../js/checkins.js';
 import { createCheckins, isQuiet, pushSubscriptions, PINGS_PER_DAY } from '../planner/checkins.js';
 import { READS, CAUGHT_UP } from '../claude/read.js';
+import { dayRecordId } from '../js/calendar.js';
 
 const DAY = '2026-09-10'; // a Thursday
 const at = (hhmm, day = DAY) => new Date(`${day}T${hhmm}:00`);
@@ -268,4 +269,44 @@ test('catchup: each day since the last one, what he said, new flags and his cale
   assert.match(READS.catchup(doc, TODAY, '3'), /^Catching up on the last 3 days\.$/m);
   delete doc.calendar[CAUGHT_UP];
   assert.match(READS.catchup(doc, TODAY, ''), /^First catch-up: yesterday and today\.$/m);
+});
+
+// ---- Notes for Claude ------------------------------------------------------------------------------
+
+test("a note for Claude is a For Claude flag with what he was doing: the block he's in, else what he just ticked", async () => {
+  const { doingNow } = await import('../js/calendar.js');
+  const { store, task, now } = withTask();
+  store.putCalendar(dayRecordId(DAY), { day: DAY, blocks: [{ key: 'a', start: at('09:00').toISOString(), end: at('10:00').toISOString(), items: [task.id] }], skipped: [], missed: [], notes: [] });
+  assert.equal(doingNow(store.doc(), DAY, at('09:20')), 'Scenario practice (09:00–10:00)');
+  assert.equal(doingNow(store.doc(), DAY, at('10:05')), null);
+  now.set(at('10:10'));
+  store.toggleDone(task.id, DAY);
+  assert.equal(doingNow(store.doc(), DAY, at('09:20')), 'Scenario practice (09:00–10:00)', 'the block wins');
+  assert.equal(doingNow(store.doc(), DAY, at('10:30')), 'just finished Scenario practice');
+  assert.equal(doingNow(store.doc(), DAY, at('10:45')), null, 'more than half an hour after the tick');
+
+  const f = store.addFlag('Ask about the scenario framework', null, 'me', 'claude', { doing: 'Scenario practice (09:00–10:00)' });
+  assert.deepEqual([f.kind, f.source, f.doing], ['claude', 'me', 'Scenario practice (09:00–10:00)']);
+  assert.equal(recordProblem('flags', f.id, { ...f, doing: 'x'.repeat(201) }), 'Invalid flag context');
+});
+
+test('catchup leads with the notes he left, oldest first, with when and what he was doing', () => {
+  const TODAY = '2026-09-13';
+  const doc = fixture({
+    flags: [
+      { id: 'n2', text: 'Remind me to email Nathan', kind: 'claude', at: '2026-09-13T09:30:00.000Z' },
+      { id: 'n1', text: 'Step 3 of the framework keeps falling apart', kind: 'claude', at: '2026-09-12T10:00:00.000Z', doing: 'Scenario practice (10:30–11:30)' },
+      { id: 'bug', text: 'The mic cut off', kind: 'bug', at: '2026-09-13T08:00:00.000Z' },
+      { id: 'old-coach', text: 'From the Coach', kind: 'claude', source: 'coach', at: '2026-09-13T08:00:00.000Z' },
+    ],
+  });
+  const text = READS.catchup(doc, TODAY, '');
+  const lines = text.split('\n');
+  const at = lines.indexOf('Notes George left you (act on each, then archive it):');
+  assert.ok(at > 0 && at < lines.indexOf('Day by day:'), 'before the days');
+  assert.match(lines[at + 1], /during Scenario practice \(10:30–11:30\): "Step 3 of the framework keeps falling apart" #n1$/);
+  assert.match(lines[at + 2], /: "Remind me to email Nathan" #n2$/);
+  assert.match(text, /^New flags:\n {2}Bug: "The mic cut off" #bug/m);
+  assert.doesNotMatch(text.split('New flags:')[1], /Remind me/, 'not listed twice');
+  assert.match(READS.flags(doc, TODAY), /"Step 3 of the framework keeps falling apart" #n1 · .* · during Scenario practice \(10:30–11:30\) · from George/);
 });

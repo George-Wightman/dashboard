@@ -13,6 +13,7 @@ import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
 import { checkinState, openCheckin } from './ui/checkin.js';
+import { noteState } from './ui/note.js';
 import { paintBig } from './ui/big.js';
 import { resolveLook, THEME_COLORS } from './look.js';
 import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
@@ -33,6 +34,8 @@ const ui = {
   // The check-in card's page-only state (js/ui/checkin.js): what's typed or said, so a re-render
   // never loses it.
   checkin: checkinState(),
+  // The note for Claude's draft (js/ui/note.js).
+  note: noteState(),
 };
 const sync = { state: 'off', at: null, error: null };
 // The read-only pull from the Hebrew app's own sync file (js/hebrewSync.js): a separate repo and
