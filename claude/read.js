@@ -25,7 +25,7 @@ import { resolveId } from './ids.js';
 import { blockers } from '../js/workflow.js';
 import { q, dayName, when, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 
-const SOURCES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion', coach: 'the Coach' };
+const SOURCES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion', coach: 'the Coach', hevy: 'Hevy', workflow: 'a rule' };
 const by = (rec) => (SOURCES[rec.source] ? ` · by ${SOURCES[rec.source]}` : '');
 const tag = (id) => `#${shortId(id)}`;
 const values = (map) => Object.values(map ?? {});
@@ -309,12 +309,24 @@ function catchup(doc, today, arg, now = new Date()) {
   if (trained.length) out.push('Workouts (Hevy):', ...trained.map((w) => `  ${dayName(w.day, today)}: ${sessionLine(doc, w)}`));
   if (workouts(doc).length) out.push(`Training this week: ${trainingWeek(doc, today)}`);
 
-  const moved = changeList(doc).filter((c) => c.source === 'calendar' && String(c.at) > cutoff)
-    .flatMap((c) => (c.edits ?? []).filter((e) => e.map === 'items' && e.before && e.after)
-      .map((e) => ({ at: c.at, title: e.after.title ?? e.before.title, from: `${e.before.date ?? ''} ${e.before.time ?? ''}`.trim(), to: `${e.after.date ?? ''} ${e.after.time ?? ''}`.trim(), gone: e.after.status === 'archived' && e.before.status === 'active' })))
-    .filter((m) => m.gone || m.from !== m.to);
-  if (moved.length) {
-    out.push('What he changed in Google Calendar:', ...moved.reverse().map((m) => `  ${when(m.at)}: ${q(m.title)} ${m.gone ? 'deleted' : `${m.from || '?'} → ${m.to || '?'}`}`));
+  // Each task once: where it started, where it ended up, and how many times it moved in between.
+  const byItem = new Map();
+  for (const c of [...changeList(doc)].reverse()) {
+    if (c.source !== 'calendar' || !(String(c.at) > cutoff)) continue;
+    for (const e of c.edits ?? []) {
+      if (e.map !== 'items' || !e.before || !e.after) continue;
+      const slot = (r) => `${r.date ? dayName(r.date, today) : '?'}${r.time ? ` ${r.time}` : ''}`;
+      const gone = e.after.status === 'archived' && e.before.status === 'active';
+      if (!gone && slot(e.before) === slot(e.after)) continue;
+      const m = byItem.get(e.id) ?? { title: e.after.title ?? e.before.title, from: slot(e.before), moves: 0, first: c.at };
+      Object.assign(m, { to: slot(e.after), gone, last: c.at, moves: m.moves + (gone ? 0 : 1) });
+      byItem.set(e.id, m);
+    }
+  }
+  if (byItem.size) {
+    out.push('What he changed in Google Calendar (each task once, oldest first):', ...[...byItem].map(([id, m]) => `  ${q(m.title)} ${tag(id)}: ${m.gone
+      ? `deleted ${when(m.last)}`
+      : `${m.from} → ${m.to}${m.moves > 1 ? ` (moved ${m.moves} times, last ${when(m.last)})` : ` (${when(m.last)})`}`}`));
   }
 
   const notes = plannerNotes(doc, today);

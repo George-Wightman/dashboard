@@ -263,7 +263,7 @@ test('catchup: each day since the last one, what he said, new flags and his cale
   assert.match(text, /^ {4}summary: Went OK; rambled on question 2\.$/m);
   assert.match(text, /^New flags:\n {2}Feature: "Make the mic bigger" #f-new/m);
   assert.doesNotMatch(text, /Old flag/);
-  assert.match(text, /^What he changed in Google Calendar:\n {2}Sat 12 Sep, 19:00: "Scenarios" 2026-09-12 14:00 → 2026-09-13 10:00$/m);
+  assert.match(text, /^What he changed in Google Calendar \(each task once, oldest first\):\n {2}"Scenarios" #t2: Sat 12 Sep 14:00 → today 10:00 \(Sat 12 Sep, 19:00\)$/m);
   // A fixed look back reads further without a marker.
   assert.match(READS.catchup(doc, TODAY, '3'), /^Catching up on the last 3 days\.$/m);
   delete doc.calendar[CAUGHT_UP];
