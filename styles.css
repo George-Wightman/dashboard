@@ -439,14 +439,17 @@ button.link.update-ready { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .checkin .btn.mic.on { animation: none; } }
 .checkin .buttons { display: flex; align-items: center; gap: .75rem; margin-top: .45rem; }
 .checkin .error { min-height: 0; margin: .4rem 0 0; }
-/* The note for Claude (js/ui/note.js): one line that grows, the mic, Send. */
-.note-box { display: flex; align-items: flex-end; gap: .5rem; }
+/* The note for Claude (js/ui/note.js): the box takes the widget's whole width and grows as he types
+   or speaks; the mic and Send sit in its bottom-right corner, over a strip the text never reaches. */
+.note-box { position: relative; }
 .note-box textarea {
-  flex: 1; min-width: 0; min-height: 2.3rem; max-height: 12rem; padding: .4rem .55rem; resize: none; overflow-y: auto;
-  font: inherit; font-size: .9rem; color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  display: block; width: 100%; min-height: 4.6rem; max-height: 16rem; padding: .45rem .6rem 2.9rem; resize: none; overflow-y: auto;
+  font: inherit; font-size: .9rem; line-height: 1.4; color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .note-box textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.note-box .btn { flex: none; }
+.note-actions { position: absolute; right: .45rem; bottom: .45rem; display: flex; gap: .4rem; }
+.note-actions .btn { padding: .3rem .7rem; font-size: .85rem; }
+.note-actions .btn.mic { padding: .3rem .45rem; }
 .note-panel .btn.mic, .checkin .btn.mic { display: inline-flex; align-items: center; justify-content: center; padding: .45rem .6rem; }
 .note-panel .btn.mic.on { background: var(--accent); color: var(--bg); animation: mic-pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .note-panel .btn.mic.on { animation: none; } }

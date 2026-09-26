@@ -45,7 +45,7 @@ export function renderNote(ctx) {
   return h('section', { class: 'panel note-panel' },
     h('h2', {}, 'Note for Claude',
       waiting ? h('span', { class: 'muted note-waiting', title: 'Waiting for Claude to pick up (in ⚑ under For Claude)' }, `${waiting} waiting`) : null),
-    h('div', { class: 'note-box' }, box,
+    h('div', { class: 'note-box' }, box, h('div', { class: 'note-actions' },
       micButton({
         key: 'note',
         getText: () => n.draft,
@@ -54,11 +54,12 @@ export function renderNote(ctx) {
           const live = document.querySelector('[data-focus="note-for-claude"]') ?? box;
           live.value = text;
           grow(live);
+          live.scrollTop = live.scrollHeight; // keep the newest words in view as he speaks
         },
         onBlocked: (message) => { n.error = message; },
         render: ctx.render,
       }),
-      h('button', { class: 'btn primary', type: 'button', onclick: () => send(ctx) }, 'Send')),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => send(ctx) }, 'Send'))),
     n.error ? h('p', { class: 'error', role: 'alert' }, n.error) : null,
     n.sent ? h('p', { class: 'muted note-sent', role: 'status' }, n.sent) : null);
 }

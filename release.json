@@ -1,9 +1,9 @@
 {
-  "id": "ac63ad8b427494ffd57cd179d8395e7978af09147be8698b905e39bbcf7463c4",
+  "id": "c2dcc60c5b6e9da3a088c83b7422b871e31b6dc1419cc03a2b10963fded124c2",
   "files": {
     "./": "8fb965065bb14f505446bbbb39e8b3f71eebab59b89226670a70922f92fcfe3e",
     "index.html": "8fb965065bb14f505446bbbb39e8b3f71eebab59b89226670a70922f92fcfe3e",
-    "styles.css": "4f5eceddf4ff67b56c421f0b5a0429b47c82bc5e165d971cd20ff369a35161d6",
+    "styles.css": "596b0b0bf8cabc3bb3edd67d4693f2545c2322aca4b01ebe9a1c367e229448c0",
     "manifest.webmanifest": "58f74b20448e1d6278a03a86d28062713b0ba50ef3b2aafe3e4af83a80e0e954",
     "icons/icon.svg": "ed047463e6d4922fd9c4f21dbedf11b9e4b5cdc3b471b5a4bffcd63dca624754",
     "icons/icon-192.png": "8e7e849913dea81b5333285f54b427c3be4d5de5a20fa90ca0cc99de7dd1db04",
@@ -42,7 +42,7 @@
     "js/ui/settings.js": "3f3a496d9ad9446e5902df39e90eac84a2afeefdb56ad15550e1a3f6adeb36ff",
     "js/ui/checkin.js": "ba4f9b262875bbe484ed60f831d7e770759e8b5bfa83515b38487d01571ae49a",
     "js/ui/mic.js": "35fefcd10b9394f14903a2ec94df193e7728c11fc5c0747292f140b09328974c",
-    "js/ui/note.js": "fd5905a83e4569a6661c894ea5c3841c69330dce0d66467a59b6d7b4ec7a6ab4",
+    "js/ui/note.js": "06962a3a2224b9eaa9b9ee0d29d01193047274e02ca10c9474a6a58574478645",
     "js/ui/widgets.js": "09d65ea105d5c693bae5afe254e96c4704e24c0baa80e290b23e9cffbef9cc48",
     "js/ui/flags.js": "ec97bdf58df2e1f3e76abd20b1dd771dbd62ba5cd42606b4c573d19cca58bad5",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
