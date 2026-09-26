@@ -20,7 +20,7 @@ export const fakeUtilities = {
   computeHmacSha256Signature: (value, key) => Array.from(crypto.createHmac('sha256', Buffer.from(key.map((b) => b & 255))).update(Buffer.from(value.map((b) => b & 255))).digest(), toSigned),
 };
 
-// The sync repo `o/r`, with data.json behind the Contents API — and any other file (mind.json) beside it.
+// The sync repo `o/r`, with data.json behind the Contents API — and any other file beside it.
 export class FakeRepo {
   constructor(doc = null) {
     this.text = doc ? JSON.stringify(doc) : null;

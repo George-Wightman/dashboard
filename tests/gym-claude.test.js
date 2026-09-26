@@ -5,7 +5,6 @@ import assert from 'node:assert/strict';
 import { READS } from '../claude/read.js';
 import { runOp } from '../claude/ops.js';
 import { workoutRecord } from '../js/gym.js';
-import { coachContext, digestPrompt } from '../js/coach.js';
 import { sparkGeometry } from '../js/ui/gym.js';
 import { gymLines } from '../js/ui/claude.js';
 import { at } from '../planner/time.js';
@@ -63,15 +62,6 @@ test("the gym op: a Cardio target in minutes, lift targets one at a time, key li
   assert.throws(() => runOp(store, { op: 'gym', habit: 'Hebrew' }), /No single live habit is "Hebrew"/);
   assert.throws(() => runOp(store, { op: 'gym', routine: 'Push day' }), /Unknown gym setting routine/);
   assert.throws(() => runOp(store, { op: 'gym' }), /gym needs a setting/);
-});
-
-test('the Coach is told the day and the week; the digest gets a Training line', () => {
-  const { store } = setup();
-  const context = coachContext(store.doc(), '2026-09-16');
-  assert.match(context, /\nGym today: Run · 20 min · Treadmill 20 min, 3 km\nTraining this week: 2 sessions; cardio 20 min; Squat est\. 1RM 120\n/);
-  assert.match(digestPrompt(store.doc(), '2026-09-14').prompt, /\nTraining: 2 sessions; cardio 20 min; Squat est\. 1RM 120\n/);
-  const none = makeStore({ now: clock(at(THU, '20:00')) });
-  assert.doesNotMatch(coachContext(none.doc(), THU), /Gym today|Training/);
 });
 
 test('the sparkline: points across the box, a target line, and the dashed projection to it', () => {

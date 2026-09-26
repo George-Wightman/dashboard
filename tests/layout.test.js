@@ -7,7 +7,7 @@ import {
 import { MemoryStorage, FullStorage } from './helpers.js';
 
 const IDS = ['coach', 'week', 'goals', 'history'];
-const ALL = [...IDS, 'gym', 'muscles', 'cardio', 'agenda', 'hebrew', 'countdown']; // every widget the default arrangement places
+const ALL = ['week', 'goals', 'history', 'gym', 'muscles', 'cardio', 'agenda', 'hebrew', 'countdown']; // every widget the default arrangement places
 const L = (columns, hidden = [], under = []) => ({ v: 4, under, columns, hidden });
 
 // Freezes a layout all the way down, so a function that changes its input throws.
@@ -26,11 +26,11 @@ function assertEachOnce(layout, ids = IDS) {
 
 // ---- the default and normalizeLayout ------------------------------------------------------------
 
-test('the default arrangement: Goals and Upcoming under the list; Countdown, Coach, This week, Muscles and Cardio trend; then Last 3 weeks, Hebrew and Gym', () => {
+test('the default arrangement: Goals and Upcoming under the list; Countdown, This week, Muscles and Cardio trend; then Last 3 weeks, Hebrew and Gym', () => {
   assert.equal(LAYOUT_KEY, 'dash_layout');
   assert.equal(UNDER, 'under');
   assert.deepEqual(DEFAULT_LAYOUT, {
-    v: 4, under: ['goals', 'agenda'], columns: [['countdown', 'coach', 'week', 'muscles', 'cardio'], ['history', 'hebrew', 'gym']], hidden: [],
+    v: 4, under: ['goals', 'agenda'], columns: [['countdown', 'week', 'muscles', 'cardio'], ['history', 'hebrew', 'gym']], hidden: [],
   });
   assert.throws(() => DEFAULT_LAYOUT.under.push('x'), TypeError);
   assert.throws(() => DEFAULT_LAYOUT.columns[0].push('x'), TypeError);
@@ -42,7 +42,7 @@ test('normalizeLayout of the default is a fresh copy of it', () => {
   assert.deepEqual(out, DEFAULT_LAYOUT);
   out.columns[0].push('extra');
   out.under.push('extra');
-  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['countdown', 'coach', 'week', 'muscles', 'cardio']);
+  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['countdown', 'week', 'muscles', 'cardio']);
   assert.deepEqual(DEFAULT_LAYOUT.under, ['goals', 'agenda']);
 });
 
@@ -108,12 +108,12 @@ test('visibleColumns: two columns side by side, or one list, never the hidden on
   const layout = L([['coach', 'week'], ['goals']], ['history']);
   assert.deepEqual(visibleColumns(layout, 2), [['coach', 'week'], ['goals']]);
   assert.deepEqual(visibleColumns(layout, 1), [['coach', 'week', 'goals']]);
-  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['countdown', 'coach', 'week', 'muscles', 'cardio', 'history', 'hebrew', 'gym']]);
+  assert.deepEqual(visibleColumns(DEFAULT_LAYOUT, 1), [['countdown', 'week', 'muscles', 'cardio', 'history', 'hebrew', 'gym']]);
   // hidden ids stay out even if a hand-edited layout still has them in a column
   assert.deepEqual(visibleColumns(L([['coach', 'history'], ['week']], ['history']), 2), [['coach'], ['week']]);
   const out = visibleColumns(DEFAULT_LAYOUT, 2);
   out[0].push('x');
-  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['countdown', 'coach', 'week', 'muscles', 'cardio']);
+  assert.deepEqual(DEFAULT_LAYOUT.columns[0], ['countdown', 'week', 'muscles', 'cardio']);
 });
 
 test('visibleUnder: what sits under the list, never the hidden ones', () => {

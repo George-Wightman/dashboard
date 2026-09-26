@@ -10,7 +10,7 @@ export const MAX_WAIT_S = 20;
 export const HEBREW_KEY_NAMES = ['hvr_geminikey', 'hvr_geminikey2'];
 
 export const MESSAGES = {
-  nokey: 'The coach needs a Gemini key. Add one in ⚙, or save one in the Hebrew app on this device.',
+  nokey: 'No Gemini key. Add one in ⚙, or save one in the Hebrew app on this device.',
   offline: "Can't reach Gemini — check you're online and try again",
   quota: "Gemini's free limit is used up for today — try tomorrow",
   badkey: 'Gemini refused the key — check it in ⚙',
@@ -187,102 +187,4 @@ export async function askGemini({
     }
   }
   throw new GeminiError(verdict(outcomes));
-}
-
-// ---- A conversation with tools ------------------------------------------------------------------
-
-export const TALK_STEPS = 6;
-
-// One turn of a conversation in which Gemini may use tools: `contents` is the conversation so far
-// in Gemini's shape, `tools` the declarations, and `run(name, args)` carries out each call — its
-// result (a plain object) goes back to Gemini, and a throw goes back as { ok: false, error }. At
-// most `steps` rounds of calls; then it's asked for words with no tools. Models and keys are walked
-// as askGemini walks them, starting with whichever answered last. Resolves
-// { text, calls: [{ name, args, result }], model }.
-export async function talkGemini({
-  keys, system, contents, tools = [], run = async () => ({}), toolConfig = null, steps = TALK_STEPS,
-  fetch = (...args) => globalThis.fetch(...args), timers = globalThis, models = MODELS, timeoutMs = TIMEOUT_MS,
-}) {
-  const usable = [...new Set((keys ?? []).map((k) => String(k ?? '').trim()).filter(Boolean))];
-  if (!usable.length) throw new GeminiError('nokey');
-  const sleep = (ms) => new Promise((resolve) => { timers.setTimeout(resolve, ms); });
-  let lead = null;
-
-  async function attempt({ model, key }, body) {
-    for (let waited = false; ;) {
-      const res = await post({ fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body });
-      if (res.fail) return { fail: res.fail };
-      if (res.status >= 200 && res.status < 300) {
-        try {
-          return { data: JSON.parse(res.text) };
-        } catch {
-          throw new GeminiError('nonsense');
-        }
-      }
-      if (refusesKey(res.status, res.text)) return { fail: 'badkey' };
-      const wait = res.status === 429 ? retryAfterSeconds(res.text) : null;
-      if (!waited && wait !== null && wait <= MAX_WAIT_S) {
-        waited = true;
-        await sleep(Math.ceil(wait * 1000));
-        continue;
-      }
-      return { fail: res.status === 429 ? 'quota' : res.status >= 500 ? 'server' : 'rejected' };
-    }
-  }
-
-  async function ask(body) {
-    const outcomes = [];
-    const refused = new Set();
-    const tried = new Set();
-    const order = [...(lead ? [lead] : []), ...models.flatMap((model) => usable.map((key) => ({ model, key })))];
-    for (const pair of order) {
-      const tag = `${pair.model}|${pair.key}`;
-      if (tried.has(tag) || refused.has(pair.key)) continue;
-      tried.add(tag);
-      const result = await attempt(pair, body);
-      if (result.data) {
-        lead = pair;
-        return { data: result.data, model: pair.model };
-      }
-      if (result.fail === 'badkey') refused.add(pair.key);
-      outcomes.push(result.fail);
-    }
-    throw new GeminiError(verdict(outcomes));
-  }
-
-  let convo = [...contents];
-  const calls = [];
-  for (let step = 0; ; step++) {
-    const last = step >= steps;
-    const body = {
-      systemInstruction: { parts: [{ text: system }] },
-      contents: convo,
-      generationConfig: { temperature: 0.6 },
-      ...(tools.length && !last ? { tools: [{ functionDeclarations: tools }], ...(toolConfig ? { toolConfig } : {}) } : {}),
-    };
-    const { data, model } = await ask(body);
-    const parts = Array.isArray(data?.candidates?.[0]?.content?.parts) ? data.candidates[0].content.parts : [];
-    const wanted = parts.filter((p) => typeof p?.functionCall?.name === 'string');
-    if (wanted.length && !last) {
-      const responses = [];
-      for (const p of wanted) {
-        const { name } = p.functionCall;
-        const args = p.functionCall.args && typeof p.functionCall.args === 'object' ? p.functionCall.args : {};
-        let result;
-        try {
-          result = await run(name, args);
-        } catch (e) {
-          result = { ok: false, error: String(e?.message ?? e) };
-        }
-        calls.push({ name, args, result });
-        responses.push({ functionResponse: { name, response: result ?? {} } });
-      }
-      // The model's own parts go back as they came (a thinking model's signatures with them).
-      convo = [...convo, { role: 'model', parts }, { role: 'user', parts: responses }];
-      continue;
-    }
-    const text = parts.filter((p) => typeof p?.text === 'string' && !p.thought).map((p) => p.text).join('').trim();
-    if (!text && !calls.length) throw new GeminiError('nonsense');
-    return { text, calls, model };
-  }
 }

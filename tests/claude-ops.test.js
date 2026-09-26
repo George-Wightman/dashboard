@@ -14,8 +14,8 @@ test("runOp refuses what isn't an op", () => {
   assert.throws(() => runOp(s, { op: 'fly' }),
     /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief/);
   assert.throws(() => runOp(s, { op: 'toString' }), /Unknown op "toString"/);
-  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'handoff', 'undo', 'planner', 'off', 'brief', 'gym', 'guide', 'details', 'rule', 'report', 'review', 'picture', 'say', 'propose', 'handled', 'mind']);
-  assert.deepEqual([...UNLOGGED], ['undo', 'handoff', 'handled']);
+  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'handoff', 'undo', 'planner', 'off', 'brief', 'countdown', 'gym', 'details', 'rule', 'report', 'review']);
+  assert.deepEqual([...UNLOGGED], ['undo', 'handoff']);
 });
 
 test('task: active and from Claude by default, a suggestion when asked, checked before anything is written', () => {
@@ -315,3 +315,28 @@ test('series: a later one pinned earlier in the same day than an earlier one is 
   runOp(s, { op: 'task', title: 'Role play 2', date: '2026-09-16', series: 'Role plays' });
   assert.match(runOp(s, { op: 'edit', id: 'rec-2', set: { time: '09:00' } }), /Note: "Role play 2" is now before "Role play 1"/);
 });
+
+test('countdown: a date still to come, listed in week with its id, and stopped by that id', () => {
+  const s = fresh();
+  assert.equal(runOp(s, { op: 'countdown', title: 'Assessment centre', day: '2026-10-05' }),
+    'Counting down to "Assessment centre" on Mon 5 Oct (25 days) · #count:2026-10-05:1');
+  assert.deepEqual(pickCountdown(s.doc().calendar['count:2026-10-05:1']), { title: 'Assessment centre', day: '2026-10-05', source: 'claude' });
+  assert.throws(() => runOp(s, { op: 'countdown', title: 'Old', day: '2026-09-01' }), /That date has passed/);
+  assert.throws(() => runOp(s, { op: 'countdown', day: '2026-10-05' }), /needs a name/);
+  assert.equal(runOp(s, { op: 'countdown', cancel: 'count:2026-10-05:1' }), 'Stopped counting down to "Assessment centre"');
+  assert.throws(() => runOp(s, { op: 'countdown', cancel: 'count:2026-10-05:1' }), /no countdown/);
+});
+
+test("archive with released: George's reason is kept, so a committed task doesn't count as a miss", () => {
+  const s = fresh();
+  runOp(s, { op: 'task', title: 'Check Austria PhDs' });
+  assert.equal(runOp(s, { op: 'archive', id: 'rec-1', released: 'Nathan already sent the list' }),
+    'Archived task "Check Austria PhDs", released: "Nathan already sent the list"');
+  assert.equal(s.doc().items['rec-1'].released, 'Nathan already sent the list');
+  assert.equal(s.doc().items['rec-1'].status, 'archived');
+  runOp(s, { op: 'task', title: 'Another' });
+  assert.throws(() => runOp(s, { op: 'archive', id: 'rec-2', released: 'x'.repeat(201) }), /at most 200/);
+  assert.equal(s.doc().items['rec-2'].status, 'active');
+});
+
+const pickCountdown = (r) => ({ title: r.title, day: r.day, source: r.source });

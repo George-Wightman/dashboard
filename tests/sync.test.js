@@ -342,10 +342,12 @@ test('a check-in saved on one device reaches the other', async () => {
   const now = clock(new Date(2026, 8, 10, 19, 0));
   const laptop = makeStore({ prefix: 'L', now });
   const phone = makeStore({ prefix: 'P', now });
-  laptop.saveJournal({ kind: 'checkin', day: '2026-09-10', questions: ['How did the CV go?'], model: 'gemini-flash-lite-latest' });
+  const task = laptop.addItem({ type: 'task', title: 'Update CV', date: '2026-09-10' });
+  const rec = laptop.askCheckin({ day: '2026-09-10', itemId: task.id, why: 'done' });
+  laptop.answerCheckin(rec.id, 'Done, the profile took ages');
   await syncOnce({ store: laptop, client: gh });
   await syncOnce({ store: phone, client: gh });
-  assert.deepEqual(phone.doc().journal['checkin:2026-09-10'].questions, ['How did the CV go?']);
+  assert.equal(phone.doc().journal[rec.id].said, 'Done, the profile took ages');
 });
 
 // ---- flags -------------------------------------------------------------------------------------

@@ -11,9 +11,8 @@ import { createFileStore } from './files.js';
 import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
 import { scrubText, APP_VERSION } from '../js/flags.js';
 import { capabilities } from './capabilities.js';
-import { configFromEnv, checkMindBatch, mindPack, applyHandled } from './mind.js';
-import { loadMind, saveMind, mergeMind } from '../js/mind-state.js';
-import { mergeDocs } from '../js/merge.js';
+import { CAUGHT_UP, caughtUpSince } from './read.js';
+import { when } from './text.js';
 
 // Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
 // what never to touch. Served from the clone like the reference, so they can't go stale.
@@ -21,14 +20,14 @@ export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews']
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · journal · talk <day> · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · reference [topic] · handoffs · handoff <name> · mind',
+  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · reference [topic] · handoffs · handoff <name>',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
   'Discover: capabilities [topic|op] · inspect <id> · workflows. Test any JSON batch with preview before apply; preview writes nothing.',
   'Not sure which? `bash run.sh reference` prints the current reference, whose first table maps what you want to do to the command that does it.',
   'Before anything to do with his calendar, planning his week, or training, read the playbook first: bash run.sh reference <calendar|planning|gym>.',
   'For conditional actions or goal reviews: reference workflows or reference reviews.',
-  "The Coach's deep mind: `mind` is its context; `apply --mind` allows only picture, say, propose, brief, guide, flag and handled. `--config env` reads DASHBOARD_TOKEN from the environment and saves to the routine's claude/ branch of the sync repo, which the planner merges.",
+  'Start a planning chat with `catchup`: everything since the last one, then it remembers where you got to.',
 ].join('\n');
 
 function parseOps(text) {
@@ -45,7 +44,7 @@ function parseOps(text) {
 
 export async function main({
   argv, readText, readStdin, makeClient = githubClient, makeFiles = createFileStore,
-  now = () => new Date(), newId, env = process.env, makeBranchWriter = null,
+  now = () => new Date(), newId, env = process.env,
 }) {
   const out = [];
   let secrets = [];
@@ -69,8 +68,6 @@ export async function main({
       return i === -1 || !args[i + 1] ? null : args.splice(i, 2)[1];
     };
     const build = takeFlag('--build') ?? 'unknown';
-    const mindMode = args.includes('--mind');
-    if (mindMode) args.splice(args.indexOf('--mind'), 1);
     const referencePath = takeFlag('--reference');
     const [command, ...rest] = args;
     if (command === 'capabilities') { say(capabilities(rest.join(' ').trim())); return finish(0); }
@@ -103,37 +100,22 @@ export async function main({
       return finish(0);
     }
 
+    let text;
+    try {
+      text = readText(configPath);
+    } catch {
+      say(`Can't read the skill's config.json (${configPath})`);
+      return finish(1);
+    }
     let config;
-    if (configPath === 'env') {
-      // A cloud routine has no config file: its key and repo come from the environment.
-      try {
-        config = readConfig(JSON.stringify(configFromEnv(env)));
-      } catch (e) {
-        say(e.message);
-        return finish(1);
-      }
-    } else {
-      let text;
-      try {
-        text = readText(configPath);
-      } catch {
-        say(`Can't read the skill's config.json (${configPath})`);
-        return finish(1);
-      }
-      try {
-        config = readConfig(text);
-      } catch (e) {
-        say(e.message);
-        return finish(1);
-      }
+    try {
+      config = readConfig(text);
+    } catch (e) {
+      say(e.message);
+      return finish(1);
     }
     secrets = [config.token];
     const files = makeFiles({ token: config.token, repo: config.repo });
-    // A cloud routine can't write to main (claude/branch.js): its changes go to its claude/ branch of
-    // the sync repo, and the planner merges them in.
-    const branchMode = configPath === 'env' && !!makeBranchWriter && env.DASHBOARD_WRITE !== 'api';
-    let writer = null;
-    const branchWriter = () => (writer ??= makeBranchWriter({ repo: config.repo }));
 
     // What the tool refused, kept in the repo. A weaker model can't be relied on to notice it should
     // report anything, so the tool records its own stumbles: four goes at an op that doesn't exist
@@ -142,7 +124,7 @@ export async function main({
     // Recording one must never make it worse. A trail that won't write is silent, and whoever
     // stumbled gets exactly the error they would have got anyway.
     const trail = async (what, error) => {
-      if (command === 'preview' || branchMode) return;
+      if (command === 'preview') return;
       try {
         const existing = await files.read(TRAIL_PATH);
         const line = scrubText(trailLine({ at: now(), build, what, error }), secrets);
@@ -168,7 +150,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && command !== 'mind' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -178,23 +160,15 @@ export async function main({
     if (command === 'apply' || command === 'preview') {
       try {
         ops = parseOps(await readStdin());
-        if (mindMode) checkMindBatch(ops);
       } catch (e) {
         say(e.message);
         return finish(1);
       }
     }
-    const writing = branchMode && command === 'apply';
-    const mindMain = () => makeClient({ token: config.token, repo: config.repo, path: 'mind.json' });
-    const mindClient = () => (writing
-      ? branchWriter().client({ main: mindMain(), path: 'mind.json', merge: (a, b) => mergeMind(a, b, { cursorFrom: 'local' }) })
-      : mindMain());
-
     let session;
     try {
-      const main = makeClient({ token: config.token, repo: config.repo });
       session = await openSession({
-        client: writing ? branchWriter().client({ main, path: 'data.json', merge: mergeDocs }) : main,
+        client: makeClient({ token: config.token, repo: config.repo }),
         dayStartHour: config.dayStartHour, now, newId,
       });
     } catch (e) {
@@ -203,14 +177,21 @@ export async function main({
     }
     const { store } = session;
 
-    if (command === 'mind') {
-      const loaded = await loadMind(mindClient());
-      if (loaded.failed) {
-        say(`Couldn't read mind.json: ${loaded.problem}`);
-        return finish(2);
+    // The catch-up remembers where it got to, so the next one starts there: the one read that writes.
+    // A fixed look back (`catchup 3`) reads without moving the marker.
+    if (command === 'catchup') {
+      try {
+        say(READS.catchup(store.doc(), store.today(), rest.join(' '), now()));
+      } catch (e) {
+        say(e.message);
+        return finish(1);
       }
-      say(mindPack(store.doc(), loaded.mind, now(), store.today()));
-      if (loaded.problem) say(`(Note: ${loaded.problem})`);
+      if (!rest.join('').trim()) {
+        session.record((s) => s.putCalendar(CAUGHT_UP, { at: now().toISOString() }, 'claude'), { log: false });
+        const saved = await session.push();
+        say(saved.ok ? `(Caught up to ${when(caughtUpSince(store.doc()) ?? now().toISOString()).split(', ')[1]} — the next catchup starts here.)`
+          : `(The catch-up couldn't be marked, so the next one will repeat this: ${saved.error})`);
+      }
       return finish(0);
     }
 
@@ -257,23 +238,8 @@ export async function main({
     }
     for (const [what, note] of notes) await trail(what, note);
     lines.forEach(say);
-    // A deep run's `handled`: its events stamped and the run recorded in mind.json, now that
-    // everything it said has been saved.
-    const handled = ops.find((op) => op?.op === 'handled');
-    if (handled) {
-      const loaded = await loadMind(mindClient());
-      if (loaded.failed) {
-        say(`mind.json couldn't be read, so the events weren't marked: ${loaded.problem}`);
-      } else {
-        const n = applyHandled(loaded.mind, handled, now(), env.MIND_TRIGGER ?? 'scheduled');
-        const saved = await saveMind({ client: mindClient(), mind: loaded.mind, cursorFrom: 'remote' });
-        say(saved.ok ? `mind.json: ${n} event${n === 1 ? '' : 's'} marked as handled.` : `mind.json wasn't saved: ${saved.error}`);
-      }
-    }
     if (ops.length > handoffs.length) {
-      say(!result.pushed ? 'Nothing needed changing.'
-        : writing ? `Saved to the ${writer.branch} branch of ${config.repo} — the planner merges it into the dashboard within about ten minutes.`
-        : 'Saved to GitHub — the laptop and phone pick it up at their next sync.');
+      say(!result.pushed ? 'Nothing needed changing.' : 'Saved to GitHub — the laptop and phone pick it up at their next sync.');
     }
     // Handoffs go last, and each on its own: a file that won't write is worth a line of its own
     // rather than losing the ops that did land.

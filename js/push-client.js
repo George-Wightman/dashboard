@@ -1,6 +1,6 @@
-// Notifications on this device (docs/superpowers/specs/2026-09-25-coach-mind-design.md): subscribe the
+// Notifications on this device (docs/superpowers/specs/2026-09-26-checkins-design.md): subscribe the
 // installed app to Web Push with the planner's public key (`push-config`, which the planner makes on
-// its first run with the Mind), and keep the subscription as a `push:<device>` record so the planner
+// its first run), and keep the subscription as a `push:<device>` record so the planner
 // knows where to send. The planner encrypts every ping for this device alone; sw.js shows it.
 
 export const DEVICE_KEY = 'dash_device';

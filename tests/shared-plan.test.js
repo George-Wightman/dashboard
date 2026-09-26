@@ -4,9 +4,7 @@ import { makeStore, clock, fixture } from './helpers.js';
 import { FakeCalendar, step, ev, WORK } from './planner-fakes.js';
 import { at } from '../planner/time.js';
 import { reconcileCalendar } from '../planner/reconcile.js';
-import { prepareCoachTurn } from '../js/coach-session.js';
 import { scheduleView, taskInput, readPinMarker } from '../js/plan-state.js';
-import { talkContents, waitingOpener, conversationContents } from '../js/talk.js';
 import { rowsForDay } from '../js/schedule.js';
 import { createPlanner } from '../planner/gas.js';
 import { FakeRepo, appsScript } from './planner-apps.js';
@@ -23,32 +21,6 @@ function setup() {
   return { now, store, task };
 }
 const commit = (store, turn) => { const p = turn.finish(); return store.commitDraft(p.before, p.after, p.summary); };
-
-test('a turn has one net action; undo restores the before state', () => {
-  const { store, task, now } = setup();
-  const turn = prepareCoachTurn(store, now);
-  turn.run('move_task', { id: task.id, day: SAT });
-  turn.run('set_task', { id: task.id, minutes: '45m' });
-  assert.equal(store.doc().items[task.id].date, FRI, 'draft is isolated');
-  const change = commit(store, turn);
-  assert.equal(Object.keys(store.doc().changes).length, 1);
-  assert.equal(store.doc().items[task.id].date, SAT);
-  assert.equal(store.undoChange(change.id).undone.length, 1);
-  assert.equal(store.doc().items[task.id].date, FRI);
-  assert.equal(store.doc().items[task.id].minutes, 60);
-});
-
-test('the incident forward/back sequence is collapsed instead of exposing two Undo buttons', () => {
-  const { store, task, now } = setup();
-  const turn = prepareCoachTurn(store, now);
-  turn.run('move_task', { id: task.id, day: SAT });
-  turn.run('move_task', { id: task.id, day: FRI });
-  const p = turn.finish();
-  assert.equal(p.edits.length, 0);
-  assert.equal(p.edits.filter((e) => e.map === 'items' && e.after.date !== e.before.date).length, 0);
-  // Explicit clearing of a time is allowed, but should not invent date changes.
-  assert.equal(p.summary.includes('date:'), false);
-});
 
 function runner(store, cal = new FakeCalendar()) {
   const repo = new FakeRepo(store.doc());
@@ -126,46 +98,6 @@ test('a conflicting title remains untouched until the chosen resolution reaches 
   assert.equal(repo.doc().calendar[`conflict:${task.id}`].resolution, null);
   assert.equal(await planner.run(), 'ok');
   assert.equal(repo.doc().calendar[`conflict:${task.id}`].open, false);
-});
-
-test('failed mutations and stale drafts cannot commit partial changes', () => {
-  const { store, task, now } = setup();
-  const turn = prepareCoachTurn(store, now);
-  turn.run('move_task', { id: task.id, day: SAT });
-  turn.run('set_task', { id: task.id, minutes: 'nonsense' });
-  assert.throws(() => turn.finish(), /No plan changes/);
-  assert.equal(store.doc().items[task.id].date, FRI);
-  const other = prepareCoachTurn(store, now);
-  other.run('move_task', { id: task.id, day: SAT });
-  store.updateItem(task.id, { title: 'Changed on phone' });
-  assert.throws(() => commit(store, other), /plan changed/);
-  assert.equal(store.doc().items[task.id].date, FRI);
-});
-
-test('weekend capture is direct, repeated capture is idempotent within the turn, closed day is enforced', () => {
-  const { store, now } = setup();
-  const turn = prepareCoachTurn(store, now);
-  const args = { title: 'Consider selling PC', day: '2026-09-20' };
-  turn.run('add_task', args); turn.run('add_task', args);
-  assert.equal(turn.finish().proposal, false);
-  commit(store, turn);
-  assert.equal(Object.values(store.doc().items).filter((i) => i.title === args.title).length, 1);
-  const closed = prepareCoachTurn(store, now);
-  closed.run('close_day', {}); commit(store, closed);
-  const late = prepareCoachTurn(store, now);
-  assert.equal(late.run('add_task', { title: 'New work', day: FRI }).ok, false);
-  assert.throws(() => late.finish(), /closed/);
-});
-
-test('broad reviews become proposals and receipts include actual undo state', () => {
-  const { store, task, now } = setup();
-  const turn = prepareCoachTurn(store, now, { message: 'The calendar layout is not relevant' });
-  turn.run('move_task', { id: task.id, day: SAT });
-  assert.equal(turn.finish().proposal, true);
-  const change = commit(store, turn);
-  store.undoChange(change.id);
-  const contents = talkContents({ messages: [{ who: 'coach', text: 'Done.', did: [{ text: 'Moved task', change: change.id }] }] }, [], store.doc());
-  assert.match(JSON.stringify(contents), /UNDONE/);
 });
 
 test('one-hour tasks fill fragmented free windows as separate named events', () => {
@@ -290,17 +222,6 @@ test('calendar deletion removes the task; conflicting edits are visible', () => 
   reconcileCalendar(clean.store, [], [deleted]);
   assert.equal(clean.store.doc().items[clean.task.id].status, 'archived');
   assert.equal(step(new FakeCalendar(), clean.store.doc(), clean.now()).actions.length, 0);
-});
-
-test('missed prompts expire and separate storage segments form one conversation', () => {
-  const { store } = setup();
-  store.saveJournal({ kind: 'talk', day: FRI, slot: 'afternoon', messages: [{ who: 'coach', text: 'Old prompt', at: at(FRI, '14:00').toISOString() }] });
-  assert.equal(waitingOpener(store.doc(), FRI, at(FRI, '20:00')), null);
-  store.saveJournal({ kind: 'talk', day: FRI, slot: 'own-1', messages: [{ who: 'george', text: 'Remember the garage', at: at(FRI, '15:00').toISOString() }], done: true });
-  store.saveJournal({ kind: 'talk', day: FRI, slot: 'own-2', messages: [{ who: 'george', text: 'One more thing', at: at(FRI, '20:00').toISOString() }] });
-  const text = JSON.stringify(conversationContents(store.doc(), FRI));
-  assert.match(text, /Remember the garage/); assert.match(text, /One more thing/);
-  assert.doesNotMatch(text, /Old prompt/);
 });
 
 test('moving one split session preserves every remaining session', async () => {

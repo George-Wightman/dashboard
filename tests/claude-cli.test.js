@@ -38,6 +38,24 @@ test('usage: no config, help, and an unknown command', async () => {
   assert.match(USAGE, /Ops: task · habit · target · goal · milestone · plan · done · undone · log · edit · archive · accept · dismiss · flag · handoff · undo · planner · off · brief/);
 });
 
+test('catchup remembers where it got to, unlogged; a fixed look back leaves the marker alone', async () => {
+  const remote = new FakeGitHub();
+  // The test runs on UTC and doesn't let the tool change the zone, so the times print as UTC here.
+  const first = await run(['catchup'], { remote });
+  assert.equal(first.code, 0);
+  assert.match(first.text, /^First catch-up: yesterday and today\.$/m);
+  assert.match(first.text, /\(Caught up to 08:00 — the next catchup starts here\.\)$/);
+  assert.equal(remote.puts, 1);
+  assert.equal(remote.file.doc.calendar['claude:caughtup'].at, MORNING().toISOString());
+  assert.deepEqual(remote.file.doc.changes, {}, 'not one of the changes George can undo');
+  const later = () => new Date('2026-09-13T12:00:00Z');
+  const again = await run(['catchup'], { remote, now: later });
+  assert.match(again.text, /^Catching up since the last catch-up, Sun 13 Sep, 08:00\.$/m);
+  const look = await run(['catchup', '3'], { remote, now: later });
+  assert.match(look.text, /^Catching up on the last 3 days\.$/m);
+  assert.equal(remote.puts, 2, 'catchup 3 only reads');
+});
+
 test('a bad config is a sentence, not a stack trace', async () => {
   const r = await run(['today'], { config: '{"repo":"a/b"}' });
   assert.deepEqual(r, { code: 1, text: "The skill's config.json has no token" });
@@ -233,7 +251,7 @@ test('a trail that will not write leaves the original error exactly as it was', 
   broken.read = async () => { throw new Error('GitHub 500'); };
   const r = await run(['apply'], { files: broken, stdin: JSON.stringify({ op: 'dayOff' }) });
   assert.equal(r.code, 1);
-  assert.equal(r.text, 'Nothing was changed. Op 1 of 1 (dayOff) failed: Unknown op "dayOff" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide, details, rule, report, review, picture, say, propose, handled, mind');
+  assert.equal(r.text, 'Nothing was changed. Op 1 of 1 (dayOff) failed: Unknown op "dayOff" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym, details, rule, report, review');
   assert.doesNotMatch(r.text, /trail/i);
 });
 

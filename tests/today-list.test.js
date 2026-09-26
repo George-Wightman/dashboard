@@ -47,12 +47,14 @@ test('listRows: weekly targets live in their widgets, not the list; a suggested 
   assert.deepEqual(listRows([]), []);
 });
 
-test('nothing is added from the list: no add box, no + on a row; the Coach takes new work', () => {
+test('nothing is added from the list: no add box, no + on a row; new work comes through Claude', () => {
   const html = read('index.html');
   assert.doesNotMatch(html, /id="add"|add-title|add-more/);
   const js = read('js/ui/today.js');
   assert.doesNotMatch(js, /'plus'|logAmount|list-section/);
-  assert.match(js, /Tell the Coach what you want to get done/);
+  assert.match(js, /Tell Claude what you want to get done/);
+  assert.match(js, /const checkin = renderCheckin\(ctx\);/);
+  assert.match(js, /try \{ tickAndAsk\(ctx, item\.id\); \}/);
 });
 
 test('pipState: one dot per time a week, filled for each tick, never more dots than times', () => {
@@ -94,7 +96,6 @@ test("Claude's controls on the page: ★, the notes mark, the brief and time off
   assert.match(today, /h\('li', \{ class: 'note-row' \}, row\.item\.notes\)/);
   const app = read('js/app.js');
   assert.match(app, /shown\(brief\) \? line\('brief', brief, mark\('claude', 'From Claude'\)\) : null/);
-  assert.match(app, /waiting && shown\(waiting\.text\) \? line\('coach-line', waiting\.text, mark\('gemini', 'From the Coach'\), reply\) : null/);
   assert.match(app, /shown\(off\) \? line\('off', off\) : null/);
   assert.match(read('js/ui/side.js'), /c\.off \? 'cell off'/);
   assert.equal((read('js/ui/edit.js').match(/notesField\(\),/g) ?? []).length, 2, 'Notes on items and goals');

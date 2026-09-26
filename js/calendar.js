@@ -228,8 +228,8 @@ export function nextOffId(doc, start) {
 // ---- Countdowns ---------------------------------------------------------------------------------
 
 // Dates George is counting down to — the assessment centre, a birthday — kept as `count:<day>:<n>`
-// records beside the planner's. Only the Countdown widget and the Coach read them; the planner
-// books nothing for them.
+// records beside the planner's. The Countdown widget shows them and Claude sets them (the
+// `countdown` op); the planner books nothing for them.
 
 // A countdown checked: plain English when it's wrong. `day` must be today or later.
 export function checkCountdown({ title, day } = {}, today) {

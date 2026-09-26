@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { prBoard, sessionDays, groupWeeks } from '../js/gym.js';
 import { history } from '../js/schedule.js';
-import { libraryOf } from '../js/talk.js';
 import { ensureHebrewGoal, HEBREW_IDS } from '../js/hebrewSync.js';
 import { ladder, nextRung, recentDays } from '../js/ui/hebrew.js';
 import { historyWeeks, dayMisses } from '../js/ui/side.js';
@@ -94,22 +93,6 @@ test('history takes a number of weeks; the big view shows every week since the s
   assert.equal(historyWeeks(doc, TODAY), 52);
 });
 
-test("libraryOf: the journal's entries, digests and check-ins, newest first, found by every word", () => {
-  const store = makeStore();
-  store.saveJournal({ kind: 'entry', day: '2026-09-08', slot: 'evening', feeling: 'tired', text: 'Long day of role plays.', pointers: ['Likes mornings'] });
-  store.saveJournal({ kind: 'entry', day: '2026-09-09', slot: 'morning', text: 'Planning Maya’s present with Luli.' });
-  store.saveJournal({ kind: 'digest', day: '2026-08-31', summary: 'A steady week.', wins: ['Gym three times'], slipped: [], focus: 'Cardio' });
-  store.saveJournal({ kind: 'checkin', day: '2026-08-30', questions: ['How was it?'], answers: ['Role plays went well'], feedback: 'Good.' });
-  store.saveJournal({ kind: 'talk', day: '2026-09-09', slot: 'morning', messages: [{ who: 'george', text: 'role plays', at: '2026-09-09T08:00:00.000Z' }] });
-  const kinds = (words) => libraryOf(store.doc(), words).map((r) => `${r.kind} ${r.day}`);
-  // a digest sits after its week's entries: it is filed under Monday but written at the week's end
-  assert.deepEqual(kinds(''), ['entry 2026-09-09', 'entry 2026-09-08', 'digest 2026-08-31', 'checkin 2026-08-30']);
-  assert.deepEqual(kinds('role PLAYS'), ['entry 2026-09-08', 'checkin 2026-08-30']);
-  assert.deepEqual(kinds('mornings tired'), ['entry 2026-09-08']);
-  assert.deepEqual(kinds('gym cardio'), ['digest 2026-08-31']);
-  assert.deepEqual(kinds('nowhere'), []);
-});
-
 test('ladder: every rung in order, done, next or later, with the counted ones measured', () => {
   const store = makeStore();
   ensureHebrewGoal(store);
@@ -137,19 +120,14 @@ test('recentDays: the last two weeks that saw practice, newest first, with the s
   ]);
 });
 
-test('opening big is wired in: the three widgets with a big view, the Coach with its own, the window and the shell', () => {
+test('opening big is wired in: the three widgets with a big view, the window and the shell', () => {
   const big = WIDGETS.filter((w) => w.big).map((w) => w.id);
   assert.deepEqual(big, ['history', 'hebrew', 'gym']);
-  assert.equal(typeof WIDGETS.find((w) => w.id === 'coach').open, 'function');
-  assert.match(read('index.html'), /<dialog id="widget-sheet" class="coach-sheet widget-sheet"/);
-  assert.match(read('js/app.js'), /paintCoachSheet\(ctx\);\s*paintBig\(ctx\);/);
+  assert.match(read('index.html'), /<dialog id="widget-sheet" class="sheet widget-sheet"/);
+  assert.match(read('js/app.js'), /renderSide\(ctx\);\s*paintBig\(ctx\);/);
   assert.match(read('sw.js'), /'js\/ui\/big\.js'/);
   // the heading is the way in, only outside Arrange mode
   assert.match(read('js/ui/widgets.js'), /if \(open && !ctx\.ui\.arranging\) makeOpener\(/);
-  // the Coach's window has the journal to switch to
-  const coach = read('js/ui/coach.js');
-  assert.match(coach, /link\(journal \? 'Conversation' : 'Journal', flip\)/);
-  assert.match(coach, /'data-focus': 'journal-search'/);
 });
 
 test('dayMisses: a past day\'s misses by name, as its score counts them — a rest-day habit is not one', () => {

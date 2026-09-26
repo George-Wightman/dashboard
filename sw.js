@@ -1,14 +1,14 @@
 // Complete, integrity-checked releases. Open pages stay pinned to their release;
 // a refresh selects the new release for the next navigation, never per-file.
-const CACHE = 'today-dashboard-v13';
+const CACHE = 'today-dashboard-v14';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/commit.js', 'js/data.js', 'js/doc.js', 'js/dates.js', 'js/parse.js', 'js/schedule.js',
-  'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/gemini.js', 'js/coach.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/talk.js', 'js/coach-tools.js',
-  'js/plan-state.js', 'js/coach-session.js', 'js/ui/agenda.js', 'js/mind.js', 'js/mind-state.js', 'js/push-client.js',
+  'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/gemini.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/checkins.js',
+  'js/plan-state.js', 'js/ui/agenda.js', 'js/push-client.js',
   'js/workflow.js', 'js/goal-review.js', 'js/ui/outcome.js',
-  'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/coach.js',
+  'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/checkin.js',
   'js/ui/widgets.js', 'js/ui/flags.js', 'js/ui/changes.js', 'js/ui/claude.js', 'js/ui/sources.js', 'js/ui/gym.js', 'js/ui/hebrew.js', 'js/ui/countdown.js', 'js/ui/big.js',
   'js/ui/training.js',
 ];
@@ -97,16 +97,16 @@ self.addEventListener('message', (e) => {
   if (e.data?.type !== 'refresh') return;
   e.waitUntil(refresh().then(() => e.ports[0]?.postMessage({ ok: true }), () => e.ports[0]?.postMessage({ ok: false })));
 });
-// The Coach's pings (docs/superpowers/specs/2026-09-25-coach-mind-design.md): the planner encrypts each
+// Check-in pings (docs/superpowers/specs/2026-09-26-checkins-design.md): the planner encrypts each
 // one for this device; the browser decrypts it and hands over { title, body, url, tag }.
 self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch { data = { body: e.data?.text?.() ?? '' }; }
-  e.waitUntil(self.registration.showNotification(data.title || 'Coach', {
-    body: data.body || '', tag: data.tag || 'coach', data: { url: data.url || './' }, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
+  e.waitUntil(self.registration.showNotification(data.title || 'Today', {
+    body: data.body || '', tag: data.tag || 'checkin', data: { url: data.url || './' }, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
   }));
 });
-// A tap: the open app shows that conversation, or the app opens at it.
+// A tap: the open app shows that check-in, or the app opens at it.
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const url = new URL(e.notification.data?.url || './', scope).href;
@@ -115,7 +115,7 @@ self.addEventListener('notificationclick', (e) => {
     const open = windows.find((c) => c.url.startsWith(scope));
     if (open) {
       await open.focus();
-      open.postMessage({ type: 'open-coach', url });
+      open.postMessage({ type: 'open-checkin', url });
       return;
     }
     await self.clients.openWindow(url);

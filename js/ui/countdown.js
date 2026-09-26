@@ -1,5 +1,5 @@
 // The Countdown panel: the dates George is counting down to (js/calendar.js's countdowns), soonest
-// first — the days left big, then what and when. He adds and removes them by telling the Coach.
+// first — the days left big, then what and when. He adds and removes them by telling Claude.
 // Nothing when there are none.
 
 import { h } from './dom.js';

@@ -1,4 +1,4 @@
-// Settings: which version this is at the top, then sync, the day, the coach, the look, Claude
+// Settings: which version this is at the top, then sync, the day, Gemini, notifications, the look, Claude
 // (everything Claude steers, js/ui/claude.js) and backups,
 // each folded away showing what it's set to (they're set once and rarely touched). Settings are
 // device-local and never synced.
@@ -10,7 +10,6 @@ import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
 import { claudePanel, claudeSummary } from './claude.js';
 import { pushState, turnOn, turnOff } from '../push-client.js';
-import { mindAlive } from '../mind.js';
 
 // The Version section: filled in once the site and GitHub have answered. Asked fresh every time
 // ⚙ opens, so "up to date" is about now, not about when the page was opened.
@@ -56,7 +55,7 @@ const PUSH_WORDS = {
   on: ['on for this device', 'On for this device.'],
 };
 
-// Notifications: whether this device gets the Coach's pings, and the one button to change it. The
+// Notifications: whether this device gets check-in pings, and the one button to change it. The
 // state takes a moment to read (the browser's own subscription), so it fills itself in.
 function notificationsGroup(ctx) {
   const now = h('span', { class: 'muted' }, ' · checking');
@@ -77,7 +76,7 @@ function notificationsGroup(ctx) {
   };
   show();
   return h('details', { class: 'group' }, h('summary', {}, 'Notifications', now), line, buttons, error,
-    h('p', { class: 'note' }, 'The Coach pings this device when it notices something worth a word, or has thought something through: at most six a day, and never at night. The ping shows the first line; the rest waits in the Coach. Your Pixel Watch shows what the phone shows.'));
+    h('p', { class: 'note' }, "When a task's calendar block ends and it isn't ticked, this device is asked what happened: at most four a day, and never at night. Tapping it opens the question. Your Pixel Watch shows what the phone shows."));
 }
 
 // One folded group: its name, what it's set to now, and its fields.
@@ -118,7 +117,7 @@ export function openSettings(ctx) {
   // up the browser's saved-password list every time. It opens by itself when sync isn't set up
   // yet or is failing.
   const syncSet = !!(s.repo && s.token);
-  const coachKey = s.geminiKey ? 'own key' : hebrewFound ? "the Hebrew app's key" : 'no key';
+  const geminiWhich = s.geminiKey ? 'own key' : hebrewFound ? "the Hebrew app's key" : 'no key';
   const hebrewSyncSet = !!(s.hebrewRepo && s.hebrewToken);
   const hebrewProblem = ctx.hebrewSyncProblem();
   const hebrewStatus = ctx.hebrewStatus();
@@ -211,16 +210,15 @@ export function openSettings(ctx) {
     group('The day', `starts at ${hourLabel(s.dayStartHour)}`, false,
       h('label', { class: 'field' }, h('span', {}, 'The day starts at (hour, 0–12)'), dayStart),
       h('p', { class: 'note' }, 'Anything done before this hour counts as the day before.')),
-    group('Coach', `${coachKey}, evening from ${hourLabel(s.checkinHour)}`, false,
+    group('Gemini', geminiWhich, false,
       h('label', { class: 'field' }, h('span', {}, 'Gemini API key (optional)'), geminiKey),
       h('p', { class: 'note' }, `Leave blank to use the Hebrew app's key on this device.${hebrewFound ? ' One was found here.' : ' None was found here.'}`),
-      h('label', { class: 'field' }, h('span', {}, 'The evening conversation from (hour, 12–23)'), checkinHour),
-      h('p', { class: 'note' }, mindAlive(store.doc(), new Date())
-        ? "The Coach's mind opens the morning and evening conversations from the background, and speaks up when something happens (⚙ → Claude → The Coach's mind). Conversations send a summary of your list to Google; on Google's free tier they may use it to improve their products."
-        : "The Coach opens a conversation in the morning (7–12), the afternoon (2–5, only if something slipped) and the evening. Conversations and goal shaping send a summary of your list to Google. On Google's free tier they may use it to improve their products.")),
+      h('p', { class: 'note' }, "Gemini tidies what you say in a check-in into a short note for Claude. It's sent your answer and the task's name; on Google's free tier they may use it to improve their products. Without a key your words are kept as they are.")),
     notificationsGroup(ctx),
-    group('Look', lookName, false,
-      h('label', { class: 'field' }, h('span', {}, 'Look'), look)),
+    group('Look', `${lookName}, evening from ${hourLabel(s.checkinHour)}`, false,
+      h('label', { class: 'field' }, h('span', {}, 'Look'), look),
+      h('label', { class: 'field' }, h('span', {}, 'Evening from (hour, 12–23)'), checkinHour),
+      h('p', { class: 'note' }, 'Following the day, the Night look starts at this hour.')),
     group('Claude', claudeSummary(store.doc(), store.today(), new Date()), false,
       h('p', { class: 'note' }, 'Everything Claude steers for you. Ask Claude to change any of it; Undo is under Changes.'),
       claudePanel(ctx)),

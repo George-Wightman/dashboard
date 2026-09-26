@@ -4,11 +4,11 @@ For "plan my week", "what should I be doing", or any reshuffle of more than a da
 
 ## Read before you change anything, in this order
 
+    bash run.sh catchup     # what happened since you last talked, and what he said about it
     bash run.sh week        # targets against their numbers, time off coming, what's booked
     bash run.sh attention   # what actually needs you
     bash run.sh goals       # the goals and which stage each is at
     bash run.sh list        # everything upcoming, with ids
-    bash run.sh journal     # how he's been, and your guide for the week
     bash run.sh planner     # his calendars, the planning hours, the settings
 
 `attention` is the one that earns its place: tasks with no length, tasks carried three days or more,
@@ -26,11 +26,11 @@ Put the week's tasks and the next stage of each goal across the days. Every task
 Do it in one `apply` with several `edit` ops. The calendar follows within ten minutes — never book
 blocks yourself.
 
-## Today locks after the morning check-in
+## Today locks at 11:00
 
-Once George has answered the Coach's morning check-in (or at 11:00), today's list is what he committed
-to. A task moved off today after that is **pushed** (a miss the second time), and one deleted is a
-**miss** unless the Coach releases it as no longer needed. So reshuffling today after the lock isn't
+At 11:00 today's list becomes what he committed to. A task moved off today after that is **pushed**
+(a miss the second time), and one deleted is a **miss** unless it's released as no longer needed —
+`archive` with `released` and his reason, only when he's given one. So reshuffling today after the lock isn't
 free: do it when he asks, and say that it will show as pushed. `day <date>` shows the lock, and what
 was pushed, deleted or optional. Times-a-week habits only count on days the week needs them.
 
@@ -68,8 +68,6 @@ tool warns you when a field was ignored — read those notes, they mean somethin
 
 - **A brief** for each day: `{"op": "brief", "text": "…", "day": "2026-09-17"}` — one or two lines on
   what matters and why.
-- **A guide for the Coach**: `{"op": "guide", "text": "…"}` — what to push on and ask about this week.
-  The Coach is handed it every time it talks to him.
 - **Time off** he's told you about: `{"op": "off", …}` rather than leaving him to block the calendar.
 
 ## Say what you did

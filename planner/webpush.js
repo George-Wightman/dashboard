@@ -1,4 +1,4 @@
-// Web Push from the planner (docs/superpowers/specs/2026-09-25-coach-mind-design.md): a notification
+// Web Push from the planner (docs/superpowers/specs/2026-09-26-checkins-design.md): a notification
 // for George's phone or laptop, encrypted so only that browser can read it (RFC 8291, aes128gcm) and
 // signed so the push service knows it's from this app (RFC 8292, VAPID). The curve and the cipher are
 // planner/p256.js and planner/aes.js; SHA-256 and HMAC come in as `hash` ({ sha256, hmac }) and

@@ -8,7 +8,6 @@
 // as "+ Title" chips. Dragging follows js/ui/today.js's row drag and drop.
 
 import { h } from './dom.js';
-import { renderCoach, openCoachSheet } from './coach.js';
 import { renderAgenda } from './agenda.js';
 import { renderWeek, renderGoals, renderHistory, renderHistoryBig, keptFocus, restoreFocus } from './side.js';
 import { renderGym, renderGymBig } from './gym.js';
@@ -24,10 +23,8 @@ import { visibleColumns, visibleUnder, moveWidget, nudgeWidget, hideWidget, show
 // widget is one more line here:
 // normalizeLayout puts an id it hasn't seen before at the end of the first column.
 //
-// A widget with more to show than fits has a `big` view (js/ui/big.js): its heading opens it. The
-// Coach's heading opens its own big window instead (`open`), which has its journal.
+// A widget with more to show than fits has a `big` view (js/ui/big.js): its heading opens it.
 export const WIDGETS = [
-  { id: 'coach', title: 'Coach', render: renderCoach, open: openCoachSheet },
   { id: 'agenda', title: 'Upcoming', render: renderAgenda },
   { id: 'countdown', title: 'Countdown', render: renderCountdown },
   { id: 'week', title: 'This week', render: renderWeek },
@@ -43,13 +40,13 @@ const BY_ID = new Map(WIDGETS.map((w) => [w.id, w]));
 const titleOf = (id) => BY_ID.get(id)?.title ?? id;
 
 // One widget's element, marked with its id; null when it has nothing to show. Outside Arrange
-// mode a widget that opens big has its heading made the way in (the Coach's already has its ⤢).
+// mode a widget that opens big has its heading made the way in.
 function widgetEl(ctx, id) {
   const w = BY_ID.get(id);
   const el = w?.render(ctx) ?? null;
   if (!el) return null;
   el.dataset.widget = id;
-  const open = w.open ?? (w.big ? (c) => openBig(c, w) : null);
+  const open = w.big ? (c) => openBig(c, w) : null;
   if (open && !ctx.ui.arranging) makeOpener(el.querySelector('h2'), w.title, () => open(ctx), { mark: !!w.big });
   return el;
 }

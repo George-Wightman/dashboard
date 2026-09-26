@@ -1,5 +1,5 @@
 // An honest day score (docs/superpowers/specs/2026-09-23-honest-day-score-design.md): what George
-// committed to after the morning check-in still counts when it's moved or deleted, and a
+// committed to at the 11:00 lock still counts when it's moved or deleted, and a
 // times-a-week habit only counts on the days he needs it.
 
 process.env.TZ = 'Europe/London';
@@ -98,17 +98,13 @@ test('dayCompletion is the score as two numbers', () => {
 
 // ---- The lock ----------------------------------------------------------------------------------
 
-const talk = (messages) => ({ id: `talk:${WED}:morning`, kind: 'talk', day: WED, slot: 'morning', status: 'active', messages });
-const msg = (who, hhmm) => ({ who, text: '…', at: at(WED, hhmm).toISOString() });
 
-test('the lock: after the morning exchange, or 11:00', () => {
+test('the lock: at 11:00, once', () => {
   const d = doc();
-  assert.equal(lockDue(d, WED, at(WED, '09:00')), false);
-  d.journal[`talk:${WED}:morning`] = talk([msg('coach', '08:00'), msg('george', '08:30')]);
-  assert.equal(lockDue(d, WED, at(WED, '08:31')), false, 'waiting for the Coach to answer');
-  d.journal[`talk:${WED}:morning`] = talk([msg('coach', '08:00'), msg('george', '08:30'), msg('coach', '08:31')]);
-  assert.equal(lockDue(d, WED, at(WED, '08:32')), true);
-  assert.equal(lockDue(doc(), WED, at(WED, '11:00')), true);
+  assert.equal(lockDue(d, WED, at(WED, '10:59')), false);
+  assert.equal(lockDue(d, WED, at(WED, '11:00')), true);
+  d.calendar[`commit:${WED}`] = { id: `commit:${WED}`, day: WED, tasks: [], status: 'active' };
+  assert.equal(lockDue(d, WED, at(WED, '12:00')), false, 'already locked');
 });
 
 test('ensureCommitment: the day as it stands at the lock, written once', () => {
@@ -128,42 +124,3 @@ test('ensureCommitment: the day as it stands at the lock, written once', () => {
 
 // ---- The Coach ---------------------------------------------------------------------------------
 
-import { talkContext, TALK_SYSTEM, OPENERS } from '../js/talk.js';
-import { coachTools } from '../js/coach-tools.js';
-
-test('the Coach is told what was committed, pushed, deleted and optional', () => {
-  const store = makeStore({ now: clock(at(WED, '19:30')), prefix: 'score-' });
-  const kept = store.addItem({ type: 'task', title: 'Role play 1', date: WED });
-  const moved = store.addItem({ type: 'task', title: 'Role play 2', date: WED });
-  const gone = store.addItem({ type: 'task', title: 'Scenario primer', date: WED });
-  const g = store.addItem({ ...gym, id: undefined });
-  store.toggleDone(g.id, MON);
-  store.toggleDone(g.id, TUE);
-  ensureCommitment(store, WED, at(WED, '11:00'));
-  store.updateItem(moved.id, { date: THU });
-  store.archiveItem(gone.id);
-  const text = talkContext(store.doc(), WED, at(WED, '19:30'));
-  assert.match(text, /Today's list locked at 11:00 with 3 tasks/);
-  assert.match(text, /Today's score so far: 0 of 2 done/);
-  assert.match(text, new RegExp(`Committed and not done yet: ${kept.id.slice(0, 8)} "Role play 1"$`, 'm'));
-  assert.match(text, /Pushed off today after committing[^\n]*"Role play 2" → Thu/);
-  assert.match(text, /Deleted after committing[^\n]*"Scenario primer"/);
-  assert.match(text, /Optional today[^\n]*"Gym"/);
-  assert.match(TALK_SYSTEM, /Hold George to what he committed to/);
-  assert.match(OPENERS.evening, /pushed, deleted or missed, ask about it/);
-});
-
-test('release_task: only a deleted task, only with his reason, and it stops counting', () => {
-  const store = makeStore({ now: clock(at(WED, '19:30')), prefix: 'release-' });
-  const gone = store.addItem({ type: 'task', title: 'Scenario primer', date: WED });
-  const live = store.addItem({ type: 'task', title: 'Role play 1', date: WED });
-  ensureCommitment(store, WED, at(WED, '11:00'));
-  store.archiveItem(gone.id);
-  const t = coachTools({ store });
-  assert.equal(t.run('release_task', { id: live.id, reason: 'x' }).ok, false);
-  assert.equal(t.run('release_task', { id: gone.id }).ok, false);
-  assert.equal(dayScore(store.doc(), WED).total, 2);
-  const r = t.run('release_task', { id: gone.id, reason: 'Covered it in the role play' });
-  assert.equal(r.did, 'Released "Scenario primer" — Covered it in the role play');
-  assert.equal(dayScore(store.doc(), WED).total, 1);
-});

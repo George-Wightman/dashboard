@@ -44,66 +44,6 @@ test('settings gain geminiKey and checkinHour; older saved settings pick up the 
 
 // ---- saveJournal -------------------------------------------------------------------------------
 
-test('saveJournal creates a check-in under its deterministic id, with empty content filled in', () => {
-  const storage = new MemoryStorage();
-  const now = clock(new Date(2026, 8, 10, 19, 0));
-  const store = makeStore({ storage, now });
-  const reasons = [];
-  store.subscribe((r) => reasons.push(r));
-  const rec = store.saveJournal({
-    kind: 'checkin', day: '2026-09-10', questions: ['How did the CV go?'], model: 'gemini-flash-lite-latest',
-  });
-  assert.deepEqual(rec, {
-    id: 'checkin:2026-09-10', kind: 'checkin', day: '2026-09-10',
-    questions: ['How did the CV go?'], answers: [], feedback: '', tomorrowIds: [], model: 'gemini-flash-lite-latest',
-    source: 'gemini', status: 'active', created: '2026-09-10', archivedOn: null, updated: now().toISOString(),
-  });
-  assert.deepEqual(reasons, ['local']);
-  assert.deepEqual(JSON.parse(storage.getItem(DATA_KEY)).journal['checkin:2026-09-10'], rec);
-});
-
-test('saveJournal on the same day overwrites only the fields given, and copies them', () => {
-  const now = clock(new Date(2026, 8, 10, 19, 0));
-  const store = makeStore({ now });
-  const first = store.saveJournal({ kind: 'checkin', day: '2026-09-10', questions: ['Q1', 'Q2'], model: 'gemini-flash-lite-latest' });
-  now.advance(60000);
-  const answers = ['Finished it', 'Apply to NatCen'];
-  const second = store.saveJournal({
-    kind: 'checkin', day: '2026-09-10', answers, feedback: 'Good work.', tomorrowIds: ['t1'], model: 'gemini-flash-latest',
-  });
-  answers.push('typed after sending');
-  const journal = store.doc().journal;
-  assert.deepEqual(Object.keys(journal), ['checkin:2026-09-10']);
-  assert.deepEqual(second.questions, ['Q1', 'Q2']);
-  assert.deepEqual(second.answers, ['Finished it', 'Apply to NatCen']);
-  assert.equal(second.feedback, 'Good work.');
-  assert.deepEqual(second.tomorrowIds, ['t1']);
-  assert.equal(second.model, 'gemini-flash-latest');
-  assert.equal(second.created, first.created);
-  assert.ok(second.updated > first.updated);
-});
-
-test('saveJournal files a digest under its Monday and drops fields it does not know', () => {
-  const store = makeStore();
-  const rec = store.saveJournal({
-    kind: 'digest', day: '2026-08-31', summary: 'A steady week.', wins: ['Three applications'], slipped: ['Gym'],
-    focus: 'Start by nine.', model: 'gemini-flash-lite-latest', mood: 'great',
-  });
-  assert.equal(rec.id, 'digest:2026-08-31');
-  assert.equal(rec.summary, 'A steady week.');
-  assert.equal('mood' in rec, false);
-});
-
-test('saveJournal refuses a bad kind, a bad day, a digest off its Monday, or a mismatched id', () => {
-  const store = makeStore();
-  assert.throws(() => store.saveJournal({ kind: 'note', day: '2026-09-10' }), /Unknown journal kind/);
-  assert.throws(() => store.saveJournal({ kind: 'checkin', day: '10 Sep' }), /real day/);
-  assert.throws(() => store.saveJournal({ kind: 'checkin', day: '2026-02-30' }), /real day/);
-  assert.throws(() => store.saveJournal({ kind: 'digest', day: '2026-09-08' }), /Monday/);
-  assert.throws(() => store.saveJournal({ id: 'checkin:2026-09-09', kind: 'checkin', day: '2026-09-10' }), /has the id checkin:2026-09-10/);
-  assert.deepEqual(store.doc().journal, {});
-});
-
 // ---- addPlan -----------------------------------------------------------------------------------
 
 test('addPlan writes a suggested goal, its milestones and linked habits and targets in one commit', () => {

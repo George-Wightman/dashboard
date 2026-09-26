@@ -28,7 +28,7 @@ automatically accept or expand its suggestions. If it lacks evidence, collect th
 fact or review the issue with George in this conversation.
 
 There is at most one request per goal per day, two calls per planner run, six calls per day across
-goals. These limits apply to goal reviews, separately from existing Coach and tagging calls.
+goals. These limits apply to goal reviews, separately from area tagging calls.
 Reviews are off by default; completed goals stop creating scheduled requests. The runner saves a claim before calling Gemini and retains a
 validated response across a failed sync. An interrupted or failed call is not automatically
 charged again; status is visible. A new manual review can be requested on a later day. Disabling

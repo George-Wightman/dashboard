@@ -8,7 +8,7 @@ export const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 export const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-export const APP_VERSION = 'today-dashboard-v13';
+export const APP_VERSION = 'today-dashboard-v14';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -95,7 +95,7 @@ export function flagContext(state = {}) {
     return d && !Number.isNaN(d.getTime()) ? d.toISOString() : null;
   };
   const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').map((x) => str(x, 40)) : []);
-  const coach = state.coach ?? {};
+  const checkin = state.checkin ?? {};
   const sync = state.sync ?? {};
   const layout = state.layout ?? {};
   const out = {
@@ -112,15 +112,7 @@ export function flagContext(state = {}) {
     today: { done: num(state.day?.done), total: num(state.day?.total) },
     expandedGoals: num(state.expandedGoals),
     historyDay: str(state.historyDay, 10),
-    coach: {
-      checkin: str(coach.checkin, 20),
-      busy: str(coach.busy, 20) ?? '',
-      shapeBusy: coach.shapeBusy === true,
-      digestBusy: coach.digestBusy === true,
-      error: str(coach.error) ?? '',
-      shapeError: str(coach.shapeError) ?? '',
-      digestError: str(coach.digestError) ?? '',
-    },
+    checkin: { error: str(checkin.error) ?? '' },
     sync: { state: str(sync.state, 20), error: str(sync.error), lastSynced: iso(sync.lastSynced) },
     set: { repo: !!settings.repo, token: !!settings.token, geminiKey: !!settings.geminiKey, hebrewKey: !!state.hebrewKey },
     version: str(state.version, 40),
@@ -130,10 +122,6 @@ export function flagContext(state = {}) {
 }
 
 const LOOK_NAMES = { paper: 'Paper', night: 'Night' };
-const CHECKIN_WORDS = {
-  done: 'check-in done', questions: 'check-in waiting', due: 'about to open a conversation', early: 'check-in later', nokey: 'no Gemini key',
-  waiting: 'a question waiting', talking: 'in a conversation', quiet: 'quiet',
-};
 const SYNC_WORDS = { off: 'sync off', syncing: 'syncing', offline: 'offline', failing: 'sync failing' };
 
 function hhmm(isoText) {
@@ -142,7 +130,7 @@ function hhmm(isoText) {
 }
 
 // The panel's About line, from a captured context:
-// 'Today · Night look · 3 of 8 done · Coach: check-in waiting · synced 18:04'.
+// 'Today · Night look · 3 of 8 done · synced 18:04'.
 export function flagAbout(ctx) {
   const c = ctx ?? {};
   const parts = [c.arranging ? 'Arranging widgets' : 'Today'];
@@ -150,12 +138,7 @@ export function flagAbout(ctx) {
   if (c.today && typeof c.today.total === 'number') {
     parts.push(c.today.total ? `${c.today.done} of ${c.today.total} done` : 'nothing on today');
   }
-  if (c.coach) {
-    const busy = c.coach.busy || c.coach.shapeBusy || c.coach.digestBusy;
-    const error = c.coach.error || c.coach.shapeError || c.coach.digestError;
-    const word = busy ? 'thinking' : error ? 'showing an error' : CHECKIN_WORDS[c.coach.checkin];
-    if (word) parts.push(`Coach: ${word}`);
-  }
+  if (c.checkin?.error) parts.push('check-in showing an error');
   if (c.sync) {
     const at = c.sync.state === 'ok' ? hhmm(c.sync.lastSynced) : '';
     if (at) parts.push(`synced ${at}`);

@@ -1,15 +1,17 @@
 ---
 name: dashboard
-description: George's personal dashboard ("Today") — read it and change anything in it. Use when George says /dashboard, "add … to the dashboard", "put it on my list", "what's on today?", "how did last week go?", "log 45m of Hebrew", "tick off …", "plan my week", or asks about his tasks, habits, weekly targets or goals. Also use it unprompted to add a suggestion when a chat turns up something that sounds like a to-do, or to suggest a plan of stages for a bigger job such as an application or interview prep.
+description: George's personal dashboard ("Today") — read it and change anything in it. You are the way in to it: he plans his days, his calendar and his goals here with you. Use when George says /dashboard, "catch me up", "what's the plan?", "add … to the dashboard", "put it on my list", "what's on today?", "how did last week go?", "log 45m of Hebrew", "tick off …", "plan my week", "debrief", or asks about his tasks, habits, weekly targets, goals or how a practice session went. Also use it unprompted to add a suggestion when a chat turns up something that sounds like a to-do, or to suggest a plan of stages for a bigger job such as an application or interview prep.
 ---
 
 # George's dashboard
 
 The dashboard is George's daily hub: today's list (tasks, habits, weekly targets), goals with
-milestones, the last three weeks, and a Gemini coach that writes check-ins and a weekly digest. It
-syncs between his laptop and phone through a private GitHub repo. You are his administrator here:
-you may change anything, and every change you make is logged in the app (⚙ → Claude's changes),
-where he can see it and undo it.
+milestones, the last three weeks, and **check-ins** — a short question when he ticks a task or when
+its calendar block passes unticked, answered by voice or in a line. It syncs between his laptop and
+phone through a private GitHub repo. There is no coach in the app any more: **you are the planner.**
+He comes to a chat with you to arrange his calendar, understand his plans and goals, and be held to
+them. You may change anything, and every change you make is logged in the app (⚙ → Claude's
+changes), where he can see it and undo it.
 
 ## Running the tool
 
@@ -31,9 +33,9 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
 
     bash <skill folder>/run.sh today
 
-**Reads:** `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`, `history`,
-`journal`, `talk <day>`, `flags`, `changes`, `planner`, `attention`, `gym`, `reference`. Each starts
-with today's date — work other dates out from it.
+**Reads:** `catchup [days]`, `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`,
+`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `reference`. Each
+starts with today's date — work other dates out from it.
 
 If the tool names an op or a read that isn't in your `reference.md`, your copy is older than the
 tool: run `bash run.sh reference` for the current one and work from that. run.sh says so itself when
@@ -48,7 +50,7 @@ are safe. Several ops in one `apply` are one sync:
     EOF
 
 Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `log`, `edit`,
-`archive`, `accept`, `dismiss`, `flag`, `handoff`, `undo`, `planner`, `off`, `brief`, `gym`, `guide`.
+`archive`, `accept`, `dismiss`, `flag`, `handoff`, `undo`, `planner`, `off`, `brief`, `countdown`, `gym`.
 Additional controls: `details`, `rule`, `report`, `review`; inspect their capabilities before use.
 Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.
@@ -65,6 +67,46 @@ what you want to do to the command that does it. Start there rather than reading
 Ids show as `#a1b2c3d4`; pass them without the `#`. Dates are `YYYY-MM-DD`, `today`, `tomorrow` or
 `yesterday`. If `apply` fails, **nothing** was changed: fix the op it names and send the whole batch
 again.
+
+## Starting a chat: catch up
+
+When George opens a planning chat — "catch me up", "what's the plan?", "where are we?", *plan my
+week*, or he just starts talking about his day — run `catchup` before anything else. It shows every
+day since the last catch-up (what he ticked and when, what wasn't done, what was pushed), everything
+he said in his check-ins, new flags, workouts, what he moved or deleted in Google Calendar, the
+planner's notes and what needs attention — and then remembers where you got to, so the next one
+starts there. `catchup 3` looks back three days without moving the marker.
+
+Then say it back in a few lines: what got done, **what didn't, by name** (moving or deleting work
+never makes a day a success), what his check-ins tell you, and what you'd change. Make the changes he
+agrees to. Open *For Claude* flags are his own words: act on them, then mark each addressed with
+`{"op": "archive", "id": "<flag id>"}`.
+
+## Check-ins
+
+The app asks one question about a task, at the moment it matters: *How did "X" go?* when he ticks it,
+and *"X" isn't ticked — what happened?* when its calendar block ended half an hour ago unticked (the
+planner asks, and pings his phone — at most four a day, never at night). He answers with the mic or a
+line, or skips. Gemini tidies what he said into two or three sentences (`summary`); his own words are
+kept beside it (`said`). They're in `catchup`, and `checkins [days]` lists the last two weeks.
+
+- **They're evidence, not verdicts.** When the summary and his words differ, his words win. An
+  unanswered one means nothing either way; a skipped one means he chose not to say.
+- **Use them.** Don't ask in the chat what he has already told a check-in. When one holds a lesson
+  ("step 3 of the framework fell apart", "ran out of time on the written exercise"), put it where the
+  next attempt will see it: the next related task's `notes`, or that day's brief.
+- **A miss with a reason is still a miss.** Name it, then fix what caused it — a length that was too
+  short, a block at a bad time, too much on one day.
+
+## Debrief after practice
+
+When he's just done a practice session — a mock interview, a role play, a scenario set, a timed
+exercise — and wants to go over it ("debrief", "how did that go?", pasted feedback): read its
+check-in (`checkins`) and `inspect` the task for its notes (and the Drive files the notes name, if the
+Drive connector is on). Ask only for what's missing: what came up, where he stalled, what he'd do
+differently. Keep the debrief in the chat. What reaches the dashboard is the lesson, in one or two
+lines, in the `notes` of the next task that practises the same thing — and a flag of kind `note` when
+the same weakness has now shown up three times.
 
 ## How to behave
 
@@ -110,8 +152,8 @@ Give the planner what it needs instead:
 - An `area` on every task, so it reaches the right calendar and colour (reuse the areas already in `list`).
 - A date on each task — spread a week's work over its days rather than piling it on one.
 
-**"Plan my week"** (the weekly check): read `week`, `list`, `goals` and `planner`, and the calendar if
-the connector is on. Then spread the week's tasks and the next stage of each goal over the days, set
+**"Plan my week"** (the weekly check): `catchup` first, then `week`, `list`, `goals` and `planner`,
+and the calendar if the connector is on. Then spread the week's tasks and the next stage of each goal over the days, set
 lengths and areas, and say what you changed. The calendar follows within 10 minutes.
 
 An event booked by hand for a dashboard task should carry `dashboard:<id>` (the id as the tool shows
@@ -143,36 +185,9 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
   (`null` removes it); `dayHours` sets planning hours for a date.
 - **Attention** — read `attention` in *plan my week* and whenever George asks how things stand, then
   fix what you can (lengths, stuck tasks, targets behind) and tell him the rest.
-
-## The Coach
-
-The Coach is Gemini on George's devices, presented as one continuous conversation. Unanswered
-check-ins expire when their moment passes. It reads the same confirmed bookings as Today and
-Upcoming, distinguishes requested dates from actual slots, and can capture future tasks and draft
-goals. Explicit instructions act directly; broad rescheduling reviews produce editable proposals.
-Each turn commits its net changes as one undoable action, and the Coach can undo using saved records.
-Going to bed can close today's planning; future capture still works, and George can reopen today.
-Handoffs remain **flags from the Coach**: treat those as George's words and address them when done.
-Flags are grouped as *For Claude*, *Feature*, *Bug*, and *Note*.
-
-- **Read the journal** (`journal`) in *plan my week* and whenever George asks how things are. Each
-  conversation leaves an entry — how he was feeling, what was on his mind, pointers about how he
-  works. `talk <day>` shows a day's conversations in full when the detail matters.
-- **Write the Coach's guide** in *plan my week*: `{"op": "guide", "text": "…"}` — a few lines on what
-  to focus on and ask about this week (the assessment centre on Thursday, cardio towards 150 minutes,
-  go easy on Mondays). The Coach is given it every time it talks.
-
-### The Coach's mind
-
-The Coach also has a background mind: the planner senses what happens every ten minutes (ticks,
-pushes, moved blocks, new calendar events, the debriefs behind finished work) and Gemini reacts in the
-Coach; a Claude routine runs a deep review at 06:30 and 21:30 and when the planner calls it in. Its
-messages carry a small mark in the conversation, and it can ping George's phone.
-
-- `mind` shows what it has seen and its picture of George. In a chat, `say` and `propose` speak
-  through the Coach; `{"op": "mind", "enabled": true}` and the other settings are yours to change
-  (`reference`, *The Coach's mind*).
-- A deep run follows `claude/mind/ROUTINE.md` and uses `apply --mind`.
+- **Flags** — ⚑ in the app is his inbox for you: *For Claude*, *Feature*, *Bug*, *Note*. `flags`
+  reads them; `archive` marks one addressed. Older ones *from the Coach* came from the retired Gemini
+  coach — treat them as his words.
 
 ## The gym (Hevy)
 

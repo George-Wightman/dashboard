@@ -1,11 +1,10 @@
 // Boot: one store, one render loop, the header, sync, and the day rollover.
 
 import { createStore, DATA_KEY } from './data.js';
-import { askGemini, talkGemini, geminiKeys, hebrewKeys } from './gemini.js';
-import { longDate, weekStart } from './dates.js';
+import { askGemini, geminiKeys, hebrewKeys } from './gemini.js';
+import { longDate } from './dates.js';
 import { dayCompletion, dayScore } from './schedule.js';
 import { ensureCommitment } from './commit.js';
-import { digestDue } from './coach.js';
 import { createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents } from './sync.js';
 import { syncHebrewProgress } from './hebrewSync.js';
 import { renderToday } from './ui/today.js';
@@ -13,9 +12,8 @@ import { openTaskCard } from './ui/agenda.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
-import { talkNow, writeDigest, openMoment, openCoachSheet, paintCoachSheet, openAt, autoWrapUp } from './ui/coach.js';
+import { checkinState, openCheckin } from './ui/checkin.js';
 import { paintBig } from './ui/big.js';
-import { openerDue, waitingOpener, TALK_KEEP_DAYS } from './talk.js';
 import { resolveLook, THEME_COLORS } from './look.js';
 import { LAYOUT_KEY, loadLayout, saveLayout, normalizeLayout } from './layout.js';
 import { readLastSynced, writeLastSynced, waitingFlags, APP_VERSION } from './flags.js';
@@ -32,14 +30,9 @@ const ui = {
   big: null,
   // Arrange mode (js/ui/widgets.js): toggled by #arrange-button, Escape, or Done.
   arranging: false,
-  // The Coach panel's page-only state (js/ui/coach.js). Typed text lives here, not only in the
-  // textareas, so a re-render never loses it. `talk` is the conversation on show, `tried` the
-  // moments this page has already asked Gemini to open ("day|slot"), `sheet` the phone sheet.
-  coach: {
-    talk: null, draft: '', talkBusy: '', talkError: '', editing: null, sheet: false, sheetView: 'talk', librarySearch: '', tried: {},
-    digestOpen: false, digestBusy: false, digestError: '', digestTried: false,
-    collapsedEntries: new Set(),
-  },
+  // The check-in card's page-only state (js/ui/checkin.js): what's typed or said, so a re-render
+  // never loses it.
+  checkin: checkinState(),
 };
 const sync = { state: 'off', at: null, error: null };
 // The read-only pull from the Hebrew app's own sync file (js/hebrewSync.js): a separate repo and
@@ -52,7 +45,8 @@ const WIDE = matchMedia('(min-width: 1500px)');
 let layout = loadLayout(localStorage, WIDGET_IDS);
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
-// fake mode the real keys are never read, and dev/fake-gemini.js answers instead of Google.
+// fake mode the real keys are never read, and dev/fake-gemini.js answers instead of Google (the
+// check-in summaries, js/ui/checkin.js).
 const params = new URLSearchParams(location.search);
 const FAKE = (['localhost', '127.0.0.1'].includes(location.hostname) && params.has('fakegemini'))
   ? (params.get('fakegemini') || 'ok') : null;
@@ -97,10 +91,7 @@ const ctx = {
     day: dayCompletion(store.doc(), store.today()),
     expandedGoals: ui.expandedGoals.size,
     historyDay: ui.historyDay,
-    coach: {
-      checkin: talkNow(ctx), busy: ui.coach.talkBusy, digestBusy: ui.coach.digestBusy,
-      error: ui.coach.talkError, digestError: ui.coach.digestError,
-    },
+    checkin: { error: ui.checkin.error },
     sync: { state: sync.state, error: sync.error, lastSynced: readLastSynced(localStorage) },
     hebrewKey: hebrewKeys(localStorage).length > 0,
     version: APP_VERSION,
@@ -116,30 +107,16 @@ const ctx = {
     saveLayout(localStorage, layout);
     render();
   },
-  coach: {
+  // Gemini, for tidying a check-in's answer into a short note (js/ui/checkin.js).
+  gemini: {
     fake: FAKE,
     // Every key to try, in order: the one in ⚙, then the Hebrew app's on this device.
     keys: () => (FAKE ? (FAKE === 'nokey' ? [] : ['fake-key']) : geminiKeys(store.settings(), localStorage)),
     async ask({ system, prompt }) {
       // The fake module is only ever loaded in fake mode; otherwise askGemini uses the real fetch.
       const fetch = FAKE ? (await import('../dev/fake-gemini.js')).fakeGeminiFetch(FAKE) : undefined;
-      return askGemini({ keys: ctx.coach.keys(), system, prompt, fetch });
+      return askGemini({ keys: ctx.gemini.keys(), system, prompt, fetch });
     },
-    // A turn of a conversation, with the Coach's tools (js/gemini.js's talkGemini).
-    async talk(opts) {
-      const fetch = FAKE ? (await import('../dev/fake-gemini.js')).fakeGeminiFetch(FAKE) : undefined;
-      return talkGemini({ keys: ctx.coach.keys(), ...opts, ...(fetch ? { fetch } : {}) });
-    },
-  },
-  // Reply on the Coach's question under the date: its conversation, as a sheet on a phone, else
-  // the panel scrolled into view with the box ready.
-  openTalk(slot) {
-    ui.coach.talk = slot;
-    if (matchMedia('(max-width: 759px)').matches) { openCoachSheet(ctx); return; }
-    render();
-    const panel = document.querySelector('#side .coach, #under .coach');
-    panel?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    panel?.querySelector('[data-focus^="coach-talk"]')?.focus();
   },
 };
 
@@ -183,15 +160,13 @@ function renderHeader() {
   document.getElementById('update-ready').hidden = !updater.state().ready;
   document.getElementById('update-ready').title = updater.state().error ?? 'Reload into the downloaded update';
 
-  // Under the date: Claude's brief, the Coach's question when one is waiting, any time off today,
-  // then the planner's latest notes — each hidden with × for the rest of the day on this device.
+  // Under the date: Claude's brief, any time off today, then the planner's latest notes — each hidden with × for the rest of the day on this device.
   // The × leads each line, so it sits in the same place however long the note is.
   const notes = visibleNotes(plannerNotes(store.doc(), today), hiddenNotes(), today);
   const hidden = new Set(hiddenNotes());
   const shown = (text) => text && !hidden.has(`${today}|${text}`);
   const brief = briefFor(store.doc(), today);
   const off = offLine(store.doc(), today);
-  const waiting = ctx.coach.keys().length ? waitingOpener(store.doc(), today, new Date(), store.settings()) : null;
   const line = (cls, text, lead = null, action = null) => h('p', { class: cls },
     h('button', { class: 'link hide-note', type: 'button', title: 'Hide this note', 'aria-label': `Hide: ${text}`, onclick: () => hideNote(today, text) }, '×'),
     lead,
@@ -202,11 +177,9 @@ function renderHeader() {
     el.innerHTML = LOGOS[logo]; // a fixed string from js/ui/sources.js, never data
     return el;
   };
-  const reply = waiting ? h('button', { class: 'link', type: 'button', onclick: () => ctx.openTalk(waiting.slot) }, 'Reply') : null;
   const notesEl = document.getElementById('planner-notes');
   notesEl.replaceChildren(...[
     shown(brief) ? line('brief', brief, mark('claude', 'From Claude')) : null,
-    waiting && shown(waiting.text) ? line('coach-line', waiting.text, mark('gemini', 'From the Coach'), reply) : null,
     shown(off) ? line('off', off) : null,
     ...notes.map((text) => line('', text)),
   ].filter(Boolean));
@@ -246,16 +219,11 @@ function applyLook() {
   if (meta && meta.getAttribute('content') !== THEME_COLORS[look]) meta.setAttribute('content', THEME_COLORS[look]);
 }
 
-// What the Coach was doing when the page was last drawn; the minute tick repaints when it changes.
-let shownTalk = null;
-
 function render() {
   renderHeader();
   renderToday(ctx);
   renderSide(ctx);
-  paintCoachSheet(ctx);
   paintBig(ctx);
-  shownTalk = talkNow(ctx);
   if (!ui.openedLinkedTask && params.has('task') && store.doc().items[params.get('task')]) {
     ui.openedLinkedTask = true;
     queueMicrotask(() => openTaskCard(ctx, params.get('task')));
@@ -271,7 +239,7 @@ async function runSync() {
     store.absorbStored(pendingStored);
     pendingStored = null;
   }
-  // Fake mode never contacts GitHub: it's local-only, testing the coach, not sync.
+  // Fake mode never contacts GitHub: it's local-only, testing Gemini, not sync.
   if (FAKE) { sync.state = 'off'; renderHeader(); return; }
   const { token, repo } = store.settings();
   if (!token || !repo) { sync.state = 'off'; renderHeader(); return; }
@@ -317,12 +285,11 @@ async function runHebrewSync() {
 }
 
 // Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the
-// re-rendered areas (#list, #under, #side). The Coach's message box doesn't count
-// either: its text and caret come back after every redraw, and a reply must land while he types on.
+// re-rendered areas (#list, #under, #side) — the check-in box included.
 function typing() {
   const el = document.activeElement;
   return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
-    && !!el.closest('#list, #under, #side') && !String(el.dataset.focus ?? '').startsWith('coach-talk');
+    && !!el.closest('#list, #under, #side');
 }
 
 function canRun() {
@@ -330,7 +297,7 @@ function canRun() {
 }
 
 // A promise that resolves once nothing is being typed or edited — immediately if canRun() is
-// already true, otherwise re-checked every 400ms. Coach replies land only after this, so a
+// already true, otherwise re-checked every 400ms. A check-in's summary lands only after this, so a
 // background Gemini reply can never wipe a half-typed goal amount, milestone or Today input.
 function whenIdle() {
   return new Promise((resolve) => {
@@ -342,64 +309,12 @@ function whenIdle() {
   });
 }
 
-// Never synced: which Monday's digest this device last tried in the background, so re-opening
-// the page on the same phone the same week doesn't spend quota on it again. Storage access is
-// wrapped in try/catch — private browsing or a full localStorage must not break the check.
-const DIGEST_TRIED_KEY = 'dash_digest_tried';
-
-function digestTriedMonday() {
-  try { return localStorage.getItem(DIGEST_TRIED_KEY); } catch { return null; }
-}
-
-function setDigestTriedMonday(monday) {
-  try { localStorage.setItem(DIGEST_TRIED_KEY, monday); } catch { /* best effort */ }
-}
-
-// Last week's digest, written in the background once a new week has started and last week had
-// anything in it (digestDue). At most one attempt per device per week, whether that's this page
-// sitting open all week or a fresh open on the same phone; a failure is silent and leaves the
-// panel's "Write last week's digest" link (which ignores this marker) in place.
-function maybeWriteDigest() {
-  if (ui.coach.digestTried) return;
-  if (!ctx.coach.keys().length) return;
-  if (navigator.onLine === false) return;
-  const monday = digestDue(store.doc(), store.today());
-  if (!monday) return;
-  if (digestTriedMonday() === monday) return;
-  ui.coach.digestTried = true;
-  setDigestTriedMonday(monday);
-  writeDigest(ctx, { quiet: true });
-}
-
-// The Coach opens a conversation at its moments (js/talk.js): the morning, the afternoon when
-// something slipped, the evening — once a moment a day, and only once from this page if Gemini
-// can't be reached (openMoment then leaves its plain line).
-function maybeOpenMoment() {
-  if (!ctx.coach.keys().length || navigator.onLine === false || ui.coach.talkBusy) return;
-  const today = store.today();
-  const { dayStartHour, checkinHour } = store.settings();
-  const slot = openerDue(store.doc(), { today, now: new Date(), dayStartHour, checkinHour });
-  if (!slot || ui.coach.tried[`${today}|${slot}`]) return;
-  openMoment(ctx, slot);
-}
-
-// A conversation he spoke in, quiet for an hour, wraps itself up (there's no Finish button).
-function maybeWrapUp() {
-  if (!ctx.coach.keys().length || navigator.onLine === false || ui.coach.talkBusy || typing()) return;
-  autoWrapUp(ctx).catch(() => {});
-}
-
-// Each sync pass (on open, on focus, after a change) is followed by the digest check and the
-// Coach's moment, so what another device already wrote has been pulled in before deciding.
 const scheduler = createSyncScheduler({
   run: async () => {
     // Hebrew first: a goal or target it creates on its first run then rides along on this same
     // pass's push to the main sync repo, rather than waiting for the next one.
     await runHebrewSync();
-    const result = await runSync();
-    maybeWriteDigest();
-    maybeOpenMoment();
-    return result;
+    return runSync();
   },
   canRun,
   canPoll: () => ctx.syncOn() && !document.hidden && navigator.onLine !== false,
@@ -409,14 +324,10 @@ const scheduler = createSyncScheduler({
 function checkRollover() {
   const day = store.today();
   if (day !== shownDay) {
-    // A new week: last week's digest is now due, even if this page already tried one last week.
-    if (weekStart(day) !== weekStart(shownDay)) {
-      Object.assign(ui.coach, { digestTried: false, digestError: '', digestOpen: false });
-    }
     shownDay = day;
     ui.historyDay = null;
-    // A new day: yesterday's conversation, its last error and the moments tried no longer apply.
-    Object.assign(ui.coach, { talk: null, talkError: '', editing: null, tried: {} });
+    // A new day: yesterday's check-in drafts no longer apply.
+    ui.checkin = checkinState();
     render();
   }
 }
@@ -428,8 +339,7 @@ function wake() {
   updater.check();
 }
 
-// The day's list locks once the morning check-in is done (js/commit.js): checked after every change,
-// since the Coach's reply is what completes it, and once a minute for the 11:00 fallback.
+// The day's list locks at 11:00 (js/commit.js): checked after every change and once a minute.
 function lockDay() {
   try { ensureCommitment(store, store.today(), new Date()); } catch { /* the planner locks it too */ }
 }
@@ -459,8 +369,8 @@ document.addEventListener('keydown', (e) => {
   if (!document.getElementById('editor').hidden) return;
   setArranging(ctx, false);
 });
-// A click off a menu closes it, as Escape does. A modal (Settings, Flags, a task card, the big
-// Coach) closes when the click lands on its backdrop, outside the box. The edit panel closes on a
+// A click off a menu closes it, as Escape does. A modal (Settings, Flags, a task card, a widget
+// opened big) closes when the click lands on its backdrop, outside the box. The edit panel closes on a
 // press anywhere outside it, unless something in it has been changed and not saved; an open note
 // under a row closes too.
 document.addEventListener('click', (e) => {
@@ -509,41 +419,38 @@ window.addEventListener('storage', (e) => {
   if (!canRun()) { pendingStored = mergeStoredEvents(pendingStored, e.newValue); scheduler.changed(); return; }
   store.absorbStored(e.newValue);
 });
-// Once a minute: roll over to a new day, open the Coach's moment when one arrives, and repaint
-// when what the Coach is doing has moved on — unless something is being typed in the column. The
-// update check only actually asks the site every ten minutes.
+// Once a minute: roll over to a new day and lock the day's list when it's time. The update check
+// only actually asks the site every ten minutes.
 setInterval(() => {
   applyLook();
   checkRollover();
   lockDay();
-  maybeOpenMoment();
-  maybeWrapUp();
-  if (talkNow(ctx) !== shownTalk && !typing()) render();
   if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });
   scheduler.poll().catch(() => {});
 }, 60000);
 
 applyLook();
-store.pruneTalks(TALK_KEEP_DAYS);
+// The retired Coach's conversations lose their messages after 30 days, as they always did.
+store.pruneTalks(30);
 store.pruneChanges();
 render();
 scheduler.now();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
-  // A tapped notification with the app already open: sw.js asks this page to show that conversation.
+  // A tapped notification with the app already open: sw.js asks this page to show that check-in.
   navigator.serviceWorker.addEventListener('message', (e) => {
-    if (e.data?.type !== 'open-coach') return;
-    const talk = new URL(e.data.url, location.href).searchParams.get('coach');
-    if (talk) openAt(ctx, talk);
+    if (e.data?.type !== 'open-checkin') return;
+    const id = new URL(e.data.url, location.href).searchParams.get('checkin');
+    if (id) openCheckin(ctx, id);
   });
 }
-// Opened from a notification: straight to the conversation it was about, then tidy the address.
-if (params.has('coach')) {
-  const talk = params.get('coach');
+// Opened from a notification: straight to the check-in it was about, then tidy the address.
+if (params.has('checkin')) {
+  const id = params.get('checkin');
   const url = new URL(location.href);
-  url.searchParams.delete('coach');
+  url.searchParams.delete('checkin');
   history.replaceState(null, '', url.pathname + url.search + url.hash);
-  openAt(ctx, talk);
+  openCheckin(ctx, id);
 }
 updater.check();

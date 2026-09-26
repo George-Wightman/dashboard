@@ -1,6 +1,6 @@
 // The gym, from Hevy. planner/hevy.js copies George's workouts into the `gym` map (records
 // `w:<hevy id>`, plus `templates`, `status` and Claude's `config`); this works out what the
-// dashboard, the Coach and Claude show from them — estimated 1RMs, PRs, pace and projections for
+// dashboard and Claude show from them — estimated 1RMs, PRs, pace and projections for
 // his key lifts, cardio minutes, and each day's sessions in a line. Pure: a document and a day in.
 
 import { addDays, weekStart, shortWeekday, logicalDay, daysBetween } from './dates.js';
@@ -430,7 +430,7 @@ export function groupWeeks(doc, today, count = 8) {
   return { weeks, groups: MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) })) };
 }
 
-// A week's training in a line, for the Coach and the digest: sessions, cardio, key lifts.
+// A week's training in a line, for Claude's catch-up: sessions, cardio, key lifts.
 export function trainingWeek(doc, day, config = gymConfig(doc)) {
   const start = weekStart(day);
   const end = addDays(start, 6);
@@ -449,17 +449,6 @@ export function trainingWeek(doc, day, config = gymConfig(doc)) {
     parts.push(`${s.name} est. 1RM ${kgText(s.e1rm)}${pr}${pace}`);
   }
   return parts.join('; ');
-}
-
-// What the Coach is told about training: today's sessions and the week so far. Nothing before
-// Hevy has sent anything.
-export function gymContext(doc, today) {
-  if (!workouts(doc).length) return [];
-  const lines = dayLines(doc, today);
-  return [
-    lines.length ? `Gym today: ${lines.join(' | ')}` : 'Gym today: no session logged',
-    `Training this week: ${trainingWeek(doc, today)}`,
-  ];
 }
 
 // The Hevy tick on an item for a day, as { from, at } ISO strings, or null.

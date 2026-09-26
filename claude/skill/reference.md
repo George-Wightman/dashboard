@@ -10,6 +10,7 @@ Pick the row, not the whole file. The detail for each command is below.
 
 | You want to | Read | Then change with |
 | --- | --- | --- |
+| Catch up at the start of a chat | `catchup` | whatever it turns up |
 | See what's on today | `today` | `done`, `log` |
 | Find something by name | `find <words>` | — |
 | See everything coming up | `list` | `task`, `edit` |
@@ -17,10 +18,11 @@ Pick the row, not the whole file. The detail for each command is below.
 | Put the detail behind a short title | `list` | `edit` with `notes` |
 | Mark a day, or some hours, off | `planner` | `off` |
 | Write the line at the top of George's day | `today` | `brief` |
+| Count down to a date (the assessment centre, a birthday) | `week` | `countdown` |
 | Break a big job into stages | `goals` | `plan` |
 | See what needs you | `attention` | `edit`, `off`, `brief` |
 | Check his training | `gym` | `gym` settings, the Gym habit's `notes` |
-| See how he's been | `journal`, `talk <day>` | `guide` |
+| See how a piece of work went, in his words | `checkins`, `catchup` | `edit` with `notes` on the next attempt |
 | Change how the calendar books | `planner` | `planner` |
 | Tell the app's developer something | `handoffs` | `handoff` |
 | Leave a note George will read | `flags` | `flag` |
@@ -30,7 +32,6 @@ Pick the row, not the whole file. The detail for each command is below.
 | Make a simple conditional follow-up | `reference workflows`, `workflows` | `rule`, `report` |
 | Review goal direction and suggest next steps | `reference reviews`, `inspect <goal-id>` | `review` |
 | Check a batch without writing | `preview` with the same JSON as apply | `apply` after checking the result |
-| Speak through the Coach, or change its mind's settings | `mind` | `say`, `propose`, `picture`, `mind` |
 
 Three jobs have a playbook of their own, and they are the three that go wrong most. Read the playbook
 **first**, before any of the reads above:
@@ -82,21 +83,28 @@ One day: what was on it, what was ticked, and any amounts logged.
 ### `history`
 The last three weeks, day by day, as done/total.
 
-### `journal`
-Your guide for the Coach this week; the last 14 days' journal entries from George's conversations
-with the Coach (how he was feeling, what was on his mind, pointers, anything handed to you); the
-latest weekly digest; and the last three evening check-ins from before the Coach talked.
+### `catchup [days]`
+Everything since the last catch-up, for the start of a chat: each day's score, what he ticked and
+when (and who ticked it, when it wasn't him), what wasn't done, what was pushed or counted as missed;
+every check-in in that time; new flags; workouts from Hevy; what he moved or deleted in Google
+Calendar; the planner's notes today; what needs attention. Then it records the catch-up, so the next
+one starts there (it says so on its last line). At most the last seven days. The first ever catch-up
+covers yesterday and today. `catchup 3` reads the last three days and leaves the marker where it is.
 
-### `talk <day>`
-A day's conversations with the Coach in full (`today`, `yesterday` or a date): who said what, what
-the Coach changed, what it handed to you, and the entry each left. Messages go after 30 days; entries
-stay.
+### `checkins [days]`
+Check-ins from the last 14 days (or `days`), newest first: the day, the task and its id, whether it
+was asked on a tick or when its block passed unticked, and then Gemini's `summary` and his own words,
+or *not answered*, or *skipped*.
+
+### `journal`
+The old name for `checkins`, for older copies of the skill. The retired Coach's conversations,
+entries and digests are still in the data, but nothing reads them.
 
 ### `flags [feature|bug|claude|note]`
-Open flags, grouped by what they're for, each saying who wrote it (George, the Coach, Claude or a
-follow-up rule). **Feature** and **Bug** are George's requests for changes to the app. **For Claude**
-is something to act on or keep in mind: George's own notes for later and the Coach's handoffs from
-his conversations — treat both as George's words. **Note** is something left for George to read. Give
+Open flags, grouped by what they're for, each saying who wrote it (George, the retired Coach, Claude
+or a follow-up rule). **Feature** and **Bug** are George's requests for changes to the app. **For
+Claude** is something to act on or keep in mind: George's own notes for later and the old Coach's
+handoffs from his conversations — treat both as George's words. `archive` marks one addressed. **Note** is something left for George to read. Give
 a kind to see one group, e.g. `flags claude`. Flags written before kinds existed are grouped by who
 wrote them. George can change a flag's kind in the ⚑ panel.
 
@@ -206,7 +214,10 @@ unit can't change — archive it and add a new one.
 
 ### `archive`
 `{"op": "archive", "id": "…"}` — archives an item, goal or milestone (history is kept), removes a
-logged amount or tick, or marks a flag addressed. Use `dismiss` for a suggestion.
+logged amount or tick, or marks a flag addressed. Use `dismiss` for a suggestion. A task George has
+said is no longer needed takes his reason: `{"op": "archive", "id": "…", "released": "Nathan already
+sent the list"}` — once today has locked, that keeps it from counting as a miss. Only with his reason,
+never to tidy a bad day.
 
 ### `accept`
 Take on a suggestion: `{"op": "accept", "id": "…"}`. On a suggested goal it takes on the goal and its
@@ -264,13 +275,12 @@ The line at the top of George's list: `{"op": "brief", "text": "…", "day": "to
 defaults to today; up to 500 characters). Writing one for a day replaces it.
 
 It is intent, not a schedule: say why the day matters and how to approach it, and don't name the
-tasks on it. The planner rebooks work between days, and the Coach is told to trust the lists over a
-brief that disagrees with them, so a brief naming tasks simply goes stale.
+tasks on it. The planner rebooks work between days, so a brief naming tasks simply goes stale.
 
-### `guide`
-The Coach's guide for a week: `{"op": "guide", "text": "…"}` (up to 600 characters; `"week":
-"2026-09-21"` or any day in it for another week — it's filed under that week's Monday). What to focus
-on and ask about; the Coach is given it every time. Writing one again replaces it.
+### `countdown`
+`{"op": "countdown", "title": "Assessment centre", "day": "2026-10-05"}` — a date George is counting
+down to, shown with the days left in his Countdown widget; nothing is booked for it. `week` lists them
+with their ids; `{"op": "countdown", "cancel": "count:2026-10-05:1"}` stops one.
 
 ### `gym`
 Hevy's settings on the dashboard (nothing is ever sent to Hevy). `{"op": "gym", "cardioQuota":
@@ -279,51 +289,6 @@ towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 12
 1RM target in kg, one lift per op, `null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
 "Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts followed closely (Hevy's exercise names).
 `{"op": "gym", "habit": "Gym"}` — the habit a workout ticks (by id or the start of its title).
-
-## The Coach's mind
-
-The Coach has a background mind (docs/superpowers/specs/2026-09-25-coach-mind-design.md): the planner
-senses what happens every ten minutes and Gemini reacts, and a Claude routine runs a deep review at
-06:30 and 21:30 (and when the planner calls it in). These ops are how Claude speaks through it. In a
-deep run, use `apply --mind`, which allows only `picture`, `say`, `propose`, `brief`, `guide`, `flag`,
-`handoff` and `handled` — at most one picture, two says, one proposal and one handled. In an ordinary
-chat they work too.
-
-### `mind` (read)
-`bash run.sh mind` — the deep run's context: your picture of George, the Mind's settings and today's
-budget, every event since the last deep run (with the files George wrote and health in full), today as
-the Coach sees it, the week, goals, attention, the last three days' conversations, the journal and open
-flags.
-
-### `picture`
-`{"op": "picture", "text": "…", "opener": {"day": "tomorrow", "text": "…"}}` — replaces Claude's
-standing understanding of George (up to 4,000 characters), in five short sections: **Now**, **Patterns**
-(each with the dates that show it), **Risks**, **Open threads**, **How to talk to him**. The Coach and
-every Reflex read it, and Gemini reads it, so health appears only as labels ("short night"), never
-numbers. `opener` is tomorrow's (or today's) morning message, posted at the morning time if it still
-stands up.
-
-### `say`
-`{"op": "say", "text": "…", "notify": true}` — a message from the Coach in a conversation of its own
-(at most 600 characters). It is checked first: nothing called done that isn't ticked, no clock time the
-plan or George didn't give, no optional habit called a miss, no near-repeat. `notify` pings his phone.
-
-### `propose`
-`{"op": "propose", "text": "why", "ops": [{"op": "edit", "id": "…", "set": {"date": "2026-09-27"}}]}` —
-plan changes George applies (or dismisses) with one tap in the Coach. `ops` are `task`, `edit` or
-`archive`, 1 to 12; nothing changes until he presses Apply.
-
-### `handled`
-`{"op": "handled", "events": "all", "summary": "…"}` — last in a deep run: marks the events it looked
-at (`"all"`, or a list of ids from `mind`) and records a one-paragraph summary of what it saw, did and
-is watching.
-
-### `mind`
-`{"op": "mind", "enabled": true}` — the Mind's settings: `enabled`, `morningAt`, `checkinAt`,
-`quietFrom`, `quietUntil` (times like "07:00"), `pingsPerDay` (6), `messagesPerDay` (8), `gapMinutes`
-(45), `geminiPerDay` (120), `thinkPerDay` (20 — Flash's calls a day on the Mind's free project), `deepPerDay` (3),
-and `models` (`{"think": "…", "check": "…"}`). Flash thinks hard in one call; when its day's calls are
-used, or it's busy, the Mind switches to Flash-Lite on its own and says so in ⚙ → Claude.
 
 ## Optional advanced controls
 

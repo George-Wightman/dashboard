@@ -51,18 +51,29 @@ test('an edit after observing a fast clock wins, including edits in one millisec
   assert.equal(mergeDocs(a.doc(), before).items[item.id].title, 'Deliberate newer edit');
 });
 
+// The retired Coach's conversations still merge and prune in old data; nothing new writes them, so
+// the record is put in place as a synced one would arrive.
+function withTalk(store, fields, messages) {
+  const id = `talk:${fields.day}:${fields.slot}`;
+  const at = store.now().toISOString();
+  const doc = structuredClone(store.doc());
+  doc.journal[id] = { id, ...fields, messages, handoffs: [], flagIds: [], done: false, model: '', proposal: null,
+    source: 'gemini', status: 'active', created: fields.day, archivedOn: null, updated: at };
+  store.replaceDoc(doc, 'local');
+  return id;
+}
+
 test('concurrent conversation appends survive, removals stay removed, and pruning clears retained text', () => {
   const { a, b, now } = copies();
   const fields = { kind: 'talk', day: a.today(), slot: 'morning' };
   const first = { who: 'coach', text: 'Hello', at: now().toISOString() };
-  a.saveJournal({ ...fields, messages: [first] }); b.importJson(a.exportJson());
+  const id = withTalk(a, fields, [first]); b.importJson(a.exportJson());
   const one = { who: 'george', text: 'Laptop', at: now().toISOString() };
   const two = { who: 'george', text: 'Phone', at: now().toISOString() };
-  a.saveJournal({ ...fields, messages: [first, one] }); b.saveJournal({ ...fields, messages: [first, two] });
+  a.updateJournal(id, { messages: [first, one] }); b.updateJournal(id, { messages: [first, two] });
   a.replaceDoc(mergeDocs(a.doc(), b.doc()));
-  const id = 'talk:' + fields.day + ':morning';
   assert.deepEqual(a.doc().journal[id].messages.map((m) => m.text).sort(), ['Hello', 'Laptop', 'Phone']);
-  a.saveJournal({ ...fields, messages: a.doc().journal[id].messages.filter((m) => m.text !== 'Laptop') });
+  a.updateJournal(id, { messages: a.doc().journal[id].messages.filter((m) => m.text !== 'Laptop') });
   assert.equal(mergeDocs(a.doc(), b.doc()).journal[id].messages.some((m) => m.text === 'Laptop'), false);
   const old = structuredClone(a.doc());
   now.advance(40 * 86400000); a.pruneTalks();
@@ -145,8 +156,9 @@ test('saving an editor keeps untouched fields received since the editor opened',
 test('pruning also clears deleted conversation text when no visible messages remain', () => {
   const { a, now } = copies();
   const fields = { kind: 'talk', day: a.today(), slot: 'morning' };
-  a.saveJournal({ ...fields, messages: [{ who: 'coach', text: 'Removed private text', at: now().toISOString() }] });
-  a.saveJournal({ ...fields, messages: [] });
+  const id = withTalk(a, fields, []);
+  a.updateJournal(id, { messages: [{ who: 'coach', text: 'Removed private text', at: now().toISOString() }] });
+  a.updateJournal(id, { messages: [] });
   now.advance(40 * 86400000);
   assert.equal(a.pruneTalks(), 1);
   assert.equal(a.exportJson().includes('Removed private text'), false);

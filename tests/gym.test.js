@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   e1rm, kgText, shortLift, workoutRecord, exerciseKind, liftSummary, weekStrip, sessionLine, dayLines, trainingWeek,
-  gymContext, gymConfig, gymHabitId, cardioQuotaId, gymStatusLines, roughDate, cardioOf, hevyTick,
+  gymConfig, gymHabitId, cardioQuotaId, gymStatusLines, roughDate, cardioOf, hevyTick,
 } from '../js/gym.js';
 import { fixture, amount } from './helpers.js';
 import { TEMPLATES, hevyWorkout, lift, cardio } from './gym-fakes.js';
@@ -106,9 +106,6 @@ test('the week, a session in a line, and what the Coach is told', () => {
   assert.deepEqual(dayLines(doc, '2026-09-14'), ['Legs A · 60 min · Squat 100 × 6 PR · 1 other exercise · Walking 15 min, 1.2 km']);
   assert.equal(sessionLine(doc, doc.gym['w:w1']), 'Run · 20 min · Treadmill 20 min, 3 km');
   assert.equal(trainingWeek(doc, THU), '2 sessions; cardio 35 of 150 min; Squat est. 1RM 120 (PR Mon), +3 kg/wk');
-  assert.deepEqual(gymContext(doc, THU), ['Gym today: no session logged', `Training this week: ${trainingWeek(doc, THU)}`]);
-  assert.deepEqual(gymContext(doc, '2026-09-16')[0], 'Gym today: Run · 20 min · Treadmill 20 min, 3 km');
-  assert.deepEqual(gymContext(fixture(), THU), [], 'nothing from Hevy yet: nothing said');
 });
 
 test('settings, the habit and the target Hevy fills, the tick, and the status lines', () => {

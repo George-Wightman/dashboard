@@ -115,7 +115,7 @@ test('no key: refuses at once without a request', async () => {
   await rejectsWith(askGemini({ keys: ['', '  '], system: 'S', prompt: 'P', fetch }), 'nokey');
   await rejectsWith(askGemini({ system: 'S', prompt: 'P', fetch }), 'nokey');
   assert.equal(fetch.calls.length, 0);
-  assert.equal(MESSAGES.nokey, 'The coach needs a Gemini key. Add one in ⚙, or save one in the Hebrew app on this device.');
+  assert.equal(MESSAGES.nokey, 'No Gemini key. Add one in ⚙, or save one in the Hebrew app on this device.');
 });
 
 // ---- falling back ------------------------------------------------------------------------------

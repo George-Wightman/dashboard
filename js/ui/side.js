@@ -1,6 +1,6 @@
 // The widgets' panels: this week's targets, goals, and the last three weeks (and, opened big, every
-// week since the start with each day's misses named). js/ui/widgets.js arranges them (with the
-// Coach, from js/ui/coach.js) and uses the focus helpers at the end.
+// week since the start with each day's misses named). js/ui/widgets.js arranges them and uses the
+// focus helpers at the end.
 
 import { h } from './dom.js';
 import { weekTotal, goalProgress, milestonesOf, goalItems, history, dayDetail, dayScore, countsOn } from '../schedule.js';
@@ -10,13 +10,40 @@ import { offLine, excused } from '../calendar.js';
 import { dayLines, cardioQuotaId, workouts } from '../gym.js';
 import { HEBREW_IDS } from '../hebrewSync.js';
 import { SOURCE_NAMES } from './sources.js';
-import { renderDigest } from './coach.js'; // js/ui/coach.js, the panel (js/coach.js is the pure half)
 import { bigSection } from './big.js';
-import { proposedItems, proposalLine } from '../coach.js';
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
 const level = (done, total) => (total === 0 ? 0 : Math.min(4, Math.ceil((done / total) * 4)));
+
+// Habits and weekly targets proposed with a goal that are still waiting on Today.
+export function proposedItems(doc, goalId) {
+  return values(doc.items).filter((i) => i.goalId === goalId && i.status === 'suggested').sort(byOrder);
+}
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function repeatText(repeat) {
+  switch (repeat?.kind) {
+    case 'weekdays': return (repeat.days ?? []).map((d) => DAY_NAMES[d - 1]).filter(Boolean).join(', ');
+    case 'perWeek': return repeat.n === 1 ? 'once a week' : `${repeat.n} times a week`;
+    case 'weekly': return `every ${DAY_NAMES[repeat.day - 1] ?? 'week'}`;
+    case 'monthly': return `on day ${repeat.date} of the month`;
+    default: return 'every day';
+  }
+}
+
+// One line for a habit or weekly target a plan proposes, as the suggested-goal card lists it:
+// 'Habit: Stretch · Mon, Wed, Fri' · 'Weekly target: Running · 1.5h' · 'Weekly target: Parkruns · 2 runs'.
+export function proposalLine(item) {
+  if (item.type === 'habit') return `Habit: ${item.title} · ${repeatText(item.repeat)}`;
+  if (item.type === 'quota') {
+    const unit = item.unit ?? 'count';
+    const label = unit === 'count' && item.unitLabel ? ` ${item.unitLabel}` : '';
+    return `Weekly target: ${item.title} · ${formatAmount(Number(item.target) || 0, unit)}${label}`;
+  }
+  return item.title;
+}
 
 // A progress bar; `met` fills it gold ("you did this") instead of teal.
 function bar(pct, label, met = false) {
@@ -185,10 +212,10 @@ export function renderGoals(ctx) {
   const goals = values(doc.goals)
     .filter((g) => g.status === 'active' || g.status === 'suggested')
     .sort((a, b) => (a.status === b.status ? byOrder(a, b) : a.status === 'suggested' ? -1 : 1));
-  // New goals come from the Coach ("I want to …"), as a suggestion to accept here.
+  // New goals come from Claude, as a suggestion to accept here.
   return h('section', { class: 'panel' },
     h('h2', {}, 'Goals'),
-    goals.length ? goals.map((g) => renderGoal(g, ctx)) : h('p', { class: 'muted' }, 'No goals yet. Tell the Coach what you want to achieve.'));
+    goals.length ? goals.map((g) => renderGoal(g, ctx)) : h('p', { class: 'muted' }, 'No goals yet. Tell Claude what you want to achieve.'));
 }
 
 function renderDayDetail(ctx, day) {
@@ -243,8 +270,6 @@ export function renderHistory(ctx) {
   const section = h('section', { class: 'panel history' },
     h('h2', {}, 'Last 3 weeks', total ? h('span', { class: 'muted history-week', title: 'Done so far this week' }, `this week ${done}/${total}`) : null), grid);
   if (ui.historyDay) section.append(renderDayDetail(ctx, ui.historyDay));
-  const digest = renderDigest(ctx);
-  if (digest) section.append(digest);
   return section;
 }
 

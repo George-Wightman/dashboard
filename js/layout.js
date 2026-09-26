@@ -23,7 +23,7 @@ export const DEFAULT_LAYOUT = Object.freeze({
   v: 4,
   under: Object.freeze(['goals', 'agenda']),
   columns: Object.freeze([
-    Object.freeze(['countdown', 'coach', 'week', 'muscles', 'cardio']),
+    Object.freeze(['countdown', 'week', 'muscles', 'cardio']),
     Object.freeze(['history', 'hebrew', 'gym']),
   ]),
   hidden: Object.freeze([]),

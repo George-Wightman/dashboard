@@ -148,7 +148,7 @@ function sampleState(overrides = {}) {
     day: { done: 3, total: 8 },
     expandedGoals: 1,
     historyDay: null,
-    coach: { checkin: 'questions', busy: '', shapeBusy: false, digestBusy: false, error: '', shapeError: '', digestError: '' },
+    checkin: { error: '' },
     sync: { state: 'ok', error: null, lastSynced: new Date(2026, 8, 12, 18, 4) },
     hebrewKey: true,
     version: 'dash-v3',
@@ -172,7 +172,7 @@ test('flagContext captures the moment, the page and the app as plain data', () =
     today: { done: 3, total: 8 },
     expandedGoals: 1,
     historyDay: null,
-    coach: { checkin: 'questions', busy: '', shapeBusy: false, digestBusy: false, error: '', shapeError: '', digestError: '' },
+    checkin: { error: '' },
     sync: { state: 'ok', error: null, lastSynced: new Date(2026, 8, 12, 18, 4).toISOString() },
     set: { repo: true, token: true, geminiKey: true, hebrewKey: true },
     version: 'dash-v3',
@@ -186,7 +186,7 @@ test('flagContext holds booleans for the keys, never their values — even when 
     geminiKey: SECRET_GEMINI,
     today: SECRET_TOKEN,
     sync: { state: 'failing', error: `GitHub 401 for ${SECRET_TOKEN}`, lastSynced: null },
-    coach: { checkin: 'due', busy: '', error: `${'x'.repeat(295)}${SECRET_GEMINI}`, shapeError: SECRET_GEMINI, digestError: '' },
+    checkin: { error: `${'x'.repeat(295)}${SECRET_GEMINI}` },
     layout: { v: 1, columns: [[SECRET_TOKEN], []], hidden: [] },
     version: SECRET_GEMINI,
     userAgent: `Mozilla ${SECRET_TOKEN}`,
@@ -244,14 +244,13 @@ test('shortAgent: browser and system, briefly', () => {
 });
 
 test('flagAbout: the About line, from the captured context', () => {
-  assert.equal(flagAbout(flagContext(sampleState())), 'Today · Night look · 3 of 8 done · Coach: check-in waiting · synced 18:04');
+  assert.equal(flagAbout(flagContext(sampleState())), 'Today · Night look · 3 of 8 done · synced 18:04');
   assert.equal(flagAbout(flagContext(sampleState({
-    arranging: true, look: 'paper', day: { done: 0, total: 0 },
-    coach: { checkin: 'due', busy: 'questions' }, sync: { state: 'off', error: null, lastSynced: null },
-  }))), 'Arranging widgets · Paper look · nothing on today · Coach: thinking · sync off');
+    arranging: true, look: 'paper', day: { done: 0, total: 0 }, sync: { state: 'off', error: null, lastSynced: null },
+  }))), 'Arranging widgets · Paper look · nothing on today · sync off');
   assert.equal(flagAbout(flagContext(sampleState({
-    coach: { checkin: 'early', error: "Gemini didn't answer — try again" }, sync: { state: 'failing', error: 'GitHub 500', lastSynced: null },
-  }))), 'Today · Night look · 3 of 8 done · Coach: showing an error · sync failing');
+    checkin: { error: 'Say or type something first — or skip it' }, sync: { state: 'failing', error: 'GitHub 500', lastSynced: null },
+  }))), 'Today · Night look · 3 of 8 done · check-in showing an error · sync failing');
   assert.equal(flagAbout({}), 'Today');
   assert.equal(flagAbout(null), 'Today');
 });

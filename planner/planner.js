@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'df364d6f';
+var PLANNER_BUILD = '320e652c';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -491,7 +491,13 @@ function recordProblem(map, id, r) {
     if (r.kind === 'amount' && !(finite(r.amount) && r.amount > 0)) return 'Invalid logged amount';
   }
   if (map === 'journal') {
-    if (!['checkin', 'digest', 'brief', 'talk', 'entry', 'guide'].includes(r.kind) || !day(r.day)) return 'Invalid journal record';
+    // talk, entry, checkin, digest and guide are the retired Coach's (kept, never read again).
+    if (!['checkin', 'digest', 'brief', 'talk', 'entry', 'guide', 'reflect'].includes(r.kind) || !day(r.day)) return 'Invalid journal record';
+    if (r.kind === 'reflect') {
+      if (!string(r.itemId) || !['done', 'missed'].includes(r.why)) return 'Invalid check-in';
+      for (const key of ['askedAt', 'answeredAt', 'pushedAt']) if (!optional(key, timestamp, true)) return `Invalid ${key}`;
+      if (!optional('said', string) || !optional('summary', string)) return 'Invalid check-in answer';
+    }
     for (const key of ['questions', 'answers', 'tomorrowIds', 'wins', 'slipped', 'handoffs', 'pointers', 'forClaude', 'flagIds']) {
       if (!optional(key, strings)) return `Invalid ${key}`;
     }
@@ -753,7 +759,7 @@ const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-const APP_VERSION = 'today-dashboard-v13';
+const APP_VERSION = 'today-dashboard-v14';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -840,7 +846,7 @@ function flagContext(state = {}) {
     return d && !Number.isNaN(d.getTime()) ? d.toISOString() : null;
   };
   const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').map((x) => str(x, 40)) : []);
-  const coach = state.coach ?? {};
+  const checkin = state.checkin ?? {};
   const sync = state.sync ?? {};
   const layout = state.layout ?? {};
   const out = {
@@ -857,15 +863,7 @@ function flagContext(state = {}) {
     today: { done: num(state.day?.done), total: num(state.day?.total) },
     expandedGoals: num(state.expandedGoals),
     historyDay: str(state.historyDay, 10),
-    coach: {
-      checkin: str(coach.checkin, 20),
-      busy: str(coach.busy, 20) ?? '',
-      shapeBusy: coach.shapeBusy === true,
-      digestBusy: coach.digestBusy === true,
-      error: str(coach.error) ?? '',
-      shapeError: str(coach.shapeError) ?? '',
-      digestError: str(coach.digestError) ?? '',
-    },
+    checkin: { error: str(checkin.error) ?? '' },
     sync: { state: str(sync.state, 20), error: str(sync.error), lastSynced: iso(sync.lastSynced) },
     set: { repo: !!settings.repo, token: !!settings.token, geminiKey: !!settings.geminiKey, hebrewKey: !!state.hebrewKey },
     version: str(state.version, 40),
@@ -875,10 +873,6 @@ function flagContext(state = {}) {
 }
 
 const LOOK_NAMES = { paper: 'Paper', night: 'Night' };
-const CHECKIN_WORDS = {
-  done: 'check-in done', questions: 'check-in waiting', due: 'about to open a conversation', early: 'check-in later', nokey: 'no Gemini key',
-  waiting: 'a question waiting', talking: 'in a conversation', quiet: 'quiet',
-};
 const SYNC_WORDS = { off: 'sync off', syncing: 'syncing', offline: 'offline', failing: 'sync failing' };
 
 function hhmm(isoText) {
@@ -887,7 +881,7 @@ function hhmm(isoText) {
 }
 
 // The panel's About line, from a captured context:
-// 'Today · Night look · 3 of 8 done · Coach: check-in waiting · synced 18:04'.
+// 'Today · Night look · 3 of 8 done · synced 18:04'.
 function flagAbout(ctx) {
   const c = ctx ?? {};
   const parts = [c.arranging ? 'Arranging widgets' : 'Today'];
@@ -895,12 +889,7 @@ function flagAbout(ctx) {
   if (c.today && typeof c.today.total === 'number') {
     parts.push(c.today.total ? `${c.today.done} of ${c.today.total} done` : 'nothing on today');
   }
-  if (c.coach) {
-    const busy = c.coach.busy || c.coach.shapeBusy || c.coach.digestBusy;
-    const error = c.coach.error || c.coach.shapeError || c.coach.digestError;
-    const word = busy ? 'thinking' : error ? 'showing an error' : CHECKIN_WORDS[c.coach.checkin];
-    if (word) parts.push(`Coach: ${word}`);
-  }
+  if (c.checkin?.error) parts.push('check-in showing an error');
   if (c.sync) {
     const at = c.sync.state === 'ok' ? hhmm(c.sync.lastSynced) : '';
     if (at) parts.push(`synced ${at}`);
@@ -1168,18 +1157,534 @@ function checkClock(v) {
 return { parseAmount, formatAmount, formatProgress, LENGTH_MIN, LENGTH_MAX, parseLength, parseClock, checkLength, NOTES_MAX, checkNotes, checkClock };
 })();
 
+// ---- js/plan-state.js
+const __js_plan_state = (() => {
+// The shared schedule contract. A requested day is not a booking. Calendar, the
+// Today and Upcoming resolve the same confirmed placements through here.
+const { blockers } = __js_workflow;
+const { addDays } = __js_dates;
+
+const taskInput = (i) => ({ title: i.title, date: i.date ?? null, time: i.time || null,
+  minutes: i.minutes ?? null, hold: i.scheduleHold === true });
+
+// George's pin, typed at the front of a title: keep this where it is. He types the word; the
+// planner writes it back as 📌, which is then his handle for taking it off again. Either form
+// reads as a pin, and neither ever becomes part of the task's name. Markers can stack
+// ("📌 ~ Draft the answer"), so they come off in whatever order they arrive.
+const PIN_MARK = /^\s*(?:stay\b[\s:.,–—-]*|📌\s*)/i;
+const STATE_MARK = /^\s*[~✓]\s*/;
+function readPinMarker(summary) {
+  let rest = String(summary ?? ''), pinned = false;
+  for (;;) {
+    const pin = rest.match(PIN_MARK);
+    if (pin) { pinned = true; rest = rest.slice(pin[0].length); continue; }
+    const mark = rest.match(STATE_MARK);
+    if (mark) { rest = rest.slice(mark[0].length); continue; }
+    return { title: rest.trim(), pinned };
+  }
+}
+const localDate = (iso) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const dayClosed = (doc, day) => doc.calendar?.[`closed:${day}`]?.closed === true;
+function scheduleBlocks(doc) {
+  if (doc.calendar?.agenda?.blocks) return doc.calendar.agenda.blocks;
+  return Object.values(doc.calendar ?? {}).filter((r) => r.id?.startsWith('day:')).flatMap((r) => r.blocks ?? []);
+}
+function bookingsFor(doc, item) {
+  if (item.scheduleHold) return [];
+  return scheduleBlocks(doc).filter((b) => (!doc.calendar?.agenda?.from || localDate(b.end) >= doc.calendar.agenda.from) && b.items.includes(item.id) && !['done', 'partial'].includes(b.state)
+    && (!b.input || ['date', 'time', 'minutes', 'hold'].every((k) => b.input[k] === taskInput(item)[k])))
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+function plannedTaskDay(doc, item) {
+  return bookingsFor(doc, item)[0]?.start ? localDate(bookingsFor(doc, item)[0].start) : item.date;
+}
+function scheduleView(doc, today, days = 14) {
+  const end = addDays(today, days);
+  const done = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
+  const tasks = Object.values(doc.items ?? {}).filter((i) => i.type === 'task' && i.status === 'active' && !done.has(i.id));
+  const entries = tasks.map((item) => {
+    const bookings = bookingsFor(doc, item).filter((b) => localDate(b.end) >= today);
+    const scheduledDay = bookings[0] ? localDate(bookings[0].start) : null;
+    const conflict = doc.calendar?.[`conflict:${item.id}`];
+    const blocked = blockers(doc, item, scheduledDay ?? (item.date < today ? today : item.date)).join('; ');
+    const reason = conflict?.open ? 'Calendar and Dashboard edits need resolving'
+      : blocked ? blocked
+      : item.scheduleHold ? 'Removed from Calendar — choose a new day to schedule'
+      : scheduledDay && scheduledDay !== item.date ? `Requested ${item.date}; placed ${scheduledDay}`
+      : !bookings.length ? item.date >= end ? 'Beyond the current calendar horizon' : 'Waiting for a calendar slot' : '';
+    return { item, requestedDay: item.date, scheduledDay, bookings, reason,
+      day: scheduledDay ?? (item.date < today ? today : item.date), state: conflict?.open ? 'conflict' : bookings.length ? 'scheduled' : 'unscheduled' };
+  }).sort((a, b) => a.day.localeCompare(b.day) || (a.bookings[0]?.start ?? 'z').localeCompare(b.bookings[0]?.start ?? 'z')
+    || (a.item.order ?? 0) - (b.item.order ?? 0));
+  return { entries, commitments: doc.calendar?.agenda?.busy ?? [], lastSynced: doc.calendar?.agenda?.syncedAt ?? doc.calendar?.status?.lastRun ?? null,
+    through: doc.calendar?.agenda?.through ?? null, closed: dayClosed(doc, today) };
+}
+return { taskInput, readPinMarker, localDate, dayClosed, scheduleBlocks, bookingsFor, plannedTaskDay, scheduleView };
+})();
+
+// ---- js/calendar.js
+const __js_calendar = (() => {
+// The calendar planner's records in the synced document — the `calendar` map — and what the page
+// and Claude's tool read from them. Pure. The planner (planner/) writes `day:1` … `day:7` (one per
+// weekday, overwritten when that weekday comes round again: the blocks it booked, what George
+// deleted or missed, its notes) and `status`; `config` holds its settings, written by Claude or
+// seeded by the planner.
+
+const { weekday, shortWeekday, shortDate, addDays, daysBetween } = __js_dates;
+
+const CALENDAR_DEFAULTS = {
+  hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
+  days: 7, exactDays: 2, firmUpHour: 20,
+  ignore: ['University of York', 'MiM Committee Meetings', 'Family', 'PhD', 'Holidays in United Kingdom'],
+  areaCalendars: { 'Job search': 'Application', 'Assessment centre': 'Application', Health: 'Gym', Challenger: 'Challenger' },
+  defaultCalendar: 'main',
+  habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
+  priorityAreas: [],
+  areaColors: {},
+  dayHours: {},
+};
+
+// Google Calendar's event colours, by the names George sees, and their ids in the API.
+const COLOR_NAMES = {
+  Lavender: '1', Sage: '2', Grape: '3', Flamingo: '4', Banana: '5', Tangerine: '6',
+  Peacock: '7', Graphite: '8', Blueberry: '9', Basil: '10', Tomato: '11',
+};
+
+const colorName = (id) => Object.keys(COLOR_NAMES).find((n) => COLOR_NAMES[n] === String(id)) ?? null;
+
+const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const pad = (n) => String(n).padStart(2, '0');
+const text = (v) => typeof v === 'string' && v.trim() !== '';
+const copy = (v) => JSON.parse(JSON.stringify(v));
+const norm = (s) => String(s ?? '').trim().toLowerCase();
+const realDay = (d) => typeof d === 'string' && DAY.test(d) && addDays(d, 0) === d;
+
+function clockMinutes(hhmm) {
+  const m = CLOCK.exec(String(hhmm ?? ''));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+function wholeNumber(lo, hi) {
+  return (v, field) => {
+    if (!(Number.isInteger(v) && v >= lo && v <= hi)) throw new Error(`${field} should be a whole number from ${lo} to ${hi}`);
+    return v;
+  };
+}
+
+// Each setting's check: the value to keep, or a plain-English reason.
+const CONFIG_CHECKS = {
+  hours: (v, field) => {
+    const ok = Array.isArray(v) && v.length === 2 && clockMinutes(v[0]) != null && clockMinutes(v[1]) != null
+      && clockMinutes(v[0]) < clockMinutes(v[1]);
+    if (!ok) throw new Error(`${field} should be two times like ["09:00", "19:00"], the first earlier`);
+    return [v[0], v[1]];
+  },
+  gapMinutes: wholeNumber(0, 60),
+  defaultMinutes: wholeNumber(5, 240),
+  maxBlockMinutes: wholeNumber(30, 480),
+  days: wholeNumber(1, 14),
+  exactDays: wholeNumber(1, 7),
+  firmUpHour: wholeNumber(12, 23),
+  ignore: (v, field) => {
+    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of calendar names`);
+    return v.map((s) => s.trim());
+  },
+  areaCalendars: (v, field) => {
+    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([a, c]) => text(a) && text(c));
+    if (!ok) throw new Error(`${field} should map each area to a calendar name, like {"Job search": "Application"}`);
+    return Object.fromEntries(Object.entries(v).map(([a, c]) => [a.trim(), c.trim()]));
+  },
+  defaultCalendar: (v, field) => {
+    if (!text(v)) throw new Error(`${field} should be a calendar name, or "main"`);
+    return v.trim();
+  },
+  habitEvents: (v, field) => {
+    const ok = Array.isArray(v) && v.every((l) => l && typeof l === 'object' && text(l.habit) && text(l.calendar) && text(l.title));
+    if (!ok) throw new Error(`${field} should be a list like [{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]`);
+    return v.map((l) => ({ habit: l.habit.trim(), calendar: l.calendar.trim(), title: l.title.trim() }));
+  },
+  priorityAreas: (v, field) => {
+    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
+    return v.map((s) => s.trim());
+  },
+  areaColors: (v, field) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${field} should map each area to a colour, like {"Assessment centre": "Grape"}`);
+    const out = {};
+    const used = new Map();
+    for (const [area, name] of Object.entries(v)) {
+      const colour = Object.keys(COLOR_NAMES).find((n) => n.toLowerCase() === norm(name));
+      if (!text(area) || !colour) throw new Error(`${field}: "${name}" isn't one of Google's colours — ${Object.keys(COLOR_NAMES).join(', ')}`);
+      if (used.has(colour)) throw new Error(`${field} gives ${colour} to both ${used.get(colour)} and ${area.trim()} — each area needs its own colour`);
+      used.set(colour, area.trim());
+      out[area.trim()] = colour;
+    }
+    return out;
+  },
+  dayHours: (v, field) => {
+    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([d, h]) => realDay(d)
+      && Array.isArray(h) && h.length === 2 && clockMinutes(h[0]) != null && clockMinutes(h[1]) != null && clockMinutes(h[0]) < clockMinutes(h[1]));
+    if (!ok) throw new Error(`${field} should map a date to two times, like {"2026-09-18": ["09:00", "13:00"]}`);
+    return Object.fromEntries(Object.entries(v).map(([d, h]) => [d, [h[0], h[1]]]));
+  },
+};
+
+// Settings that change one key at a time: a key set to null is removed; the rest are kept.
+const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours'];
+
+function mergeSetting(field, current, value) {
+  if (!MERGED_SETTINGS.includes(field) || !value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = { ...(current ?? {}) };
+  for (const [key, v] of Object.entries(value)) {
+    const had = Object.keys(out).find((k) => norm(k) === norm(key));
+    if (had !== undefined) delete out[had];
+    if (v !== null) out[key.trim()] = v;
+  }
+  return out;
+}
+
+function checkConfigField(field, value) {
+  const check = Object.hasOwn(CONFIG_CHECKS, field) ? CONFIG_CHECKS[field] : null;
+  if (!check) throw new Error(`The planner has no setting "${field}" — settings: ${Object.keys(CONFIG_CHECKS).join(', ')}`);
+  return check(value, field);
+}
+
+// The planner's settings: the defaults, with every good saved field over them. A bad saved field
+// keeps its default and is named in `problems`.
+function readPlannerConfig(doc) {
+  const config = copy(CALENDAR_DEFAULTS);
+  const problems = [];
+  const saved = doc?.calendar?.config;
+  if (saved && saved.status === 'active') {
+    for (const field of Object.keys(CONFIG_CHECKS)) {
+      if (saved[field] === undefined) continue;
+      try {
+        config[field] = checkConfigField(field, saved[field]);
+      } catch (e) {
+        problems.push(`The planner setting ${field} isn't usable (${e.message}), so it's using the default`);
+      }
+    }
+  }
+  return { config, problems };
+}
+
+// ---- Time off, priority, the brief (Claude's controls) -----------------------------------------
+
+// Time off: `off:<start day>` records in the calendar map — whole days (start and end both dates,
+// end included) or a stretch of hours (both YYYY-MM-DDTHH:MM, end not included) — covering `areas`,
+// or everything when that's empty. Cancelled ones are archived.
+function timeOff(doc) {
+  return Object.values(doc?.calendar ?? {})
+    .filter((r) => r.status === 'active' && String(r.id).startsWith('off:'))
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+}
+
+const wholeDays = (off) => DAY.test(off.start ?? '') && DAY.test(off.end ?? '');
+const inScope = (off, area) => !off.areas?.length || off.areas.some((a) => norm(a) === norm(area));
+
+const offCovers = (off, day) => wholeDays(off) && off.start <= day && day <= off.end;
+
+// Whether an item is excused on a day: whole-day time off covering its area.
+function excused(doc, item, day, offs = timeOff(doc)) {
+  return offs.some((o) => offCovers(o, day) && inScope(o, item.area));
+}
+
+function localMs(stamp) {
+  const [d, t = '00:00'] = stamp.split('T');
+  const [y, m, dd] = d.split('-').map(Number);
+  const [h, min] = t.split(':').map(Number);
+  return new Date(y, m - 1, dd, h, min).getTime();
+}
+
+// The stretches of hours off that touch a day, in milliseconds.
+function offWindows(doc, day, offs = timeOff(doc)) {
+  const from = localMs(day);
+  const to = localMs(addDays(day, 1));
+  return offs
+    .filter((o) => STAMP.test(o.start ?? '') && STAMP.test(o.end ?? ''))
+    .map((o) => ({ start: localMs(o.start), end: localMs(o.end), areas: o.areas ?? [] }))
+    .filter((w) => w.start < to && w.end > from);
+}
+
+// The line Today shows on a day with time off: 'Time off — Maya leaves for Austria · Job search'.
+function offLine(doc, day) {
+  const parts = [];
+  for (const o of timeOff(doc)) {
+    const hours = offWindows(doc, day, [o]).length > 0;
+    if (!hours && !offCovers(o, day)) continue;
+    const areas = o.areas?.length ? ` · ${o.areas.join(', ')}` : '';
+    const when = hours ? ` · ${o.start.slice(11)}–${o.end.slice(11)}` : '';
+    parts.push(`${o.reason || 'Time off'}${areas}${when}`);
+  }
+  return parts.length ? `Time off — ${parts.join('; ')}` : null;
+}
+
+// Time off as Claude's tool writes it, checked: plain English when it's wrong.
+function checkTimeOff({ start, end, areas = [], reason = '' } = {}) {
+  const s = String(start ?? '').trim();
+  const e = String(end ?? start ?? '').trim();
+  const days = realDay(s) && realDay(e);
+  const stamp = (v) => STAMP.test(v) && realDay(v.slice(0, 10)) && clockMinutes(v.slice(11)) != null;
+  const hours = stamp(s) && stamp(e);
+  if (!days && !hours) throw new Error('Time off needs start and end as dates (YYYY-MM-DD), or both as a date and time (YYYY-MM-DDTHH:MM)');
+  if (days ? e < s : e <= s) throw new Error('Time off has to end after it starts');
+  if (!Array.isArray(areas) || !areas.every(text)) throw new Error('areas should be a list of area names, or left out for everything');
+  const why = String(reason ?? '').trim();
+  if (why.length > 200) throw new Error('The reason can be at most 200 characters');
+  return { start: s, end: e, areas: areas.map((a) => a.trim()), reason: why };
+}
+
+// 'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search' or '… · everything'.
+function offText(o) {
+  const dayText = (d) => `${shortWeekday(d)} ${shortDate(d)}`;
+  const range = o.start.length === 10
+    ? (o.start === o.end ? dayText(o.start) : `${dayText(o.start)} – ${dayText(o.end)}`)
+    : `${dayText(o.start.slice(0, 10))}, ${o.start.slice(11)}–${o.end.slice(11)}`;
+  return `${range} — ${o.reason || 'Time off'} · ${o.areas?.length ? o.areas.join(', ') : 'everything'}`;
+}
+
+function nextOffId(doc, start) {
+  const day = String(start).slice(0, 10);
+  let id = `off:${day}`;
+  for (let n = 0; doc?.calendar?.[id]; n++) id = `off:${day}${String.fromCharCode(98 + n)}`;
+  return id;
+}
+
+// ---- Countdowns ---------------------------------------------------------------------------------
+
+// Dates George is counting down to — the assessment centre, a birthday — kept as `count:<day>:<n>`
+// records beside the planner's. The Countdown widget shows them and Claude sets them (the
+// `countdown` op); the planner books nothing for them.
+
+// A countdown checked: plain English when it's wrong. `day` must be today or later.
+function checkCountdown({ title, day } = {}, today) {
+  const t = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) throw new Error('A countdown needs a name');
+  if (t.length > 60) throw new Error('A countdown name can be at most 60 characters');
+  if (!realDay(String(day ?? ''))) throw new Error('A countdown needs a date as YYYY-MM-DD');
+  if (day < today) throw new Error("That date has passed — a countdown is for something still to come");
+  return { title: t, day };
+}
+
+function nextCountdownId(doc, day) {
+  let n = 1;
+  while (doc?.calendar?.[`count:${day}:${n}`]) n++;
+  return `count:${day}:${n}`;
+}
+
+// The countdowns still to come (today's included), soonest first, with the days left.
+function countdowns(doc, today) {
+  return Object.values(doc?.calendar ?? {})
+    .filter((r) => r.status === 'active' && String(r.id).startsWith('count:') && realDay(r.day ?? '') && r.day >= today && text(r.title))
+    .map((r) => ({ id: r.id, title: r.title, day: r.day, days: daysBetween(today, r.day) }))
+    .sort((a, b) => (a.day === b.day ? a.title.localeCompare(b.title) : a.day < b.day ? -1 : 1));
+}
+
+// '12 days', 'tomorrow', 'today'.
+const daysLeft = (days) => (days === 0 ? 'today' : days === 1 ? 'tomorrow' : `${days} days`);
+
+// A priority: the item says so, or its area is one of the planner's priority areas.
+function isPriority(doc, item, config = readPlannerConfig(doc).config) {
+  return item.priority === true || config.priorityAreas.some((a) => norm(a) === norm(item.area));
+}
+
+// Claude's brief for a day (a journal record, kind 'brief').
+function briefFor(doc, day) {
+  const rec = doc?.journal?.[`brief:${day}`];
+  return rec && rec.status === 'active' && rec.text ? rec.text : null;
+}
+
+const dayRecordId = (day) => `day:${weekday(day)}`;
+
+function dayRecord(doc, day) {
+  const rec = doc?.calendar?.[dayRecordId(day)];
+  return rec && rec.status === 'active' && rec.day === day ? rec : null;
+}
+
+function plannerStatus(doc) {
+  const rec = doc?.calendar?.status;
+  return rec && rec.status === 'active' ? rec : null;
+}
+
+// Today's planned times by item, from today's exact, fixed, done and part-done blocks (rough ones
+// never show on the list). An item in two blocks (the rest of a part-done one) shows the later.
+function todaySlots(doc, today) {
+  const slots = new Map();
+  for (const b of dayRecord(doc, today)?.blocks ?? []) {
+    if (b.state === 'rough') continue;
+    for (const id of b.items ?? []) {
+      const had = slots.get(id);
+      if (!had || Date.parse(b.start) > Date.parse(had.start)) slots.set(id, { start: b.start, end: b.end, state: b.state, title: b.title });
+    }
+  }
+  return slots;
+}
+
+const plannerNotes = (doc, today) => [...(dayRecord(doc, today)?.notes ?? [])];
+
+// The notes the header shows: newest first, at most two, without the ones hidden on this device
+// today (hidden keys are "<day>|<note>").
+function visibleNotes(notes, hiddenKeys, today) {
+  const hidden = new Set(hiddenKeys);
+  return notes.filter((n) => !hidden.has(`${today}|${n}`)).reverse().slice(0, 2);
+}
+
+function clockLabel(iso) {
+  const d = new Date(iso);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const localDayOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+// 'HH:MM' for a moment today; 'Mon 14 Sep, 12:00' for any other day.
+function momentLabel(iso, now) {
+  const d = new Date(iso);
+  const day = localDayOf(d);
+  return day === localDayOf(now) ? clockLabel(iso) : `${shortWeekday(day)} ${shortDate(day)}, ${clockLabel(iso)}`;
+}
+
+// When the planner last ran, if that's more than `minutes` ago; null while it's running, before it
+// has ever run, and while it's paused.
+function staleSince(doc, now, minutes = 70) {
+  const s = plannerStatus(doc);
+  if (!s?.lastRun || s.paused) return null;
+  return now.getTime() - Date.parse(s.lastRun) > minutes * 60000 ? momentLabel(s.lastRun, now) : null;
+}
+
+// Today's rows in the day's order: suggestions stay on top; then undone rows with a time, earliest
+// first; then every other row in the order it came (undone, then done).
+function timedOrder(rows, slots) {
+  const timed = (r) => !r.suggested && !r.done && slots.has(r.item.id);
+  const start = (r) => Date.parse(slots.get(r.item.id).start);
+  return [
+    ...rows.filter((r) => r.suggested),
+    ...rows.filter(timed).sort((a, b) => start(a) - start(b)),
+    ...rows.filter((r) => !r.suggested && !timed(r)),
+  ];
+}
+
+// ⚙ → Calendar planner: the folded line and what's inside.
+function plannerSummary(doc, now) {
+  const { config } = readPlannerConfig(doc);
+  const exact = config.exactDays === 1 ? 'today exact' : config.exactDays === 2 ? 'today and tomorrow exact' : `the first ${config.exactDays} days exact`;
+  const lines = [`Plans ${config.hours[0]}–${config.hours[1]}, ${config.days} days ahead: ${exact}, rough after that.`];
+  const s = plannerStatus(doc);
+  if (!s) return { summary: 'not set up', lines: [...lines, "It hasn't run yet — the README says how to set it up."] };
+  lines.push(`Last ran ${momentLabel(s.lastRun, now)}${s.version ? ` · build ${s.version}` : ''}.`);
+  if (s.lastError) lines.push(`Last problem: ${s.lastError}`);
+  lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
+  return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
+}
+return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
+})();
+
+// ---- js/checkins.js
+const __js_checkins = (() => {
+// Check-ins (docs/superpowers/specs/2026-09-26-checkins-design.md): one short question about a task,
+// asked when George ticks it or when its calendar block ends with it unticked, answered in a line or
+// by voice, and kept for Claude to pick up later. One journal record per task per day,
+// `reflect:<day>:<itemId>`, so the app and the planner asking about the same task write one record.
+// Pure: the store writes them (js/data.js), the app shows them (js/ui/checkin.js), the planner asks
+// about misses (planner/checkins.js).
+
+const { scheduleBlocks, localDate } = __js_plan_state;
+const { dayRecord } = __js_calendar;
+
+const SAID_MAX = 4000;
+const SUMMARY_MAX = 600;
+// A block counts as missed once it has been over for this long with its task unticked: he often
+// ticks a little after finishing.
+const MISS_GRACE_MINUTES = 30;
+
+const checkinId = (day, itemId) => `reflect:${day}:${itemId}`;
+
+const values = (map) => Object.values(map ?? {});
+const live = (r) => r?.status === 'active';
+const isCheckin = (r) => r?.kind === 'reflect';
+
+function questionFor(why, title) {
+  const t = `"${String(title ?? '').trim()}"`;
+  return why === 'missed' ? `${t} isn't ticked — what happened?` : `How did ${t} go?`;
+}
+
+// The ones waiting for an answer today, oldest first. Only today's: a question that has lost its
+// moment isn't asked the next morning.
+function waitingCheckins(doc, today) {
+  return values(doc?.journal)
+    .filter((r) => isCheckin(r) && live(r) && r.day === today && !r.answeredAt && live(doc.items?.[r.itemId]))
+    .sort((a, b) => String(a.askedAt ?? '').localeCompare(String(b.askedAt ?? '')) || a.id.localeCompare(b.id));
+}
+
+// Every check-in from `from` on — answered, unanswered and skipped (dismissed) — newest first.
+function checkinsSince(doc, from) {
+  return values(doc?.journal)
+    .filter((r) => isCheckin(r) && (live(r) || r.status === 'dismissed') && r.day >= from)
+    .sort((a, b) => b.day.localeCompare(a.day) || String(b.answeredAt ?? b.askedAt ?? '').localeCompare(String(a.answeredAt ?? a.askedAt ?? '')));
+}
+
+// Tasks whose block ended at least MISS_GRACE_MINUTES ago today with the task still unticked:
+// [{ itemId, end }]. Habits (the Gym, the walk) are left to Claude's catch-up.
+function missedTasks(doc, today, now) {
+  const doneToday = new Set(values(doc.logs).filter((l) => live(l) && l.kind === 'done' && l.day === today).map((l) => l.itemId));
+  const cutoff = now.getTime() - MISS_GRACE_MINUTES * 60000;
+  const out = [];
+  const seen = new Set();
+  const open = (id) => live(doc.items?.[id]) && doc.items[id].type === 'task' && !doneToday.has(id) && !seen.has(id);
+  for (const b of [...scheduleBlocks(doc), ...(dayRecord(doc, today)?.blocks ?? [])]) {
+    if (!b.start || localDate(b.start) !== today || Date.parse(b.end) > cutoff || ['done', 'partial'].includes(b.state)) continue;
+    for (const id of b.items ?? []) if (open(id)) { seen.add(id); out.push({ itemId: id, end: b.end }); }
+  }
+  for (const m of dayRecord(doc, today)?.missed ?? []) {
+    if (open(m.itemId)) { seen.add(m.itemId); out.push({ itemId: m.itemId, end: null }); }
+  }
+  return out;
+}
+
+// ---- Gemini tidies what he said -------------------------------------------------------------------
+
+const SUMMARY_SYSTEM = [
+  "You tidy George's spoken or typed answer about one piece of work into a short note for his own records.",
+  'Two or three plain sentences, first person, in his words where you can; British English.',
+  'Keep every specific: what he did, what went well, what went wrong, what got in the way, numbers, names.',
+  'Drop filler and repetition. Add nothing he did not say: no advice, no praise, no judgement.',
+  'Reply with JSON only: {"summary": "…"}',
+].join(' ');
+
+function summaryPrompt(rec, said) {
+  const context = rec.why === 'missed'
+    ? `The task "${rec.title}" was booked in his calendar and wasn't ticked off. He was asked what happened.`
+    : `He has just ticked off the task "${rec.title}". He was asked how it went.`;
+  return `${context}\n\nWhat he said:\n${String(said).slice(0, SAID_MAX)}`;
+}
+
+function parseSummary(data) {
+  const text = typeof data?.summary === 'string' ? data.summary.replace(/\s+/g, ' ').trim() : '';
+  if (!text) throw new Error('No summary in the reply');
+  return text.slice(0, SUMMARY_MAX);
+}
+
+// The planner's record of its asking (planner/checkins.js), for ⚙ → Claude.
+const CHECKIN_STATUS = 'checkins:status';
+return { SAID_MAX, SUMMARY_MAX, MISS_GRACE_MINUTES, checkinId, questionFor, waitingCheckins, checkinsSince, missedTasks, SUMMARY_SYSTEM, summaryPrompt, parseSummary, CHECKIN_STATUS };
+})();
+
 // ---- js/data.js
 const __js_data = (() => {
 // The store: the whole state is one document in localStorage. Every change goes through here,
 // stamps `updated`, saves, and tells listeners why it changed.
 
-const { logicalDay, addDays, weekStart } = __js_dates;
+const { logicalDay, addDays } = __js_dates;
 const { MAPS, emptyDoc, stableStringify, isDoc, journalId, recordProblem, recoverDoc } = __js_doc;
 const { mergeDocs } = __js_merge;
 const { FLAG_TEXT_MAX, FLAG_KINDS, capContext } = __js_flags;
 const { CHANGE_KEEP_DAYS, canUndo, diffDocs } = __js_changes;
 const { checkLength, checkClock, checkNotes } = __js_parse;
 const { reviseRecord, recordContent } = __js_record;
+const { checkinId, SAID_MAX } = __js_checkins;
 const { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } = __js_workflow;
 
 const DATA_KEY = 'dash_data';
@@ -1192,22 +1697,11 @@ const DEFAULT_SETTINGS = {
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
 
-// The content each kind of journal record carries, with its empty values.
+// The content each kind of journal record saveJournal writes, with its empty values. (The retired
+// Coach's kinds — talk, entry, checkin, digest, guide — are still valid in old data; nothing writes them.)
 const JOURNAL_FIELDS = {
-  checkin: { questions: [], answers: [], feedback: '', tomorrowIds: [], model: '' },
-  digest: { summary: '', wins: [], slipped: [], focus: '', model: '' },
   brief: { text: '' },
-  // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
-  // slot; Claude's guide for the Coach, filed under the week's Monday.
-  // flagIds: the flags its notes for Claude became, as they were made (js/ui/coach.js keep).
-  talk: { slot: '', messages: [], handoffs: [], flagIds: [], done: false, model: '', proposal: null },
-  entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
-  guide: { text: '' },
 };
-const SLOTTED = new Set(['talk', 'entry']);
-// The Mind's own conversations (js/mind.js): mind-n opened by the planner, deep-n by Claude's runs.
-const SLOT = /^(morning|afternoon|evening|own-\d{1,2}|mind-\d{1,3}|deep-\d{1,2})$/;
-const WEEKLY = new Set(['digest', 'guide']);
 
 function readJson(storage, key) {
   try {
@@ -1500,11 +1994,9 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     });
   }
 
-  // A check-in or a digest. The id comes from the kind and the day, so there is only ever one
-  // check-in per day and one digest per week, whichever device writes it. Creates the record, or
-  // overwrites just the content fields given on the existing one (so saving the answers keeps
-  // the questions). Content is copied in, never shared with the caller.
-  function saveJournal(record, source = 'gemini') {
+  // Claude's brief for a day: one per day, whichever device writes it. Creates the record, or
+  // overwrites just the content fields given on the existing one. Content is copied in.
+  function saveJournal(record, source = 'claude') {
     const kind = record?.kind;
     const fields = JOURNAL_FIELDS[kind];
     if (!fields) throw new Error(`Unknown journal kind ${kind}`);
@@ -1512,12 +2004,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || addDays(day, 0) !== day) {
       throw new Error(`A journal record needs a real day, not ${day}`);
     }
-    if (WEEKLY.has(kind) && weekStart(day) !== day) throw new Error(`A ${kind} is filed under its week's Monday`);
-    let id = journalId(kind, day);
-    if (SLOTTED.has(kind)) {
-      if (!SLOT.test(String(record.slot ?? ''))) throw new Error(`A ${kind} needs a slot: morning, afternoon, evening or own-1 …`);
-      id = `${id}:${record.slot}`;
-    }
+    const id = journalId(kind, day);
     if (record.id != null && record.id !== id) throw new Error(`A ${kind} for ${day} has the id ${id}`);
     const content = {};
     for (const key of Object.keys(fields)) {
@@ -1529,6 +2016,44 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     commit('local');
     return doc.journal[id];
   }
+
+  // Check-ins (js/checkins.js): one per task per day. A tick asks "how did it go", a missed block
+  // "what happened" — and a tick after a missed block's question turns it into "how did it go". An
+  // answered one is never asked again; `onlyNew` (the planner) never touches one that exists.
+  function askCheckin({ day = today(), itemId, why, source = 'me', onlyNew = false }) {
+    const item = doc.items[itemId];
+    if (!item) throw new Error('Item not found');
+    const id = checkinId(day, itemId);
+    const existing = doc.journal[id];
+    if (existing) {
+      if (onlyNew || existing.answeredAt) return null;
+      if (existing.why === why && existing.status === 'dismissed') return null;
+      if (existing.why === why && existing.status === 'active') return existing;
+      writeRecord('journal', id, { ...existing, why, title: item.title, status: 'active', askedAt: stamp() });
+      commit('local');
+      return doc.journal[id];
+    }
+    return create('journal', { id, kind: 'reflect', day, itemId, title: item.title, why, said: '', summary: '', askedAt: stamp(), answeredAt: null, source });
+  }
+
+  // A tick taken off: its unanswered "how did it go" goes (archived, so a tick again asks again —
+  // unlike Skip, which dismisses it for good).
+  function withdrawCheckin(day, itemId) {
+    const rec = doc.journal[checkinId(day, itemId)];
+    if (!rec || rec.answeredAt || rec.status !== 'active' || rec.why !== 'done') return null;
+    return patch('journal', rec.id, { status: 'archived' });
+  }
+
+  function answerCheckin(id, said) {
+    const rec = doc.journal[id];
+    if (rec?.kind !== 'reflect') throw new Error('No such check-in');
+    const text = String(said ?? '').trim().slice(0, SAID_MAX);
+    if (!text) throw new Error('Say or type something first — or skip it');
+    return patch('journal', id, { said: text, answeredAt: stamp(), status: 'active' });
+  }
+
+  const summariseCheckin = (id, summary, model = '') => patch('journal', id, { summary, model });
+  const skipCheckin = (id) => patch('journal', id, { status: 'dismissed' });
 
   // Everything one Gemini reply (or a plan from Claude) proposes, written as suggestions in one
   // commit: a goal with its milestones and the habits and weekly targets linked to it, and tasks
@@ -1852,6 +2377,11 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
 
     saveJournal,
+    askCheckin,
+    withdrawCheckin,
+    answerCheckin,
+    summariseCheckin,
+    skipCheckin,
     updateJournal: (id, changes) => patch('journal', id, structuredClone(changes)),
     pruneTalks,
     addPlan,
@@ -2100,363 +2630,6 @@ function mergeStoredEvents(previous, incoming) {
 return { ConflictError, encodeBase64, decodeBase64, accessError, createGitHubClient, syncOnce, createSyncScheduler, mergeStoredEvents };
 })();
 
-// ---- js/calendar.js
-const __js_calendar = (() => {
-// The calendar planner's records in the synced document — the `calendar` map — and what the page
-// and Claude's tool read from them. Pure. The planner (planner/) writes `day:1` … `day:7` (one per
-// weekday, overwritten when that weekday comes round again: the blocks it booked, what George
-// deleted or missed, its notes) and `status`; `config` holds its settings, written by Claude or
-// seeded by the planner.
-
-const { weekday, shortWeekday, shortDate, addDays, daysBetween } = __js_dates;
-
-const CALENDAR_DEFAULTS = {
-  hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
-  days: 7, exactDays: 2, firmUpHour: 20,
-  ignore: ['University of York', 'MiM Committee Meetings', 'Family', 'PhD', 'Holidays in United Kingdom'],
-  areaCalendars: { 'Job search': 'Application', 'Assessment centre': 'Application', Health: 'Gym', Challenger: 'Challenger' },
-  defaultCalendar: 'main',
-  habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
-  priorityAreas: [],
-  areaColors: {},
-  dayHours: {},
-};
-
-// Google Calendar's event colours, by the names George sees, and their ids in the API.
-const COLOR_NAMES = {
-  Lavender: '1', Sage: '2', Grape: '3', Flamingo: '4', Banana: '5', Tangerine: '6',
-  Peacock: '7', Graphite: '8', Blueberry: '9', Basil: '10', Tomato: '11',
-};
-
-const colorName = (id) => Object.keys(COLOR_NAMES).find((n) => COLOR_NAMES[n] === String(id)) ?? null;
-
-const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
-const pad = (n) => String(n).padStart(2, '0');
-const text = (v) => typeof v === 'string' && v.trim() !== '';
-const copy = (v) => JSON.parse(JSON.stringify(v));
-const norm = (s) => String(s ?? '').trim().toLowerCase();
-const realDay = (d) => typeof d === 'string' && DAY.test(d) && addDays(d, 0) === d;
-
-function clockMinutes(hhmm) {
-  const m = CLOCK.exec(String(hhmm ?? ''));
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-}
-
-function wholeNumber(lo, hi) {
-  return (v, field) => {
-    if (!(Number.isInteger(v) && v >= lo && v <= hi)) throw new Error(`${field} should be a whole number from ${lo} to ${hi}`);
-    return v;
-  };
-}
-
-// Each setting's check: the value to keep, or a plain-English reason.
-const CONFIG_CHECKS = {
-  hours: (v, field) => {
-    const ok = Array.isArray(v) && v.length === 2 && clockMinutes(v[0]) != null && clockMinutes(v[1]) != null
-      && clockMinutes(v[0]) < clockMinutes(v[1]);
-    if (!ok) throw new Error(`${field} should be two times like ["09:00", "19:00"], the first earlier`);
-    return [v[0], v[1]];
-  },
-  gapMinutes: wholeNumber(0, 60),
-  defaultMinutes: wholeNumber(5, 240),
-  maxBlockMinutes: wholeNumber(30, 480),
-  days: wholeNumber(1, 14),
-  exactDays: wholeNumber(1, 7),
-  firmUpHour: wholeNumber(12, 23),
-  ignore: (v, field) => {
-    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of calendar names`);
-    return v.map((s) => s.trim());
-  },
-  areaCalendars: (v, field) => {
-    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([a, c]) => text(a) && text(c));
-    if (!ok) throw new Error(`${field} should map each area to a calendar name, like {"Job search": "Application"}`);
-    return Object.fromEntries(Object.entries(v).map(([a, c]) => [a.trim(), c.trim()]));
-  },
-  defaultCalendar: (v, field) => {
-    if (!text(v)) throw new Error(`${field} should be a calendar name, or "main"`);
-    return v.trim();
-  },
-  habitEvents: (v, field) => {
-    const ok = Array.isArray(v) && v.every((l) => l && typeof l === 'object' && text(l.habit) && text(l.calendar) && text(l.title));
-    if (!ok) throw new Error(`${field} should be a list like [{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]`);
-    return v.map((l) => ({ habit: l.habit.trim(), calendar: l.calendar.trim(), title: l.title.trim() }));
-  },
-  priorityAreas: (v, field) => {
-    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
-    return v.map((s) => s.trim());
-  },
-  areaColors: (v, field) => {
-    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`${field} should map each area to a colour, like {"Assessment centre": "Grape"}`);
-    const out = {};
-    const used = new Map();
-    for (const [area, name] of Object.entries(v)) {
-      const colour = Object.keys(COLOR_NAMES).find((n) => n.toLowerCase() === norm(name));
-      if (!text(area) || !colour) throw new Error(`${field}: "${name}" isn't one of Google's colours — ${Object.keys(COLOR_NAMES).join(', ')}`);
-      if (used.has(colour)) throw new Error(`${field} gives ${colour} to both ${used.get(colour)} and ${area.trim()} — each area needs its own colour`);
-      used.set(colour, area.trim());
-      out[area.trim()] = colour;
-    }
-    return out;
-  },
-  dayHours: (v, field) => {
-    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([d, h]) => realDay(d)
-      && Array.isArray(h) && h.length === 2 && clockMinutes(h[0]) != null && clockMinutes(h[1]) != null && clockMinutes(h[0]) < clockMinutes(h[1]));
-    if (!ok) throw new Error(`${field} should map a date to two times, like {"2026-09-18": ["09:00", "13:00"]}`);
-    return Object.fromEntries(Object.entries(v).map(([d, h]) => [d, [h[0], h[1]]]));
-  },
-};
-
-// Settings that change one key at a time: a key set to null is removed; the rest are kept.
-const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours'];
-
-function mergeSetting(field, current, value) {
-  if (!MERGED_SETTINGS.includes(field) || !value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const out = { ...(current ?? {}) };
-  for (const [key, v] of Object.entries(value)) {
-    const had = Object.keys(out).find((k) => norm(k) === norm(key));
-    if (had !== undefined) delete out[had];
-    if (v !== null) out[key.trim()] = v;
-  }
-  return out;
-}
-
-function checkConfigField(field, value) {
-  const check = Object.hasOwn(CONFIG_CHECKS, field) ? CONFIG_CHECKS[field] : null;
-  if (!check) throw new Error(`The planner has no setting "${field}" — settings: ${Object.keys(CONFIG_CHECKS).join(', ')}`);
-  return check(value, field);
-}
-
-// The planner's settings: the defaults, with every good saved field over them. A bad saved field
-// keeps its default and is named in `problems`.
-function readPlannerConfig(doc) {
-  const config = copy(CALENDAR_DEFAULTS);
-  const problems = [];
-  const saved = doc?.calendar?.config;
-  if (saved && saved.status === 'active') {
-    for (const field of Object.keys(CONFIG_CHECKS)) {
-      if (saved[field] === undefined) continue;
-      try {
-        config[field] = checkConfigField(field, saved[field]);
-      } catch (e) {
-        problems.push(`The planner setting ${field} isn't usable (${e.message}), so it's using the default`);
-      }
-    }
-  }
-  return { config, problems };
-}
-
-// ---- Time off, priority, the brief (Claude's controls) -----------------------------------------
-
-// Time off: `off:<start day>` records in the calendar map — whole days (start and end both dates,
-// end included) or a stretch of hours (both YYYY-MM-DDTHH:MM, end not included) — covering `areas`,
-// or everything when that's empty. Cancelled ones are archived.
-function timeOff(doc) {
-  return Object.values(doc?.calendar ?? {})
-    .filter((r) => r.status === 'active' && String(r.id).startsWith('off:'))
-    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
-}
-
-const wholeDays = (off) => DAY.test(off.start ?? '') && DAY.test(off.end ?? '');
-const inScope = (off, area) => !off.areas?.length || off.areas.some((a) => norm(a) === norm(area));
-
-const offCovers = (off, day) => wholeDays(off) && off.start <= day && day <= off.end;
-
-// Whether an item is excused on a day: whole-day time off covering its area.
-function excused(doc, item, day, offs = timeOff(doc)) {
-  return offs.some((o) => offCovers(o, day) && inScope(o, item.area));
-}
-
-function localMs(stamp) {
-  const [d, t = '00:00'] = stamp.split('T');
-  const [y, m, dd] = d.split('-').map(Number);
-  const [h, min] = t.split(':').map(Number);
-  return new Date(y, m - 1, dd, h, min).getTime();
-}
-
-// The stretches of hours off that touch a day, in milliseconds.
-function offWindows(doc, day, offs = timeOff(doc)) {
-  const from = localMs(day);
-  const to = localMs(addDays(day, 1));
-  return offs
-    .filter((o) => STAMP.test(o.start ?? '') && STAMP.test(o.end ?? ''))
-    .map((o) => ({ start: localMs(o.start), end: localMs(o.end), areas: o.areas ?? [] }))
-    .filter((w) => w.start < to && w.end > from);
-}
-
-// The line Today shows on a day with time off: 'Time off — Maya leaves for Austria · Job search'.
-function offLine(doc, day) {
-  const parts = [];
-  for (const o of timeOff(doc)) {
-    const hours = offWindows(doc, day, [o]).length > 0;
-    if (!hours && !offCovers(o, day)) continue;
-    const areas = o.areas?.length ? ` · ${o.areas.join(', ')}` : '';
-    const when = hours ? ` · ${o.start.slice(11)}–${o.end.slice(11)}` : '';
-    parts.push(`${o.reason || 'Time off'}${areas}${when}`);
-  }
-  return parts.length ? `Time off — ${parts.join('; ')}` : null;
-}
-
-// Time off as Claude's tool writes it, checked: plain English when it's wrong.
-function checkTimeOff({ start, end, areas = [], reason = '' } = {}) {
-  const s = String(start ?? '').trim();
-  const e = String(end ?? start ?? '').trim();
-  const days = realDay(s) && realDay(e);
-  const stamp = (v) => STAMP.test(v) && realDay(v.slice(0, 10)) && clockMinutes(v.slice(11)) != null;
-  const hours = stamp(s) && stamp(e);
-  if (!days && !hours) throw new Error('Time off needs start and end as dates (YYYY-MM-DD), or both as a date and time (YYYY-MM-DDTHH:MM)');
-  if (days ? e < s : e <= s) throw new Error('Time off has to end after it starts');
-  if (!Array.isArray(areas) || !areas.every(text)) throw new Error('areas should be a list of area names, or left out for everything');
-  const why = String(reason ?? '').trim();
-  if (why.length > 200) throw new Error('The reason can be at most 200 characters');
-  return { start: s, end: e, areas: areas.map((a) => a.trim()), reason: why };
-}
-
-// 'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search' or '… · everything'.
-function offText(o) {
-  const dayText = (d) => `${shortWeekday(d)} ${shortDate(d)}`;
-  const range = o.start.length === 10
-    ? (o.start === o.end ? dayText(o.start) : `${dayText(o.start)} – ${dayText(o.end)}`)
-    : `${dayText(o.start.slice(0, 10))}, ${o.start.slice(11)}–${o.end.slice(11)}`;
-  return `${range} — ${o.reason || 'Time off'} · ${o.areas?.length ? o.areas.join(', ') : 'everything'}`;
-}
-
-function nextOffId(doc, start) {
-  const day = String(start).slice(0, 10);
-  let id = `off:${day}`;
-  for (let n = 0; doc?.calendar?.[id]; n++) id = `off:${day}${String.fromCharCode(98 + n)}`;
-  return id;
-}
-
-// ---- Countdowns ---------------------------------------------------------------------------------
-
-// Dates George is counting down to — the assessment centre, a birthday — kept as `count:<day>:<n>`
-// records beside the planner's. Only the Countdown widget and the Coach read them; the planner
-// books nothing for them.
-
-// A countdown checked: plain English when it's wrong. `day` must be today or later.
-function checkCountdown({ title, day } = {}, today) {
-  const t = String(title ?? '').replace(/\s+/g, ' ').trim();
-  if (!t) throw new Error('A countdown needs a name');
-  if (t.length > 60) throw new Error('A countdown name can be at most 60 characters');
-  if (!realDay(String(day ?? ''))) throw new Error('A countdown needs a date as YYYY-MM-DD');
-  if (day < today) throw new Error("That date has passed — a countdown is for something still to come");
-  return { title: t, day };
-}
-
-function nextCountdownId(doc, day) {
-  let n = 1;
-  while (doc?.calendar?.[`count:${day}:${n}`]) n++;
-  return `count:${day}:${n}`;
-}
-
-// The countdowns still to come (today's included), soonest first, with the days left.
-function countdowns(doc, today) {
-  return Object.values(doc?.calendar ?? {})
-    .filter((r) => r.status === 'active' && String(r.id).startsWith('count:') && realDay(r.day ?? '') && r.day >= today && text(r.title))
-    .map((r) => ({ id: r.id, title: r.title, day: r.day, days: daysBetween(today, r.day) }))
-    .sort((a, b) => (a.day === b.day ? a.title.localeCompare(b.title) : a.day < b.day ? -1 : 1));
-}
-
-// '12 days', 'tomorrow', 'today'.
-const daysLeft = (days) => (days === 0 ? 'today' : days === 1 ? 'tomorrow' : `${days} days`);
-
-// A priority: the item says so, or its area is one of the planner's priority areas.
-function isPriority(doc, item, config = readPlannerConfig(doc).config) {
-  return item.priority === true || config.priorityAreas.some((a) => norm(a) === norm(item.area));
-}
-
-// Claude's brief for a day (a journal record, kind 'brief').
-function briefFor(doc, day) {
-  const rec = doc?.journal?.[`brief:${day}`];
-  return rec && rec.status === 'active' && rec.text ? rec.text : null;
-}
-
-const dayRecordId = (day) => `day:${weekday(day)}`;
-
-function dayRecord(doc, day) {
-  const rec = doc?.calendar?.[dayRecordId(day)];
-  return rec && rec.status === 'active' && rec.day === day ? rec : null;
-}
-
-function plannerStatus(doc) {
-  const rec = doc?.calendar?.status;
-  return rec && rec.status === 'active' ? rec : null;
-}
-
-// Today's planned times by item, from today's exact, fixed, done and part-done blocks (rough ones
-// never show on the list). An item in two blocks (the rest of a part-done one) shows the later.
-function todaySlots(doc, today) {
-  const slots = new Map();
-  for (const b of dayRecord(doc, today)?.blocks ?? []) {
-    if (b.state === 'rough') continue;
-    for (const id of b.items ?? []) {
-      const had = slots.get(id);
-      if (!had || Date.parse(b.start) > Date.parse(had.start)) slots.set(id, { start: b.start, end: b.end, state: b.state, title: b.title });
-    }
-  }
-  return slots;
-}
-
-const plannerNotes = (doc, today) => [...(dayRecord(doc, today)?.notes ?? [])];
-
-// The notes the header shows: newest first, at most two, without the ones hidden on this device
-// today (hidden keys are "<day>|<note>").
-function visibleNotes(notes, hiddenKeys, today) {
-  const hidden = new Set(hiddenKeys);
-  return notes.filter((n) => !hidden.has(`${today}|${n}`)).reverse().slice(0, 2);
-}
-
-function clockLabel(iso) {
-  const d = new Date(iso);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-const localDayOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-// 'HH:MM' for a moment today; 'Mon 14 Sep, 12:00' for any other day.
-function momentLabel(iso, now) {
-  const d = new Date(iso);
-  const day = localDayOf(d);
-  return day === localDayOf(now) ? clockLabel(iso) : `${shortWeekday(day)} ${shortDate(day)}, ${clockLabel(iso)}`;
-}
-
-// When the planner last ran, if that's more than `minutes` ago; null while it's running, before it
-// has ever run, and while it's paused.
-function staleSince(doc, now, minutes = 70) {
-  const s = plannerStatus(doc);
-  if (!s?.lastRun || s.paused) return null;
-  return now.getTime() - Date.parse(s.lastRun) > minutes * 60000 ? momentLabel(s.lastRun, now) : null;
-}
-
-// Today's rows in the day's order: suggestions stay on top; then undone rows with a time, earliest
-// first; then every other row in the order it came (undone, then done).
-function timedOrder(rows, slots) {
-  const timed = (r) => !r.suggested && !r.done && slots.has(r.item.id);
-  const start = (r) => Date.parse(slots.get(r.item.id).start);
-  return [
-    ...rows.filter((r) => r.suggested),
-    ...rows.filter(timed).sort((a, b) => start(a) - start(b)),
-    ...rows.filter((r) => !r.suggested && !timed(r)),
-  ];
-}
-
-// ⚙ → Calendar planner: the folded line and what's inside.
-function plannerSummary(doc, now) {
-  const { config } = readPlannerConfig(doc);
-  const exact = config.exactDays === 1 ? 'today exact' : config.exactDays === 2 ? 'today and tomorrow exact' : `the first ${config.exactDays} days exact`;
-  const lines = [`Plans ${config.hours[0]}–${config.hours[1]}, ${config.days} days ahead: ${exact}, rough after that.`];
-  const s = plannerStatus(doc);
-  if (!s) return { summary: 'not set up', lines: [...lines, "It hasn't run yet — the README says how to set it up."] };
-  lines.push(`Last ran ${momentLabel(s.lastRun, now)}${s.version ? ` · build ${s.version}` : ''}.`);
-  if (s.lastError) lines.push(`Last problem: ${s.lastError}`);
-  lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
-  return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
-}
-return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
-})();
-
 // ---- js/gemini.js
 const __js_gemini = (() => {
 // The Gemini client. One call walks the models (lite first) on each key until one answers, and
@@ -2471,7 +2644,7 @@ const MAX_WAIT_S = 20;
 const HEBREW_KEY_NAMES = ['hvr_geminikey', 'hvr_geminikey2'];
 
 const MESSAGES = {
-  nokey: 'The coach needs a Gemini key. Add one in ⚙, or save one in the Hebrew app on this device.',
+  nokey: 'No Gemini key. Add one in ⚙, or save one in the Hebrew app on this device.',
   offline: "Can't reach Gemini — check you're online and try again",
   quota: "Gemini's free limit is used up for today — try tomorrow",
   badkey: 'Gemini refused the key — check it in ⚙',
@@ -2649,173 +2822,7 @@ async function askGemini({
   }
   throw new GeminiError(verdict(outcomes));
 }
-
-// ---- A conversation with tools ------------------------------------------------------------------
-
-const TALK_STEPS = 6;
-
-// One turn of a conversation in which Gemini may use tools: `contents` is the conversation so far
-// in Gemini's shape, `tools` the declarations, and `run(name, args)` carries out each call — its
-// result (a plain object) goes back to Gemini, and a throw goes back as { ok: false, error }. At
-// most `steps` rounds of calls; then it's asked for words with no tools. Models and keys are walked
-// as askGemini walks them, starting with whichever answered last. Resolves
-// { text, calls: [{ name, args, result }], model }.
-async function talkGemini({
-  keys, system, contents, tools = [], run = async () => ({}), toolConfig = null, steps = TALK_STEPS,
-  fetch = (...args) => globalThis.fetch(...args), timers = globalThis, models = MODELS, timeoutMs = TIMEOUT_MS,
-}) {
-  const usable = [...new Set((keys ?? []).map((k) => String(k ?? '').trim()).filter(Boolean))];
-  if (!usable.length) throw new GeminiError('nokey');
-  const sleep = (ms) => new Promise((resolve) => { timers.setTimeout(resolve, ms); });
-  let lead = null;
-
-  async function attempt({ model, key }, body) {
-    for (let waited = false; ;) {
-      const res = await post({ fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body });
-      if (res.fail) return { fail: res.fail };
-      if (res.status >= 200 && res.status < 300) {
-        try {
-          return { data: JSON.parse(res.text) };
-        } catch {
-          throw new GeminiError('nonsense');
-        }
-      }
-      if (refusesKey(res.status, res.text)) return { fail: 'badkey' };
-      const wait = res.status === 429 ? retryAfterSeconds(res.text) : null;
-      if (!waited && wait !== null && wait <= MAX_WAIT_S) {
-        waited = true;
-        await sleep(Math.ceil(wait * 1000));
-        continue;
-      }
-      return { fail: res.status === 429 ? 'quota' : res.status >= 500 ? 'server' : 'rejected' };
-    }
-  }
-
-  async function ask(body) {
-    const outcomes = [];
-    const refused = new Set();
-    const tried = new Set();
-    const order = [...(lead ? [lead] : []), ...models.flatMap((model) => usable.map((key) => ({ model, key })))];
-    for (const pair of order) {
-      const tag = `${pair.model}|${pair.key}`;
-      if (tried.has(tag) || refused.has(pair.key)) continue;
-      tried.add(tag);
-      const result = await attempt(pair, body);
-      if (result.data) {
-        lead = pair;
-        return { data: result.data, model: pair.model };
-      }
-      if (result.fail === 'badkey') refused.add(pair.key);
-      outcomes.push(result.fail);
-    }
-    throw new GeminiError(verdict(outcomes));
-  }
-
-  let convo = [...contents];
-  const calls = [];
-  for (let step = 0; ; step++) {
-    const last = step >= steps;
-    const body = {
-      systemInstruction: { parts: [{ text: system }] },
-      contents: convo,
-      generationConfig: { temperature: 0.6 },
-      ...(tools.length && !last ? { tools: [{ functionDeclarations: tools }], ...(toolConfig ? { toolConfig } : {}) } : {}),
-    };
-    const { data, model } = await ask(body);
-    const parts = Array.isArray(data?.candidates?.[0]?.content?.parts) ? data.candidates[0].content.parts : [];
-    const wanted = parts.filter((p) => typeof p?.functionCall?.name === 'string');
-    if (wanted.length && !last) {
-      const responses = [];
-      for (const p of wanted) {
-        const { name } = p.functionCall;
-        const args = p.functionCall.args && typeof p.functionCall.args === 'object' ? p.functionCall.args : {};
-        let result;
-        try {
-          result = await run(name, args);
-        } catch (e) {
-          result = { ok: false, error: String(e?.message ?? e) };
-        }
-        calls.push({ name, args, result });
-        responses.push({ functionResponse: { name, response: result ?? {} } });
-      }
-      // The model's own parts go back as they came (a thinking model's signatures with them).
-      convo = [...convo, { role: 'model', parts }, { role: 'user', parts: responses }];
-      continue;
-    }
-    const text = parts.filter((p) => typeof p?.text === 'string' && !p.thought).map((p) => p.text).join('').trim();
-    if (!text && !calls.length) throw new GeminiError('nonsense');
-    return { text, calls, model };
-  }
-}
-return { MODELS, ENDPOINT, TIMEOUT_MS, MAX_WAIT_S, HEBREW_KEY_NAMES, MESSAGES, GeminiError, hebrewKeys, geminiKeys, readReply, retryAfterSeconds, askGemini, TALK_STEPS, talkGemini };
-})();
-
-// ---- js/plan-state.js
-const __js_plan_state = (() => {
-// The shared schedule contract. A requested day is not a booking. Calendar, the
-// Dashboard and the Coach resolve the same confirmed placements through here.
-const { blockers } = __js_workflow;
-const { addDays } = __js_dates;
-
-const taskInput = (i) => ({ title: i.title, date: i.date ?? null, time: i.time || null,
-  minutes: i.minutes ?? null, hold: i.scheduleHold === true });
-
-// George's pin, typed at the front of a title: keep this where it is. He types the word; the
-// planner writes it back as 📌, which is then his handle for taking it off again. Either form
-// reads as a pin, and neither ever becomes part of the task's name. Markers can stack
-// ("📌 ~ Draft the answer"), so they come off in whatever order they arrive.
-const PIN_MARK = /^\s*(?:stay\b[\s:.,–—-]*|📌\s*)/i;
-const STATE_MARK = /^\s*[~✓]\s*/;
-function readPinMarker(summary) {
-  let rest = String(summary ?? ''), pinned = false;
-  for (;;) {
-    const pin = rest.match(PIN_MARK);
-    if (pin) { pinned = true; rest = rest.slice(pin[0].length); continue; }
-    const mark = rest.match(STATE_MARK);
-    if (mark) { rest = rest.slice(mark[0].length); continue; }
-    return { title: rest.trim(), pinned };
-  }
-}
-const localDate = (iso) => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-const dayClosed = (doc, day) => doc.calendar?.[`closed:${day}`]?.closed === true;
-function scheduleBlocks(doc) {
-  if (doc.calendar?.agenda?.blocks) return doc.calendar.agenda.blocks;
-  return Object.values(doc.calendar ?? {}).filter((r) => r.id?.startsWith('day:')).flatMap((r) => r.blocks ?? []);
-}
-function bookingsFor(doc, item) {
-  if (item.scheduleHold) return [];
-  return scheduleBlocks(doc).filter((b) => (!doc.calendar?.agenda?.from || localDate(b.end) >= doc.calendar.agenda.from) && b.items.includes(item.id) && !['done', 'partial'].includes(b.state)
-    && (!b.input || ['date', 'time', 'minutes', 'hold'].every((k) => b.input[k] === taskInput(item)[k])))
-    .sort((a, b) => a.start.localeCompare(b.start));
-}
-function plannedTaskDay(doc, item) {
-  return bookingsFor(doc, item)[0]?.start ? localDate(bookingsFor(doc, item)[0].start) : item.date;
-}
-function scheduleView(doc, today, days = 14) {
-  const end = addDays(today, days);
-  const done = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
-  const tasks = Object.values(doc.items ?? {}).filter((i) => i.type === 'task' && i.status === 'active' && !done.has(i.id));
-  const entries = tasks.map((item) => {
-    const bookings = bookingsFor(doc, item).filter((b) => localDate(b.end) >= today);
-    const scheduledDay = bookings[0] ? localDate(bookings[0].start) : null;
-    const conflict = doc.calendar?.[`conflict:${item.id}`];
-    const blocked = blockers(doc, item, scheduledDay ?? (item.date < today ? today : item.date)).join('; ');
-    const reason = conflict?.open ? 'Calendar and Dashboard edits need resolving'
-      : blocked ? blocked
-      : item.scheduleHold ? 'Removed from Calendar — choose a new day to schedule'
-      : scheduledDay && scheduledDay !== item.date ? `Requested ${item.date}; placed ${scheduledDay}`
-      : !bookings.length ? item.date >= end ? 'Beyond the current calendar horizon' : 'Waiting for a calendar slot' : '';
-    return { item, requestedDay: item.date, scheduledDay, bookings, reason,
-      day: scheduledDay ?? (item.date < today ? today : item.date), state: conflict?.open ? 'conflict' : bookings.length ? 'scheduled' : 'unscheduled' };
-  }).sort((a, b) => a.day.localeCompare(b.day) || (a.bookings[0]?.start ?? 'z').localeCompare(b.bookings[0]?.start ?? 'z')
-    || (a.item.order ?? 0) - (b.item.order ?? 0));
-  return { entries, commitments: doc.calendar?.agenda?.busy ?? [], lastSynced: doc.calendar?.agenda?.syncedAt ?? doc.calendar?.status?.lastRun ?? null,
-    through: doc.calendar?.agenda?.through ?? null, closed: dayClosed(doc, today) };
-}
-return { taskInput, readPinMarker, localDate, dayClosed, scheduleBlocks, bookingsFor, plannedTaskDay, scheduleView };
+return { MODELS, ENDPOINT, TIMEOUT_MS, MAX_WAIT_S, HEBREW_KEY_NAMES, MESSAGES, GeminiError, hebrewKeys, geminiKeys, readReply, retryAfterSeconds, askGemini };
 })();
 
 // ---- planner/events.js
@@ -2952,7 +2959,7 @@ function reconcileCalendar(store, events, removed = []) {
           const [from] = String(props[P.at] ?? '').split('/');
           const when = Date.parse(from) ? ` (${shortWeekday(localDate(from))} ${shortDate(localDate(from))}, ${clockLabel(from)})` : '';
           store.archiveItem(id);
-          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. If it was on today's list after the morning check-in, it counts as missed unless you tell the Coach it's no longer needed. Undo it in ⚙ → changes if the delete was a mistake.`, null, 'calendar', 'note');
+          store.addFlag(`Removed "${item.title}" from your list: its calendar block${when} was deleted. If it was on today's list after 11:00, it counts as missed unless you tell Claude it's no longer needed. Undo it in ⚙ → changes if the delete was a mistake.`, null, 'calendar', 'note');
           if (store.doc().calendar[`conflict:${id}`]?.open) store.putCalendar(`conflict:${id}`, { open: false });
           continue;
         }
@@ -3110,7 +3117,7 @@ function doneIndex(doc) {
   return idx;
 }
 
-// Habits let off for a day by the Coach (a 'skip' log), as "itemId|day": excused like time off.
+// Habits let off for a day (a 'skip' log, which the retired Coach wrote), as "itemId|day": excused like time off.
 function skipSet(doc) {
   const out = new Set();
   for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'skip') out.add(`${l.itemId}|${l.day}`);
@@ -3227,7 +3234,7 @@ function occurrenceStreak(doc, item, today) {
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
     const ok = ticked.has(day);
-    // Time off, or let off by the Coach: a miss doesn't count, a tick still does.
+    // Time off, or let off for the day: a miss doesn't count, a tick still does.
     if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
     if (day === today && !ok) continue; // today isn't over yet
     outcomes.push(ok);
@@ -3289,9 +3296,9 @@ function neededOn(doc, item, day, idx, offs) {
 }
 
 // How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
-// times-a-week habit it didn't need; plus what George committed to after the morning check-in
+// times-a-week habit it didn't need; plus what George committed to at the 11:00 lock
 // (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
-// time and a miss the second; deleting is a miss unless the Coach released it as no longer needed. A
+// time and a miss the second; deleting is a miss unless it was released as no longer needed (Claude's `archive` with his reason). A
 // task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
 function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = rowsForDay(doc, day, idx, offs);
@@ -4427,10 +4434,10 @@ return { adoptableCalendars, adoptEvents };
 // ---- js/commit.js
 const __js_commit = (() => {
 // What George committed to for a day (docs/superpowers/specs/2026-09-23-honest-day-score-design.md):
-// the tasks on its list once the morning check-in is done — he has answered the Coach and it has
-// replied — or at 11:00 if he hasn't. Before then he can reshuffle freely; after, a task moved off the
-// day is "pushed" and one deleted is "dropped" (js/schedule.js's dayScore). Written once, by the app
-// or the planner, whichever gets there first. Pure apart from ensureCommitment's write.
+// the tasks on its list at 11:00. Before then he can reshuffle freely; after, a task moved off the day
+// is "pushed" and one deleted is "dropped" (js/schedule.js's dayScore). Written once, by the app or the
+// planner, whichever gets there first. Pure apart from ensureCommitment's write. (Until 26 Sep 2026 the
+// Coach's morning exchange could lock it earlier.)
 
 const { rowsForDay } = __js_schedule;
 
@@ -4440,11 +4447,7 @@ const commitKey = (day) => `commit:${day}`;
 // Whether the day's list should lock now. `now` is within `day` (its logical day).
 function lockDue(doc, day, now) {
   if (doc?.calendar?.[commitKey(day)]) return false;
-  if (now.getHours() >= LOCK_HOUR) return true;
-  const talk = doc?.journal?.[`talk:${day}:morning`];
-  const messages = talk?.status === 'active' ? talk.messages ?? [] : [];
-  const firstReply = messages.findIndex((m) => m.who === 'george');
-  return firstReply >= 0 && messages.slice(firstReply + 1).some((m) => m.who === 'coach');
+  return now.getHours() >= LOCK_HOUR;
 }
 
 // Locks the day's list if it's time, and returns the commitment it wrote (null when it didn't).
@@ -4481,7 +4484,7 @@ return { tagPrompt, readArea };
 const __js_gym = (() => {
 // The gym, from Hevy. planner/hevy.js copies George's workouts into the `gym` map (records
 // `w:<hevy id>`, plus `templates`, `status` and Claude's `config`); this works out what the
-// dashboard, the Coach and Claude show from them — estimated 1RMs, PRs, pace and projections for
+// dashboard and Claude show from them — estimated 1RMs, PRs, pace and projections for
 // his key lifts, cardio minutes, and each day's sessions in a line. Pure: a document and a day in.
 
 const { addDays, weekStart, shortWeekday, logicalDay, daysBetween } = __js_dates;
@@ -4911,7 +4914,7 @@ function groupWeeks(doc, today, count = 8) {
   return { weeks, groups: MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) })) };
 }
 
-// A week's training in a line, for the Coach and the digest: sessions, cardio, key lifts.
+// A week's training in a line, for Claude's catch-up: sessions, cardio, key lifts.
 function trainingWeek(doc, day, config = gymConfig(doc)) {
   const start = weekStart(day);
   const end = addDays(start, 6);
@@ -4932,17 +4935,6 @@ function trainingWeek(doc, day, config = gymConfig(doc)) {
   return parts.join('; ');
 }
 
-// What the Coach is told about training: today's sessions and the week so far. Nothing before
-// Hevy has sent anything.
-function gymContext(doc, today) {
-  if (!workouts(doc).length) return [];
-  const lines = dayLines(doc, today);
-  return [
-    lines.length ? `Gym today: ${lines.join(' | ')}` : 'Gym today: no session logged',
-    `Training this week: ${trainingWeek(doc, today)}`,
-  ];
-}
-
 // The Hevy tick on an item for a day, as { from, at } ISO strings, or null.
 function hevyTick(doc, itemId, day) {
   const log = values(doc?.logs).find((l) => l.status === 'active' && l.kind === 'done' && l.source === 'hevy'
@@ -4959,7 +4951,7 @@ function gymStatusLines(doc, when = (iso) => iso) {
   if (s.lastError) out.push(`Problem: ${s.lastError}`);
   return out;
 }
-return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, MUSCLE_GROUPS, muscleGroupOf, muscleWeek, longestRested, cardioWeeks, prBoard, sessionDays, groupWeeks, trainingWeek, gymContext, hevyTick, gymStatusLines };
+return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, MUSCLE_GROUPS, muscleGroupOf, muscleWeek, longestRested, cardioWeeks, prBoard, sessionDays, groupWeeks, trainingWeek, hevyTick, gymStatusLines };
 })();
 
 // ---- planner/hevy.js
@@ -5374,2236 +5366,6 @@ async function runGoalReviews({ store, props, request, limit = 2 }) {
 return { runGoalReviews };
 })();
 
-// ---- js/mind.js
-const __js_mind = (() => {
-// The Coach's Mind in the synced document (docs/superpowers/specs/2026-09-25-coach-mind-design.md):
-// its settings, its status line, Claude's picture of George, the questions George has asked it to
-// think about, the devices it may ping, the conversations it opens — and the checks every message it
-// sends has to pass first. Pure. Everything lives in the `calendar` map or in ordinary talk records,
-// because a new record kind would make a device still on older code reject the whole document.
-
-const { logicalDay, addDays } = __js_dates;
-const { timeOff, offCovers, offWindows } = __js_calendar;
-const { dayClosed, scheduleBlocks } = __js_plan_state;
-const { rowsForDay, doneIndex, dayScore } = __js_schedule;
-
-const MIND_DEFAULTS = Object.freeze({
-  enabled: false,
-  morningAt: '07:00',
-  checkinAt: '18:00',
-  quietFrom: '22:30',
-  quietUntil: '07:00',
-  pingsPerDay: 6,
-  messagesPerDay: 8,
-  gapMinutes: 45,
-  geminiPerDay: 120,
-  // Flash (the `think` model) on the Mind's own free project: about 20 calls a day.
-  thinkPerDay: 20,
-  deepPerDay: 3,
-  models: Object.freeze({ think: 'gemini-flash-latest', check: 'gemini-flash-lite-latest' }),
-});
-
-const MESSAGE_MAX = 600;
-const PICTURE_MAX = 4000;
-const ALIVE_MINUTES = 75;
-
-const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
-const CLOCK_FIELDS = ['morningAt', 'checkinAt', 'quietFrom', 'quietUntil'];
-const COUNT_FIELDS = ['pingsPerDay', 'messagesPerDay', 'gapMinutes', 'geminiPerDay', 'thinkPerDay', 'deepPerDay'];
-const values = (map) => Object.values(map ?? {});
-const live = (r) => r && r.status === 'active';
-const minutesOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
-
-// The Mind's settings: the defaults, overlaid with whatever in `mind:config` makes sense.
-function mindConfig(doc) {
-  const rec = doc?.calendar?.['mind:config'];
-  const out = { ...MIND_DEFAULTS, models: { ...MIND_DEFAULTS.models } };
-  if (!live(rec)) return out;
-  if (typeof rec.enabled === 'boolean') out.enabled = rec.enabled;
-  for (const k of CLOCK_FIELDS) if (typeof rec[k] === 'string' && CLOCK.test(rec[k])) out[k] = rec[k];
-  for (const k of COUNT_FIELDS) if (Number.isInteger(rec[k]) && rec[k] >= 0 && rec[k] <= 1000) out[k] = rec[k];
-  for (const k of ['think', 'check']) {
-    const m = rec.models?.[k];
-    if (typeof m === 'string' && /^[\w.-]{3,80}$/.test(m)) out.models[k] = m;
-  }
-  return out;
-}
-
-// A setting as Claude's `mind` op gives it, checked: the value, or a plain-English error.
-function checkMindSetting(field, value) {
-  if (field === 'enabled') {
-    if (typeof value !== 'boolean') throw new Error('enabled is true or false');
-    return value;
-  }
-  if (CLOCK_FIELDS.includes(field)) {
-    if (typeof value !== 'string' || !CLOCK.test(value)) throw new Error(`${field} is a time like "07:00"`);
-    return value;
-  }
-  if (COUNT_FIELDS.includes(field)) {
-    if (!Number.isInteger(value) || value < 0 || value > 1000) throw new Error(`${field} is a whole number from 0 to 1000`);
-    return value;
-  }
-  if (field === 'models') {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('models is { "think": "…", "check": "…" }');
-    const out = {};
-    for (const [k, m] of Object.entries(value)) {
-      if (!['think', 'check'].includes(k)) throw new Error('models has only think and check');
-      if (typeof m !== 'string' || !/^[\w.-]{3,80}$/.test(m)) throw new Error(`models.${k} is a Gemini model name`);
-      out[k] = m;
-    }
-    return out;
-  }
-  throw new Error(`The Mind has no setting ${JSON.stringify(field)} — it has enabled, ${[...CLOCK_FIELDS, ...COUNT_FIELDS].join(', ')} and models`);
-}
-
-const mindStatus = (doc) => (live(doc?.calendar?.['mind:status']) ? doc.calendar['mind:status'] : null);
-
-function picture(doc) {
-  const rec = doc?.calendar?.['mind:picture'];
-  return live(rec) && typeof rec.text === 'string' && rec.text.trim() ? rec : null;
-}
-
-// Whether the background is running the Coach: switched on, and heard from recently. While it is,
-// the page leaves the openers to it.
-function mindAlive(doc, now) {
-  if (!mindConfig(doc).enabled || mindStatus(doc)?.speaking !== true) return false;
-  const last = Date.parse(mindStatus(doc)?.lastRun ?? '');
-  return Number.isFinite(last) && now.getTime() - last < ALIVE_MINUTES * 60000;
-}
-
-// Whether a ping would be unwelcome now: the night, a day he has closed, or time off for everything.
-// A message still lands in the Coach; it just doesn't buzz.
-function isQuiet(doc, now, dayStartHour = 4) {
-  const config = mindConfig(doc);
-  const m = now.getHours() * 60 + now.getMinutes();
-  const from = minutesOf(config.quietFrom);
-  const until = minutesOf(config.quietUntil);
-  if (from > until ? m >= from || m < until : m >= from && m < until) return true;
-  const day = logicalDay(now, dayStartHour);
-  if (dayClosed(doc, day)) return true;
-  const offs = timeOff(doc).filter((o) => !o.areas?.length);
-  if (offs.some((o) => offCovers(o, day))) return true;
-  const t = now.getTime();
-  return offWindows(doc, day, offs).some((w) => w.start <= t && t < w.end);
-}
-
-// ---- The conversations it opens -------------------------------------------------------------------
-
-const MIND_SLOT = /^(mind-\d{1,3}|deep-\d{1,2})$/;
-const isMindTalk = (t) => !!t && t.kind === 'talk' && MIND_SLOT.test(String(t.slot ?? ''));
-const isMindMessage = (m) => !!m && m.from === 'mind';
-
-function mindTalks(doc, day) {
-  return values(doc?.journal).filter((t) => live(t) && isMindTalk(t) && (!day || t.day === day));
-}
-
-function nextMindSlot(doc, day, prefix = 'mind') {
-  let n = 1;
-  while (doc?.journal?.[`talk:${day}:${prefix}-${n}`]) n++;
-  return `${prefix}-${n}`;
-}
-
-// Every message the Mind has sent from `fromDay` on, oldest first.
-function mindMessages(doc, fromDay = '0000-00-00') {
-  return values(doc?.journal)
-    .filter((t) => live(t) && t.kind === 'talk' && t.day >= fromDay)
-    .flatMap((t) => (t.messages ?? []).filter(isMindMessage).map((m) => ({ talkId: t.id, day: t.day, slot: t.slot, m })))
-    .sort((a, b) => String(a.m.at ?? '').localeCompare(String(b.m.at ?? '')));
-}
-
-const messageKey = (talkId, m) => `${talkId}|${m.at}`;
-
-// ---- Asks and devices -------------------------------------------------------------------------------
-
-function openAsks(doc) {
-  return values(doc?.calendar).filter((r) => live(r) && String(r.id).startsWith('ask:')).sort((a, b) => String(a.at).localeCompare(String(b.at)));
-}
-
-function nextAskId(doc, day) {
-  let n = 1;
-  while (doc?.calendar?.[`ask:${day}:${n}`]) n++;
-  return `ask:${day}:${n}`;
-}
-
-function pushSubscriptions(doc) {
-  return values(doc?.calendar).filter((r) => live(r) && String(r.id).startsWith('push:')
-    && typeof r.endpoint === 'string' && typeof r.p256dh === 'string' && typeof r.auth === 'string');
-}
-
-// ---- The checks ---------------------------------------------------------------------------------------
-
-const DONE_WORDS = /\b(done|ticked|finish(ed|ing)?|complet(ed|ing)|nailed|smashed|got through|wrapped up|knocked (it )?out|crushed)\b/i;
-const NOT_YET = /\b(not|n't|yet|still|haven't|hasn't|didn't|if|when|once|before)\b/i;
-const MISS_WORDS = /\b(miss(ed|ing)?|skip(ped|ping)?|slipped|didn't|did not|haven't|fail(ed)?)\b/i;
-// Emoji and pictographs by range rather than \p{…}, and no lookbehind below: this module is bundled
-// into the planner, and one regex its V8 can't parse would stop the whole planner.
-const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/u;
-const TIME = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g;
-
-const norm = (s) => ` ${String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
-// Clauses rather than sentences, so "MILLRACE is done — what would you change?" is read as a claim
-// followed by a question, not as one question.
-const sentences = (text) => String(text).replace(/([.!?])\s+/g, '$1\n').split(/\s[—–]\s|;\s|\n+/).map((s) => s.trim()).filter(Boolean);
-const pad = (n) => String(n).padStart(2, '0');
-const hhmm = (h, m) => `${pad(Number(h))}:${pad(Number(m))}`;
-const localClock = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? hhmm(d.getHours(), d.getMinutes()) : null; };
-
-// The ways a title shows up in a sentence: the whole title, its first part ("Role play 3" of "Role
-// play 3 - MILLRACE, timed"), and a name in capitals ("MILLRACE"). A run of capitals is one name:
-// "FULL MOCK DAY" is the mock day, not every sentence with "mock" in it (on 25 Sep "the first mock
-// interview is ticked" was refused three times as a claim that the mock day was done).
-function namesOf(title) {
-  const t = String(title ?? '');
-  const out = new Set([norm(t)]);
-  const first = t.split(/\s[-–+:]\s|,|\(/)[0];
-  if (first && norm(first).trim().length >= 5) out.add(norm(first));
-  for (const run of t.match(/\b[A-Z]{3,}(?:\s+[A-Z]{3,})*\b/g) ?? []) if (/\s/.test(run) || run.length >= 4) out.add(norm(run));
-  return [...out].filter((n) => n.trim().length >= 3);
-}
-const mentions = (sentence, title) => namesOf(title).some((n) => norm(sentence).includes(n));
-
-const words = (s) => new Set(String(s).toLowerCase().match(/[a-z]{3,}/g) ?? []);
-function overlap(a, b) {
-  const x = words(a);
-  const y = words(b);
-  if (!x.size || !y.size) return 0;
-  let both = 0;
-  for (const w of x) if (y.has(w)) both++;
-  return both / (x.size + y.size - both);
-}
-
-// The clock times the plan and George have given today and tomorrow — the only ones a message may use.
-function knownTimes(doc, today, georgeToday) {
-  const days = new Set([today, addDays(today, 1)]);
-  const out = new Set();
-  const add = (iso) => { const c = localClock(iso); if (c) out.add(c); };
-  const onDays = (iso) => { const d = new Date(iso); return days.has(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`); };
-  for (const b of [...scheduleBlocks(doc), ...(doc.calendar?.agenda?.busy ?? [])]) {
-    if (b.start && onDays(b.start)) { add(b.start); add(b.end); }
-  }
-  for (const i of values(doc.items)) if (live(i) && typeof i.time === 'string' && CLOCK.test(i.time)) out.add(i.time);
-  for (const t of values(doc.journal)) {
-    if (!live(t) || t.kind !== 'talk' || !days.has(t.day)) continue;
-    for (const m of t.messages ?? []) if (m.who === 'george') for (const x of m.text.matchAll(TIME)) out.add(hhmm(x[1], x[2]));
-  }
-  for (const text of georgeToday) for (const x of String(text).matchAll(TIME)) out.add(hhmm(x[1], x[2]));
-  return out;
-}
-
-// Whether a message the Mind wants to send is true to the record: nothing called done that isn't
-// ticked, no clock time the plan or George didn't give, no optional habit called a miss, short, no
-// emoji, and not a near-repeat of something it said recently. { ok, problems }.
-function checkMessage(doc, { today, now, text, recent = [], georgeToday = [] }) {
-  const problems = [];
-  const t = String(text ?? '').trim();
-  if (!t) return { ok: false, problems: ['The message is empty'] };
-  if (t.length > MESSAGE_MAX) problems.push(`The message is ${t.length} characters; at most ${MESSAGE_MAX}`);
-  if (EMOJI.test(t)) problems.push('No emoji');
-
-  const idx = doneIndex(doc);
-  const doneToday = new Set(rowsForDay(doc, today, idx).filter((r) => r.done).map((r) => r.item.id));
-  const everDone = new Set(values(doc.logs).filter((l) => live(l) && l.kind === 'done').map((l) => l.itemId));
-  const notDone = values(doc.items).filter((i) => live(i) && i.type !== 'quota'
-    && !(i.type === 'task' ? everDone.has(i.id) : doneToday.has(i.id)));
-  for (const s of sentences(t)) {
-    if (s.endsWith('?') || !DONE_WORDS.test(s) || NOT_YET.test(s)) continue;
-    for (const i of notDone) if (mentions(s, i.title)) problems.push(`Says "${i.title}" is done, but it isn't ticked`);
-  }
-
-  const known = knownTimes(doc, today, georgeToday);
-  for (const x of t.matchAll(TIME)) {
-    const c = hhmm(x[1], x[2]);
-    if (!known.has(c)) problems.push(`Mentions ${c}, which isn't a booking, an event or a time George gave`);
-  }
-
-  const optional = dayScore(doc, today, idx).optional.map((r) => r.item);
-  for (const s of sentences(t)) {
-    if (!MISS_WORDS.test(s)) continue;
-    for (const i of optional) if (mentions(s, i.title)) problems.push(`"${i.title}" is optional today — a rest day, not a miss`);
-  }
-
-  for (const r of recent) if (overlap(t, r) > 0.6) { problems.push('Too close to something the Coach said recently'); break; }
-  return { ok: problems.length === 0, problems: [...new Set(problems)] };
-}
-return { MIND_DEFAULTS, MESSAGE_MAX, PICTURE_MAX, ALIVE_MINUTES, mindConfig, checkMindSetting, mindStatus, picture, mindAlive, isQuiet, MIND_SLOT, isMindTalk, isMindMessage, mindTalks, nextMindSlot, mindMessages, messageKey, openAsks, nextAskId, pushSubscriptions, checkMessage };
-})();
-
-// ---- js/mind-state.js
-const __js_mind_state = (() => {
-// mind.json, the Mind's own file beside data.json in the sync repo
-// (docs/superpowers/specs/2026-09-25-coach-mind-design.md): the events the Senses recorded, the runs
-// that looked at them, the ledger of pings sent, the fires of Claude's routine and the day's budget.
-// Kept out of data.json because every device pulls that whole file on every sync. Two writers — the
-// planner every ten minutes and Claude's deep runs — so it merges rather than overwrites. Pure apart
-// from saveMind and loadMind, which talk to a { get, put } client like js/sync.js's.
-
-const { ConflictError } = __js_sync;
-const { stableStringify } = __js_doc;
-
-const KEEP_DAYS = 14;
-const MAX_EVENTS = 300;
-const ARTEFACT_CHARS = 12000;
-const FIRED_KEEP_DAYS = 2;
-const DAY_MS = 86400000;
-
-const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-const later = (a, b) => (!a ? b ?? null : !b ? a : a > b ? a : b);
-
-function emptyMind() {
-  return {
-    schema: 1, cursor: null, events: {}, runs: {}, pushed: {}, fired: [],
-    budget: { day: null, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: null, geminiBlocked: [], byModel: {} },
-  };
-}
-
-function isMind(v) {
-  return isPlain(v) && v.schema === 1 && (v.cursor === null || isPlain(v.cursor))
-    && isPlain(v.events) && Object.values(v.events).every((e) => isPlain(e) && typeof e.id === 'string' && typeof e.at === 'string')
-    && isPlain(v.runs) && isPlain(v.pushed) && Array.isArray(v.fired) && isPlain(v.budget);
-}
-
-const FINAL = new Set(['sent', 'quiet', 'gone', 'given-up']);
-function mergePushed(a, b) {
-  if (!a) return b;
-  if (!b) return a;
-  const fa = FINAL.has(a.state);
-  const fb = FINAL.has(b.state);
-  if (fa !== fb) return fa ? a : b;
-  if (fa) return a.at <= b.at ? a : b;
-  return (a.tries ?? 0) >= (b.tries ?? 0) ? a : b;
-}
-
-function mergeEvent(a, b) {
-  if (!a) return b;
-  if (!b) return a;
-  const base = Object.keys(b).length > Object.keys(a).length ? b : a;
-  return { ...base, reflex: later(a.reflex, b.reflex), deep: later(a.deep, b.deep) };
-}
-
-// The Gemini models whose free quota is gone for the day (an older file may say true/false).
-const blockedList = (b) => (Array.isArray(b?.geminiBlocked) ? b.geminiBlocked.filter((m) => typeof m === 'string') : []);
-
-function mergeBudget(a, b) {
-  if (!a?.day) return { ...emptyMind().budget, ...(b ?? {}) };
-  if (!b?.day) return { ...a };
-  if (a.day !== b.day) return a.day > b.day ? { ...a } : { ...b };
-  const out = { day: a.day };
-  for (const k of ['gemini', 'messages', 'pings', 'deep']) out[k] = Math.max(a[k] ?? 0, b[k] ?? 0);
-  if (a.minor != null || b.minor != null) out.minor = Math.max(a.minor ?? 0, b.minor ?? 0);
-  out.lastSaid = later(a.lastSaid, b.lastSaid);
-  out.geminiBlocked = [...new Set([...blockedList(a), ...blockedList(b)])].sort();
-  out.byModel = {};
-  for (const m of new Set([...Object.keys(a.byModel ?? {}), ...Object.keys(b.byModel ?? {})])) out.byModel[m] = Math.max(a.byModel?.[m] ?? 0, b.byModel?.[m] ?? 0);
-  return out;
-}
-
-// Two copies into one. The cursor belongs to the planner: it passes its own copy as `local`; Claude's
-// tool, which never senses, takes the remote one (cursorFrom: 'remote').
-function mergeMind(local, remote, { cursorFrom = 'local' } = {}) {
-  const a = isMind(local) ? local : emptyMind();
-  const b = isMind(remote) ? remote : emptyMind();
-  const events = {};
-  for (const id of new Set([...Object.keys(a.events), ...Object.keys(b.events)])) events[id] = mergeEvent(a.events[id], b.events[id]);
-  const pushed = {};
-  for (const k of new Set([...Object.keys(a.pushed), ...Object.keys(b.pushed)])) pushed[k] = mergePushed(a.pushed[k], b.pushed[k]);
-  const fired = [];
-  const seen = new Set();
-  for (const f of [...a.fired, ...b.fired].sort((x, y) => String(x.at).localeCompare(String(y.at)))) {
-    const key = `${f.at}|${f.reason}`;
-    if (!seen.has(key)) { seen.add(key); fired.push(f); }
-  }
-  return {
-    schema: 1,
-    cursor: cursorFrom === 'local' ? a.cursor ?? b.cursor : b.cursor ?? a.cursor,
-    events,
-    runs: { ...b.runs, ...a.runs },
-    pushed,
-    fired,
-    budget: mergeBudget(a.budget, b.budget),
-  };
-}
-
-// The budget for `day`: today's counts, or a fresh set once the day has turned.
-function budget(m, day) {
-  if (m.budget?.day === day) return m.budget;
-  return { day, gemini: 0, messages: 0, pings: 0, deep: 0, lastSaid: m.budget?.lastSaid ?? null, geminiBlocked: [], byModel: {} };
-}
-
-function spend(m, day, field, n = 1) {
-  m.budget = { ...budget(m, day) };
-  m.budget[field] = (m.budget[field] ?? 0) + n;
-  return m.budget;
-}
-
-// A Gemini call on one model: the day's total and that model's own count.
-function spendModel(m, day, model, n = 1) {
-  spend(m, day, 'gemini', n);
-  m.budget.byModel = { ...(m.budget.byModel ?? {}), [model]: (m.budget.byModel?.[model] ?? 0) + n };
-  return m.budget;
-}
-
-// The events one engine ('reflex' or 'deep') has yet to look at, oldest first.
-function unhandled(m, engine) {
-  return Object.values(m.events ?? {}).filter((e) => !e[engine]).sort((a, b) => a.at.localeCompare(b.at));
-}
-
-function clipArtefacts(files = []) {
-  let left = ARTEFACT_CHARS;
-  const out = [];
-  for (const f of files) {
-    if (left <= 0) break;
-    const text = String(f.text ?? '').slice(0, left);
-    left -= text.length;
-    out.push({ ...f, text });
-  }
-  return out;
-}
-
-// Fourteen days of events and runs, the newest 300 events, 12,000 characters of artefacts an event,
-// and two days of fires. Mutates and returns `m`.
-function pruneMind(m, now) {
-  const cutoff = new Date(now.getTime() - KEEP_DAYS * DAY_MS).toISOString();
-  const fired = new Date(now.getTime() - FIRED_KEEP_DAYS * DAY_MS).toISOString();
-  const events = Object.values(m.events).filter((e) => e.at >= cutoff).sort((a, b) => b.at.localeCompare(a.at)).slice(0, MAX_EVENTS);
-  m.events = Object.fromEntries(events.map((e) => [e.id, e.artefacts ? { ...e, artefacts: clipArtefacts(e.artefacts) } : e]));
-  m.runs = Object.fromEntries(Object.entries(m.runs).filter(([, r]) => String(r.at) >= cutoff));
-  m.pushed = Object.fromEntries(Object.entries(m.pushed).filter(([, p]) => String(p.at) >= cutoff));
-  m.fired = m.fired.filter((f) => String(f.at) >= fired);
-  return m;
-}
-
-// mind.json as it is now. A file that isn't a Mind starts afresh (and says so); a read that failed
-// says `failed`, and the caller skips the Mind for this run rather than start from nothing.
-async function loadMind(client) {
-  let remote;
-  try {
-    remote = await client.get();
-  } catch (e) {
-    return { mind: emptyMind(), sha: null, problem: e?.message ?? String(e), failed: true };
-  }
-  if (!remote) return { mind: emptyMind(), sha: null, problem: null };
-  if (!isMind(remote.doc)) return { mind: emptyMind(), sha: remote.sha, problem: "mind.json wasn't readable, so the Mind started afresh" };
-  return { mind: remote.doc, sha: remote.sha, problem: null };
-}
-
-// Merge `mind` into what's in the repo and write it back, going round again when someone else wrote
-// in between. Nothing is written when there's nothing new.
-async function saveMind({ client, mind, cursorFrom = 'local', maxAttempts = 3 }) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    let remote;
-    try {
-      remote = await client.get();
-    } catch (e) {
-      return { ok: false, error: e?.message ?? String(e) };
-    }
-    const theirs = remote && isMind(remote.doc) ? remote.doc : null;
-    const merged = theirs ? mergeMind(mind, theirs, { cursorFrom }) : mergeMind(mind, emptyMind(), { cursorFrom: 'local' });
-    if (theirs && stableStringify(merged) === stableStringify(theirs)) return { ok: true, mind: merged, pushed: false };
-    try {
-      await client.put(merged, remote?.sha);
-      return { ok: true, mind: merged, pushed: true };
-    } catch (e) {
-      if (!(e instanceof ConflictError)) return { ok: false, error: e?.message ?? String(e) };
-    }
-  }
-  return { ok: false, error: 'mind.json kept changing underneath — will try again next run' };
-}
-return { KEEP_DAYS, MAX_EVENTS, ARTEFACT_CHARS, emptyMind, isMind, mergeMind, budget, spend, spendModel, unhandled, pruneMind, loadMind, saveMind };
-})();
-
-// ---- planner/drive.js
-const __planner_drive = (() => {
-// Drive, for the Mind (docs/superpowers/specs/2026-09-25-coach-mind-design.md): a task's notes name
-// the folder its work lives in ("Pack: Job Search/IDADP/Practice/RP3_MILLRACE/RP3_MILLRACE_pack.html"),
-// so when it's ticked the planner reads what was written there lately — the debrief, the reflections
-// one level up — and the Coach can talk about how it actually went. Read-only, and only ever the
-// folders a note names (never My Drive's own top level).
-
-const SEG = "[A-Za-z0-9][A-Za-z0-9 _()&'+-]*";
-const PATH = new RegExp(`${SEG}(?:/${SEG}){1,}/${SEG}(?:\\.[A-Za-z0-9]{1,5})?`, 'g');
-const EXT = /\.[A-Za-z0-9]{1,5}$/;
-const TEXT_NAMES = /\.(md|txt|html?|markdown)$/i;
-const TEXT_TYPES = /^text\/(plain|markdown|html|x-markdown)$/;
-const FILE_CHARS = 6000;
-const DAY_MS = 86400000;
-
-// The Drive paths in a note: at least three parts, and not part of a web address.
-function drivePaths(notes) {
-  const text = String(notes ?? '');
-  const out = [];
-  for (const m of text.matchAll(PATH)) {
-    const before = text[m.index - 1] ?? ' ';
-    if (/[/.:@\w-]/.test(before)) continue;
-    // "…and Job Search/NatCen/notes": lower-case words the first part picked up from the sentence.
-    const [first, ...rest] = m[0].trim().split('/');
-    const words = first.split(' ');
-    while (words.length > 1 && /^[a-z]/.test(words[0])) words.shift();
-    const path = [words.join(' '), ...rest].join('/');
-    if (!out.includes(path)) out.push(path);
-  }
-  return out;
-}
-
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", nbsp: ' ', apos: "'" };
-
-function htmlText(html) {
-  return String(html ?? '')
-    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&(amp|lt|gt|quot|#39|nbsp|apos);/g, (_, e) => ENTITIES[e])
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function all(iterator) {
-  const out = [];
-  while (iterator.hasNext()) out.push(iterator.next());
-  return out;
-}
-
-// The folder a path names, from My Drive down, with the chain it passed through. The first part may
-// have picked up words from the sentence before it ("Open Job Search"), so shorter versions of it are
-// tried too. Null when it isn't there.
-function resolve(root, segments) {
-  const first = segments[0].split(' ');
-  for (let drop = 0; drop < first.length; drop++) {
-    const chain = [root];
-    let ok = true;
-    for (const name of [first.slice(drop).join(' '), ...segments.slice(1)]) {
-      const next = all(chain.at(-1).getFoldersByName(name))[0];
-      if (!next) { ok = false; break; }
-      chain.push(next);
-    }
-    if (ok) return chain;
-  }
-  return null;
-}
-
-// What gets read first when there's more than fits: what George wrote about the work (a debrief, his
-// reflections, notes), then the rest of the task's own folder, then the folder above.
-const WRITTEN_UP = /debrief|reflect|feedback|summary|notes|write-?up/i;
-const rankOf = (name, own) => (WRITTEN_UP.test(name) ? 0 : own ? 1 : 2);
-
-function readable(f) {
-  return TEXT_NAMES.test(f.getName()) || TEXT_TYPES.test(String(f.getMimeType?.() ?? ''));
-}
-
-// The text files in each named folder and the one above it (never My Drive itself) changed in the
-// last `days`, newest first, each at most 6,000 characters and all together at most `maxChars`.
-// { files: [{ name, path, modified, text }], problem } — never throws.
-function readArtefacts({ DriveApp, paths = [], now, days = 3, maxChars = 12000 }) {
-  if (!DriveApp) return { files: [], problem: 'Drive is not connected to the planner yet' };
-  try {
-    const root = DriveApp.getRootFolder();
-    const since = now.getTime() - days * DAY_MS;
-    const found = new Map();
-    for (const path of paths) {
-      const parts = path.split('/').map((p) => p.trim()).filter(Boolean);
-      const folders = EXT.test(parts.at(-1)) ? parts.slice(0, -1) : parts;
-      if (!folders.length) continue;
-      const chain = resolve(root, folders);
-      if (!chain) continue;
-      const names = chain.slice(1).map((f) => f.getName());
-      const places = [{ folder: chain.at(-1), path: names.join('/') }];
-      if (chain.length > 2) places.push({ folder: chain.at(-2), path: names.slice(0, -1).join('/') });
-      for (const { folder, path: where } of places) {
-        for (const f of all(folder.getFiles())) {
-          const modified = f.getLastUpdated();
-          if (!readable(f) || modified.getTime() < since || found.has(f.getId())) continue;
-          found.set(f.getId(), { f, where, modified, rank: rankOf(f.getName(), where === places[0].path) });
-        }
-      }
-    }
-    let left = maxChars;
-    const files = [];
-    for (const { f, where, modified } of [...found.values()].sort((a, b) => a.rank - b.rank || b.modified - a.modified)) {
-      if (left <= 0) break;
-      const raw = f.getBlob().getDataAsString();
-      const html = /\.html?$/i.test(f.getName()) || /html/.test(String(f.getMimeType?.() ?? ''));
-      const text = (html ? htmlText(raw) : String(raw).trim()).slice(0, Math.min(FILE_CHARS, left));
-      left -= text.length;
-      files.push({ name: f.getName(), path: `${where}/${f.getName()}`, modified: modified.toISOString(), text });
-    }
-    return { files, problem: null };
-  } catch (e) {
-    return { files: [], problem: String(e?.message ?? e) };
-  }
-}
-return { drivePaths, htmlText, readArtefacts };
-})();
-
-// ---- planner/senses.js
-const __planner_senses = (() => {
-// The Senses (docs/superpowers/specs/2026-09-25-coach-mind-design.md): each planner run, compare the
-// document and George's calendars with what was seen last time (the cursor, kept in mind.json), and
-// write down what happened as events — who did it, and how much it matters (level 3: worth a word
-// now; 2: worth a word soon; 1: for Claude's next deep run; 0: noted). Plain code, no AI. Pure.
-
-const { addDays, logicalDay, daysBetween, shortWeekday, shortDate } = __js_dates;
-const { scheduleView, scheduleBlocks, localDate } = __js_plan_state;
-const { dayRecord, clockLabel, isPriority } = __js_calendar;
-const { milestonesOf } = __js_schedule;
-const { isMindMessage, isMindTalk, openAsks } = __js_mind;
-const { P } = __planner_events;
-const { drivePaths, htmlText } = __planner_drive;
-
-const SLIP_GRACE_MINUTES = 30;
-const DESCRIPTION_MAX = 600;
-const DUE_SOON_DAYS = 21;
-const WINDOW_DAYS = 8;
-const MIN = 60000;
-
-const values = (map) => Object.values(map ?? {});
-const live = (r) => r?.status === 'active';
-const dayName = (day) => `${shortWeekday(day)} ${shortDate(day)}`;
-const q = (t) => `"${String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, 100)}"`;
-const WHO = { claude: 'Claude', coach: 'the Coach', calendar: 'George (in Google Calendar)', me: 'George', hevy: 'Hevy', hebrew: 'the Hebrew app', workflow: 'a follow-up rule', planner: 'the planner', gemini: 'the Coach' };
-const who = (by) => WHO[by] ?? by;
-
-// A short, stable hash for an id: FNV-1a, 8 hex digits.
-function hash8(text) {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-  return h.toString(16).padStart(8, '0');
-}
-
-function event(fields) {
-  const refs = Object.fromEntries(Object.entries(fields.refs ?? {}).filter(([, v]) => v != null));
-  return { facts: [], by: 'me', ...fields, refs, reflex: null, deep: null };
-}
-
-// ---- What the cursor remembers --------------------------------------------------------------------
-
-const itemKey = (i) => `${i.status}|${i.date ?? ''}|${i.time ?? ''}`;
-const parseItemKey = (k) => { const [status, date, time] = String(k ?? '').split('|'); return { status, date: date || null, time: time || null }; };
-const georgeCount = (t) => (t.messages ?? []).filter((m) => m.who === 'george').length;
-
-function external(raw) {
-  const props = raw.extendedProperties?.private ?? {};
-  return raw.status !== 'cancelled' && props[P.mine] !== '1' && !props[P.habit];
-}
-function startOf(raw) {
-  if (raw.start?.dateTime) return { iso: new Date(raw.start.dateTime).toISOString(), day: localDate(raw.start.dateTime), allDay: false };
-  if (raw.start?.date) return { iso: `${raw.start.date}T00:00`, day: raw.start.date, allDay: true };
-  return null;
-}
-function endOf(raw) {
-  if (raw.end?.dateTime) return new Date(raw.end.dateTime).toISOString();
-  return raw.end?.date ? `${raw.end.date}T00:00` : null;
-}
-
-function calendarNow(calEvents, today) {
-  const last = addDays(today, WINDOW_DAYS - 1);
-  const out = {};
-  for (const raw of calEvents) {
-    if (!external(raw)) continue;
-    const s = startOf(raw);
-    if (!s || s.day < today || s.day > last) continue;
-    out[`${raw.calendarId}|${raw.id}`] = { s: s.iso, e: endOf(raw), t: String(raw.summary ?? ''), day: s.day, allDay: s.allDay };
-  }
-  return out;
-}
-
-// The items the planner has placed later than asked, and where.
-function overflowNow(doc, today) {
-  const out = {};
-  for (const e of scheduleView(doc, today).entries) {
-    if (e.scheduledDay && e.scheduledDay > e.requestedDay && e.requestedDay <= addDays(today, 6)) out[e.item.id] = e.scheduledDay;
-  }
-  return out;
-}
-
-// Work whose block ended more than half an hour ago with it still unticked: [{ itemId, block }].
-function slipsNow(doc, today, now) {
-  const doneToday = new Set(values(doc.logs).filter((l) => live(l) && l.kind === 'done' && l.day === today).map((l) => l.itemId));
-  const cutoff = now.getTime() - SLIP_GRACE_MINUTES * MIN;
-  const out = [];
-  const blocks = [...scheduleBlocks(doc), ...(dayRecord(doc, today)?.blocks ?? [])];
-  const seen = new Set();
-  for (const b of blocks) {
-    if (!b.start || localDate(b.start) !== today || Date.parse(b.end) > cutoff || ['done', 'partial'].includes(b.state)) continue;
-    const open = (b.items ?? []).filter((id) => live(doc.items[id]) && !doneToday.has(id));
-    for (const id of open) if (!seen.has(id)) { seen.add(id); out.push({ itemId: id, size: open.length, end: b.end }); }
-  }
-  for (const m of dayRecord(doc, today)?.missed ?? []) {
-    if (!seen.has(m.itemId) && live(doc.items[m.itemId]) && !doneToday.has(m.itemId)) { seen.add(m.itemId); out.push({ itemId: m.itemId, size: 1, end: null }); }
-  }
-  return out;
-}
-
-function cursorOf(doc, calEvents, now, dayStartHour = 4, slipped = {}) {
-  const today = logicalDay(now, dayStartHour);
-  const recent = addDays(today, -3);
-  const cur = { at: now.toISOString(), day: today, items: {}, done: {}, amounts: {}, milestones: {}, flags: [], talks: {}, cal: {}, overflow: {}, slipped: {} };
-  for (const i of values(doc.items)) if (i.type !== 'quota') cur.items[i.id] = itemKey(i);
-  for (const l of values(doc.logs)) {
-    if (l.day < recent) continue;
-    if (l.kind === 'done') cur.done[l.id] = l.status;
-    if (l.kind === 'amount' && l.source === 'hebrew') cur.amounts[l.id] = `${l.status}|${l.amount}`;
-  }
-  for (const m of values(doc.milestones)) cur.milestones[m.id] = !!m.done;
-  cur.flags = values(doc.flags).filter(live).map((f) => f.id).sort();
-  for (const t of values(doc.journal)) if (t.kind === 'talk' && live(t) && t.day >= addDays(today, -1)) cur.talks[t.id] = georgeCount(t);
-  cur.cal = calendarNow(calEvents, today);
-  cur.overflow = overflowNow(doc, today);
-  for (const [k, v] of Object.entries(slipped)) if (k.startsWith(`${today}|`)) cur.slipped[k] = v;
-  for (const s of slipsNow(doc, today, now)) cur.slipped[`${today}|${s.itemId}`] = true;
-  return cur;
-}
-
-// ---- Who changed an item ----------------------------------------------------------------------------
-
-function changedBy(doc, itemId, since) {
-  const hits = values(doc.changes).filter((c) => String(c.at ?? '') > since
-    && (c.edits ?? []).some((e) => e.map === 'items' && e.id === itemId))
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  return hits[0]?.source ?? 'me';
-}
-
-// ---- Facts a prompt can cite ------------------------------------------------------------------------
-
-function goalFacts(doc, goal, today) {
-  if (!live(goal)) return [];
-  const ms = milestonesOf(doc, goal.id).filter((m) => m.status === 'active');
-  const due = goal.targetDate ? `, due ${dayName(goal.targetDate)} (${daysBetween(today, goal.targetDate)} days)` : '';
-  const next = ms.filter((m) => !m.done).slice(0, 2).map((m) => q(m.title));
-  const out = [`Goal ${q(goal.title)}${due}; ${ms.filter((m) => m.done).length} of ${ms.length} milestones done${next.length ? `; next: ${next.join(', ')}` : ''}`];
-  const done = new Set(values(doc.logs).filter((l) => live(l) && l.kind === 'done').map((l) => l.itemId));
-  const upcoming = values(doc.items).filter((i) => live(i) && i.type === 'task' && i.goalId === goal.id && !done.has(i.id) && i.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.order ?? 0) - (b.order ?? 0)).slice(0, 4);
-  if (upcoming.length) out.push(`Next for that goal: ${upcoming.map((i) => `${q(i.title)} ${dayName(i.date)}`).join('; ')}`);
-  return out;
-}
-
-function tickLevel(doc, item, today) {
-  const goal = live(doc.goals[item.goalId]) ? doc.goals[item.goalId] : null;
-  const left = goal?.targetDate ? daysBetween(today, goal.targetDate) : null;
-  if (item.type === 'task' && (isPriority(doc, item) || drivePaths(item.notes).length || (left != null && left >= 0 && left <= DUE_SOON_DAYS))) return 3;
-  return goal ? 2 : 1;
-}
-
-function overlapsBooked(doc, s, e) {
-  const from = Date.parse(s);
-  const to = Date.parse(e ?? s);
-  return scheduleBlocks(doc).some((b) => (b.items ?? []).length && Date.parse(b.start) < to && Date.parse(b.end) > from);
-}
-
-function when(c) {
-  return c.allDay ? `${dayName(c.day)} (all day)` : `${dayName(c.day)} ${clockLabel(c.s)}–${clockLabel(c.e)}`;
-}
-
-// ---- The events ----------------------------------------------------------------------------------------
-
-function sense({ doc, cursor, calEvents = [], now, dayStartHour = 4 }) {
-  const today = logicalDay(now, dayStartHour);
-  const next = cursorOf(doc, calEvents, now, dayStartHour, cursor?.day === today ? cursor.slipped : {});
-  if (!cursor) return { cursor: next, events: [] };
-  const at = now.toISOString();
-  const since = cursor.at ?? '';
-  const events = [];
-  const add = (fields) => events.push(event({ at, day: today, ...fields }));
-
-  // Ticks, and ticks taken off.
-  for (const l of values(doc.logs)) {
-    if (l.kind !== 'done' || l.day < addDays(today, -3)) continue;
-    const item = doc.items[l.itemId];
-    if (!item) continue;
-    const was = cursor.done?.[l.id];
-    if (live(l) && was !== 'active') {
-      const by = l.source ?? 'me';
-      const time = l.at ? ` at ${clockLabel(l.at)}` : '';
-      const goal = doc.goals[item.goalId];
-      if (by === 'hevy') {
-        add({ id: `workout:${l.id}`, kind: 'workout', level: 1, by, refs: { itemId: item.id }, text: `Hevy logged a workout, ticking ${q(item.title)}${time}` });
-        continue;
-      }
-      if (by === 'hebrew') {
-        add({ id: `hebrew:tick:${l.id}`, kind: 'hebrew', level: 1, by, refs: { itemId: item.id }, text: `The Hebrew app ticked ${q(item.title)}${time}` });
-        continue;
-      }
-      const paths = drivePaths(item.notes);
-      add({
-        id: `tick:${l.id}`, kind: 'tick', level: tickLevel(doc, item, today), by,
-        refs: { itemId: item.id, goalId: live(goal) ? goal.id : null },
-        text: `${who(by)} ticked ${q(item.title)}${item.area ? ` (${item.area})` : ''}${time}`,
-        facts: [...(item.notes ? [`Its notes: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 400)}`] : []), ...goalFacts(doc, goal, today)],
-        ...(paths.length ? { paths } : {}),
-      });
-    } else if (!live(l) && was === 'active') {
-      add({ id: `untick:${l.id}`, kind: 'untick', level: 1, by: l.source ?? 'me', refs: { itemId: item.id }, text: `The tick came off ${q(item.title)} (${l.day})` });
-    }
-  }
-
-  // Committed work pushed off today or deleted; blocks George moved in Google Calendar.
-  const committed = new Set(doc.calendar?.[`commit:${today}`]?.tasks ?? []);
-  const reported = new Set();
-  for (const item of values(doc.items)) {
-    if (item.type === 'quota') continue;
-    const prev = cursor.items?.[item.id];
-    if (prev === undefined || prev === itemKey(item)) continue;
-    const was = parseItemKey(prev);
-    const by = changedBy(doc, item.id, since);
-    const goal = doc.goals[item.goalId];
-    const refs = { itemId: item.id, goalId: live(goal) ? goal.id : null };
-    if (committed.has(item.id) && was.status === 'active' && item.status === 'archived' && !item.released) {
-      add({ id: `dropped:${item.id}`, kind: 'dropped', level: 3, by, refs, text: `${who(by)} deleted ${q(item.title)}, which was on today's committed list`, facts: goalFacts(doc, goal, today) });
-      reported.add(item.id);
-    } else if (committed.has(item.id) && live(item) && item.date > today && (was.date ?? '') <= today) {
-      add({ id: `pushed:${item.id}:${item.date}`, kind: 'pushed', level: 3, by, refs, text: `${who(by)} pushed ${q(item.title)} from today (committed) to ${dayName(item.date)}`, facts: goalFacts(doc, goal, today) });
-      reported.add(item.id);
-    }
-    if (!reported.has(item.id) && by === 'calendar' && live(item) && (item.date !== was.date || item.time !== was.time)) {
-      // His own rearranging. A move within the day is his to make: noted, never remarked on (on 25 Sep
-      // four of the Coach's eight messages were "you moved X — how are you managing?"). A move to
-      // another day can change what the days hold, so it's looked at once the calendar settles.
-      const level = item.date !== was.date ? 2 : 1;
-      add({ id: `moved:${item.id}:${item.date}|${item.time ?? ''}`, kind: 'moved', level, by, refs,
-        text: `George moved ${q(item.title)} in Google Calendar from ${was.date ? dayName(was.date) : '?'}${was.time ? ` ${was.time}` : ''} to ${dayName(item.date)}${item.time ? ` ${item.time}` : ''}`,
-        facts: goalFacts(doc, goal, today) });
-    }
-  }
-
-  // Blocks that ended with their work unticked.
-  for (const s of slipsNow(doc, today, now)) {
-    const key = `${today}|${s.itemId}`;
-    if (cursor.day === today && cursor.slipped?.[key]) continue;
-    const item = doc.items[s.itemId];
-    const goal = doc.goals[item.goalId];
-    // Noted for the evening and the deep runs, never chased one block at a time: he often ticks
-    // afterwards, through Claude.
-    add({ id: `slip:${today}:${item.id}`, kind: 'slip', level: 1, by: 'me',
-      refs: { itemId: item.id, goalId: live(goal) ? goal.id : null },
-      text: `${q(item.title)} was booked until ${s.end ? clockLabel(s.end) : 'earlier'} and isn't ticked`, facts: goalFacts(doc, goal, today) });
-  }
-
-  // The planner placing work later than asked.
-  for (const [id, day] of Object.entries(next.overflow)) {
-    if (cursor.overflow?.[id] === day) continue;
-    const item = doc.items[id];
-    const goal = doc.goals[item?.goalId];
-    add({ id: `overflow:${id}:${day}`, kind: 'overflow', level: 1, by: 'planner', refs: { itemId: id, goalId: live(goal) ? goal.id : null },
-      text: `The planner couldn't fit ${q(item?.title)} on ${dayName(item?.date ?? today)}, so it's booked ${dayName(day)}` });
-  }
-
-  // George's calendars: what's new, moved, or gone.
-  for (const [key, c] of Object.entries(next.cal)) {
-    const was = cursor.cal?.[key];
-    const raw = calEvents.find((r) => `${r.calendarId}|${r.id}` === key);
-    const soon = c.day <= addDays(today, 1);
-    const described = htmlText(raw?.description ?? '').slice(0, DESCRIPTION_MAX);
-    const facts = [`Calendar: ${raw?.calendarId ?? ''}`, ...(described ? [`Description: ${described}`] : [])];
-    if (!was) {
-      const created = Date.parse(raw?.created ?? '');
-      if (Number.isFinite(created) && raw.created <= since) continue; // an old event that just came into view
-      const level = soon ? (!c.allDay && overlapsBooked(doc, c.s, c.e) ? 3 : 2) : 1;
-      add({ id: `cal:${key}:${hash8(`new|${c.s}|${c.e}|${c.t}`)}`, kind: 'calendar', level, by: 'me', refs: { calendar: key },
-        text: `New in George's calendar: ${q(c.t)} ${when(c)}`, facts });
-    } else if (was.s !== c.s || was.e !== c.e || was.t !== c.t) {
-      if (raw?.updated && raw.updated <= since) continue;
-      const moved = was.s !== c.s || was.e !== c.e;
-      const level = moved ? (soon ? (!c.allDay && overlapsBooked(doc, c.s, c.e) ? 3 : 2) : 1) : 1;
-      add({ id: `cal:${key}:${hash8(`changed|${c.s}|${c.e}|${c.t}`)}`, kind: 'calendar', level, by: 'me', refs: { calendar: key },
-        text: moved ? `George moved ${q(c.t)} in his calendar from ${when(was)} to ${when(c)}` : `George renamed ${q(was.t)} to ${q(c.t)} (${when(c)})`, facts });
-    }
-  }
-  for (const [key, was] of Object.entries(cursor.cal ?? {})) {
-    if (next.cal[key] || !(Date.parse(was.s) > now.getTime()) || was.day > addDays(today, WINDOW_DAYS - 1)) continue;
-    add({ id: `cal:${key}:${hash8(`gone|${was.s}|${was.t}`)}`, kind: 'calendar', level: was.day <= addDays(today, 1) ? 2 : 1, by: 'me', refs: { calendar: key },
-      text: `George removed ${q(was.t)} (${when(was)}) from his calendar` });
-  }
-
-  // Milestones reached.
-  for (const m of values(doc.milestones)) {
-    if (!m.done || cursor.milestones?.[m.id] !== false || !live(m)) continue;
-    const goal = doc.goals[m.goalId];
-    add({ id: `ms:${m.id}`, kind: 'milestone', level: 2, by: 'me', refs: { milestoneId: m.id, goalId: live(goal) ? goal.id : null },
-      text: `Milestone reached: ${q(m.title)}`, facts: goalFacts(doc, goal, today) });
-  }
-
-  // The Hebrew app's numbers.
-  const hebrew = values(doc.logs).filter((l) => l.kind === 'amount' && l.source === 'hebrew' && l.day >= addDays(today, -3) && live(l)
-    && cursor.amounts?.[l.id] !== `${l.status}|${l.amount}`);
-  if (hebrew.length) {
-    const lines = hebrew.map((l) => `${q(doc.items[l.itemId]?.title ?? l.itemId)} ${l.amount} on ${l.day}`);
-    add({ id: `hebrew:${today}:${hash8(lines.join('|'))}`, kind: 'hebrew', level: 1, by: 'hebrew', refs: {}, text: `The Hebrew app synced: ${lines.join('; ')}` });
-  }
-
-  // George answering something the Mind said.
-  for (const t of values(doc.journal)) {
-    if (t.kind !== 'talk' || !live(t) || t.day < addDays(today, -1)) continue;
-    const n = georgeCount(t);
-    if (n <= (cursor.talks?.[t.id] ?? 0)) continue;
-    if (!isMindTalk(t) && !(t.messages ?? []).some(isMindMessage)) continue;
-    const said = (t.messages ?? []).filter((m) => m.who === 'george').at(-1)?.text ?? '';
-    add({ id: `reply:${t.id}:${n}`, kind: 'reply', level: 1, by: 'me', refs: { talkId: t.id }, text: `George answered the Coach: ${q(said)}` });
-  }
-
-  // Flags, and questions George has asked the Mind to think about.
-  const flagsBefore = new Set(cursor.flags ?? []);
-  for (const f of values(doc.flags)) {
-    if (!live(f) || flagsBefore.has(f.id)) continue;
-    add({ id: `flag:${f.id}`, kind: 'flag', level: 1, by: f.source ?? 'me', refs: {}, text: `New flag (${f.kind ?? 'note'}): ${q(f.text)}` });
-  }
-  for (const a of openAsks(doc)) {
-    add({ id: `ask:${a.id}`, kind: 'ask', level: 3, by: 'me', refs: { askId: a.id }, text: `George asked for a deeper look: ${q(a.text)}` });
-  }
-
-  return { cursor: next, events };
-}
-
-// Whether the plan for a goal has stopped fitting: three or more pieces of its work pushed along by
-// the planner in a day, or work asked for before the goal's date now booked after it. One `risk`
-// event per goal per day.
-function planRisk(doc, events, today, now = new Date()) {
-  const out = [];
-  const view = scheduleView(doc, today, 21).entries;
-  for (const goal of values(doc.goals).filter(live)) {
-    const overflows = events.filter((e) => e.kind === 'overflow' && e.day === today && e.refs?.goalId === goal.id);
-    const late = goal.targetDate ? view.filter((e) => e.item.goalId === goal.id && e.requestedDay <= goal.targetDate
-      && e.scheduledDay && e.scheduledDay > goal.targetDate) : [];
-    if (overflows.length < 3 && !late.length) continue;
-    const facts = [
-      ...late.map((e) => `${q(e.item.title)} asked for ${dayName(e.requestedDay)}, now booked ${dayName(e.scheduledDay)} — after the goal's date`),
-      ...(overflows.length >= 3 ? [`${overflows.length} pieces of this goal's work pushed along by the planner today`] : []),
-      ...goalFacts(doc, goal, today),
-    ];
-    out.push(event({ id: `risk:${goal.id}:${today}`, at: now.toISOString(), day: today, kind: 'risk', level: 3, by: 'planner',
-      refs: { goalId: goal.id }, text: `The plan for ${q(goal.title)} may no longer fit${goal.targetDate ? ` before ${dayName(goal.targetDate)}` : ''}`, facts }));
-  }
-  return out;
-}
-return { SLIP_GRACE_MINUTES, DESCRIPTION_MAX, cursorOf, sense, planRisk };
-})();
-
-// ---- planner/gemini-gas.js
-const __planner_gemini_gas = (() => {
-// Gemini for the Mind, from inside Apps Script (docs/superpowers/specs/2026-09-25-coach-mind-design.md).
-// The page's client (js/gemini.js) waits on timers Apps Script doesn't have; this one sends every
-// question of a step at once with UrlFetchApp.fetchAll, answers in JSON, and switches models on the
-// fly. Two roles: `think` (Flash, asked to think hard — one call however long it thinks) and `check`
-// (Flash-Lite). The Mind's project allows Flash about 20 calls a day, so `budget` keeps count per
-// model: `left()` is the day's total left, `modelLeft(model)` what a capped model has left,
-// `spend(model, n)` records calls, and `blocked` (a Set kept in mind.json) holds any model Google has
-// said is used up for the day. A question for a model that's used up, capped, busy for the minute or
-// failing goes to the other one; `notes` collects what happened in plain English for the status line.
-//
-// Only answers count against the allowance. On 25 Sep every one of Flash's 19 calls came back "503:
-// this model is currently experiencing high demand", each was counted, and by the evening the Mind
-// thought Flash was used up when Google had charged it nothing. A server error now gets one more try
-// on the same model after `sleep(ms)` (Utilities.sleep in Apps Script), and only then the other model.
-
-const { ENDPOINT, readReply } = __js_gemini;
-
-const PER_DAY = /PerDay/i;
-const THINKING = /thinking/i;
-const SERVER_WAIT_MS = 5000;
-
-function createGemini({ UrlFetchApp, key, models, budget, log = () => {}, sleep = () => {} }) {
-  const scrub = (text) => String(text).split(key || '\u0000').join('…');
-  const other = (role) => (role === 'think' ? 'check' : 'think');
-  const noThinking = new Set();
-  const notes = new Set();
-  const usable = (role) => !budget.blocked.has(models[role]) && (budget.modelLeft?.(models[role]) ?? Infinity) > 0;
-
-  // The role a question should go to now: its own, or the other one.
-  const route = (role) => (usable(role) ? role : usable(other(role)) ? other(role) : null);
-
-  function body(q, role) {
-    const generationConfig = { responseMimeType: 'application/json', temperature: 0.5 };
-    if (q.think && role === 'think' && !noThinking.has(models.think)) generationConfig.thinkingConfig = { thinkingLevel: 'HIGH' };
-    return {
-      systemInstruction: { parts: [{ text: q.system }] },
-      contents: [{ role: 'user', parts: [{ text: q.prompt }] }],
-      generationConfig,
-    };
-  }
-
-  function send(batch) {
-    const requests = batch.map((b) => ({
-      url: `${ENDPOINT}/${models[b.role]}:generateContent?key=${encodeURIComponent(key)}`,
-      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-      payload: JSON.stringify(body(b.q, b.role)),
-    }));
-    const responses = UrlFetchApp.fetchAll(requests);
-    batch.forEach((b, i) => { const code = responses[i].getResponseCode(); if (code >= 200 && code < 300) budget.spend(models[b.role], 1); });
-    return responses;
-  }
-
-  // One answer: { data, model } or { error, retry }. `retry` asks for the other model; `again` for the
-  // same one without its thinking setting (a model that doesn't take it).
-  function read(res, role) {
-    const status = res.getResponseCode();
-    const text = res.getContentText();
-    const model = models[role];
-    if (status >= 200 && status < 300) {
-      try { return { data: readReply(text), model }; } catch { return { error: 'nonsense', retry: true }; }
-    }
-    if (status === 400 && THINKING.test(text) && !noThinking.has(model)) { noThinking.add(model); return { error: 'rejected', again: true }; }
-    if (status === 401 || status === 403 || (status === 400 && /API[ _]key not valid|API_KEY_INVALID/i.test(text))) return { error: 'badkey' };
-    if (status === 429) {
-      if (PER_DAY.test(text)) {
-        budget.blocked.add(model);
-        notes.add(`${model} has used its free allowance for today`);
-        return { error: 'quota', retry: true };
-      }
-      return { error: 'busy', retry: true };
-    }
-    log(`Gemini ${model} answered ${status}: ${scrub(text).slice(0, 200)}`);
-    return { error: status >= 500 ? 'server' : 'rejected', retry: status >= 500, status };
-  }
-
-  // questions: [{ system, prompt, model: 'think'|'check', think?: true }] → answers in the same order.
-  async function ask(questions) {
-    if (!key) return questions.map(() => ({ error: 'nokey' }));
-    if (budget.left() < questions.length) return questions.map(() => ({ error: 'budget' }));
-    const out = new Array(questions.length).fill(null);
-    let batch = [];
-    questions.forEach((q, i) => {
-      const role = route(q.model);
-      if (role) batch.push({ q, i, role, tried: new Set([role]) });
-      else out[i] = { error: budget.blocked.has(models[q.model]) || budget.blocked.has(models[other(q.model)]) ? 'quota' : 'budget' };
-    });
-    // At most four rounds: the first answers; then the same model again (without thinking, or after
-    // a pause when it was overloaded) or the other one; then the other one; then one spare.
-    let wait = false;
-    for (let round = 0; batch.length && round < 4; round++) {
-      if (wait) { sleep(SERVER_WAIT_MS); wait = false; }
-      const answers = send(batch);
-      const next = [];
-      batch.forEach((b, n) => {
-        const r = read(answers[n], b.role);
-        if (r.data) { out[b.i] = { ...r, role: b.role }; return; }
-        if (r.again && budget.left() > next.length) { next.push(b); return; }
-        if (r.error === 'server' && !b.waited && budget.left() > next.length) { next.push({ ...b, waited: true }); wait = true; return; }
-        const alt = other(b.role);
-        if (r.retry && !b.tried.has(alt) && usable(alt) && budget.left() > next.length) {
-          if (r.error === 'server') notes.add(`${models[b.role]} was overloaded (HTTP ${r.status}), so ${models[alt]} answered`);
-          else if (r.error === 'nonsense') notes.add(`${models[b.role]}'s answer couldn't be read, so ${models[alt]} answered`);
-          else if (r.error === 'busy') notes.add(`${models[b.role]} was busy for a minute, so ${models[alt]} answered`);
-          next.push({ ...b, role: alt, tried: new Set([...b.tried, alt]) });
-          return;
-        }
-        out[b.i] = { error: r.error };
-      });
-      batch = next;
-    }
-    batch.forEach((b) => { out[b.i] ??= { error: 'failed' }; });
-    return out;
-  }
-
-  return {
-    ask,
-    // Whether a role's own model can take a question now (so a caller can choose how to ask).
-    available: (role) => usable(role),
-    notes: () => [...notes],
-  };
-}
-return { SERVER_WAIT_MS, createGemini };
-})();
-
-// ---- js/coach.js
-const __js_coach = (() => {
-// The coach's view of the document: the plain-text summary Gemini is given, a week's numbers, and
-// the small readers the Coach panel needs. Pure: a document and a day in, values out.
-
-const { addDays, weekStart, shortWeekday, shortDate, longDate, carryLabel } = __js_dates;
-const { rowsForDay, doneIndex, dayCompletion, streak, weekTotal, countsOn, goalProgress, milestonesOf, doneBetween } = __js_schedule;
-const { formatAmount } = __js_parse;
-const { journalId } = __js_doc;
-const { GeminiError } = __js_gemini;
-const { gymContext, trainingWeek, workouts } = __js_gym;
-
-const CONTEXT_CAP = 4000;
-const ROW_CAP = 25;
-const TARGET_CAP = 10;
-const GOAL_CAP = 8;
-const ANSWER_CAP = 300;
-
-const values = (map) => Object.values(map ?? {});
-const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
-
-// One line of at most n characters: whitespace collapsed, and … where it was cut.
-function clip(text, n) {
-  const s = String(text ?? '').replace(/\s+/g, ' ').trim();
-  return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
-}
-
-// A check-in's non-blank answers.
-const answersOf = (checkin) => (Array.isArray(checkin?.answers) ? checkin.answers : [])
-  .filter((a) => typeof a === 'string' && a.trim());
-
-// A heading and its lines, with "…and N more" when `lines` is a cut-down `total`, or the heading
-// and `none` on one line when there is nothing.
-function section(heading, lines, total, none) {
-  if (!total) return [`${heading} ${none}`];
-  return [heading, ...lines, ...(total > lines.length ? [`…and ${total - lines.length} more`] : [])];
-}
-
-function streakText(item, s) {
-  if (s.current < 2) return null;
-  const kind = item.repeat?.kind ?? 'daily';
-  if (kind === 'perWeek') return `${s.current}-week streak`;
-  if (kind === 'daily') return `${s.current}-day streak`;
-  return `${s.current} in a row`;
-}
-
-function rowLine(doc, row, today) {
-  const { item } = row;
-  const notes = [];
-  if (row.carriedFrom) notes.push(`carried ${carryLabel(row.carriedFrom, today)}`);
-  if (row.kind === 'habit') {
-    const text = streakText(item, streak(doc, item, today));
-    if (text) notes.push(text);
-  }
-  const area = item.area ? ` [${clip(item.area, 30)}]` : '';
-  return `${row.done ? '✓' : '✗'} ${clip(item.title, 80)}${area}${notes.length ? ` — ${notes.join(', ')}` : ''}`;
-}
-
-// 'Job search: 3.5h of 6h' · 'Applications: 3 of 5'. Works on a quota item or a weekStats target.
-function targetLine(target, total) {
-  const unit = target.unit ?? 'count';
-  const label = unit === 'count' && target.unitLabel ? ` ${clip(target.unitLabel, 30)}` : '';
-  return `${clip(target.title, 80)}: ${formatAmount(total, unit)} of ${formatAmount(Number(target.target) || 0, unit)}${label}`;
-}
-
-function goalLine(doc, goal) {
-  const { pct } = goalProgress(doc, goal);
-  const next = milestonesOf(doc, goal.id)
-    .filter((m) => m.status === 'active' && !m.done)
-    .slice(0, 2)
-    .map((m) => clip(m.title, 60));
-  const date = goal.targetDate ? `, target ${shortDate(goal.targetDate)}` : '';
-  return `${clip(goal.title, 80)} — ${pct}%${date}${next.length ? `; next: ${next.join(', ')}` : ''}`;
-}
-
-// ---- Readers -----------------------------------------------------------------------------------
-
-function checkinOf(doc, day) {
-  const rec = doc.journal?.[journalId('checkin', day)];
-  return rec && rec.status === 'active' ? rec : null;
-}
-
-function digestOf(doc, monday) {
-  const rec = doc.journal?.[journalId('digest', weekStart(monday))];
-  return rec && rec.status === 'active' ? rec : null;
-}
-
-// Habits and weekly targets Gemini proposed for a goal that are still waiting on Today.
-function proposedItems(doc, goalId) {
-  return values(doc.items).filter((i) => i.goalId === goalId && i.status === 'suggested').sort(byOrder);
-}
-
-// What the Coach panel shows for today's check-in:
-//   'done'      — today's feedback is in (shown even without a key)
-//   'nokey'     — no Gemini key on this device
-//   'questions' — the questions are saved and waiting for answers
-//   'due'       — no check-in yet, and it's the check-in hour or later
-//   'early'     — no check-in yet, before the check-in hour
-// Hours before the day starts (after midnight) still count as the evening of the logical day.
-function checkinState({ doc, today, now, dayStartHour = 4, checkinHour = 18, hasKey }) {
-  const rec = checkinOf(doc, today);
-  if (rec?.feedback) return 'done';
-  if (!hasKey) return 'nokey';
-  if (Array.isArray(rec?.questions) && rec.questions.length) return 'questions';
-  const hour = now.getHours();
-  return (hour < dayStartHour ? hour + 24 : hour) >= checkinHour ? 'due' : 'early';
-}
-
-// ---- The context block -------------------------------------------------------------------------
-
-// Everything Gemini is told about George's day, as compact plain text, never over CONTEXT_CAP.
-function coachContext(doc, today) {
-  const idx = doneIndex(doc);
-  const rows = rowsForDay(doc, today, idx).filter((r) => r.item.status === 'active');
-  const quotas = values(doc.items)
-    .filter((q) => q.type === 'quota' && q.status === 'active' && countsOn(q, today))
-    .sort(byOrder);
-  const goals = values(doc.goals).filter((g) => g.status === 'active').sort(byOrder);
-  const week = Array.from({ length: 7 }, (_, i) => {
-    const day = addDays(today, -i);
-    const { done, total } = dayCompletion(doc, day, idx);
-    return `${shortWeekday(day)} ${done}/${total}`;
-  });
-  const checkins = [1, 2, 3]
-    .map((n) => checkinOf(doc, addDays(today, -n)))
-    .filter((c) => c && answersOf(c).length)
-    .map((c) => `${shortWeekday(c.day)}: ${answersOf(c).map((a) => clip(a, ANSWER_CAP)).join(' / ')}`);
-
-  const lines = [
-    `Today: ${longDate(today)} ${today.slice(0, 4)}`,
-    ...section("Today's list:", rows.slice(0, ROW_CAP).map((r) => rowLine(doc, r, today)), rows.length, 'nothing scheduled'),
-    ...section("This week's targets:", quotas.slice(0, TARGET_CAP).map((q) => targetLine(q, weekTotal(doc, q.id, today))), quotas.length, 'none'),
-    ...gymContext(doc, today),
-    `Last 7 days: ${week.join(' · ')}`,
-    ...section('Goals:', goals.slice(0, GOAL_CAP).map((g) => goalLine(doc, g)), goals.length, 'none'),
-    ...(checkins.length ? ['Recent check-ins (his answers):', ...checkins] : []),
-  ];
-  const text = lines.join('\n');
-  return text.length > CONTEXT_CAP ? `${text.slice(0, CONTEXT_CAP - 1)}…` : text;
-}
-
-// ---- A week's numbers --------------------------------------------------------------------------
-
-// The Monday–Sunday week containing `monday` (normally its Monday), for the weekly digest.
-function weekStats(doc, monday) {
-  const start = weekStart(monday);
-  const end = addDays(start, 6);
-  const idx = doneIndex(doc);
-  const days = [];
-  const habits = new Map();
-  const tasks = new Map();
-  for (let i = 0; i < 7; i++) {
-    const day = addDays(start, i);
-    const rows = rowsForDay(doc, day, idx);
-    days.push({ day, done: rows.filter((r) => r.done).length, total: rows.length });
-    for (const r of rows) {
-      if (r.kind === 'task') {
-        tasks.set(r.item.id, (tasks.get(r.item.id) ?? false) || r.done);
-        continue;
-      }
-      const h = habits.get(r.item.id) ?? { id: r.item.id, title: r.item.title, done: 0, scheduled: 0 };
-      h.scheduled++;
-      if (r.done) h.done++;
-      habits.set(r.item.id, h);
-    }
-  }
-  // A few-times-a-week habit stays on the list until it's met, so days listed aren't its target.
-  for (const h of habits.values()) {
-    const repeat = doc.items[h.id].repeat;
-    if (repeat?.kind === 'perWeek') {
-      h.done = doneBetween(doc, h.id, start, addDays(start, 7), idx);
-      h.scheduled = repeat.n;
-    }
-  }
-  const targets = values(doc.items)
-    .filter((q) => q.type === 'quota' && days.some((d) => countsOn(q, d.day)))
-    .sort(byOrder)
-    .map((q) => ({
-      id: q.id, title: q.title, total: weekTotal(doc, q.id, start), target: q.target,
-      unit: q.unit ?? 'count', unitLabel: q.unitLabel ?? '',
-    }));
-  const goals = values(doc.goals)
-    .filter((g) => g.status === 'active' && g.created <= end)
-    .sort(byOrder)
-    .map((g) => {
-      const p = goalProgress(doc, g);
-      return {
-        id: g.id, title: g.title, pct: p.pct, done: p.done, total: p.total, numeric: p.numeric,
-        unit: g.unit ?? 'count', week: weekTotal(doc, g.id, start),
-      };
-    });
-  const amounts = values(doc.logs)
-    .filter((l) => l.status === 'active' && l.kind === 'amount' && l.day >= start && l.day <= end).length;
-  const doneTasks = [...tasks.values()].filter(Boolean).length;
-  return {
-    monday: start,
-    sunday: end,
-    days,
-    habits: [...habits.values()].sort((a, b) => byOrder(doc.items[a.id], doc.items[b.id])),
-    tasks: { done: doneTasks, total: tasks.size },
-    targets,
-    goals,
-    amounts,
-    empty: days.every((d) => d.total === 0) && amounts === 0,
-  };
-}
-
-// Last week's Monday when its digest should be written: none exists yet and the week had any
-// counted rows or amounts. Otherwise null.
-function digestDue(doc, today) {
-  const monday = addDays(weekStart(today), -7);
-  if (digestOf(doc, monday)) return null;
-  return weekStats(doc, monday).empty ? null : monday;
-}
-
-// ---- Prompts -----------------------------------------------------------------------------------
-// Each builder returns { system, prompt } for askGemini. The job texts are the design's, word for
-// word; dev/fake-gemini.js recognises a job by finding its text in the prompt.
-
-const SYSTEM = "You are George's coach inside his personal daily dashboard. Be direct, warm and specific, in British English. Refer to the actual items, numbers and words in the data you are given; never give generic advice or motivational filler. No emojis. Stay within the length limits. Reply with JSON only, in exactly the shape asked for.";
-
-const JOBS = {
-  questions: `Ask George 2 or 3 short questions about today, each answerable in a sentence or two. At least one must name something specific from today — a miss, a win, or a number. The last question is about tomorrow. Shape: {"questions": ["…", "…"]}`,
-  feedback: `Reply with feedback of at most 90 words. First one specific thing that went well, if anything did; then the single most useful change for tomorrow, grounded in his answers and the numbers. Don't moralise and don't repeat his answers back to him. Then suggest at most 2 concrete tasks for tomorrow, only if they follow from what he said. Shape: {"feedback": "…", "tomorrow": [{"title": "…"}]}`,
-  digest: `Write last week's digest, for George and for Claude, who reads it later to help him. Shape: {"summary": "at most 120 words", "wins": [0 to 3 short phrases], "slipped": [0 to 3 short phrases], "focus": "one sentence for this week"}`,
-};
-
-const TYPED_CAP = 1000;
-
-// Job A — the check-in questions.
-function questionsPrompt(doc, today) {
-  return { system: SYSTEM, prompt: `${coachContext(doc, today)}\n\n${JOBS.questions}` };
-}
-
-// Job B — feedback on his answers. A blank answer is sent as "(no answer)".
-function feedbackPrompt(doc, today, questions, answers) {
-  const qa = questions.flatMap((q, i) => [`Q: ${clip(q, ANSWER_CAP)}`, `A: ${clip(answers?.[i], TYPED_CAP) || '(no answer)'}`]);
-  return {
-    system: SYSTEM,
-    prompt: `${coachContext(doc, today)}\n\nToday's check-in:\n${qa.join('\n')}\n\n${JOBS.feedback}`,
-  };
-}
-
-function goalWeekLine(g) {
-  const detail = g.numeric
-    ? `${formatAmount(g.done, g.unit)} of ${formatAmount(g.total, g.unit)}, ${formatAmount(g.week, g.unit)} this week`
-    : `${g.done} of ${g.total} milestones`;
-  return `${clip(g.title, 80)} — ${g.pct}% (${detail})`;
-}
-
-// Job D — the digest of the week starting `monday`: its numbers, then its check-ins.
-function digestPrompt(doc, monday) {
-  const s = weekStats(doc, monday);
-  const checkins = values(doc.journal)
-    .filter((c) => c.kind === 'checkin' && c.status === 'active' && c.day >= s.monday && c.day <= s.sunday)
-    .sort((a, b) => (a.day < b.day ? -1 : 1))
-    .map((c) => {
-      const answers = answersOf(c).map((a) => clip(a, ANSWER_CAP)).join(' / ') || '(none)';
-      return `${shortWeekday(c.day)}: answers: ${answers} — feedback: ${clip(c.feedback, 400) || '(none)'}`;
-    });
-  const lines = [
-    `Week: ${longDate(s.monday)} to ${longDate(s.sunday)} ${s.sunday.slice(0, 4)}`,
-    `Days: ${s.days.map((d) => `${shortWeekday(d.day)} ${d.done}/${d.total}`).join(' · ')}`,
-    ...section('Habits:', s.habits.slice(0, ROW_CAP).map((h) => `${clip(h.title, 80)}: ${h.done} of ${h.scheduled}`), s.habits.length, 'none'),
-    ...section('Weekly targets:', s.targets.slice(0, TARGET_CAP).map((t) => targetLine(t, t.total)), s.targets.length, 'none'),
-    `Tasks: ${s.tasks.done} of ${s.tasks.total} done`,
-    ...(workouts(doc).length ? [`Training: ${trainingWeek(doc, s.sunday)}`] : []),
-    ...section('Goals:', s.goals.slice(0, GOAL_CAP).map(goalWeekLine), s.goals.length, 'none'),
-    ...section('Check-ins:', checkins, checkins.length, 'none'),
-  ];
-  return { system: SYSTEM, prompt: `${lines.join('\n')}\n\n${JOBS.digest}` };
-}
-
-// ---- Reply parsers -----------------------------------------------------------------------------
-// Each takes the JSON askGemini returned and gives back a clean object, or throws the "didn't make
-// sense" GeminiError. Strings are trimmed and capped, lists cut to the counts the prompts ask
-// for, and any field not asked for is dropped. Nothing is written until a parser has passed.
-
-const nonsense = () => new GeminiError('nonsense');
-const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-const oneLine = (v, n) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n).trim() : '');
-const block = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n).trim() : '');
-const lineList = (v, max, n) => (Array.isArray(v) ? v.map((x) => oneLine(x, n)).filter(Boolean).slice(0, max) : []);
-
-// → { questions: string[] }  1–3 questions, each at most 300 characters.
-function parseQuestions(data) {
-  if (!isObject(data)) throw nonsense();
-  const questions = lineList(data.questions, 3, 300);
-  if (!questions.length) throw nonsense();
-  return { questions };
-}
-
-// → { feedback: string, tomorrow: { title }[] }  feedback at most 900 characters; 0–2 tasks.
-function parseFeedback(data) {
-  if (!isObject(data)) throw nonsense();
-  const feedback = block(data.feedback, 900);
-  if (!feedback) throw nonsense();
-  const tomorrow = (Array.isArray(data.tomorrow) ? data.tomorrow : [])
-    .map((t) => ({ title: oneLine(isObject(t) ? t.title : t, 80) }))
-    .filter((t) => t.title)
-    .slice(0, 2);
-  return { feedback, tomorrow };
-}
-
-// A habit's repeat: daily, some weekdays, or a number of times a week; anything else becomes daily.
-function cleanRepeat(r) {
-  if (isObject(r) && r.kind === 'weekdays' && Array.isArray(r.days)) {
-    const days = [...new Set(r.days.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))].sort((a, b) => a - b);
-    if (days.length) return { kind: 'weekdays', days };
-  }
-  if (isObject(r) && r.kind === 'perWeek' && typeof r.n === 'number' && Number.isFinite(r.n)) {
-    return { kind: 'perWeek', n: Math.min(7, Math.max(1, Math.round(r.n))) };
-  }
-  return { kind: 'daily' };
-}
-
-// A weekly target, or null when it can't be one: a positive number, in minutes for time.
-function cleanTarget(t) {
-  if (!isObject(t)) return null;
-  const unit = t.unit === undefined ? 'count' : t.unit;
-  if (unit !== 'count' && unit !== 'minutes') return null;
-  const title = oneLine(t.title, 80);
-  let target = typeof t.target === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(t.target) ? Number(t.target) : t.target;
-  if (typeof target !== 'number' || !Number.isFinite(target)) return null;
-  if (unit === 'minutes') target = Math.round(target);
-  if (!title || !(target > 0)) return null;
-  return { title, target, unit, unitLabel: unit === 'count' ? oneLine(t.unitLabel, 40) : '' };
-}
-
-// → { summary, wins, slipped, focus }  summary at most 1200 characters; 0–3 wins and slips.
-function parseDigest(data) {
-  if (!isObject(data)) throw nonsense();
-  const summary = block(data.summary, 1200);
-  if (!summary) throw nonsense();
-  return {
-    summary,
-    wins: lineList(data.wins, 3, 80),
-    slipped: lineList(data.slipped, 3, 80),
-    focus: oneLine(data.focus, 300),
-  };
-}
-
-// ---- The suggested-goal card -------------------------------------------------------------------
-
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-function repeatText(repeat) {
-  switch (repeat?.kind) {
-    case 'weekdays': return (repeat.days ?? []).map((d) => DAY_NAMES[d - 1]).filter(Boolean).join(', ');
-    case 'perWeek': return repeat.n === 1 ? 'once a week' : `${repeat.n} times a week`;
-    case 'weekly': return `every ${DAY_NAMES[repeat.day - 1] ?? 'week'}`;
-    case 'monthly': return `on day ${repeat.date} of the month`;
-    default: return 'every day';
-  }
-}
-
-// One line for a habit or weekly target a plan proposes, as the suggested-goal card lists it:
-// 'Habit: Stretch · Mon, Wed, Fri' · 'Weekly target: Running · 1.5h' · 'Weekly target: Parkruns · 2 runs'.
-function proposalLine(item) {
-  if (item.type === 'habit') return `Habit: ${item.title} · ${repeatText(item.repeat)}`;
-  if (item.type === 'quota') {
-    const unit = item.unit ?? 'count';
-    const label = unit === 'count' && item.unitLabel ? ` ${item.unitLabel}` : '';
-    return `Weekly target: ${item.title} · ${formatAmount(Number(item.target) || 0, unit)}${label}`;
-  }
-  return item.title;
-}
-return { CONTEXT_CAP, clip, checkinOf, digestOf, proposedItems, checkinState, coachContext, weekStats, digestDue, SYSTEM, JOBS, questionsPrompt, feedbackPrompt, digestPrompt, parseQuestions, parseFeedback, cleanRepeat, cleanTarget, parseDigest, proposalLine };
-})();
-
-// ---- js/talk.js
-const __js_talk = (() => {
-// The Coach as a conversation (docs/superpowers/specs/2026-09-14-coach-conversation-design.md):
-// when it opens one, what it's told, the records a conversation leaves — the talk itself and its
-// journal entry — and Claude's guide for the week. Pure. js/coach-tools.js is what the Coach may
-// do; js/ui/coach.js is the panel.
-
-const { addDays, weekStart, longDate, shortWeekday, shortDate } = __js_dates;
-const { rowsForDay, weekTotal, countsOn, streak, goalProgress, dayScore } = __js_schedule;
-const { dayRecord, offLine, briefFor, clockLabel, excused, countdowns, daysLeft } = __js_calendar;
-const { gymContext, dayLines, liftSummary, gymConfig, kgText, workouts, sessionLine, cardioQuotaId } = __js_gym;
-const { scheduleView, scheduleBlocks, dayClosed } = __js_plan_state;
-const { formatAmount } = __js_parse;
-const { clip } = __js_coach;
-const { picture, mindMessages, mindAlive, isMindTalk } = __js_mind;
-
-const MORNING = [7, 12];
-const AFTERNOON = [14, 17];
-const TALK_KEEP_DAYS = 30;
-const ENTRY_MAX = 600;
-const GUIDE_MAX = 600;
-const MESSAGE_MAX = 2000;
-const POINTERS_MAX = 5;
-const CONTEXT_MAX = 18000;
-// How much of Claude's picture of George the Coach is given each turn (js/mind.js keeps up to 4,000).
-const PICTURE_IN_CONTEXT = 3000;
-
-const values = (map) => Object.values(map ?? {});
-const live = (r) => (r && r.status === 'active' ? r : null);
-
-// ---- Records -------------------------------------------------------------------------------------
-
-const talkId = (day, slot) => `talk:${day}:${slot}`;
-const entryId = (day, slot) => `entry:${day}:${slot}`;
-const talkOf = (doc, day, slot) => live(doc?.journal?.[talkId(day, slot)]);
-const entryOf = (doc, day, slot) => live(doc?.journal?.[entryId(day, slot)]);
-
-const SLOT_NAMES = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
-const slotName = (slot) => SLOT_NAMES[slot] ?? `Talk ${String(slot).replace('own-', '')}`;
-
-// Whether George has said anything in a conversation.
-const heard = (talk) => (talk?.messages ?? []).some((m) => m.who === 'george');
-
-const firstAt = (t) => t.messages?.[0]?.at ?? t.updated ?? '';
-
-// A day's conversations, in the order they started.
-function talksOn(doc, day) {
-  return values(doc?.journal)
-    .filter((r) => r.kind === 'talk' && r.status === 'active' && r.day === day)
-    .sort((a, b) => (firstAt(a) < firstAt(b) ? -1 : firstAt(a) > firstAt(b) ? 1 : 0));
-}
-
-// The slot for a conversation George starts himself: own-1, own-2 …
-function nextOwnSlot(doc, day) {
-  let n = 1;
-  while (doc?.journal?.[talkId(day, `own-${n}`)]) n++;
-  return `own-${n}`;
-}
-
-// Conversations George spoke in that haven't been wrapped up, other than `except` (a talk id).
-function unfinished(doc, except = null) {
-  return values(doc?.journal).filter((r) => r.kind === 'talk' && r.status === 'active' && !r.done && r.id !== except && heard(r));
-}
-
-// Claude's guide for the Coach for the week containing `day`.
-function guideFor(doc, day) {
-  const rec = live(doc?.journal?.[`guide:${weekStart(day)}`]);
-  return rec?.text ? rec.text : null;
-}
-
-// The Coach's library (its big view): every journal entry, weekly digest and evening check-in,
-// newest first — a digest filed under its Monday comes after that week's entries — keeping only
-// those with every word of `words` somewhere in them.
-const LIBRARY_KINDS = new Set(['entry', 'digest', 'checkin']);
-const libraryText = (r) => [
-  r.feeling, r.text, ...(r.pointers ?? []), ...(r.forClaude ?? []),
-  r.summary, ...(r.wins ?? []), ...(r.slipped ?? []), r.focus,
-  ...(r.questions ?? []), ...(r.answers ?? []), r.feedback,
-].filter(Boolean).join(' ').toLowerCase();
-
-function libraryOf(doc, words = '') {
-  const want = String(words).toLowerCase().split(/\s+/).filter(Boolean);
-  const when = (r) => (r.kind === 'digest' ? addDays(r.day, 6) : r.day);
-  return values(doc?.journal)
-    .filter((r) => r.status === 'active' && LIBRARY_KINDS.has(r.kind))
-    .filter((r) => want.every((w) => libraryText(r).includes(w)))
-    .sort((a, b) => (when(a) === when(b) ? (a.updated < b.updated ? 1 : -1) : when(a) < when(b) ? 1 : -1));
-}
-
-// Saved journal entries from the last `days` days, newest first.
-function recentEntries(doc, today, { days = 7, limit = 3 } = {}) {
-  const from = addDays(today, -days);
-  return values(doc?.journal)
-    .filter((r) => r.kind === 'entry' && r.status === 'active' && r.day > from && r.day <= today)
-    .sort((a, b) => (a.day === b.day ? (a.updated < b.updated ? 1 : -1) : a.day < b.day ? 1 : -1))
-    .slice(0, limit);
-}
-
-const entryLine = (e) => `${shortWeekday(e.day)} ${slotName(e.slot).toLowerCase()}: ${e.feeling ? `${e.feeling} — ` : ''}${clip(e.text, 300)}`;
-
-// ---- When it talks ---------------------------------------------------------------------------------
-
-// The moment it is: morning 07:00–12:00, afternoon 14:00–17:00, evening from the check-in hour
-// until the day ends (so after midnight still counts). Otherwise null.
-function momentAt(now, { dayStartHour = 4, checkinHour = 18 } = {}) {
-  const h = now.getHours();
-  const hour = h < dayStartHour ? h + 24 : h;
-  if (hour >= checkinHour) return 'evening';
-  if (hour >= MORNING[0] && hour < MORNING[1]) return 'morning';
-  if (hour >= AFTERNOON[0] && hour < AFTERNOON[1]) return 'afternoon';
-  return null;
-}
-
-// What slipped earlier today: work in a block that has ended (or that the planner marked missed)
-// still unticked, and tasks timed before now still unticked. Item ids, once each.
-function slippedItems(doc, today, now) {
-  const rows = rowsForDay(doc, today).filter((r) => r.item.status === 'active');
-  const undone = new Set(rows.filter((r) => !r.done).map((r) => r.item.id));
-  const rec = dayRecord(doc, today);
-  const t = now.getTime();
-  const out = new Set();
-  for (const m of rec?.missed ?? []) if (undone.has(m.itemId)) out.add(m.itemId);
-  for (const b of rec?.blocks ?? []) {
-    if (Date.parse(b.end) <= t) for (const id of b.items ?? []) if (undone.has(id)) out.add(id);
-  }
-  for (const r of rows) {
-    if (!r.done && r.item.type === 'task' && r.item.time && new Date(`${today}T${r.item.time}:00`).getTime() <= t) out.add(r.item.id);
-  }
-  return [...out];
-}
-
-// The moment whose opener is due now, or null: one opener a moment, none once George has talked
-// in that window, and the afternoon's only when something slipped.
-function openerDue(doc, { today, now, dayStartHour = 4, checkinHour = 18 }) {
-  // While the background Mind is running (js/mind.js), it writes the openers — from the planner, so
-  // they reach the phone and never come twice from two open pages.
-  if (mindAlive(doc, now)) return null;
-  const hours = { dayStartHour, checkinHour };
-  const slot = momentAt(now, hours);
-  if (!slot || dayClosed(doc, today) || talkOf(doc, today, slot)) return null;
-  const spoke = talksOn(doc, today).some((t) => (t.messages ?? []).some((m) => m.who === 'george' && momentAt(new Date(m.at), hours) === slot));
-  if (spoke) return null;
-  if (slot === 'afternoon' && !slippedItems(doc, today, now).length) return null;
-  return slot;
-}
-
-// The opener waiting on Today: the latest conversation the Coach opened that George hasn't answered.
-function waitingOpener(doc, today, now = null, hours = {}) {
-  const t = talksOn(doc, today).filter((x) => !x.done && x.messages?.length && !heard(x) && !dayClosed(doc, today)
-    && (!now || isMindTalk(x) || x.slot === momentAt(now, hours)) && !talksOn(doc, today).some((other) => heard(other) && firstAt(other) > firstAt(x))).at(-1);
-  return t ? { slot: t.slot, text: t.messages[0].text } : null;
-}
-
-// ---- What it's told --------------------------------------------------------------------------------
-
-const RANDOM = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
-const shortId = (id) => (RANDOM.test(id) ? id.slice(0, 8) : id);
-
-// The item an id from the lists names (in full, or its first characters).
-function findItem(doc, ref) {
-  const key = String(ref ?? '').trim().replace(/^#/, '');
-  if (key.length < 4) throw new Error(`"${ref}" isn't an id from the lists`);
-  if (doc.items[key]) return doc.items[key];
-  const hits = values(doc.items).filter((i) => i.id.startsWith(key));
-  if (hits.length !== 1) throw new Error(hits.length ? `${key} matches more than one item — use more of the id` : `No item has the id ${key}`);
-  return hits[0];
-}
-
-// One row: '[ ] a1b2c3d4 task "Email NatCen" · Job search · 45m · at 14:00 · note: …'.
-function rowText(doc, row, today) {
-  const { item } = row;
-  const parts = [`${row.done ? '[x]' : '[ ]'} ${shortId(item.id)} ${item.type} "${clip(item.title, 80)}"`];
-  if (row.carriedFrom) parts.push(`carried from ${shortWeekday(row.carriedFrom)}`);
-  if (item.area) parts.push(clip(item.area, 30));
-  if (item.minutes) parts.push(formatAmount(item.minutes, 'minutes'));
-  if (item.time) parts.push(`at ${item.time}`);
-  if (item.type === 'habit') {
-    const s = streak(doc, item, today);
-    if (s.current > 1) parts.push(`${s.current} in a row`);
-  }
-  if (item.notes) parts.push(`note: ${clip(item.notes, 160)}`);
-  return `  ${parts.join(' · ')}`;
-}
-
-function listText(doc, day, today) {
-  if (day < today) return rowsForDay(doc, day).map((r) => rowText(doc, r, today));
-  const plan = scheduleView(doc, today, 14);
-  const tasks = plan.entries.filter((e) => e.day === day).map((e) => {
-    const booking = e.bookings[0];
-    return '  [ ] ' + shortId(e.item.id) + ' task "' + clip(e.item.title, 100) + '" · requested ' + e.requestedDay
-      + (booking ? ' · booked ' + e.scheduledDay + ' ' + clockLabel(booking.start) + '–' + clockLabel(booking.end) + ' on ' + booking.calendar : ' · unscheduled')
-      + (e.reason ? ' · ' + e.reason : '');
-  });
-  // The schedule drops a task once it's ticked, so today's ticked tasks come from the day's rows —
-  // without them the Coach saw only what was still booked and took that for what he'd done.
-  const ticked = day === today ? rowsForDay(doc, day).filter((r) => r.item.type === 'task' && r.done).map((r) => rowText(doc, r, today)) : [];
-  const habits = rowsForDay(doc, day).filter((r) => r.item.type !== 'task' && r.item.status === 'active').map((r) => rowText(doc, r, today));
-  return [...tasks, ...ticked, ...habits].length ? [...tasks, ...ticked, ...habits] : ['  nothing'];
-}
-
-// What George has ticked today: the only record of what he has actually done.
-function tickedToday(doc, today) {
-  return rowsForDay(doc, today).filter((r) => r.done && r.item.status === 'active').map((r) => r.item);
-}
-
-// A block whose time has passed is a plan that was, not work that was done: said so unless its
-// tasks are ticked, so the Coach can't read a booking as an achievement.
-function blocksText(doc, day, now = null) {
-  const doneIds = new Set(values(doc.logs).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
-  const passed = (b) => now && b.items.length && Date.parse(b.end) <= now.getTime() && !b.items.every((id) => doneIds.has(id));
-  return [...scheduleBlocks(doc), ...(doc.calendar?.agenda?.busy ?? []).map((b) => ({ ...b, items: [] }))].filter((b) => b.start && new Date(b.start).toDateString() === new Date(day + 'T12:00:00').toDateString())
-    .map((b) => `${b.allDay ? 'All day' : `${clockLabel(b.start)}–${clockLabel(b.end)}`} ${String(b.title).replace(/^~ /, '')}${b.state === 'rough' ? ' (flexible)' : ''} on ${b.calendar ?? 'Calendar'} [${b.items.map(shortId).join(', ')}]${passed(b) ? ' — time passed, not ticked' : ''}`);
-}
-
-const dayName = (day) => `${shortWeekday(day)} ${shortDate(day)}`;
-
-// A task with no estimate takes the planner's defaultMinutes.
-const DEFAULT_TASK_MINUTES = 30;
-// A day counts as light when the time still booked on it, doubled, is under the time asked for it.
-const LIGHT_DAY_RATIO = 2;
-
-// How today turned out against what was asked of it, recomputed from the bookings every time.
-// `movedOff` is the part the lists can't show: work that left this day, and where it went.
-// `significant` is about what is left, not what moved — three tasks leaving a day that is still
-// full is a non-event; three leaving a day that is now empty is worth a sentence. It lives here
-// rather than in plan-state.js because only the Coach's prompt reads it, and plan-state is bundled
-// into the Apps Script planner, which would then need redeploying for every change to this.
-function dayShape(doc, today) {
-  const { entries } = scheduleView(doc, today);
-  const bookedToday = entries.filter((e) => e.scheduledDay === today);
-  const requested = entries.filter((e) => e.requestedDay === today);
-  const minutes = (list) => list.reduce((n, e) => n + (e.item.minutes ?? DEFAULT_TASK_MINUTES), 0);
-  const requestedMinutes = minutes(requested);
-  const bookedMinutes = minutes(bookedToday);
-  const movedOff = requested
-    .filter((e) => e.scheduledDay && e.scheduledDay > today)
-    .map((e) => ({ item: e.item, to: e.scheduledDay, reason: e.reason }));
-  return {
-    bookedToday,
-    movedOff,
-    unscheduled: requested.filter((e) => !e.scheduledDay),
-    arrived: bookedToday.filter((e) => e.requestedDay < today),
-    requestedMinutes,
-    bookedMinutes,
-    significant: movedOff.length > 0
-      && (bookedToday.length === 0 || bookedMinutes * LIGHT_DAY_RATIO < requestedMinutes),
-  };
-}
-
-// How today stands against what was asked of it. The lists above show what is booked; these lines
-// are the part they can't show — work that left this day, and where it went. They are here on every
-// turn, so the Coach is never wrong-footed by an intent line that the planner has since overtaken.
-// The marker that licenses mentioning it unprompted is written only on the Coach's first message of
-// a conversation, so there is nothing left to repeat on later turns.
-function shapeLines(doc, today, first) {
-  const shape = dayShape(doc, today);
-  const titled = (e) => `"${clip(e.item.title, 80)}"`;
-  const out = [];
-  if (shape.movedOff.length) {
-    out.push(`Requested for today, now booked later: ${shape.movedOff.map((m) => `${titled(m)} → ${dayName(m.to)}`).join(' · ')}`);
-  }
-  if (shape.unscheduled.length) {
-    out.push(`Requested for today, no booking yet: ${shape.unscheduled.map(titled).join(' · ')}`);
-  }
-  if (shape.arrived.length) {
-    out.push(`Booked today though requested earlier: ${shape.arrived.map((e) => `${titled(e)} (requested ${dayName(e.requestedDay)})`).join(' · ')}`);
-  }
-  if (first && shape.significant) {
-    out.push("Today's shape is significantly different from what was asked of it. You may say so once, in this first message, naming where the work went. Do not raise it again unless George does.");
-  }
-  return out;
-}
-
-// What George committed to today and what has become of it (js/schedule.js's dayScore), so the Coach
-// can hold him to it: moving or deleting work after the morning lock doesn't make the day a success.
-function commitmentLines(doc, today) {
-  const score = dayScore(doc, today);
-  const commitment = doc.calendar?.[`commit:${today}`];
-  const named = (list, extra = () => '') => list.map((e) => `${shortId(e.item.id)} "${clip(e.item.title, 70)}"${extra(e)}`).join(' · ');
-  const out = [commitment
-    ? `Today's list locked at ${clockLabel(commitment.at)} with ${commitment.tasks.length} task${commitment.tasks.length === 1 ? '' : 's'}: that is what George committed to.`
-    : "Today's list hasn't locked yet: until the morning check-in is done, moving work is planning, not slipping."];
-  out.push(`Today's score so far: ${score.done} of ${score.total} done.`);
-  if (score.open.length) out.push(`Committed and not done yet: ${named(score.open)}`);
-  if (score.pushed.length) out.push(`Pushed off today after committing (not a fail yet, but ask why): ${named(score.pushed, (e) => ` → ${shortWeekday(e.to)}`)}`);
-  if (score.missed.length) out.push(`Pushed for a second time, so counted as missed: ${named(score.missed)}`);
-  if (score.dropped.length) out.push(`Deleted after committing, counted as missed unless he says it's no longer needed (then call release_task): ${named(score.dropped)}`);
-  if (score.optional.length) out.push(`Optional today — times-a-week habits on pace, so leaving them is a rest day, not a fail: ${named(score.optional)}`);
-  return out;
-}
-
-// What the Coach's background mind knows (docs/superpowers/specs/2026-09-25-coach-mind-design.md):
-// Claude's picture of George, which can lag behind the lists (the lists win), and what the Coach said
-// in the background that he hasn't answered yet.
-function mindLines(doc, today, now) {
-  const out = [];
-  const pic = picture(doc);
-  if (pic) {
-    const at = pic.at ? ` (written ${shortWeekday(pic.at.slice(0, 10))} ${clockLabel(pic.at)})` : '';
-    out.push(`Claude's picture of George${at} — his standing understanding; where it disagrees with the lists, the lists are right:
-${String(pic.text).trim().slice(0, PICTURE_IN_CONTEXT)}`);
-  }
-  const heardAfter = (talkId, at) => (doc.journal[talkId]?.messages ?? []).some((m) => m.who === 'george' && String(m.at ?? '') > String(at ?? ''));
-  const waiting = mindMessages(doc, addDays(today, -1)).filter((x) => !heardAfter(x.talkId, x.m.at)).slice(-3);
-  if (waiting.length) out.push(`Things you said in the background that he hasn't answered yet: ${waiting.map((x) => `"${clip(x.m.text, 200)}" (${clockLabel(x.m.at)})`).join(' · ')}`);
-  return out;
-}
-
-// Everything the Coach is told at the start of each turn, as compact text. `first` marks the
-// Coach's first message of a conversation — an opener, or its first reply in one George started.
-function talkContext(doc, today, now, { first = false } = {}) {
-  const tomorrow = addDays(today, 1);
-  const lines = [
-    `Now: ${longDate(today)}, ${clockLabel(now.toISOString())}`,
-    `Shared plan: tasks and Google Calendar use these same confirmed bookings. Requested dates are separate. Unscheduled means no confirmed booking.`,
-    `Today is ${dayClosed(doc, today) ? 'CLOSED for new work' : 'open for planning'}.`,
-    `Calendar last synchronized: ${scheduleView(doc, today).lastSynced ?? 'not yet'}. The planner runs periodically; never claim an unconfirmed edit has reached Calendar.`,
-    `Today's list (${today}):`, ...listText(doc, today, today),
-    `Tomorrow's list (${tomorrow}):`, ...listText(doc, tomorrow, today),
-  ];
-  const ticked = tickedToday(doc, today);
-  lines.push(`Ticked off today (the only record of what George has done): ${ticked.length ? ticked.map((i) => `"${clip(i.title, 80)}"`).join(' · ') : 'nothing yet'}`);
-  lines.push(...commitmentLines(doc, today));
-  const cal = blocksText(doc, today, now);
-  lines.push(cal.length ? `Calendar today: ${cal.join(' · ')}` : 'Calendar today: nothing booked by the planner');
-  const next = scheduleView(doc, today).entries.filter((e) => e.day > tomorrow).slice(0, 25);
-  if (next.length) lines.push('Upcoming tasks:', ...next.map((e) => `${shortId(e.item.id)} "${clip(e.item.title, 90)}" · requested ${e.requestedDay} · ${e.bookings[0] ? `booked ${e.scheduledDay} ${clockLabel(e.bookings[0].start)} on ${e.bookings[0].calendar}` : 'unscheduled'}${e.reason ? ' · ' + e.reason : ''}`));
-  lines.push('Calendar tomorrow: ' + (blocksText(doc, tomorrow).join(' · ') || 'no confirmed bookings'));
-  const slips = slippedItems(doc, today, now).map((id) => `"${clip(doc.items[id].title, 60)}"`);
-  if (slips.length) lines.push(`Slipped earlier today: ${slips.join(', ')}`);
-  for (const [d, name] of [[today, 'Today'], [tomorrow, 'Tomorrow']]) {
-    const off = offLine(doc, d);
-    if (off) lines.push(`${name}: ${off}`);
-  }
-  const counting = countdowns(doc, today);
-  if (counting.length) lines.push(`Counting down to: ${counting.map((c) => `${c.id} "${clip(c.title, 60)}" ${c.day} (${daysLeft(c.days)})`).join('; ')}`);
-  lines.push(...shapeLines(doc, today, first));
-  const brief = briefFor(doc, today);
-  if (brief) lines.push(`Today's intent (Claude — why today matters, not what is scheduled): ${brief}`);
-  const guide = guideFor(doc, today);
-  if (guide) lines.push(`Claude's guide for this week: ${guide}`);
-  lines.push(...mindLines(doc, today, now));
-  lines.push(...gymContext(doc, today));
-  // Weekly targets in an area on time off today are paused, so they aren't mentioned; the ones
-  // filled by the Hebrew app or Hevy are marked, so the Coach never logs them by hand.
-  const cardio = cardioQuotaId(doc);
-  const quotas = values(doc.items).filter((q) => q.type === 'quota' && q.status === 'active' && countsOn(q, today) && !excused(doc, q, today));
-  if (quotas.length) {
-    const auto = (q) => (q.source === 'hebrew' ? ' (from the Hebrew app)' : q.id === cardio ? ' (from Hevy)' : '');
-    lines.push(`This week's targets: ${quotas.map((q) => `${shortId(q.id)} "${clip(q.title, 60)}" ${formatAmount(weekTotal(doc, q.id, today), q.unit ?? 'count')} of ${formatAmount(q.target, q.unit ?? 'count')}${auto(q)}`).join('; ')}`);
-  }
-  const goals = values(doc.goals).filter((g) => g.status === 'active');
-  if (goals.length) lines.push(`Goals: ${goals.map((g) => `${clip(g.title, 60)} (${goalProgress(doc, g).pct}%)`).join('; ')}`);
-  const entries = recentEntries(doc, today);
-  if (entries.length) lines.push('Recent journal entries:', ...entries.map((e) => `  ${entryLine(e)}`));
-  const text = lines.join('\n');
-  return text.length > CONTEXT_MAX ? `${text.slice(0, CONTEXT_MAX - 1)}…` : text;
-}
-
-const TALK_SYSTEM = [
-  "You are George's coach inside his personal dashboard. British English; warm, direct, specific. One to four sentences, at most one question, no habitual follow-up question or forced goodbye. This is one continuous conversation; follow his current subject. Missed invitations expire, and silence is not failure.",
-  "The shared schedule below is the Dashboard and Google Calendar's common plan. Requested date, actual calendar booking and deadline are different. Read get_day or find before reviewing work. A missing booking is unscheduled, not a reason to pull work into today. Never guess why a calendar task moved or claim to see external appointments that are absent from your context.",
-  "Claude's intent lines say why today matters and how to approach it. They never state what is scheduled, and they are written in advance, so the planner may have moved the work they refer to. The lists and bookings are the only source of what is happening; where they disagree with an intent line, the lists are right.",
-  "Only ticks say what George has done. Something is done when it is in 'Ticked off today' or he tells you so; a calendar block, even one whose time has passed, is a plan and not evidence. Never congratulate him on, or assume he did, anything that isn't ticked. If nothing is ticked, ask rather than guess.",
-  "Hold George to what he committed to. Once today's list has locked, work he pushes to another day or deletes doesn't make the day a success: pushed, missed and deleted items are not wins. In the evening, and whenever he reviews the day, name them and ask what happened — briefly, curious rather than lecturing — and never call a day a success while any remain. A daily habit left undone is a miss; an optional times-a-week habit left undone is a rest day and needs no comment. If he says a deleted task genuinely isn't needed any more, call release_task with his reason.",
-  "Talk about the day as it actually is. Do not volunteer that work has moved, slipped or been rebooked unless the context marks today as significantly different, or George raises it himself. When he asks, answer in full from the bookings.",
-  "When he tells you how to change his plan — merge, drop, move, add, swap — make the change yourself with your tools in the same turn: drop_task (with his reason) for work he no longer needs, move_task or skip for what moves, add_task for what's new. Then say exactly what you changed. Hand to Claude only what your tools can't do.",
-  "Execute explicit task instructions, including future dates, using tools. Add goals with add_goal. For an open-ended review ('the layout looks wrong', 'make tomorrow relevant') first use propose_changes and prepare specific changes for George to apply. Do not substitute unrelated tasks. Read original dates and pass expectedDay to move_task. Do not introduce earlier work, a different date, or extra tasks without a clear request.",
-  "All tools work on one draft until your turn finishes. Do not promise success before tool results. Any failed mutation cancels the whole batch. Undo means undo_last_action; never attempt to reconstruct an earlier plan by moving items from memory. Recorded action receipts and their undo status are the evidence of changes, even when an earlier reply claimed otherwise.",
-  "When George says the day is over or he is going to bed, call close_day. A closed day accepts no new work; capture future ideas normally. Only call reopen_day on his explicit request. You can still record something he says he already completed. Never reopen today to evade a tool refusal.",
-  "For a flexible request such as 'over the weekend', choose and state a sensible weekend date, or ask one question if the choice matters. Goals are drafts that he can accept. New habits and weekly targets are suggestions too: suggest_habit and suggest_target, which he accepts on Today. When he says he did something a weekly target counts, log it. A date he wants to count down to is add_countdown. Hand app bugs, changes to an existing habit or target, and whole days off to Claude. Use item titles in conversation; IDs are for tools.",
-  "His gym sessions are his own to plan: never plan them.",
-  "Some of your messages came from your background mind: noticing something he did (Gemini) or a deeper review (Claude), marked as such. They are yours; carry them on naturally, and don't repeat them.",
-  "When he asks for something that needs real thought — a re-plan, how something is going across weeks, anything you would have to guess at — call think_deeper with his question and tell him you'll think it through properly and come back to him in the conversation, usually within half an hour.",
-  "Say exactly how anything reached Claude, never more. think_deeper calls Claude in now; its answer comes back here. hand_to_claude only leaves a note in his Flags for Claude's next regular run (06:30 or 21:30): it isn't sent, doesn't ping Claude, and changes nothing in his plan or calendar by itself. If he asks whether something reached Claude, answer from the tool you actually called in this conversation; if you called neither, say so.",
-  "At a natural end use finish to save a journal entry about George, not about yourself. Leave feeling blank if unknown. Do not force closure after every task or question. He can continue the conversation afterwards.",
-].join('\n');
-
-function talkSystem(doc, today, now, { first = false } = {}) {
-  return `${TALK_SYSTEM}\n\nWhat you know right now:\n${talkContext(doc, today, now, { first })}`;
-}
-
-// Whether the Coach has yet to speak in this conversation: an opener, or its first reply in one
-// George started. Only then may it raise a significantly changed day unprompted.
-const firstCoachTurn = (doc, day, slot) => !(talkOf(doc, day, slot)?.messages ?? []).some((m) => m.who === 'coach');
-
-const OPENERS = {
-  morning: "It's the morning. Open a short conversation with George: one or two sentences, ending in one question about what today looks like and anything the plan should know. Reply with just your message.",
-  afternoon: "It's the afternoon. Use the current shared schedule to offer a brief, natural check-in. Do not assume a task has failed or needs moving merely because its slot passed. Ask one useful question. Reply with just your message.",
-  evening: "It's the evening. Open a short conversation with George: one or two sentences about how today went — name something specific he ticked off today; if he has ticked nothing, don't claim anything was done; if anything he committed to was pushed, deleted or missed, ask about it rather than calling the day a success — ending in one question about today or tomorrow. Reply with just your message.",
-};
-const PLAIN_OPENERS = {
-  morning: "Morning — what's today looking like?",
-  afternoon: 'How is the afternoon going?',
-  evening: 'How did today go?',
-};
-const WRAP_UP = '(George has closed the conversation. Call finish now with its journal entry.)';
-
-// A conversation as Gemini's contents: George's messages as "user", the Coach's as "model",
-// back-to-back ones from the same side joined. One the Coach opened starts with a note saying so,
-// since Gemini's contents start on George's side.
-function talkContents(talk, extra = [], doc = null) {
-  const out = [];
-  const msgs = talk?.messages ?? [];
-  if (msgs[0]?.who === 'coach') out.push({ role: 'user', parts: [{ text: `(${slotName(talk.slot)}: the coach opened the conversation.)` }] });
-  for (const m of msgs) {
-    const receipts = (m.did ?? []).map((d) => {
-      const change = d.change && doc?.changes?.[d.change];
-      return d.text + (change?.undoneAt ? ' [UNDONE]' : d.change ? ' [committed action ' + d.change + ']' : '');
-    });
-    const text = m.text + (receipts.length ? '\nRecorded action receipts: ' + receipts.join(' | ') : '');
-    const role = m.who === 'george' ? 'user' : 'model';
-    const prev = out.at(-1);
-    if (prev?.role === role) prev.parts = [{ text: `${prev.parts[0].text}\n\n${text}` }];
-    else out.push({ role, parts: [{ text }] });
-  }
-  for (const c of extra) {
-    const prev = out.at(-1);
-    if (prev?.role === c.role && c.parts?.[0]?.text != null) prev.parts = [{ text: `${prev.parts[0].text}\n\n${c.parts[0].text}` }];
-    else out.push(c);
-  }
-  return out;
-}
-
-// Storage remains segmented by day for history and merging; model context is continuous.
-function conversationContents(doc, today, extra = []) {
-  const talks = Object.values(doc.journal ?? {}).filter((t) => t.kind === 'talk' && t.status === 'active' && !t.pruned
-    && t.day >= addDays(today, -7) && t.day <= today && (heard(t) || t === talksOn(doc, today).at(-1) || (isMindTalk(t) && t.day >= addDays(today, -1))))
-    .sort((a, b) => firstAt(a).localeCompare(firstAt(b)));
-  const messages = talks.flatMap((t) => t.messages ?? []).slice(-40);
-  let size = 0;
-  const kept = [];
-  for (const m of [...messages].reverse()) { if (size + m.text.length > 24000) break; kept.unshift(m); size += m.text.length; }
-  const contents = talkContents({ slot: 'own-1', messages: kept }, extra, doc);
-  return contents.length ? contents : [{ role: 'user', parts: [{ text: 'Continue our conversation.' }] }];
-}
-
-// ---- Entries -------------------------------------------------------------------------------------
-
-// What finish sends, made safe: a short feeling, the text (at most 600 characters), up to five
-// pointers. Throws without text.
-function cleanEntry(args = {}) {
-  const text = String(args.text ?? '').trim().slice(0, ENTRY_MAX).trim();
-  if (!text) throw new Error("finish needs text: what's on his mind");
-  return {
-    feeling: clip(typeof args.feeling === 'string' ? args.feeling : '', 60),
-    text,
-    pointers: (Array.isArray(args.pointers) ? args.pointers : []).map((p) => clip(typeof p === 'string' ? p : '', 120)).filter(Boolean).slice(0, POINTERS_MAX),
-  };
-}
-
-function cleanHandoff(text) {
-  const t = clip(text, 500);
-  if (!t) throw new Error('hand_to_claude needs what George wants Claude to do or know');
-  return t;
-}
-
-// When Gemini can't write the entry, one is kept from George's own words.
-function plainEntry(talk) {
-  const said = (talk?.messages ?? []).filter((m) => m.who === 'george').map((m) => m.text);
-  return { feeling: '', text: clip(said.join(' / '), ENTRY_MAX), pointers: [] };
-}
-
-// ---- Looking things up (the Coach's get_ tools) -------------------------------------------------
-
-function dayText(doc, day, today) {
-  const lines = [`${longDate(day)} (${day})`, ...listText(doc, day, today)];
-  const cal = blocksText(doc, day);
-  if (cal.length) lines.push(`Calendar: ${cal.join(' · ')}`);
-  const off = offLine(doc, day);
-  if (off) lines.push(off);
-  for (const g of dayLines(doc, day)) lines.push(`Gym: ${g}`);
-  for (const e of values(doc.journal).filter((r) => r.kind === 'entry' && r.status === 'active' && r.day === day)) lines.push(`Journal: ${entryLine(e)}`);
-  return lines.join('\n');
-}
-
-function gymText(doc, today, lift = '') {
-  const config = gymConfig(doc);
-  const out = [];
-  for (const l of lift ? [lift] : config.keyLifts) {
-    const s = liftSummary(doc, l, today, config);
-    if (!s) { out.push(`${l}: no sessions`); continue; }
-    const parts = [`est. 1RM ${kgText(s.e1rm)} kg`, `last ${kgText(s.last.kg)} × ${s.last.reps} on ${s.last.day}`, s.pace != null ? `pace ${s.pace} kg/wk` : 'no pace yet'];
-    if (s.prDay) parts.push(`last PR ${s.prDay}`);
-    if (s.target) parts.push(s.projection?.reached ? `target ${kgText(s.target)} reached` : s.projection ? `target ${kgText(s.target)} by ~${s.projection.label}` : `target ${kgText(s.target)}`);
-    out.push(`${l}: ${parts.join('; ')}`);
-  }
-  const recent = workouts(doc).filter((w) => w.day > addDays(today, -14) && w.day <= today).reverse();
-  out.push(recent.length ? 'Last 14 days:' : 'No sessions in the last 14 days.', ...recent.map((w) => `${w.day}: ${sessionLine(doc, w, config)}`));
-  return out.join('\n');
-}
-
-function findText(doc, words) {
-  const needle = String(words ?? '').trim().toLowerCase();
-  if (!needle) return 'find needs some words';
-  const has = (...texts) => texts.join(' ').toLowerCase().includes(needle);
-  const hits = [
-    ...values(doc.items).filter((i) => i.status === 'active' && has(i.title, i.notes ?? ''))
-      .map((i) => `${shortId(i.id)} ${i.type} "${i.title}"${i.type === 'task' ? ` for ${i.date}` : ''}${i.area ? ` · ${i.area}` : ''}`),
-    ...values(doc.goals).filter((g) => g.status === 'active' && has(g.title, g.notes ?? '', g.why ?? '')).map((g) => `goal "${g.title}"`),
-  ];
-  return hits.length ? hits.slice(0, 20).join('\n') : `Nothing matches "${needle}".`;
-}
-
-function journalText(doc, today, days = 7) {
-  const n = Math.min(30, Math.max(1, Math.floor(Number(days) || 7)));
-  const list = recentEntries(doc, today, { days: n, limit: 30 });
-  return list.length ? list.map(entryLine).join('\n') : 'No journal entries in that time.';
-}
-return { MORNING, AFTERNOON, TALK_KEEP_DAYS, ENTRY_MAX, GUIDE_MAX, MESSAGE_MAX, PICTURE_IN_CONTEXT, talkId, entryId, talkOf, entryOf, slotName, heard, talksOn, nextOwnSlot, unfinished, guideFor, libraryOf, recentEntries, entryLine, momentAt, slippedItems, openerDue, waitingOpener, shortId, findItem, listText, tickedToday, DEFAULT_TASK_MINUTES, LIGHT_DAY_RATIO, dayShape, commitmentLines, mindLines, talkContext, TALK_SYSTEM, talkSystem, firstCoachTurn, OPENERS, PLAIN_OPENERS, WRAP_UP, talkContents, conversationContents, cleanEntry, cleanHandoff, plainEntry, dayText, gymText, findText, journalText };
-})();
-
-// ---- planner/reflex.js
-const __planner_reflex = (() => {
-// Reflexes (docs/superpowers/specs/2026-09-25-coach-mind-design.md): something happened — a tick, a
-// push, a new calendar event, a block that slipped — and Gemini works out whether it deserves a word
-// from the Coach, and what. Each chain reads the event from two or three angles at once, drafts one
-// message, then checks it twice (plain code in js/mind.js, and a critic) before anything is said. Also
-// the morning and evening openers, now written here rather than by whichever page happens to be open.
-// Pure apart from the store writes; Gemini comes in as `gemini.ask` (planner/gemini-gas.js).
-
-const { addDays, logicalDay, daysBetween } = __js_dates;
-const { talkContext, talksOn, momentAt, PLAIN_OPENERS } = __js_talk;
-const { dayClosed } = __js_plan_state;
-const { checkMessage, nextMindSlot, picture, MESSAGE_MAX } = __js_mind;
-const { unhandled, budget, spend } = __js_mind_state;
-
-const WAIT_MINUTES = 20;
-const FRESH_HOURS = 3;
-// His calendar edits are one subject, looked at once they have stopped for this long.
-const SETTLE_MINUTES = 30;
-// Of the day's messages: at most this many about level-2 things, and this many kept for the evening.
-const MINOR_PER_DAY = 2;
-const EVENING_RESERVE = 2;
-const DRAFT_MAX = 450;
-const MIN = 60000;
-const NOT_REFLEXES = new Set(['ask', 'risk', 'reply']);
-
-const MIND_SYSTEM = [
-  "You are the background mind of George's Coach, inside his personal dashboard. Nobody asked you anything: something just happened, and you decide whether it deserves a word from the Coach, and what that word is.",
-  'British English. Warm, direct and specific: name the actual task, number, file or time. No generic encouragement, no filler, no emoji.',
-  "Only ticks say what George has done. Something is done only when it is in 'Ticked off today' or an event says it was ticked. A calendar block, even one whose time has passed, is a plan and not evidence.",
-  "Hold him to what he committed to. Work he pushed or deleted after the morning lock is not a win: ask what happened, briefly, curious rather than lecturing. A times-a-week habit that is on pace is a rest day and needs no comment.",
-  'His gym sessions are his own to plan. Never invent a clock time or a date: use only the ones in the plan, the events or the files.',
-  "When a task was ticked by Claude, George did that work in a session with Claude, which has all the detail: talk about the work, not about Claude, and never ask him to retell how it went. Speak only when a file he wrote is attached, or it changes what comes next.",
-  "When he has been rearranging his calendar, judge the day as it stands now, not each move: speak only if committed work has left today, the rest of the day no longer fits, or two things still overlap. Never ask how he is managing a move.",
-  "Don't repeat what the Coach has said recently (it is listed). Saying nothing is a good answer when there is nothing worth saying.",
-  'Reply with JSON only, in exactly the shape asked for.',
-].join('\n');
-
-const ANGLES = {
-  progress: "Angle: progress. From the event, its goal and milestones, and the files George wrote (debriefs, reflections): how is the goal going? What is improving, what keeps coming up, how does this attempt compare with the last one, and is it on track for the goal's date? Cite the files.",
-  pattern: "Angle: pattern. From Claude's picture of George, his journal, recent conversations and the earlier events: is this part of a pattern, good or bad, worth naming? Only a pattern the record actually shows.",
-  plan: "Angle: plan. From today's and tomorrow's lists, what he committed to and the bookings: what does this change for the rest of today and the next few days? Is anything now at risk, overbooked or worth moving? Never suggest moving his gym.",
-};
-const ANGLE_SHAPE = 'Shape: {"notes": "at most 600 characters of specific observations", "matters": 0 to 3 (how much this deserves a word from the Coach now), "escalate": true only if the plan for a deadline no longer fits and needs a proper re-plan}';
-
-const OPENER_JOBS = {
-  morning: "It's the morning. Write the Coach's opening message for today: one or two sentences that name the most important thing booked today, ending in one question about what today looks like and anything the plan should know.",
-  evening: "It's the evening. Write the Coach's opening message about how today went: name something specific he ticked off today; if nothing is ticked, don't claim anything was done; if anything he committed to was pushed, deleted or missed, ask about it rather than calling the day a success. End with one question about today or tomorrow.",
-};
-
-// ---- What to look at -----------------------------------------------------------------------------
-
-// The events worth a reflex now, as subjects: level 3 straight away, level 2 once the burst has
-// settled (20 minutes since its newest event), nothing older than three hours, at most `max`. His own
-// calendar edits wait until the calendar has been still for SETTLE_MINUTES, and then are one subject
-// (on 25 Sep he moved blocks thirteen times in three hours, and one message was about a clash he fixed
-// seven minutes later). Their level-1 moves ride along, so the day is judged with all of them.
-const byCalendar = (e) => e.by === 'calendar' || e.kind === 'calendar';
-
-function pickGroups(mind, now, max = 2) {
-  const t = now.getTime();
-  const groups = new Map();
-  const fresh = unhandled(mind, 'reflex').filter((e) => !NOT_REFLEXES.has(e.kind) && t - Date.parse(e.at) < FRESH_HOURS * 3600000);
-  const edits = fresh.filter(byCalendar);
-  const settling = edits.length && t - Math.max(...edits.map((e) => Date.parse(e.at))) < SETTLE_MINUTES * MIN;
-  const rearranged = !settling && edits.some((e) => e.level >= 2);
-  for (const e of fresh) {
-    if (byCalendar(e) ? settling || !rearranged : e.level < 2) continue;
-    const key = byCalendar(e) ? 'rearranged' : e.refs?.goalId ?? e.refs?.itemId ?? e.refs?.calendar ?? e.kind;
-    const g = groups.get(key) ?? { key, events: [] };
-    g.events.push(e);
-    groups.set(key, g);
-  }
-  return [...groups.values()]
-    .map((g) => {
-      const top = [...g.events].sort((a, b) => b.level - a.level)[0];
-      return { key: g.key, kind: top.kind, level: top.level, events: g.events, newest: Math.max(...g.events.map((e) => Date.parse(e.at))) };
-    })
-    .filter((g) => g.level >= 3 || t - g.newest >= WAIT_MINUTES * MIN)
-    .sort((a, b) => b.level - a.level || a.newest - b.newest)
-    .slice(0, max);
-}
-
-function anglesFor(group, doc, today) {
-  const kinds = new Set(group.events.map((e) => e.kind));
-  if (kinds.has('tick') || kinds.has('milestone')) {
-    const goal = doc?.goals?.[group.events.find((e) => e.refs?.goalId)?.refs.goalId];
-    const soon = goal?.targetDate && daysBetween(today, goal.targetDate) <= 7;
-    return soon ? ['progress', 'pattern', 'plan'] : ['progress', 'pattern'];
-  }
-  if (['pushed', 'dropped', 'moved', 'slip'].some((k) => kinds.has(k))) return ['plan', 'pattern'];
-  if (kinds.has('hebrew')) return ['progress'];
-  return ['plan'];
-}
-
-// The events as a prompt reads them. Gemini only ever sees a health label, never the numbers.
-function groupText(group, { forGemini = true } = {}) {
-  const lines = ['What just happened:'];
-  const files = [];
-  for (const e of group.events) {
-    lines.push(`- [${e.kind}${e.by && e.by !== 'me' ? `, by ${e.by}` : ''}] ${e.text}`);
-    for (const f of e.facts ?? []) lines.push(`  · ${f}`);
-    if (e.health?.label) lines.push(`  · Health: ${e.health.label}`);
-    if (!forGemini && e.health?.detail) lines.push(`  · Health detail: ${JSON.stringify(e.health.detail)}`);
-    for (const a of e.artefacts ?? []) if (!files.some((x) => x.path === a.path)) files.push(a);
-  }
-  if (files.length) {
-    lines.push('', 'Files George wrote about it, from his Drive (newest first):');
-    for (const f of files) lines.push(`--- ${f.path} (changed ${f.modified.slice(0, 16).replace('T', ' ')} UTC)`, f.text);
-  }
-  return lines.join('\n');
-}
-
-// What the Coach has said lately, anywhere, so a reflex doesn't say it again.
-function recentCoach(doc, today, n = 6) {
-  return Object.values(doc.journal ?? {})
-    .filter((t) => t.kind === 'talk' && t.status === 'active' && t.day >= addDays(today, -1))
-    .flatMap((t) => (t.messages ?? []).filter((m) => m.who === 'coach'))
-    .sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? '')))
-    .slice(-n)
-    .map((m) => m.text);
-}
-
-function contextFor(doc, today, now, recent) {
-  const said = recent.length ? `\n\nWhat the Coach has said recently (don't repeat it):\n${recent.map((r) => `- ${r}`).join('\n')}` : '';
-  return `${talkContext(doc, today, now, { first: true })}${said}`;
-}
-
-const readPrompt = (angle, context, group) => ({
-  system: MIND_SYSTEM, prompt: `${context}\n\n${groupText(group)}\n\n${ANGLES[angle]}\n${ANGLE_SHAPE}`,
-});
-
-function draftPrompt(context, group, notes) {
-  const read = notes.map((n) => `${n.angle}: ${n.notes}`).join('\n');
-  return {
-    system: MIND_SYSTEM,
-    prompt: `${context}\n\n${groupText(group)}\n\nWhat you noticed, by angle:\n${read}\n\nNow decide what the Coach says, if anything. Say something only if it would genuinely help George now: react to what happened, name specifics (the task, what his write-up said, the number), and end with at most one question. One to three sentences, at most ${DRAFT_MAX} characters. If he pushed or deleted committed work, ask why, once, without lecturing.\nShape: {"say": true or false, "text": "the message", "notify": true if it is worth buzzing his phone for (a reaction to something he just did, or a question that matters today), "escalate": true if this needs Claude's deeper re-plan, "why": "one line on why this is (or isn't) worth saying"}`,
-  };
-}
-
-// Flash, thinking hard, in one call: all three angles, then the decision. One request against the day's
-// allowance however long it thinks, so depth comes from the model rather than from more calls.
-function deepPrompt(context, group) {
-  return {
-    system: MIND_SYSTEM,
-    prompt: `${context}
-
-${groupText(group)}
-
-Think this through properly before deciding. Look at it from three angles:
-- ${ANGLES.progress}
-- ${ANGLES.pattern}
-- ${ANGLES.plan}
-
-Then decide what the Coach says, if anything. Say something only if it would genuinely help George now: react to what happened, name specifics (the task, what his write-up said, the number), and end with at most one question. One to three sentences, at most ${DRAFT_MAX} characters. If he pushed or deleted committed work, ask why, once, without lecturing.
-Shape: {"notes": {"progress": "…", "pattern": "…", "plan": "…"}, "say": true or false, "text": "the message", "notify": true if it is worth buzzing his phone for (a reaction to something he just did, or a question that matters today), "escalate": true only if the plan for a deadline no longer fits and needs Claude's proper re-plan, "why": "one line on why this is (or isn't) worth saying"}`,
-  };
-}
-
-const checkPrompt = (context, group, text) => ({
-  system: 'You check a message the Coach is about to send George against the record. British English. Reply with JSON only.',
-  prompt: `The record:\n${context}\n\n${groupText(group)}\n\nThe message:\n"${text}"\n\nLook for: claiming something is done that isn't ticked; a wrong time, day or number; anything the record or the files don't support; calling a rest day a miss; generic filler; more than one question; lecturing.\nShape: {"ok": true or false, "problems": ["…"], "text": "if not ok, the message corrected in the same voice and at most ${DRAFT_MAX} characters; otherwise empty"}`,
-});
-
-const openerPrompt = (slot, context) => ({
-  system: MIND_SYSTEM, prompt: `${context}\n\n${OPENER_JOBS[slot]} At most ${DRAFT_MAX} characters.\nShape: {"text": "the message"}`,
-});
-
-const cleanText = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, MESSAGE_MAX);
-
-// ---- A chain ------------------------------------------------------------------------------------
-
-// Two ways to reach a draft. With Flash to hand: one call, thinking hard, that weighs every angle and
-// decides. Without it (its day's allowance spent, or busy): Flash-Lite reads the angles in parallel and
-// then drafts. Either way the draft is checked before anything is said.
-async function runChain({ gemini, doc, group, now, today, recent = [] }) {
-  const context = contextFor(doc, today, now, recent);
-  let calls = 0;
-  let d = null;
-  let escalate = false;
-  let depth = 'lite';
-  if (gemini.available?.('think')) {
-    const [r] = await gemini.ask([{ ...deepPrompt(context, group), model: 'think', think: true }]);
-    calls++;
-    // Only Flash's own answer counts. When the client handed the question to Lite (Flash overloaded),
-    // Lite's one-shot answer to a prompt written for a thinking model is its weakest work — every
-    // message on 25 Sep — so Lite goes through its own steps below instead.
-    if (r.data && (r.role ?? 'think') === 'think') { d = r.data; depth = 'deep'; }
-  }
-  if (!d) {
-    const angles = anglesFor(group, doc, today);
-    const reads = await gemini.ask(angles.map((a) => ({ ...readPrompt(a, context, group), model: 'check' })));
-    calls += angles.length;
-    const notes = reads.map((r, i) => (r.data ? { angle: angles[i], notes: String(r.data.notes ?? ''), matters: Number(r.data.matters) || 0, escalate: r.data.escalate === true } : null)).filter(Boolean);
-    if (!notes.length) return { say: false, calls, escalate: false, problems: [], error: reads[0]?.error ?? 'failed', depth };
-    escalate = notes.some((n) => n.escalate);
-    if (group.level < 3 && Math.max(...notes.map((n) => n.matters)) === 0) return { say: false, calls, escalate, problems: [], why: 'Nothing worth saying', depth };
-    const [draft] = await gemini.ask([{ ...draftPrompt(context, group, notes), model: 'check' }]);
-    calls++;
-    if (!draft.data) return { say: false, calls, escalate, problems: [], error: draft.error, depth };
-    d = draft.data;
-  }
-  if (d.say !== true || !cleanText(d.text)) return { say: false, calls, escalate: escalate || d.escalate === true, problems: [], why: String(d.why ?? ''), depth };
-
-  let text = cleanText(d.text);
-  const plain = checkMessage(doc, { today, now, text, recent });
-  const [critic] = await gemini.ask([{ ...checkPrompt(context, group, text), model: 'check' }]);
-  calls++;
-  const criticOk = !critic.data || critic.data.ok !== false;
-  if (!plain.ok || !criticOk) {
-    const revised = cleanText(critic.data?.text);
-    const again = revised ? checkMessage(doc, { today, now, text: revised, recent }) : { ok: false, problems: [] };
-    if (!revised || !again.ok) {
-      return { say: false, calls, escalate: escalate || d.escalate === true, problems: [...plain.problems, ...(critic.data?.problems ?? []), ...again.problems].map(String), depth };
-    }
-    text = revised;
-  }
-  return { say: true, text, notify: d.notify === true, escalate: escalate || d.escalate === true, calls, problems: [], why: String(d.why ?? ''), depth };
-}
-
-// Every reflex due this run. Writes the Coach's messages into the store (a new mind-n talk each),
-// stamps the events it looked at, and returns what it said and what should go to Claude.
-async function runReflexes({ gemini, store, mind, now, config, timeLeft = () => true, quiet = false, dayStartHour = 4 }) {
-  const today = logicalDay(now, dayStartHour);
-  const at = now.toISOString();
-  const said = [];
-  const escalate = [];
-  const runs = [];
-  for (const group of pickGroups(mind, now)) {
-    if (!timeLeft()) break;
-    const doc = store.doc();
-    const result = await runChain({ gemini, doc, group, now, today, recent: recentCoach(doc, today) });
-    const ids = group.events.map((e) => e.id);
-    for (const id of ids) mind.events[id] = { ...mind.events[id], reflex: at };
-    if (result.escalate) escalate.push(...ids);
-    let spoke = false;
-    if (result.say) {
-      const b = budget(mind, today);
-      const gapOk = group.level >= 3 || !b.lastSaid || now.getTime() - Date.parse(b.lastSaid) >= config.gapMinutes * MIN;
-      // Minor things get a small share, and some of the day is kept for the evening: on 25 Sep all
-      // eight were gone by 14:47, and nothing could be said when two committed sessions moved at 19:37.
-      const minorOk = group.level >= 3 || (b.minor ?? 0) < MINOR_PER_DAY;
-      const h = now.getHours();
-      const beforeEvening = (h < dayStartHour ? h + 24 : h) * 60 + now.getMinutes() < minutes(config.checkinAt);
-      const roomOk = b.messages < config.messagesPerDay - (beforeEvening ? EVENING_RESERVE : 0);
-      if (roomOk && gapOk && minorOk) {
-        const slot = nextMindSlot(doc, today, 'mind');
-        const m = { who: 'coach', text: result.text, at, from: 'mind', by: 'gemini', notify: !!(result.notify && group.level >= 3 && !quiet), ref: ids };
-        store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: result.depth === 'deep' ? config.models.think : config.models.check }, 'mind');
-        spend(mind, today, 'messages');
-        if (group.level < 3) spend(mind, today, 'minor');
-        mind.budget.lastSaid = at;
-        said.push({ talkId: `talk:${today}:${slot}`, m });
-        spoke = true;
-      }
-    }
-    runs.push({ id: `reflex:${at}:${group.key}`, at, engine: 'reflex', trigger: group.kind, events: ids, calls: result.calls, said: spoke, depth: result.depth,
-      summary: result.why ?? '', ...(result.problems?.length ? { problems: result.problems.slice(0, 6) } : {}), ...(result.error ? { error: result.error } : {}) });
-  }
-  for (const r of runs) mind.runs[r.id] = r;
-  return { said, escalate, runs };
-}
-
-// ---- Openers -----------------------------------------------------------------------------------
-
-const minutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
-
-// The opener the background owes George now, or null: the morning one from `morningAt` until noon,
-// the evening one from `checkinAt`; one each a day, none on a closed day, and none for a moment he has
-// already spoken in.
-function backgroundOpenerDue({ doc, now, config, dayStartHour = 4, quiet = false }) {
-  const today = logicalDay(now, dayStartHour);
-  if (dayClosed(doc, today)) return null;
-  const h = now.getHours();
-  const m = (h < dayStartHour ? h + 24 : h) * 60 + now.getMinutes();
-  const hours = { dayStartHour, checkinHour: Number(config.checkinAt.slice(0, 2)) };
-  const spoke = (slot) => talksOn(doc, today).some((t) => (t.messages ?? []).some((x) => x.who === 'george' && momentAt(new Date(x.at), hours) === slot));
-  const have = (slot) => !!doc.journal?.[`talk:${today}:${slot}`];
-  if (m >= minutes(config.morningAt) && m < 12 * 60 && !quiet && !have('morning') && !spoke('morning')) return 'morning';
-  if (m >= minutes(config.checkinAt) && !have('evening') && !spoke('evening')) return 'evening';
-  return null;
-}
-
-async function writeOpener({ gemini, store, slot, now, config, quiet = false, dayStartHour = 4 }) {
-  const today = logicalDay(now, dayStartHour);
-  const doc = store.doc();
-  const recent = recentCoach(doc, today);
-  let text = null;
-  let by = 'gemini';
-  const pic = picture(doc);
-  if (slot === 'morning' && pic?.opener?.day === today && checkMessage(doc, { today, now, text: pic.opener.text, recent }).ok) {
-    text = cleanText(pic.opener.text);
-    by = 'claude';
-  }
-  if (!text && gemini) {
-    const context = contextFor(doc, today, now, recent);
-    let problems = [];
-    for (let attempt = 0; attempt < 2 && !text; attempt++) {
-      const extra = problems.length ? `\n\nYour last draft had these problems, so write it again: ${problems.join('; ')}` : '';
-      const p = openerPrompt(slot, context);
-      const [r] = await gemini.ask([{ ...p, prompt: p.prompt + extra, model: 'think', think: true }]);
-      if (!r.data) break;
-      const draft = cleanText(r.data.text);
-      const check = checkMessage(doc, { today, now, text: draft, recent });
-      if (draft && check.ok) text = draft;
-      else problems = check.problems;
-    }
-  }
-  if (!text) { text = PLAIN_OPENERS[slot]; by = 'plain'; }
-  // An earlier opener he never answered expires, as it does on the page.
-  for (const t of talksOn(store.doc(), today)) {
-    if (['morning', 'afternoon', 'evening'].includes(t.slot) && !t.done && !(t.messages ?? []).some((x) => x.who === 'george')) store.updateJournal(t.id, { done: true });
-  }
-  // The plain fallback ("How did today go?") is there so the moment isn't missed, not worth a buzz.
-  const m = { who: 'coach', text, at: now.toISOString(), from: 'mind', by, notify: !quiet && by !== 'plain' };
-  store.saveJournal({ kind: 'talk', day: today, slot, messages: [m], model: by === 'gemini' ? config.models.think : '' }, 'mind');
-  return { talkId: `talk:${today}:${slot}`, m };
-}
-return { WAIT_MINUTES, FRESH_HOURS, SETTLE_MINUTES, MINOR_PER_DAY, EVENING_RESERVE, DRAFT_MAX, MIND_SYSTEM, pickGroups, anglesFor, groupText, recentCoach, readPrompt, draftPrompt, deepPrompt, checkPrompt, openerPrompt, runChain, runReflexes, backgroundOpenerDue, writeOpener };
-})();
-
 // ---- planner/aes.js
 const __planner_aes = (() => {
 // AES-128 and GCM, for Web Push's aes128gcm content encoding (planner/webpush.js) — Apps Script has
@@ -7869,7 +5631,7 @@ return { P, N, bytesToBig, bigToBytes, pointFromBytes, pointToBytes, publicKeyOf
 
 // ---- planner/webpush.js
 const __planner_webpush = (() => {
-// Web Push from the planner (docs/superpowers/specs/2026-09-25-coach-mind-design.md): a notification
+// Web Push from the planner (docs/superpowers/specs/2026-09-26-checkins-design.md): a notification
 // for George's phone or laptop, encrypted so only that browser can read it (RFC 8291, aes128gcm) and
 // signed so the push service knows it's from this app (RFC 8292, VAPID). The curve and the cipher are
 // planner/p256.js and planner/aes.js; SHA-256 and HMAC come in as `hash` ({ sha256, hmac }) and
@@ -7989,71 +5751,46 @@ function gasCrypto(Utilities) {
 return { TTL_SECONDS, JWT_HOURS, b64url, fromB64url, hkdf, encryptPayload, vapidAuthorization, pushRequest, makeVapidKeys, gasCrypto };
 })();
 
-// ---- planner/mind.js
-const __planner_mind = (() => {
-// The Mind's part of each planner run (docs/superpowers/specs/2026-09-25-coach-mind-design.md).
-// think(), after the calendar has been written: load mind.json, sense what changed, read the Drive
-// files behind finished work, turn George's questions into events, then — when the Mind is switched
-// on — write the day's openers, run the Reflexes, and call Claude's routine in when something needs
-// real thought. after(), once data.json has been saved: send the pings the new messages asked for,
-// prune, and save mind.json. Nothing here can stop the planner: every failure becomes a line in
-// mind:status.
+// ---- planner/checkins.js
+const __planner_checkins = (() => {
+// Check-ins from the planner (docs/superpowers/specs/2026-09-26-checkins-design.md). ask(), before
+// data.json is saved: a task whose calendar block ended half an hour ago with it unticked gets its
+// question (js/checkins.js), once. ping(), once data.json holds those questions: each new one buzzes
+// George's devices — at most PINGS_PER_DAY a day, none in the quiet hours — and a device whose
+// subscription has gone is retired. No AI here. Nothing in it can stop the planner.
 
-const { createGitHubClient } = __js_sync;
-const { logicalDay, addDays } = __js_dates;
-const { mindConfig, mindStatus, isQuiet, openAsks, pushSubscriptions, mindMessages, messageKey } = __js_mind;
-const { loadMind, saveMind, pruneMind, budget, spend, spendModel, mergeMind } = __js_mind_state;
-const { stableStringify } = __js_doc;
-const { sense, planRisk } = __planner_senses;
-const { readArtefacts } = __planner_drive;
-const { createGemini } = __planner_gemini_gas;
-const { runReflexes, backgroundOpenerDue, writeOpener } = __planner_reflex;
+const { logicalDay } = __js_dates;
+const { missedTasks, questionFor, CHECKIN_STATUS } = __js_checkins;
 const { pushRequest, makeVapidKeys, gasCrypto, vapidAuthorization, fromB64url } = __planner_webpush;
 const { bytesToBig } = __planner_p256;
 
-const MIND_SECONDS = 150;
-const FIRE_WAIT_MINUTES = 40;
-const PUSH_MAX_AGE_HOURS = 6;
-const PUSH_TRIES = 3;
-const HEARTBEAT_MS = 55 * 60000;
-const ROUTINE_PREFIX = 'https://api.anthropic.com/v1/claude_code/routines/';
+const PINGS_PER_DAY = 4;
+const QUIET_FROM = '22:30';
+const QUIET_UNTIL = '07:00';
+const PUSH_MAX_AGE_HOURS = 3;
 const VAPID_SUBJECT = 'https://george-wightman.github.io/dashboard/';
-const FINAL = new Set(['sent', 'quiet', 'gone', 'given-up', 'capped']);
-// Claude's two regular deep runs, at London time. The planner starts them rather than the routine's
-// own schedule, which is UTC and ran an hour late all summer. Each runs once a day, at the first
-// planner run in the two hours from its time.
-const DEEP_TIMES = [['morning', '06:30'], ['evening', '21:30']];
-const DEEP_WINDOW_MINUTES = 120;
+const HEARTBEAT_MS = 55 * 60000;
 
-function scheduledDeepDue(mind, t, today, dayStartHour = 4) {
-  const h = t.getHours();
-  const mins = (h < dayStartHour ? h + 24 : h) * 60 + t.getMinutes();
-  for (const [slot, at] of DEEP_TIMES) {
-    const from = Number(at.slice(0, 2)) * 60 + Number(at.slice(3));
-    if (mins < from || mins >= from + DEEP_WINDOW_MINUTES) continue;
-    if (mind.fired.some((f) => (f.reason === slot || f.slot === slot) && logicalDay(new Date(f.at), dayStartHour) === today)) continue;
-    return slot;
-  }
-  return null;
+const live = (r) => r?.status === 'active';
+const minutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+
+function isQuiet(t) {
+  const m = t.getHours() * 60 + t.getMinutes();
+  return m >= minutes(QUIET_FROM) || m < minutes(QUIET_UNTIL);
 }
 
-const latest = (runs, engines) => Object.values(runs).filter((r) => engines.includes(r.engine)).map((r) => r.at).sort().at(-1) ?? null;
+// The devices that turned notifications on (js/push-client.js writes these).
+function pushSubscriptions(doc) {
+  return Object.values(doc?.calendar ?? {}).filter((r) => live(r) && String(r.id).startsWith('push:')
+    && typeof r.endpoint === 'string' && typeof r.p256dh === 'string' && typeof r.auth === 'string');
+}
 
-function createMind({
-  UrlFetchApp, DriveApp = null, Utilities = null, props, log = () => {}, fetch, now, token, repo, dayStartHour = 4,
-  startedMs = Date.now(), crypto = null, clockMs = () => Date.now(), claudeMinds = [],
-}) {
-  const client = createGitHubClient({ token, repo, path: 'mind.json', fetch });
+function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
-  let mind = null;
-  let loadedAs = null;
   const problems = [];
-  // Not problems: what the Mind wants George to know about how it ran (which model, why).
-  const notices = [];
-  // mind.json as it was read, less the cursor's clock: a run that saw nothing new writes nothing.
-  const fingerprint = (m) => stableStringify({ ...m, cursor: m.cursor ? { ...m.cursor, at: null } : null });
-  const note = (text) => { problems.push(text); log(`Mind: ${text}`); };
+  const note = (text) => { problems.push(text); log(`Check-ins: ${text}`); };
 
+  // The planner's keys for Web Push, made once; the public half is published for the devices.
   function vapid(store) {
     if (!tools) return null;
     let privateKey = props.get('VAPID_PRIVATE');
@@ -8067,166 +5804,53 @@ function createMind({
     return { privateKey, publicKey };
   }
 
-  function writeStatus(store, t, today, speaking = false) {
-    const prev = mindStatus(store.doc());
-    const b = mind ? budget(mind, today) : null;
-    const counted = (name) => { try { const r = JSON.parse(props.get(name) ?? 'null'); return r?.day === today ? r : null; } catch { return null; } };
-    const runMs = counted('RUN_MS')?.ms ?? 0;
-    const runs = counted('RUN_MS')?.n ?? 0;
-    const mindMs = counted('MIND_MS')?.ms ?? 0;
-    const content = {
-      lastRun: t.toISOString(),
-      // Whether the background can actually speak (switched on, with a Gemini key): only then does
-      // the page leave the openers to it (js/mind.js's mindAlive).
-      speaking,
-      lastReflex: mind ? latest(mind.runs, ['reflex', 'opener']) : prev?.lastReflex ?? null,
-      lastDeep: mind ? latest(mind.runs, ['deep']) : prev?.lastDeep ?? null,
-      lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
-      note: notices.length ? [...new Set(notices)].join('; ').slice(0, 300) : null,
-      today: b ? { day: today, gemini: b.gemini, flash: b.byModel?.[mindConfig(store.doc()).models.think] ?? 0, messages: b.messages, pings: b.pings, deep: b.deep, runMs, runs, mindMs } : prev?.today ?? null,
-    };
-    const due = !prev || prev.lastError !== content.lastError || prev.speaking !== content.speaking || prev.note !== content.note || prev.lastReflex !== content.lastReflex || prev.lastDeep !== content.lastDeep
-      || prev.today?.messages !== content.today?.messages || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
-    if (due) store.putCalendar('mind:status', content, 'planner');
-  }
-
-  // Claude's routine, for what needs real thought: George's questions first (one of the day's runs is
-  // kept for them), then re-plans a Reflex asked for and plans at risk, and the morning and evening
-  // runs at their times. Never while one is outstanding. A run started inside a scheduled window
-  // counts as that window's run too.
-  function fire(store, t, today, config, escalate) {
-    const url = props.get('MIND_ROUTINE_URL');
-    const key = props.get('MIND_ROUTINE_TOKEN');
-    if (!url || !key) return;
-    if (!url.startsWith(ROUTINE_PREFIX)) { note('MIND_ROUTINE_URL is not a Claude routine address'); return; }
-    const fired = new Set(mind.fired.flatMap((f) => f.events ?? []));
-    const open = (e) => !e.deep && !fired.has(e.id);
-    const asks = Object.values(mind.events).filter((e) => e.kind === 'ask' && open(e));
-    const others = [...new Set([...escalate, ...Object.values(mind.events).filter((e) => e.kind === 'risk' && open(e)).map((e) => e.id)])]
-      .filter((id) => mind.events[id] && open(mind.events[id]));
-    const slot = config.enabled ? scheduledDeepDue(mind, t, today, dayStartHour) : null;
-    if (!asks.length && !others.length && !slot) return;
-    const last = mind.fired.at(-1);
-    const lastDeep = latest(mind.runs, ['deep']);
-    if (last && t.getTime() - Date.parse(last.at) < FIRE_WAIT_MINUTES * 60000 && !(lastDeep && lastDeep > last.at)) return;
-    const b = budget(mind, today);
-    const quiet = isQuiet(store.doc(), t, dayStartHour);
-    const useAsks = asks.length && b.deep < config.deepPerDay;
-    const useOthers = !useAsks && others.length && !quiet && b.deep < config.deepPerDay - 1;
-    if (!useAsks && !useOthers && !slot) return;
-    const reason = useAsks ? 'ask' : useOthers ? (others.some((id) => mind.events[id].kind === 'risk') ? 'risk' : 'escalate') : slot;
-    const ids = useAsks ? asks.map((e) => e.id) : useOthers ? others : [];
-    const res = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-      headers: { Authorization: `Bearer ${key}`, 'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'anthropic-version': '2023-06-01' },
-      payload: JSON.stringify({ text: ids.length ? `${reason}: ${ids.join(' ')}${slot ? ` (and the ${slot} run)` : ''}` : `scheduled: ${slot}` }),
-    });
-    const code = res.getResponseCode();
-    if (code >= 200 && code < 300) {
-      mind.fired.push({ at: t.toISOString(), reason, events: ids, ...(slot ? { slot } : {}) });
-      if (ids.length) spend(mind, today, 'deep');
-    } else note(`Couldn't start Claude's review (HTTP ${code}: ${String(res.getContentText?.() ?? '').slice(0, 160)})`);
-  }
-
-  // The Mind's own share of Apps Script's 90 minutes a day, so ⚙ can show where the time goes.
-  function countMindTime(since, today) {
-    try {
-      const prev = JSON.parse(props.get('MIND_MS') ?? 'null');
-      props.put('MIND_MS', JSON.stringify({ day: today, ms: (prev?.day === today ? prev.ms : 0) + Math.max(0, clockMs() - since) }));
-    } catch { /* only a measurement */ }
-  }
-
-  async function think({ store, calEvents = [] }) {
-    const began = clockMs();
-    try { return await thinking({ store, calEvents }); } finally { countMindTime(began, logicalDay(now(), dayStartHour)); }
-  }
-
-  async function thinking({ store, calEvents = [] }) {
+  function ask(store) {
     const t = now();
     const today = logicalDay(t, dayStartHour);
-    const loaded = await loadMind(client);
-    if (loaded.failed) {
-      note(`Couldn't read mind.json: ${loaded.problem}`);
-      writeStatus(store, t, today);
-      return;
-    }
-    mind = loaded.mind;
-    loadedAs = loaded.sha ? fingerprint(mind) : null;
-    if (loaded.problem) note(loaded.problem);
-    // What Claude's routine wrote to mind.json on its branch (planner/branches.js): the events it
-    // handled, its run's record.
-    for (const m of claudeMinds) mind = mergeMind(mind, m, { cursorFrom: 'local' });
-    const config = mindConfig(store.doc());
     try { vapid(store); } catch (e) { note(`Couldn't make the notification keys: ${e?.message ?? e}`); }
-
-    const { cursor, events } = sense({ doc: store.doc(), cursor: mind.cursor, calEvents, now: t, dayStartHour });
-    mind.cursor = cursor;
-    for (const e of events) {
-      if (mind.events[e.id]) continue;
-      if (e.paths?.length && e.level >= 2) {
-        const r = readArtefacts({ DriveApp, paths: e.paths, now: t });
-        if (r.files.length) e.artefacts = r.files;
-        if (r.problem) note(`Drive: ${r.problem}`);
-      }
-      mind.events[e.id] = e;
+    const asked = [];
+    for (const { itemId } of missedTasks(store.doc(), today, t)) {
+      try {
+        const rec = store.askCheckin({ day: today, itemId, why: 'missed', source: 'planner', onlyNew: true });
+        if (rec) asked.push(rec.id);
+      } catch (e) { note(`Couldn't ask about ${itemId}: ${e?.message ?? e}`); }
     }
-    for (const a of openAsks(store.doc())) store.putCalendar(a.id, { status: 'archived', archivedOn: today }, 'planner');
-    for (const r of planRisk(store.doc(), Object.values(mind.events), today, t)) if (!mind.events[r.id]) mind.events[r.id] = r;
-
-    const key = props.get('GEMINI_KEY');
-    let escalate = [];
-    if (config.enabled && key) {
-      const blocked = new Set(budget(mind, today).geminiBlocked ?? []);
-      const gemini = createGemini({
-        UrlFetchApp, key, models: config.models, log, sleep: (ms) => Utilities?.sleep?.(ms),
-        budget: {
-          left: () => config.geminiPerDay - budget(mind, today).gemini,
-          // Flash has its own daily cap on the Mind's free project; Lite only the overall one.
-          modelLeft: (model) => (model === config.models.think ? config.thinkPerDay - (budget(mind, today).byModel?.[model] ?? 0) : Infinity),
-          spend: (model, n) => spendModel(mind, today, model, n),
-          blocked,
-        },
-      });
-      const timeLeft = () => clockMs() - startedMs < MIND_SECONDS * 1000;
-      const quiet = isQuiet(store.doc(), t, dayStartHour);
-      const slot = backgroundOpenerDue({ doc: store.doc(), now: t, config, dayStartHour, quiet });
-      if (slot && timeLeft()) {
-        const o = await writeOpener({ gemini, store, slot, now: t, config, quiet, dayStartHour });
-        mind.runs[`opener:${o.m.at}:${slot}`] = { id: `opener:${o.m.at}:${slot}`, at: o.m.at, engine: 'opener', trigger: slot, events: [], said: true, summary: `by ${o.m.by}` };
-      }
-      const r = await runReflexes({ gemini, store, mind, now: t, config, timeLeft, quiet, dayStartHour });
-      escalate = r.escalate;
-      mind.budget = { ...budget(mind, today), geminiBlocked: [...blocked].sort() };
-      const flashLeft = config.thinkPerDay - (budget(mind, today).byModel?.[config.models.think] ?? 0);
-      if (blocked.size >= 2) notices.push("Gemini's free allowance is used up for today, so the background is quiet until tomorrow");
-      else if (blocked.has(config.models.think) || flashLeft <= 0) notices.push(`On Flash-Lite for the rest of today: Flash's ${config.thinkPerDay} are used`);
-      notices.push(...gemini.notes().filter((n) => !/used its free allowance/.test(n)));
-    }
-    fire(store, t, today, config, escalate);
-    writeStatus(store, t, today, !!(config.enabled && key));
+    writeStatus(store, t, today, 0);
+    return asked;
   }
 
-  // The pings the Mind's new messages asked for, to every device that turned notifications on; then
-  // mind.json. Only called once data.json has been saved, so every ping opens a message that's there.
-  // Returns { changed } — true when a device's subscription was retired and data.json needs saving again.
-  async function after({ store }) {
-    if (!mind) return { changed: false };
-    const began = clockMs();
-    try { return await finishing({ store }); } finally { countMindTime(began, logicalDay(now(), dayStartHour)); }
+  // Today's count of pings, the run time Apps Script has used today, and any problem, for ⚙ → Claude.
+  // Written only when something shows a change, or hourly, so a quiet run saves nothing.
+  function writeStatus(store, t, today, sent) {
+    const prev = store.doc().calendar?.[CHECKIN_STATUS];
+    const same = live(prev) && prev.day === today;
+    let run = null;
+    try { run = JSON.parse(props.get('RUN_MS') ?? 'null'); } catch { /* only a measurement */ }
+    const content = {
+      day: today, lastRun: t.toISOString(), pings: (same ? prev.pings ?? 0 : 0) + sent,
+      runMs: run?.day === today ? run.ms : 0, runs: run?.day === today ? run.n ?? 0 : 0,
+      lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
+    };
+    const due = !same || sent > 0 || prev.lastError !== content.lastError || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
+    if (due) store.putCalendar(CHECKIN_STATUS, content, 'planner');
+    return content.pings;
   }
 
-  async function finishing({ store }) {
+  // Returns { changed } — true when data.json needs saving again.
+  function ping(store) {
     const t = now();
     const today = logicalDay(t, dayStartHour);
     const doc = store.doc();
-    const config = mindConfig(doc);
-    let changed = false;
-    const pending = mindMessages(doc, addDays(today, -1)).filter((x) => x.m.notify === true
-      && t.getTime() - Date.parse(x.m.at) < PUSH_MAX_AGE_HOURS * 3600000 && !FINAL.has(mind.pushed[messageKey(x.talkId, x.m)]?.state));
+    const prev = doc.calendar?.[CHECKIN_STATUS];
+    let left = PINGS_PER_DAY - (live(prev) && prev.day === today ? prev.pings ?? 0 : 0);
+    const pending = Object.values(doc.journal ?? {}).filter((r) => r.kind === 'reflect' && live(r) && r.day === today && r.why === 'missed'
+      && !r.answeredAt && !r.pushedAt && t.getTime() - Date.parse(r.askedAt ?? 0) < PUSH_MAX_AGE_HOURS * 3600000)
+      .sort((a, b) => String(a.askedAt).localeCompare(String(b.askedAt)));
     const subs = pushSubscriptions(doc);
     const keys = tools ? vapid(null) : null;
-    if (pending.length && subs.length && keys) {
-      const quiet = isQuiet(doc, t, dayStartHour);
+    let sent = 0;
+    const gone = new Set();
+    if (pending.length && subs.length && keys && !isQuiet(t)) {
       const auth = new Map();
       const authFor = (endpoint) => {
         const origin = (/^(https:\/\/[^/]+)/.exec(endpoint) ?? [])[1] ?? endpoint;
@@ -8236,107 +5860,41 @@ function createMind({
         }
         return auth.get(origin);
       };
-      const gone = new Set();
-      for (const x of pending) {
-        const k = messageKey(x.talkId, x.m);
-        const before = mind.pushed[k];
-        if (quiet) { mind.pushed[k] = { at: t.toISOString(), state: 'quiet' }; continue; }
-        if (!before && budget(mind, today).pings >= config.pingsPerDay) { mind.pushed[k] = { at: t.toISOString(), state: 'capped' }; continue; }
-        const live = subs.filter((s) => !gone.has(s.id));
-        if (!live.length) break;
-        const message = { title: 'Coach', body: x.m.text.slice(0, 140), url: `./?coach=${x.talkId}`, tag: x.talkId };
+      for (const rec of pending) {
+        if (left <= 0) break;
+        const devices = subs.filter((s) => !gone.has(s.id));
+        if (!devices.length) break;
+        const message = { title: 'Check-in', body: questionFor(rec.why, rec.title).slice(0, 140), url: `./?checkin=${encodeURIComponent(rec.id)}`, tag: rec.id };
         let responses;
         try {
           // A body of bytes goes as a Blob: a plain array could be taken for form fields.
           const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
-          responses = UrlFetchApp.fetchAll(live.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
+          responses = UrlFetchApp.fetchAll(devices.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
         } catch (e) {
           note(`Couldn't send a ping: ${e?.message ?? e}`);
           break;
         }
-        let sent = false;
+        let ok = false;
         responses.forEach((res, i) => {
           const code = res.getResponseCode();
-          if (code >= 200 && code < 300) sent = true;
-          else if (code === 404 || code === 410) gone.add(live[i].id);
-          else note(`A ping to the ${live[i].label ?? 'device'} failed (HTTP ${code})`);
+          if (code >= 200 && code < 300) ok = true;
+          else if (code === 404 || code === 410) gone.add(devices[i].id);
+          else note(`A ping to the ${devices[i].label ?? 'device'} failed (HTTP ${code})`);
         });
-        if (!before) spend(mind, today, 'pings');
-        const tries = (before?.tries ?? 0) + 1;
-        mind.pushed[k] = sent ? { at: t.toISOString(), state: 'sent' }
-          : live.every((s) => gone.has(s.id)) ? { at: t.toISOString(), state: 'gone' }
-          : { at: t.toISOString(), state: tries >= PUSH_TRIES ? 'given-up' : 'failed', tries };
+        // Marked even when it failed: a question is pinged once, and it's waiting in the app anyway.
+        store.updateJournal(rec.id, { pushedAt: t.toISOString() });
+        if (ok) { sent++; left--; }
       }
-      for (const id of gone) { store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner'); changed = true; }
     }
-    pruneMind(mind, t);
-    if (loadedAs !== fingerprint(mind)) {
-      const saved = await saveMind({ client, mind });
-      if (!saved.ok) log(`Mind: couldn't save mind.json: ${saved.error}`);
-    }
-    return { changed };
+    for (const id of gone) store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner');
+    const tried = pending.some((r) => store.doc().journal[r.id]?.pushedAt);
+    if (tried || gone.size || problems.length) writeStatus(store, t, today, sent);
+    return { changed: tried || gone.size > 0 || problems.length > 0, sent };
   }
 
-  return { think, after, problems: () => [...problems] };
+  return { ask, ping, problems: () => [...problems] };
 }
-return { MIND_SECONDS, FIRE_WAIT_MINUTES, PUSH_MAX_AGE_HOURS, PUSH_TRIES, VAPID_SUBJECT, DEEP_TIMES, scheduledDeepDue, createMind };
-})();
-
-// ---- planner/branches.js
-const __planner_branches = (() => {
-// What Claude's routine left for the dashboard. A cloud routine can read the sync repo but write only
-// to claude/ branches (Anthropic's GitHub gateway; see claude/branch.js), so a deep run pushes its
-// data.json and mind.json to one, and every planner run looks for claude/ branches whose tip it
-// hasn't taken in yet. Their files come back here; gas.js merges data.json into the dashboard and the
-// Mind merges mind.json — the way any device's changes arrive, field by field, newest wins.
-//
-// `merged` is { branch: sha } of tips already taken in (the CLAUDE_MERGED script property), so an
-// unchanged branch costs one small request a run. A tip is read by its sha, so a push landing
-// mid-read is simply taken in next time.
-
-const { createGitHubClient } = __js_sync;
-const { isDoc } = __js_doc;
-const { isMind } = __js_mind_state;
-
-const API = 'https://api.github.com';
-
-// → { found: [{ branch, sha, data, mind }], problems: [text] }. One branch that can't be read is a
-// problem for the log, and the rest are still taken in; it's tried again next run.
-async function claudeBranches({ fetch, token, repo, merged = {} }) {
-  const res = await fetch(`${API}/repos/${repo}/git/matching-refs/heads/claude/`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`GitHub ${res.status} when looking for Claude's branches`);
-  const refs = await res.json();
-  const out = [];
-  const problems = [];
-  for (const r of Array.isArray(refs) ? refs : []) {
-    const branch = String(r?.ref ?? '').replace(/^refs\/heads\//, '');
-    const sha = r?.object?.sha;
-    if (!branch.startsWith('claude/') || !sha || merged[branch] === sha) continue;
-    const read = async (path) => {
-      const got = await createGitHubClient({ token, repo, path, ref: sha, fetch }).get();
-      return got?.doc ?? null;
-    };
-    try {
-      const data = await read('data.json');
-      const mind = await read('mind.json');
-      out.push({ branch, sha, data: isDoc(data) ? data : null, mind: isMind(mind) ? mind : null });
-    } catch (e) {
-      problems.push(`${branch}: ${e?.message ?? e}`);
-    }
-  }
-  return { found: out, problems };
-}
-
-// The CLAUDE_MERGED property once a run has saved what it took in.
-function mergedAfter(merged, found) {
-  const next = { ...merged };
-  for (const b of found) next[b.branch] = b.sha;
-  return next;
-}
-return { claudeBranches, mergedAfter };
+return { PINGS_PER_DAY, QUIET_FROM, QUIET_UNTIL, PUSH_MAX_AGE_HOURS, VAPID_SUBJECT, isQuiet, pushSubscriptions, createCheckins };
 })();
 
 // ---- planner/gas.js
@@ -8366,9 +5924,7 @@ const { syncHevy } = __planner_hevy;
 const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner_properties;
 const { processWorkflows } = __js_workflow;
 const { runGoalReviews } = __planner_reviews;
-const { createMind } = __planner_mind;
-const { claudeBranches, mergedAfter } = __planner_branches;
-const { mergeDocs } = __js_merge;
+const { createCheckins } = __planner_checkins;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -8385,7 +5941,7 @@ class MemoryStorage {
 function createPlanner({
   Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger = { log() {} },
   fetch = (...args) => globalThis.fetch(...args), now = () => new Date(), version = 'dev',
-  DriveApp = null, Utilities = null, mindCrypto = null, clockMs = () => Date.now(),
+  Utilities = null, pushCrypto = null, clockMs = () => Date.now(),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
@@ -8592,28 +6148,8 @@ function createPlanner({
     if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars });
   }
 
-  // What Claude's routine saved to its claude/ branch (planner/branches.js), merged in before anything
-  // else so the rest of the run and the Mind see it. `done` records the tips as taken in, and is only
-  // called once the dashboard has been saved; until then the next run simply merges them again.
-  async function claudeWork(store) {
-    const merged = readProperty(props(), 'CLAUDE_MERGED');
-    let found = [];
-    try {
-      const r = await claudeBranches({ fetch, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'), merged });
-      found = r.found;
-      for (const p of r.problems) log(`Claude's branch ${p}`);
-    } catch (err) {
-      log(`Claude's branch: ${err?.message ?? err}`);
-    }
-    for (const b of found) if (b.data) store.replaceDoc(mergeDocs(store.doc(), b.data), 'local');
-    return {
-      minds: found.map((b) => b.mind).filter(Boolean),
-      done: () => { if (found.length) writeProperty(props(), 'CLAUDE_MERGED', mergedAfter(merged, found)); },
-    };
-  }
-
-  // How long the planner's runs have taken today, so the Mind's status can show it against Apps
-  // Script's daily allowance.
+  // How long the planner's runs have taken today, so ⚙ → Claude can show it against Apps Script's
+  // daily allowance (planner/checkins.js reads it).
   function countRunTime(startedMs) {
     try {
       const day = logicalDay(now(), dayStartHour());
@@ -8627,7 +6163,7 @@ function createPlanner({
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(1000)) return 'busy';
     const startedMs = clockMs();
-    let mind = null;
+    let checkins = null;
     try {
       if (get('PAUSED') === '1') return 'paused';
       const t = now();
@@ -8638,7 +6174,6 @@ function createPlanner({
       if (!(e && e.calendarId) && t.getHours() < 6 && t.getMinutes() >= 10) return 'night';
       const session = await open();
       const { store } = session;
-      const claude = await claudeWork(store);
       await hevy(store);
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
@@ -8709,7 +6244,7 @@ function createPlanner({
           }), blocks: Object.values(days).filter((d) => d.day >= today).flatMap((d) => d.blocks) });
       if (result.actions.length) put('LAST_WRITE', now().getTime());
       // Day records are keyed by weekday (day:1 … day:7) and everything that reads them — the app's
-      // list, the Coach, Claude's week — looks seven days at most. Writing a longer plan into them
+      // list, Claude's week — looks seven days at most. Writing a longer plan into them
       // put two dates in every slot and the second week won, so the days that actually matter read
       // as nothing booked. The planner's own memory is the DAYS property, not these, so keeping them
       // to the week costs it nothing.
@@ -8718,16 +6253,14 @@ function createPlanner({
         if (day >= today && day < lastRecorded) store.putCalendar(dayRecordId(day), rec);
       }
       if (!doc.calendar?.config) store.putCalendar('config', JSON.parse(JSON.stringify(CALENDAR_DEFAULTS)));
-      // The Coach's Mind (planner/mind.js): sense, react, call Claude in. It can never stop planning.
+      // Check-ins (planner/checkins.js): a question for each task whose block has passed unticked. It
+      // can never stop planning.
       try {
-        mind = createMind({ UrlFetchApp, DriveApp, Utilities, props: { get, put }, log, fetch, now, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'),
-          dayStartHour: dayStartHour(), startedMs, crypto: mindCrypto, clockMs, claudeMinds: claude.minds });
-        await mind.think({ store, calEvents: events });
+        checkins = createCheckins({ UrlFetchApp, Utilities, props: { get, put }, log, now, dayStartHour: dayStartHour(), crypto: pushCrypto });
+        checkins.ask(store);
       } catch (err) {
-        mind = null;
-        const message = clean(`The Mind stopped: ${err?.message ?? err}`);
-        log(message);
-        try { store.putCalendar('mind:status', { lastRun: t.toISOString(), lastError: message.slice(0, 500) }); } catch { /* the planner carries on */ }
+        checkins = null;
+        log(clean(`Check-ins stopped: ${err?.message ?? err}`));
       }
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
@@ -8742,16 +6275,14 @@ function createPlanner({
           return 'failed';
         }
       }
-      // Pings and mind.json only once data.json holds the messages they're about.
-      if (mind) {
+      // Pings only once data.json holds the questions they open.
+      if (checkins) {
         try {
-          const after = await mind.after({ store });
-          if (after.changed) await syncOnce({ store, client: session.client });
+          if (checkins.ping(store).changed) await syncOnce({ store, client: session.client });
         } catch (err) {
-          log(clean(`The Mind couldn't finish: ${err?.message ?? err}`));
+          log(clean(`Check-in pings failed: ${err?.message ?? err}`));
         }
       }
-      claude.done();
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
     } catch (err) {
@@ -8848,8 +6379,6 @@ const Planner = (() => {
   installShims(globalThis, { Utilities, UrlFetchApp });
   return createPlanner({
     Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger, Utilities,
-    // Drive only once George has approved the planner's new permission; until then the Mind reads none.
-    DriveApp: typeof DriveApp === 'undefined' ? null : DriveApp,
     fetch: (...args) => globalThis.fetch(...args),
     version: typeof PLANNER_BUILD === 'string' ? PLANNER_BUILD : 'dev',
   });

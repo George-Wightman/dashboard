@@ -9,8 +9,7 @@ import { readPlannerConfig, timeOff, plannerSummary, briefFor, offText, momentLa
 import { attention } from '../attention.js';
 import { shortWeekday, shortDate } from '../dates.js';
 import { gymConfig, gymStatusLines, cardioQuotaId, shortLift, kgText } from '../gym.js';
-import { guideFor } from '../talk.js';
-import { mindConfig, mindStatus, picture } from '../mind.js';
+import { checkinsSince, CHECKIN_STATUS } from '../checkins.js';
 
 export const CLAUDE_CAN = [
   'Add, change, tick and archive anything on the dashboard — every change is listed below, with Undo',
@@ -22,27 +21,21 @@ export const CLAUDE_CAN = [
   'Put notes on tasks, habits, weekly targets and goals',
   "See what needs attention: tasks with no length, what didn't fit, targets falling behind",
   'Read your Hevy training — lifts, PRs, pace and cardio — and set the Cardio target and lift targets with you',
-  "Give the Coach a guide for the week, read your journal, and pick up what the Coach hands over",
+  'Read your check-ins — what you said about each task you ticked or missed — and catch up on everything since you last talked',
   'Set task readiness, dependencies, checklists and success criteria; configure simple follow-up rules',
   'Request or schedule goal reviews that suggest a few next steps for you to accept',
-  "Run the Coach's deep reviews: keep a picture of you, speak through the Coach, and propose changes you apply with one tap",
 ];
 
-// The Coach's mind: whether it's on, when it last reacted and last thought something through, and
-// anything that went wrong.
-export function mindLines(doc, now) {
-  const config = mindConfig(doc);
-  const status = mindStatus(doc);
-  const when = (iso) => (iso ? momentLabel(iso, now) : 'not yet');
-  const pic = picture(doc);
+// Check-ins: today's so far, and how the planner's asking has gone (planner/checkins.js).
+export function checkinLines(doc, today) {
+  const recs = checkinsSince(doc, today).filter((r) => r.day === today);
+  const answered = recs.filter((r) => r.answeredAt).length;
+  const skipped = recs.filter((r) => r.status === 'dismissed').length;
+  const status = doc.calendar?.[CHECKIN_STATUS];
+  const run = status?.day === today && status.runs ? status : null;
   return [
-    config.enabled ? 'On: the background notices, and the Coach speaks first' : 'Off: the planner is watching, but nothing is said until Claude switches it on',
-    `Last reacted ${when(status?.lastReflex)} · last reviewed ${when(status?.lastDeep)}`,
-    ...(status?.today ? [`Today: ${[[status.today.messages, 'background message'], [status.today.pings, 'ping'], [status.today.gemini, 'Gemini call']]
-      .map(([n = 0, what]) => `${n} ${what}${n === 1 ? '' : 's'}`).join(', ')}${status.today.flash != null ? ` (${status.today.flash} of ${config.thinkPerDay} on Flash)` : ''}`] : []),
-    ...(status?.note ? [status.note.charAt(0).toUpperCase() + status.note.slice(1)] : []),
-    ...(status?.today?.runs ? [`Apps Script today: ${Math.round(status.today.runMs / 60000)} of Google's 90 minutes, over ${status.today.runs} planner runs (the mind's share ${Math.round((status.today.mindMs ?? 0) / 60000)} min)`] : []),
-    ...(pic ? [`Claude's picture of you was last written ${when(pic.at)}`] : []),
+    recs.length ? `Today: ${recs.length} asked, ${answered} answered${skipped ? `, ${skipped} skipped` : ''}` : 'None asked today yet',
+    ...(run ? [`Pings today: ${run.pings ?? 0}`, `Apps Script today: ${Math.round((run.runMs ?? 0) / 60000)} of Google's 90 minutes, over ${run.runs} planner runs`] : []),
     ...(status?.lastError ? [`Problem: ${status.lastError}`] : []),
   ];
 }
@@ -105,12 +98,11 @@ export function claudePanel(ctx) {
       earlier.length
         ? h('details', {}, h('summary', {}, 'Earlier briefs'), lines(earlier.map((b) => `${dayText(b.day)}: ${b.text}`), ''))
         : null),
-    section("The Coach's guide this week", h('p', {}, guideFor(doc, today) ?? 'None yet — Claude writes one when you plan your week.')),
     section('Time off', lines(timeOff(doc).filter((o) => o.end.slice(0, 10) >= today).map(offText), 'None coming up.')),
     section('Priorities, colours and hours', lines(steering, 'Nothing set.')),
     section('Calendar planner', ...plannerSummary(doc, new Date()).lines.map((l) => h('p', { class: 'note' }, l))),
     section('Gym', lines(gymLines(doc, new Date()), '')),
-    section("The Coach's mind", lines(mindLines(doc, new Date()), '')),
+    section('Check-ins', lines(checkinLines(doc, today), '')),
     followups,
     section('Needs attention', lines(attention(doc, today), 'Nothing right now.')),
     section('What Claude can do', lines(CLAUDE_CAN, '')),

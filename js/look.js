@@ -14,8 +14,8 @@ export const LOOKS = LOOK_CHOICES.map(([value]) => value);
 export const THEME_COLORS = { paper: '#f5f0e7', night: '#1c232b' };
 
 // 'paper' or 'night' for a moment. 'auto' (and anything unknown) is Night from the check-in hour
-// until the day starts, Paper otherwise — it turns when the coach starts offering the check-in and
-// back at the day rollover. With both hours at 12 that is always Night.
+// until the day starts, Paper otherwise — it turns at the evening hour (⚙ → Look) and back at the
+// day rollover. With both hours at 12 that is always Night.
 export function resolveLook(now, { look = 'auto', checkinHour = 18, dayStartHour = 4 } = {}) {
   if (look === 'paper' || look === 'night') return look;
   const hour = now.getHours();

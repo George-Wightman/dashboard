@@ -1,56 +1,54 @@
 # Today — a personal dashboard
 
 Open the laptop, it's already on screen: what have I got today, tick things off as I go.
-One screen: today's list (tasks and habits), the Coach, goals, Hebrew, the gym and the last three
-weeks. Works offline and syncs between the laptop and the phone through a private GitHub
-repo.
+One screen: today's list (tasks and habits), goals, Hebrew, the gym and the last three weeks.
+Works offline and syncs between the laptop and the phone through a private GitHub repo. Planning
+happens in a chat with Claude, which reads and changes everything here; the app asks one short
+question about each piece of work as it's done or missed, and keeps the answer for Claude.
 
-Pieces 1, 3 and 5 of 6: the core hub, the Claude skill and the Gemini coach. The designs are in
+Pieces 1, 3 and 6 of 6: the core hub, the Claude skill and the calendar planner. The designs are in
 [`docs/superpowers/specs/`](docs/superpowers/specs/), and the build plans are in
 [`docs/superpowers/plans/`](docs/superpowers/plans/).
 
 ## Using it
 
-- **Anything new goes through the Coach:** a task for any day, a goal, a habit or a weekly target
-  ("add call Mum on Friday", "I want a habit of stretching three times a week"). Tasks go straight
-  on; goals, habits and targets arrive as suggestions to accept. There is no add box or + button.
+- **Anything new goes through Claude:** a task for any day, a goal, a habit or a weekly target, in
+  any Claude chat (below). There is no add box or + button.
 - **Open a widget big:** click the heading of Gym, Hebrew or Last 3 weeks (a ⤢ shows on hover) for
   the long view that doesn't fit on the page. Gym adds a board of personal bests, the last year of
   sessions as a grid, and sets per muscle group week by week. Hebrew adds the whole ladder to the
   10-minute conversation — tick the conversations right there — and the last two weeks day by day.
-  Last 3 weeks shows every week since you started, and each day with what was missed, by name. The
-  Coach's heading (or its ⤢) opens the conversation big, with **Journal** to switch to: every
-  journal entry, weekly digest and check-in, newest first, with a search box. Escape, ✕ or a click
-  outside closes it.
-- **Countdown:** tell the Coach "count down to the assessment centre on 5 October" and the days
-  left show in the Countdown widget until the day; "stop counting down to …" removes one. Nothing
-  is booked for it.
+  Last 3 weeks shows every week since you started, and each day with what was missed, by name.
+  Escape, ✕ or a click outside closes it.
+- **Check-ins:** see below.
+- **Countdown:** tell Claude "count down to the assessment centre on 5 October" and the days left
+  show in the Countdown widget until the day. Nothing is booked for it.
 - **Goals with a number and a date** say what it takes a day to finish on time, under the goal's
   line: *10 pages a day to finish by Thu 15 Oct*.
-- **Logging:** tell the Coach what you did ("sent two applications"). Cardio fills itself from
-  Hevy and the Hebrew targets from the Hebrew app, so those are never logged by hand.
+- **Logging:** tell Claude what you did ("sent two applications"). Cardio fills itself from Hevy and
+  the Hebrew targets from the Hebrew app, so those are never logged by hand.
 - **Editing:** click any row's title (or a target's name in *This week*) to edit it. Archive
   instead of deleting — history is kept. A habit done a number of times a week shows a dot for each
   time.
 - **Unfinished tasks carry over** with an amber *from Tue* marker until they're done.
 - **The day starts at 4am**, so a late night still counts as the day before (change it in ⚙).
 - **Suggestions** from Claude or Gemini show dimmed at the top: ✓ to take one on, ✕ to dismiss it.
-  Things Claude added because you asked carry a small Claude logo (Gemini's star for the coach's);
-  hover it for who added it.
-- **⚙ settings** open with the version at the top. Everything else (GitHub sync, Hebrew progress, the day, the
-  coach, the look, Claude's changes, backups) is folded away on one line each, showing what it's set to. Click a
+  Things Claude added because you asked carry a small Claude logo (Gemini's star on older ones the
+  retired Coach added); hover it for who added it.
+- **⚙ settings** open with the version at the top. Everything else (GitHub sync, Hebrew progress, the day,
+  Gemini, notifications, the look, Claude's changes, backups) is folded away on one line each, showing what it's set to. Click a
   line to change it.
 
 ## The look
 
-Paper & Ink by day, a darker Night version from the evening check-in hour until the day starts —
+Paper & Ink by day, a darker Night version from the evening hour (⚙ → Look) until the day starts —
 the same palette as the Hebrew app. ⚙ → **Look** picks *Follow the day* (the default), *Paper*, or
 *Night*. The installed app's title bar changes to match, and it never flickers the wrong one on
 load — the theme is set before the page even paints.
 
 ## Arranging the widgets
 
-Today's list always stays in the first column. The Coach, Upcoming, Goals, Countdown, This week,
+Today's list always stays in the first column. Upcoming, Goals, Countdown, This week,
 Hebrew, Gym and the rest are widgets you can put under the list (Goals and Upcoming start there) or
 in the columns beside it — one column from 760px wide, two from 1500px. Charts keep a sensible size
 when a widget is wide. Weekly targets aren't rows on the list: each shows in the widget it belongs to —
@@ -67,109 +65,41 @@ when it has nothing to show. Click **Arrange** in the header:
 - **Done** (or Escape) leaves Arrange mode. The arrangement is saved as you go, kept separately on
   each device (the laptop and the phone can have their own).
 
-## The coach (Gemini)
+## Check-ins
 
-The first panel on the right is a coach that runs on Google's Gemini.
+The Coach — a Gemini conversation in the app, with a background "mind" and a Claude routine behind it —
+was retired on 26 September 2026 ([`docs/superpowers/specs/2026-09-26-checkins-design.md`](docs/superpowers/specs/2026-09-26-checkins-design.md)):
+it couldn't plan well enough to be worth talking to, and Claude in a chat can. What stayed is the one
+thing only something running in the background can do — ask about a piece of work at the moment it
+happens.
 
-- **New work.** The Coach's box is the one place anything new comes in. It adds tasks on any day,
-  logs what you say you did against a weekly target, and drafts goals (with milestones), habits and
-  weekly targets as suggestions: a goal waits in Goals for ✓, a habit or target at the top of Today.
-  Changing or retiring an existing habit or target is still Claude's job.
-- **Evening check-in.** From 6pm (change the hour in ⚙), the panel offers *Start today's
-  check-in*. Gemini asks two or three questions about today, built from what actually happened.
-  Answer each in a line or two and press **Send** (or Ctrl+Enter). It replies with short feedback
-  and at most two suggested tasks for tomorrow. Those show at the top of the list, marked *for Sat*
-  and so on. The questions are saved as soon as they arrive, so they survive a reload or a switch of
-  device. Typed answers stay on the page until you send them.
-- **Weekly digest.** Once a new week starts, Gemini writes a short digest of last week: what went
-  well, what slipped, and one focus for this week. It shows as *Last week* in the panel. It's saved
-  in the synced document (`journal`), so Claude can read it later without the raw data. If it
-  can't be written in the background, the panel offers *Write last week's digest*.
+- **When you tick a task**, a card at the top of Today asks *How did "…" go?*
+- **When a task's calendar block ends and it isn't ticked**, the planner asks *"…" isn't ticked —
+  what happened?* within ten minutes, and pings the phone (⚙ → Notifications; at most four a day,
+  none from 22:30 to 07:00). Ticking it afterwards turns the question into *how did it go*.
+- **Answer** with the mic (Chrome's own speech-to-text) or a line or two, then **Save** — or **Skip**.
+  Your words are kept at once; Gemini then tidies them into two or three sentences beside them. With
+  no key, offline, or when Gemini fails, your words alone are kept, and that's fine.
+- **One question at a time**, oldest first, and only on its own day: a question that has lost its
+  moment isn't asked the next morning. Habits don't ask; taking a tick off takes its question away.
+- **Claude reads them**: `catchup` at the start of a chat shows everything since the last one — what
+  was ticked and when, what wasn't, what you said, new flags, workouts, what you moved in Google
+  Calendar — and `checkins` lists the last two weeks.
 
-Nothing is ever a dialog. Problems show as one line in the panel: no key, offline, "Gemini's free
-limit is used up for today — try tomorrow", or "Gemini didn't answer — try again".
+**The key.** Nothing to set up if the Hebrew app has a Gemini key saved on the same device (both apps
+are served from `george-wightman.github.io`). Otherwise paste one into ⚙ → *Gemini*. Keys stay on the
+device and are never synced. A summary is one Flash-Lite request.
 
-**The key.** There's nothing to set up if the Hebrew app has a Gemini key saved on the same device.
-Both apps are served from `george-wightman.github.io`, so the dashboard can use that key as it is.
-Otherwise paste a key into ⚙ → *Gemini API key*. ⚙ also says whether a Hebrew-app key was found.
-Keys stay on the device and are never synced.
-
-**What it costs.** It asks `gemini-flash-lite-latest` first (about 500 free requests a day), and
-only falls back to `gemini-flash-latest` (about 20 a day). That leaves the scarce Flash allowance
-to the Hebrew app, which shares the key. A check-in is 2 requests, shaping a goal is 1, and the
-digest is 1 a week.
-
-**Privacy.** Check-ins and goal shaping send a summary of your list to Google. On Google's free tier
-they may use it to improve their products.
+**Privacy.** A summary sends Gemini the task's name and what you said. On Google's free tier they may
+use it to improve their products.
 
 **Trying it locally without a key.** On localhost, add `?fakegemini` to the address:
-http://localhost:8080/?fakegemini. Canned replies stand in for Google, no key is read, and the panel
-heading says *fake · ok*. To see a failure, pick a mode: `?fakegemini=slow` (5-second replies),
-`nokey`, `quota`, `down`, `offline`, `badkey` or `nonsense`.
+http://localhost:8080/?fakegemini. A canned summary stands in for Google and no key is read. Other
+modes: `?fakegemini=slow`, `nokey`, `quota`, `down`, `offline`, `badkey` or `nonsense`.
 
-## The Coach's mind
-
-The Coach no longer waits to be spoken to. A background mind notices what happens and says
-something when it's worth it (design: [`docs/superpowers/specs/2026-09-25-coach-mind-design.md`](docs/superpowers/specs/2026-09-25-coach-mind-design.md)).
-
-- **It notices.** Every ten minutes the calendar planner compares the dashboard and your calendars
-  with what it saw last time: what you ticked (and whether you did it yourself, through Claude, the
-  Coach, Hevy or the Hebrew app), committed work pushed off the day or deleted, blocks you dragged in
-  Google Calendar, events you added, moved or removed (with their descriptions), blocks that ended
-  with their work unticked, work the planner had to push along, milestones reached, flags, your
-  replies. When a finished task's notes name a Drive folder, it reads what was written there lately:
-  the debrief, your reflections.
-- **It reacts.** Gemini looks at anything that matters from two or three angles at once (progress
-  against the goal, patterns, the plan for the next few days), drafts one message, and checks it
-  twice before the Coach says it: plain-code checks (nothing called done that isn't ticked, no time
-  the plan or you didn't give, no rest day called a miss, no repeats) and a second opinion. It also
-  writes the morning and evening openers, so they arrive whether or not a page is open.
-- **It thinks.** A Claude routine on your Claude plan runs a deep review at 06:30 and 21:30 (London
-  time: the planner starts both, so the clocks changing doesn't move them), and whenever the planner
-  calls it in: when you ask the Coach for real thought ("rework the weekend"),
-  when a reaction decides the plan needs it, or when a goal's work stops fitting before its date. It
-  keeps a standing picture of you (what matters now, patterns with their dates, risks, open threads,
-  how to talk to you) that the Coach and every reaction read, says what's worth saying, and proposes
-  plan changes you apply with one tap. It never changes the plan itself.
-- **It pings.** Turn on ⚙ → **Notifications** on the phone and the laptop, and messages that matter
-  buzz the device (and the Pixel Watch, which mirrors the phone). Tapping one opens the Coach at that
-  message. At most six a day, none from 22:30 to 07:00 or after you close the day.
-
-In the conversation, a message from the background carries a small mark: Gemini's star when it
-noticed something, Claude's spark after a deeper review. Answer it like any other. ⚙ → Claude →
-*The Coach's mind* says whether it's on, when it last reacted and reviewed, and any problem.
-
-**Limits.** At most 8 background messages a day, 45 minutes apart unless something urgent happened;
-120 Gemini calls a day (a quota used up moves the rest of the day to the other model, or stops);
-2 scheduled and at most 3 triggered deep runs a day. Claude changes any of these, and switches the
-mind on or off, with the `mind` op.
-
-**Where things live.** Its memory, the events and the log of what it did, is `mind.json` beside
-`data.json` in `dashboard-sync`, so every device isn't downloading it on every sync. `data.json`
-gains only what the devices show: the messages, proposals, Claude's picture of you, the devices to
-ping, and a status line.
-
-**Privacy.** Gemini is given your lists, calendar descriptions and the Drive files named above,
-as the Coach already was given your lists. Health data (when the watch is connected) reaches Gemini
-only as plain labels ("a short night"); numbers go only to Claude. Pings are encrypted for each
-device, so the push services carry only ciphertext.
-
-**Setting it up (once):**
-
-1. **A Gemini key of its own.** In [Google AI Studio](https://aistudio.google.com/apikey), *Create
-   API key* in a **new project**, so the mind's free allowance is separate from the Hebrew app's. In
-   the *Dashboard planner* script → ⚙ Project Settings → *Script properties*, set `GEMINI_KEY` to it.
-2. **Drive, read-only.** In the script editor, replace `appsscript.json` with
-   [`planner/apps-script/appsscript.json`](planner/apps-script/appsscript.json) (it adds
-   `drive.readonly`), then run `install` and approve.
-3. **The deep review.** A Claude Code routine on your account runs the repo's
-   [`claude/mind/ROUTINE.md`](claude/mind/ROUTINE.md), with both `dashboard` and `dashboard-sync`
-   attached and no schedule of its own (the planner starts it). A cloud session can read
-   `dashboard-sync` but may write only to `claude/` branches, so the routine saves its answer to its
-   branch and the planner merges it within ten minutes; it needs no key of its own. Add an **API**
-   trigger to it and put its URL and token in the script's properties as `MIND_ROUTINE_URL` and
-   `MIND_ROUTINE_TOKEN`, so the planner can call it in.
-4. **Notifications.** ⚙ → Notifications → *Turn on*, on each device.
+**What's kept of the Coach.** Its old conversations, entries and digests stay in the data (a
+conversation's messages still go after 30 days), and its handoffs are still flags. Nothing reads the
+rest.
 
 ## Hebrew progress
 
@@ -252,15 +182,15 @@ along with what it was doing at that moment. It's grey most of the time, and tur
 sync is set up and something hasn't reached GitHub yet.
 
 - Click ⚑, check the **About** line (a one-line summary of the moment — the look, today's
-  progress, the coach, sync), write a sentence, and press **Save** (or Ctrl+Enter). It's saved at
+  progress, sync), write a sentence, and press **Save** (or Ctrl+Enter). It's saved at
   once and a sync is asked for straight away.
 - Above the box, pick what the flag is for: **Feature**, **Bug**, **For Claude** (something for
   Claude to pick up later) or **Note**. Each flag in the list shows its kind (change it right there)
-  and who wrote it — *You*, the Coach (Gemini's star; its handoffs are *For Claude*), Claude (its
-  spark) or a follow-up rule — and the chips above the list show one kind at a time. Claude reads
+  and who wrote it — *You*, Claude (its spark), a follow-up rule, or the retired Coach (Gemini's
+  star; its handoffs are *For Claude*) — and the chips above the list show one kind at a time. Claude reads
   them grouped the same way (`flags`, or `flags feature`).
 - The open flags list newest first, with **More details** (the captured context: window size, the
-  arrangement, the coach and sync state — never a key or token, only whether one is set) and
+  arrangement and sync state — never a key or token, only whether one is set) and
   **Mark addressed**, which archives it — nothing is ever deleted.
 - The panel's foot line says whether every flag has reached GitHub yet, with **Sync now** when one
   hasn't.
@@ -271,8 +201,15 @@ read and act on later.
 ## Claude
 
 Claude can read the dashboard and change anything in it from any claude.ai chat — on the web, in the
-desktop app or on the phone. Say `/dashboard`, or just "add that to the dashboard", "what's on
-today?", "log 45m of Hebrew", "tick off the CV task".
+desktop app or on the phone — and from Claude Code. It's the way in: say `/dashboard`, "catch me
+up", "plan my week", "add that to the dashboard", "what's on today?", "log 45m of Hebrew", "tick off
+the CV task", "debrief the mock".
+
+- **Every planning chat starts with a catch-up**: everything since the last one — each day's ticks
+  and misses, what you said in your check-ins, new flags, workouts, your calendar edits — said back
+  in a few lines, misses by name, and then what to change.
+- **After a practice session**, "debrief" goes over it with you and leaves the lesson in the notes of
+  the next task that practises the same thing.
 
 - **What you ask for goes straight on**, marked with Claude's logo. **What Claude notices** — a to-do
   that comes up in a chat — arrives as a suggestion for ✓ or ✕, and a bigger job (an application,
@@ -333,13 +270,10 @@ Your dashboard, booked into your Google Calendar. A small script in your own Goo
 - **On the list,** today's tasks show their time and follow the day's order. ⚙ → *Calendar planner*
   says when it last ran; the header warns if it stops.
 
-**One shared plan:** Today, Upcoming and the Coach use confirmed Calendar bookings. Upcoming shows
+**One shared plan:** Today and Upcoming use confirmed Calendar bookings. Upcoming shows
 future tasks, external commitments, booking freshness, overflow dates and unscheduled work. Conflicting
 Calendar/Dashboard edits wait for your choice. Event links open a task completion view.
 
-The Coach has one continuous conversation with expiring check-ins, future task capture and goal
-drafting. Clear instructions act directly; broad reviews show an editable proposal. Each turn has
-one net action and one Undo. Closing today for planning still allows future ideas to be captured.
 
 Claude does the thinking: say **"plan my week"** and it spreads the week's work over the days, with
 lengths and areas, and the calendar follows. Its settings (planning hours, calendars, linked habits)
@@ -373,9 +307,8 @@ nothing is written to Hevy, and your sessions stay yours to plan.
   each key lift (Squat and Bench Press to start) — estimated 1RM, PRs in gold, the trend with its
   projection towards a target, pace in kg a week — and today's session. Today's Gym row says *via
   Hevy* and when; a day in *Last 3 weeks* lists its workouts.
-- **The Coach and Claude see it too**: the Coach is told the day's training and the week's, the digest
-  gets a Training line, and Claude reads everything with `gym`. Everything from before the week you
-  connect only feeds the trends.
+- **Claude sees it too**: `gym` has everything, and the catch-up a line for the week. Everything from
+  before the week you connect only feeds the trends.
 
 **Setting it up:** get your key at [hevy.com/settings?developer](https://hevy.com/settings?developer),
 then in the *Dashboard planner* script → ⚙ Project Settings → *Script properties* → add `HEVY_KEY`
@@ -459,8 +392,8 @@ npm test
 
 Node 24's built-in test runner. There are no dependencies to install. Every pure module (dates,
 parsing, scheduling, streaks, history, merge) and the sync flow is covered, including two
-simulated devices converging. So are the Gemini client and the coach's context, prompts and reply
-checks. They run against a fake `fetch`, so no test ever calls Google. The look's inline `<head>`
+simulated devices converging. So are the Gemini client, check-ins from the tick to the ping, and
+Claude's catch-up. They run against a fake `fetch`, so no test ever calls Google. The look's inline `<head>`
 script is checked against `resolveLook` for every hour and a spread of settings; the palette check
 keeps every colour name in one vocabulary; the widget arrangement (`js/layout.js`) and the flag
 context and cap (`js/flags.js`) are fully covered too. The Claude tool is tested end to end against a
@@ -490,7 +423,7 @@ script bundles the Apps Script planner and generates the offline release manifes
 | `js/merge.js`, `js/record.js` | Merging copies with per-field versions and conversation-message tombstones |
 | `js/sync.js` | GitHub read/merge/write with retry, and the sync timer |
 | `js/gemini.js` | The Gemini client: lite model first, fallbacks and retries, plain-English errors |
-| `js/coach.js` | What the coach tells Gemini, a week's numbers, the prompts, and the reply checks |
+| `js/checkins.js`, `js/ui/checkin.js`, `planner/checkins.js` | Check-ins: the records and which are waiting, the card on Today with its mic, and the planner asking about missed blocks and pinging |
 | `js/workflow.js`, `js/goal-review.js`, `planner/reviews.js` | Optional task controls, conditional follow-ups, and bounded goal reviews |
 | `js/look.js` | Which look (Paper or Night) applies at a given moment |
 | `js/layout.js` | The widget arrangement: normalise, move, nudge, hide, show |
@@ -498,19 +431,15 @@ script bundles the Apps Script planner and generates the offline release manifes
 | `js/version.js` | Which build this is, whether a newer one is live, and taking the update |
 | `js/changes.js` | Claude's change log: what a change did, and the readers ⚙ uses |
 | `js/calendar.js` | The calendar planner's records: its settings, today's times, its notes and health |
-| `js/mind.js`, `js/mind-state.js` | The Coach's mind: its records in `data.json`, the checks every message passes, and `mind.json` |
-| `planner/senses.js`, `planner/reflex.js`, `planner/mind.js` | The mind in the planner: what changed and who did it, Gemini's reactions and the openers, and its run |
-| `planner/drive.js`, `planner/gemini-gas.js` | Reading the Drive files behind finished work; Gemini from Apps Script, several questions at once |
 | `planner/webpush.js`, `planner/p256.js`, `planner/aes.js` | Web Push from Apps Script (RFC 8291/8292), with the curve and cipher it doesn't have |
 | `js/push-client.js` | Turning notifications on and off on a device |
-| `claude/mind.js`, `claude/mind/ROUTINE.md` | Claude's deep runs: the context pack, the `--mind` ops, and the run's instructions |
 | `claude/` | The command-line tool and the skill Claude runs (`npm run build-skill` zips the skill) |
 | `planner/` | The calendar planner: a pure planning core (`plan.js` and its parts), the Apps Script side (`gas.js`), bundled by `npm run build-planner` into `planner/planner.js`, which the loader in `planner/apps-script/` fetches |
 | `js/ui/*.js`, `js/app.js` | The screen |
 | `sw.js`, `release.json`, `manifest.webmanifest` | Complete, hash-checked offline releases and install |
 
-Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, `journal` (the coach's
-check-ins and weekly digests), `flags` (notes of something to change), `changes` (what Claude
+Data lives in one JSON document: `items`, `goals`, `milestones`, `logs`, `journal` (check-ins,
+Claude's briefs, and the retired Coach's conversations and digests), `flags` (notes of something to change), `changes` (what Claude
 has changed, for ⚙ and Undo) and `calendar` (the calendar planner's settings, its day-by-day
 bookings and its notes). `rules`, `outcomes`, `workflowRuns` and `reviews` hold optional controls,
 reported facts and execution receipts. Nothing is ever
@@ -536,8 +465,9 @@ remain useful for recovering earlier history.
 2. **Hebrew auto-tick** — practice minutes from the Hebrew app's sync file — built
 3. **Claude skill** — built
 4. Job search + Notion — application counts and deadlines from the Job Tracker
-5. **Gemini coach** — goal shaping, evening check-in, weekly digest — built
+5. ~~Gemini coach~~ — built, then retired on 26 Sep 2026 for check-ins and Claude
 6. **Google Calendar** — the planner books the dashboard into your calendar — built
-7. **The Coach's mind** — it notices, reacts, thinks deeply twice a day, and pings — built
-8. Google Health — the Pixel Watch's walks, sleep and heart, for the mind (labels only to Gemini)
-9. Hebrew both ways — session summaries in, your real week out as practice material
+7. ~~The Coach's mind~~ — built, then retired with the Coach
+8. **Check-ins** — a question on each tick and each missed block, by voice, kept for Claude — built
+9. Google Health — the Pixel Watch's walks, sleep and heart, for Claude's catch-up
+10. Hebrew both ways — session summaries in, your real week out as practice material

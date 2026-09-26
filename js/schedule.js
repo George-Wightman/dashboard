@@ -29,7 +29,7 @@ export function doneIndex(doc) {
   return idx;
 }
 
-// Habits let off for a day by the Coach (a 'skip' log), as "itemId|day": excused like time off.
+// Habits let off for a day (a 'skip' log, which the retired Coach wrote), as "itemId|day": excused like time off.
 export function skipSet(doc) {
   const out = new Set();
   for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'skip') out.add(`${l.itemId}|${l.day}`);
@@ -146,7 +146,7 @@ function occurrenceStreak(doc, item, today) {
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
     const ok = ticked.has(day);
-    // Time off, or let off by the Coach: a miss doesn't count, a tick still does.
+    // Time off, or let off for the day: a miss doesn't count, a tick still does.
     if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
     if (day === today && !ok) continue; // today isn't over yet
     outcomes.push(ok);
@@ -208,9 +208,9 @@ function neededOn(doc, item, day, idx, offs) {
 }
 
 // How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
-// times-a-week habit it didn't need; plus what George committed to after the morning check-in
+// times-a-week habit it didn't need; plus what George committed to at the 11:00 lock
 // (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
-// time and a miss the second; deleting is a miss unless the Coach released it as no longer needed. A
+// time and a miss the second; deleting is a miss unless it was released as no longer needed (Claude's `archive` with his reason). A
 // task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
 export function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = rowsForDay(doc, day, idx, offs);

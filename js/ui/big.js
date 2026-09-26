@@ -2,7 +2,7 @@
 // opens in a window over the page (#widget-sheet) — the whole screen on a phone. What it shows is
 // the widget's own panel plus the long view that has no room on the page. It is redrawn with the
 // page (js/app.js's render), keeping where it was scrolled and any text box's caret; Escape, ✕ or a
-// click outside closes it. The Coach opens its own big view (js/ui/coach.js's sheet).
+// click outside closes it.
 
 import { h } from './dom.js';
 import { keptFocus, restoreFocus } from './side.js';

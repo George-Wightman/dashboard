@@ -1,13 +1,14 @@
 // The store: the whole state is one document in localStorage. Every change goes through here,
 // stamps `updated`, saves, and tells listeners why it changed.
 
-import { logicalDay, addDays, weekStart } from './dates.js';
+import { logicalDay, addDays } from './dates.js';
 import { MAPS, emptyDoc, stableStringify, isDoc, journalId, recordProblem, recoverDoc } from './doc.js';
 import { mergeDocs } from './merge.js';
 import { FLAG_TEXT_MAX, FLAG_KINDS, capContext } from './flags.js';
 import { CHANGE_KEEP_DAYS, canUndo, diffDocs } from './changes.js';
 import { checkLength, checkClock, checkNotes } from './parse.js';
 import { reviseRecord, recordContent } from './record.js';
+import { checkinId, SAID_MAX } from './checkins.js';
 import { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } from './workflow.js';
 
 export const DATA_KEY = 'dash_data';
@@ -20,22 +21,11 @@ export const DEFAULT_SETTINGS = {
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
 
-// The content each kind of journal record carries, with its empty values.
+// The content each kind of journal record saveJournal writes, with its empty values. (The retired
+// Coach's kinds — talk, entry, checkin, digest, guide — are still valid in old data; nothing writes them.)
 const JOURNAL_FIELDS = {
-  checkin: { questions: [], answers: [], feedback: '', tomorrowIds: [], model: '' },
-  digest: { summary: '', wins: [], slipped: [], focus: '', model: '' },
   brief: { text: '' },
-  // The Coach as a conversation (js/talk.js): a conversation and its journal entry, filed by day and
-  // slot; Claude's guide for the Coach, filed under the week's Monday.
-  // flagIds: the flags its notes for Claude became, as they were made (js/ui/coach.js keep).
-  talk: { slot: '', messages: [], handoffs: [], flagIds: [], done: false, model: '', proposal: null },
-  entry: { slot: '', feeling: '', text: '', pointers: [], forClaude: [], flagIds: [] },
-  guide: { text: '' },
 };
-const SLOTTED = new Set(['talk', 'entry']);
-// The Mind's own conversations (js/mind.js): mind-n opened by the planner, deep-n by Claude's runs.
-const SLOT = /^(morning|afternoon|evening|own-\d{1,2}|mind-\d{1,3}|deep-\d{1,2})$/;
-const WEEKLY = new Set(['digest', 'guide']);
 
 function readJson(storage, key) {
   try {
@@ -328,11 +318,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     });
   }
 
-  // A check-in or a digest. The id comes from the kind and the day, so there is only ever one
-  // check-in per day and one digest per week, whichever device writes it. Creates the record, or
-  // overwrites just the content fields given on the existing one (so saving the answers keeps
-  // the questions). Content is copied in, never shared with the caller.
-  function saveJournal(record, source = 'gemini') {
+  // Claude's brief for a day: one per day, whichever device writes it. Creates the record, or
+  // overwrites just the content fields given on the existing one. Content is copied in.
+  function saveJournal(record, source = 'claude') {
     const kind = record?.kind;
     const fields = JOURNAL_FIELDS[kind];
     if (!fields) throw new Error(`Unknown journal kind ${kind}`);
@@ -340,12 +328,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || addDays(day, 0) !== day) {
       throw new Error(`A journal record needs a real day, not ${day}`);
     }
-    if (WEEKLY.has(kind) && weekStart(day) !== day) throw new Error(`A ${kind} is filed under its week's Monday`);
-    let id = journalId(kind, day);
-    if (SLOTTED.has(kind)) {
-      if (!SLOT.test(String(record.slot ?? ''))) throw new Error(`A ${kind} needs a slot: morning, afternoon, evening or own-1 …`);
-      id = `${id}:${record.slot}`;
-    }
+    const id = journalId(kind, day);
     if (record.id != null && record.id !== id) throw new Error(`A ${kind} for ${day} has the id ${id}`);
     const content = {};
     for (const key of Object.keys(fields)) {
@@ -357,6 +340,44 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     commit('local');
     return doc.journal[id];
   }
+
+  // Check-ins (js/checkins.js): one per task per day. A tick asks "how did it go", a missed block
+  // "what happened" — and a tick after a missed block's question turns it into "how did it go". An
+  // answered one is never asked again; `onlyNew` (the planner) never touches one that exists.
+  function askCheckin({ day = today(), itemId, why, source = 'me', onlyNew = false }) {
+    const item = doc.items[itemId];
+    if (!item) throw new Error('Item not found');
+    const id = checkinId(day, itemId);
+    const existing = doc.journal[id];
+    if (existing) {
+      if (onlyNew || existing.answeredAt) return null;
+      if (existing.why === why && existing.status === 'dismissed') return null;
+      if (existing.why === why && existing.status === 'active') return existing;
+      writeRecord('journal', id, { ...existing, why, title: item.title, status: 'active', askedAt: stamp() });
+      commit('local');
+      return doc.journal[id];
+    }
+    return create('journal', { id, kind: 'reflect', day, itemId, title: item.title, why, said: '', summary: '', askedAt: stamp(), answeredAt: null, source });
+  }
+
+  // A tick taken off: its unanswered "how did it go" goes (archived, so a tick again asks again —
+  // unlike Skip, which dismisses it for good).
+  function withdrawCheckin(day, itemId) {
+    const rec = doc.journal[checkinId(day, itemId)];
+    if (!rec || rec.answeredAt || rec.status !== 'active' || rec.why !== 'done') return null;
+    return patch('journal', rec.id, { status: 'archived' });
+  }
+
+  function answerCheckin(id, said) {
+    const rec = doc.journal[id];
+    if (rec?.kind !== 'reflect') throw new Error('No such check-in');
+    const text = String(said ?? '').trim().slice(0, SAID_MAX);
+    if (!text) throw new Error('Say or type something first — or skip it');
+    return patch('journal', id, { said: text, answeredAt: stamp(), status: 'active' });
+  }
+
+  const summariseCheckin = (id, summary, model = '') => patch('journal', id, { summary, model });
+  const skipCheckin = (id) => patch('journal', id, { status: 'dismissed' });
 
   // Everything one Gemini reply (or a plan from Claude) proposes, written as suggestions in one
   // commit: a goal with its milestones and the habits and weekly targets linked to it, and tasks
@@ -680,6 +701,11 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
 
     saveJournal,
+    askCheckin,
+    withdrawCheckin,
+    answerCheckin,
+    summariseCheckin,
+    skipCheckin,
     updateJournal: (id, changes) => patch('journal', id, structuredClone(changes)),
     pruneTalks,
     addPlan,

@@ -23,9 +23,7 @@ import { syncHevy } from './hevy.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
-import { createMind } from './mind.js';
-import { claudeBranches, mergedAfter } from './branches.js';
-import { mergeDocs } from '../js/merge.js';
+import { createCheckins } from './checkins.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -42,7 +40,7 @@ class MemoryStorage {
 export function createPlanner({
   Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger = { log() {} },
   fetch = (...args) => globalThis.fetch(...args), now = () => new Date(), version = 'dev',
-  DriveApp = null, Utilities = null, mindCrypto = null, clockMs = () => Date.now(),
+  Utilities = null, pushCrypto = null, clockMs = () => Date.now(),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
@@ -249,28 +247,8 @@ export function createPlanner({
     if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars });
   }
 
-  // What Claude's routine saved to its claude/ branch (planner/branches.js), merged in before anything
-  // else so the rest of the run and the Mind see it. `done` records the tips as taken in, and is only
-  // called once the dashboard has been saved; until then the next run simply merges them again.
-  async function claudeWork(store) {
-    const merged = readProperty(props(), 'CLAUDE_MERGED');
-    let found = [];
-    try {
-      const r = await claudeBranches({ fetch, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'), merged });
-      found = r.found;
-      for (const p of r.problems) log(`Claude's branch ${p}`);
-    } catch (err) {
-      log(`Claude's branch: ${err?.message ?? err}`);
-    }
-    for (const b of found) if (b.data) store.replaceDoc(mergeDocs(store.doc(), b.data), 'local');
-    return {
-      minds: found.map((b) => b.mind).filter(Boolean),
-      done: () => { if (found.length) writeProperty(props(), 'CLAUDE_MERGED', mergedAfter(merged, found)); },
-    };
-  }
-
-  // How long the planner's runs have taken today, so the Mind's status can show it against Apps
-  // Script's daily allowance.
+  // How long the planner's runs have taken today, so ⚙ → Claude can show it against Apps Script's
+  // daily allowance (planner/checkins.js reads it).
   function countRunTime(startedMs) {
     try {
       const day = logicalDay(now(), dayStartHour());
@@ -284,7 +262,7 @@ export function createPlanner({
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(1000)) return 'busy';
     const startedMs = clockMs();
-    let mind = null;
+    let checkins = null;
     try {
       if (get('PAUSED') === '1') return 'paused';
       const t = now();
@@ -295,7 +273,6 @@ export function createPlanner({
       if (!(e && e.calendarId) && t.getHours() < 6 && t.getMinutes() >= 10) return 'night';
       const session = await open();
       const { store } = session;
-      const claude = await claudeWork(store);
       await hevy(store);
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
@@ -366,7 +343,7 @@ export function createPlanner({
           }), blocks: Object.values(days).filter((d) => d.day >= today).flatMap((d) => d.blocks) });
       if (result.actions.length) put('LAST_WRITE', now().getTime());
       // Day records are keyed by weekday (day:1 … day:7) and everything that reads them — the app's
-      // list, the Coach, Claude's week — looks seven days at most. Writing a longer plan into them
+      // list, Claude's week — looks seven days at most. Writing a longer plan into them
       // put two dates in every slot and the second week won, so the days that actually matter read
       // as nothing booked. The planner's own memory is the DAYS property, not these, so keeping them
       // to the week costs it nothing.
@@ -375,16 +352,14 @@ export function createPlanner({
         if (day >= today && day < lastRecorded) store.putCalendar(dayRecordId(day), rec);
       }
       if (!doc.calendar?.config) store.putCalendar('config', JSON.parse(JSON.stringify(CALENDAR_DEFAULTS)));
-      // The Coach's Mind (planner/mind.js): sense, react, call Claude in. It can never stop planning.
+      // Check-ins (planner/checkins.js): a question for each task whose block has passed unticked. It
+      // can never stop planning.
       try {
-        mind = createMind({ UrlFetchApp, DriveApp, Utilities, props: { get, put }, log, fetch, now, token: get('GITHUB_TOKEN'), repo: get('SYNC_REPO'),
-          dayStartHour: dayStartHour(), startedMs, crypto: mindCrypto, clockMs, claudeMinds: claude.minds });
-        await mind.think({ store, calEvents: events });
+        checkins = createCheckins({ UrlFetchApp, Utilities, props: { get, put }, log, now, dayStartHour: dayStartHour(), crypto: pushCrypto });
+        checkins.ask(store);
       } catch (err) {
-        mind = null;
-        const message = clean(`The Mind stopped: ${err?.message ?? err}`);
-        log(message);
-        try { store.putCalendar('mind:status', { lastRun: t.toISOString(), lastError: message.slice(0, 500) }); } catch { /* the planner carries on */ }
+        checkins = null;
+        log(clean(`Check-ins stopped: ${err?.message ?? err}`));
       }
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
@@ -399,16 +374,14 @@ export function createPlanner({
           return 'failed';
         }
       }
-      // Pings and mind.json only once data.json holds the messages they're about.
-      if (mind) {
+      // Pings only once data.json holds the questions they open.
+      if (checkins) {
         try {
-          const after = await mind.after({ store });
-          if (after.changed) await syncOnce({ store, client: session.client });
+          if (checkins.ping(store).changed) await syncOnce({ store, client: session.client });
         } catch (err) {
-          log(clean(`The Mind couldn't finish: ${err?.message ?? err}`));
+          log(clean(`Check-in pings failed: ${err?.message ?? err}`));
         }
       }
-      claude.done();
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
     } catch (err) {

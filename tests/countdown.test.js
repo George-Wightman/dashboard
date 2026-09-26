@@ -2,9 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { countdowns, checkCountdown, nextCountdownId, daysLeft } from '../js/calendar.js';
-import { coachTools, TOOL_DECLARATIONS } from '../js/coach-tools.js';
-import { prepareCoachTurn } from '../js/coach-session.js';
-import { talkContext, TALK_SYSTEM } from '../js/talk.js';
 import { goalProgress } from '../js/schedule.js';
 import { goalPace } from '../js/ui/side.js';
 import { makeStore } from './helpers.js';
@@ -38,36 +35,6 @@ test('countdowns: still to come, soonest first, with the days left; past and rem
     ['count:2026-10-14:1', "Maya's birthday", 34],
   ]);
   assert.deepEqual([0, 1, 2, 25].map(daysLeft), ['today', 'tomorrow', '2 days', '25 days']);
-});
-
-test('the Coach adds and removes a countdown, and is told what is counting down', () => {
-  const byName = Object.fromEntries(TOOL_DECLARATIONS.map((d) => [d.name, d]));
-  assert.deepEqual(byName.add_countdown.parameters.required, ['title', 'day']);
-  assert.deepEqual(byName.remove_countdown.parameters.required, ['id']);
-  assert.match(TALK_SYSTEM, /add_countdown/);
-  const store = makeStore();
-  const tools = coachTools({ store });
-  const added = tools.run('add_countdown', { title: 'Assessment centre', day: '2026-10-05' });
-  assert.equal(added.did, 'Counting down to "Assessment centre" (2026-10-05, 25 days)');
-  assert.equal(tools.run('add_countdown', { title: 'Tomorrow thing', day: 'tomorrow' }).did, 'Counting down to "Tomorrow thing" (2026-09-11, tomorrow)');
-  assert.match(tools.run('add_countdown', { title: 'Old', day: '2026-09-01' }).error, /has passed/);
-  assert.match(tools.run('add_countdown', { title: 'Soon', day: 'next week' }).error, /isn't a day/);
-  const line = talkContext(store.doc(), TODAY, new Date(2026, 8, 10, 9)).split('\n').find((l) => l.startsWith('Counting down to:'));
-  assert.equal(line, 'Counting down to: count:2026-09-11:1 "Tomorrow thing" 2026-09-11 (tomorrow); count:2026-10-05:1 "Assessment centre" 2026-10-05 (25 days)');
-  assert.equal(tools.run('remove_countdown', { id: 'count:2026-09-11:1' }).did, 'Stopped counting down to "Tomorrow thing"');
-  assert.match(tools.run('remove_countdown', { id: 'count:2026-09-11:1' }).error, /no countdown/);
-  assert.match(tools.run('remove_countdown', { id: 'off:2026-09-11' }).error, /no countdown/);
-  assert.deepEqual(countdowns(store.doc(), TODAY).map((c) => c.title), ['Assessment centre']);
-});
-
-test('in a turn, the summary says what is counting down', () => {
-  const store = makeStore();
-  const turn = prepareCoachTurn(store, () => new Date(2026, 8, 10, 9), { message: "count down to Maya's birthday" });
-  turn.run('add_countdown', { title: "Maya's birthday", day: '2026-10-14' });
-  turn.run('add_countdown', { title: "Maya's birthday", day: '2026-10-14' });
-  const out = turn.finish();
-  assert.equal(out.summary, 'Counting down to "Maya\'s birthday" (2026-10-14)');
-  assert.equal(countdowns(turn.draft.doc(), TODAY).length, 1);
 });
 
 test('goalPace: what it takes a day to finish on time, for a goal measured by a number', () => {

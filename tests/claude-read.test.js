@@ -36,6 +36,8 @@ const doc = () => fixture({
   journal: [
     { id: 'digest:2026-09-07', kind: 'digest', day: '2026-09-07', summary: 'A good week.', wins: ['CV'], slipped: ['Gym'], focus: 'Apply', source: 'gemini' },
     { id: 'checkin:2026-09-12', kind: 'checkin', day: '2026-09-12', questions: ['How did it go?'], answers: ['Fine'], feedback: 'Nice work.', source: 'gemini' },
+    { id: 'reflect:2026-09-12:t2', kind: 'reflect', day: '2026-09-12', itemId: 't2', title: 'Update CV', why: 'done', said: 'um it went fine, the profile bit took ages', summary: 'It went fine; the profile section took ages.', askedAt: '2026-09-12T10:00:00.000Z', answeredAt: '2026-09-12T10:05:00.000Z', source: 'me' },
+    { id: 'reflect:2026-09-13:t1', kind: 'reflect', day: TODAY, itemId: 't1', title: 'Email Sarah', why: 'missed', said: '', summary: '', askedAt: '2026-09-13T11:00:00.000Z', answeredAt: null, source: 'planner' },
   ],
   flags: [{ id: 'f1', text: 'Button too small', updated: '2026-09-12T10:00:00.000Z' }],
   changes: [
@@ -135,12 +137,13 @@ test('find, day and history', () => {
   assert.match(hist[4], /Sun 1\/4$/);
 });
 
-test('journal, flags and changes', () => {
-  const journal = READS.journal(doc(), TODAY);
-  assert.match(journal, /^Weekly digest, week of Mon 7 Sep:\n {2}A good week\.$/m);
-  assert.match(journal, /^ {2}Went well: CV$/m);
-  assert.match(journal, /^ {2}Focus: Apply$/m);
-  assert.match(journal, /^Check-in, Sat 12 Sep:\n {2}Q: How did it go\?\n {2}A: Fine\n {2}Coach: Nice work\.$/m);
+test('check-ins, flags and changes', () => {
+  const said = READS.checkins(doc(), TODAY);
+  assert.match(said, /^Check-ins, last 14 days \(newest first\):$/m);
+  assert.match(said, /^ {2}today · "Email Sarah" #t1 · block passed unticked · not answered$/m);
+  assert.match(said, /^ {2}Sat 12 Sep · "Update CV" #t2 · ticked · answered \d\d:\d\d\n {4}summary: It went fine; the profile section took ages\.\n {4}his words: um it went fine, the profile bit took ages$/m);
+  assert.doesNotMatch(said, /Weekly digest|Coach/);
+  assert.equal(READS.journal, READS.checkins);
   assert.match(READS.flags(doc(), TODAY), /^Feature \(1, newest first\):\n {2}"Button too small" #f1 · Sat 12 Sep, 11:00 · from George$/m);
   assert.match(READS.flags(doc(), TODAY, 'bugs'), /^No open Bug flags\.$/m);
   assert.match(READS.flags(doc(), TODAY, 'cv'), /No kind called "cv", so here are all of them/);

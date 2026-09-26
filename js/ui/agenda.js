@@ -3,6 +3,7 @@ import { scheduleView, localDate } from '../plan-state.js';
 import { clockLabel } from '../calendar.js';
 import { shortWeekday, addDays } from '../dates.js';
 import { openOutcome } from './outcome.js';
+import { tickAndAsk } from './checkin.js';
 
 export function resolveConflict(ctx, itemId, choice) {
   const conflict = ctx.store.doc().calendar[`conflict:${itemId}`];
@@ -80,7 +81,7 @@ export function openTaskCard(ctx, id) {
       h('div', { class: 'buttons' },
         !done && current.status === 'active' ? h('button', { type: 'button', class: 'btn primary', onclick: () => {
           if (current.details?.outcomeForm?.length) { dlg.close(); openOutcome(ctx, id, true); return; }
-          try { ctx.store.toggleDone(id, ctx.store.today()); content(); }
+          try { tickAndAsk(ctx, id); content(); }
           catch (error) { dlg.append(h('p', { class: 'error' }, error.message)); }
         } }, 'Mark complete') : null,
         h('button', { type: 'button', class: 'link', onclick: () => { dlg.close(); ctx.openEditor({ map: 'items', id }); } }, 'Edit task'),

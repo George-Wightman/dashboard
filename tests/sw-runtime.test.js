@@ -138,34 +138,34 @@ test('a missing cached file fails closed instead of mixing in the current deploy
   assert.equal(await h.request('../hebrew/index.html', 'tab'), undefined);
 });
 
-// ---- The Coach's pings ----------------------------------------------------------------------------
+// ---- Check-in pings ----------------------------------------------------------------------------
 
 test('a ping shows as a notification carrying where it leads', async () => {
   const h = harness();
-  const payload = { title: 'Coach', body: 'MILLRACE is ticked. How did it go?', url: './?coach=talk:2026-09-24:mind-1', tag: 'talk:2026-09-24:mind-1' };
+  const payload = { title: 'Check-in', body: '"MILLRACE" isn\'t ticked — what happened?', url: './?checkin=reflect%3A2026-09-24%3At1', tag: 'reflect:2026-09-24:t1' };
   await h.event('push', { data: { json: () => payload, text: () => JSON.stringify(payload) } });
   assert.equal(h.shown.length, 1);
-  assert.equal(h.shown[0].title, 'Coach');
+  assert.equal(h.shown[0].title, 'Check-in');
   assert.equal(h.shown[0].options.body, payload.body);
   assert.equal(h.shown[0].options.tag, payload.tag);
   assert.deepEqual(JSON.parse(JSON.stringify(h.shown[0].options.data)), { url: payload.url }); // another realm's object
   await h.event('push', { data: { json: () => { throw new Error('not json'); }, text: () => 'plain words' } });
-  assert.equal(h.shown[1].title, 'Coach');
+  assert.equal(h.shown[1].title, 'Today');
   assert.equal(h.shown[1].options.body, 'plain words');
 });
 
-test('a tap opens the app at the conversation, or brings the open one to it', async () => {
+test('a tap opens the app at the check-in, or brings the open one to it', async () => {
   const h = harness();
   let closed = false;
-  const notification = { data: { url: './?coach=talk:2026-09-24:mind-1' }, close: () => { closed = true; } };
+  const notification = { data: { url: './?checkin=reflect%3A2026-09-24%3At1' }, close: () => { closed = true; } };
   await h.event('notificationclick', { notification });
   assert.equal(closed, true);
-  assert.deepEqual(h.opened, [`${SCOPE}?coach=talk:2026-09-24:mind-1`]);
+  assert.deepEqual(h.opened, [`${SCOPE}?checkin=reflect%3A2026-09-24%3At1`]);
   const posted = [];
   let focused = false;
   h.clients.push({ id: 'tab', url: SCOPE, focus: async () => { focused = true; }, postMessage: (m) => posted.push(m) });
   await h.event('notificationclick', { notification });
   assert.equal(focused, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ type: 'open-coach', url: `${SCOPE}?coach=talk:2026-09-24:mind-1` }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ type: 'open-checkin', url: `${SCOPE}?checkin=reflect%3A2026-09-24%3At1` }]);
   assert.equal(h.opened.length, 1, 'no second window');
 });

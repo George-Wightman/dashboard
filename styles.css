@@ -180,8 +180,18 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .panel h2.opens:hover .open-mark, .panel h2.opens:focus-visible .open-mark { opacity: 1; color: var(--accent); }
 @media (hover: none) { .open-mark { opacity: .6; } }
 
-/* Opened big: the Coach's window, scrolling inside, its sections one under another. */
-.widget-sheet .sheet-body, .coach-sheet .sheet-body { display: flex; flex-direction: column; height: 100%; }
+/* Opened big (js/ui/big.js): the whole screen on a phone, a window over the page from 760px,
+   scrolling inside, its sections one under another. */
+.sheet { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; padding: 1rem; color: var(--ink); background: var(--bg); border: 0; }
+.sheet-head { display: flex; justify-content: space-between; align-items: baseline; }
+.sheet .sheet-body { display: flex; flex-direction: column; height: 100%; }
+@media (min-width: 760px) {
+  .sheet {
+    width: min(56rem, 92vw); height: min(88vh, 60rem); margin: auto; padding: 1.25rem 1.5rem;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .sheet::backdrop { background: rgb(0 0 0 / .35); }
+}
 .big-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: .25rem; }
 .big-section { margin: 0 0 1.75rem; }
 .big-section h3 { margin: 0 0 .6rem; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
@@ -222,18 +232,6 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .day-missed { display: flex; flex-wrap: wrap; gap: .15rem .75rem; flex-basis: 100%; padding-left: 6.25rem; }
 .day-missed .miss { color: var(--muted); }
 .history.big .grid { grid-template-columns: repeat(7, 1.6rem); }
-.library { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: .6rem; }
-.lib-search { padding: .45rem .7rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); color: var(--ink); }
-.lib-search:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.library-list { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-.lib-item { padding: .7rem 0; border-top: 1px solid var(--border); font-size: .9rem; }
-.lib-item:first-child { border-top: 0; }
-.lib-item p { margin: .3rem 0 0; }
-.lib-head { display: flex; gap: .6rem; align-items: baseline; }
-.lib-head .muted { font-size: .8rem; }
-.lib-item.digest { padding-left: .75rem; border-left: 3px solid var(--accent-soft); }
-.lib-qa p.muted { font-size: .8rem; }
-.lib-pointers { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .85rem; }
 
 /* Under Today's list (js/ui/widgets.js): widgets at the list's width, stacked. The charts in them
    keep a sensible size (.radar, .cardio-bars) rather than stretching. */
@@ -421,83 +419,37 @@ button.link.update-ready { color: var(--accent); }
 
 .goal-body input.invalid { border-color: var(--bad); }
 
-/* Coach panel */
-.coach h2 .fake { font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--warn); }
-.coach p { margin: 0 0 .5rem; font-size: .9rem; }
-.coach .error { min-height: 0; margin: .4rem 0 0; }
-.checkin .question { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .6rem; font-size: .9rem; }
-.coach textarea {
-  width: 100%; padding: .35rem .5rem; resize: vertical;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+/* A check-in (js/ui/checkin.js): the question at the top of Today, a box that grows as he types or
+   speaks, the mic beside it, Save and Skip. A missed block's question has the warm edge. */
+.list li.checkin {
+  grid-column: 1 / -1; display: block; margin: 0 0 .6rem; padding: .6rem .75rem;
+  background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius);
 }
-.coach textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.checkin .buttons { align-items: center; margin-top: .25rem; }
-/* The Coach's conversation (js/ui/coach.js): its messages, what it did, the journal entry, the box. */
-.talk { display: flex; flex-direction: column; gap: .45rem; margin: .4rem 0 .6rem; padding: 0; list-style: none; }
-/* In the panel a long conversation scrolls inside itself (about three messages tall), so the
-   widgets under the Coach stay on screen; js/ui/coach.js keeps it at the newest message. The phone
-   sheet has the whole screen to itself and keeps the full length. */
-.talk.capped { max-height: 16rem; overflow-y: auto; overscroll-behavior: contain; padding-right: .25rem; }
-.msg { max-width: 88%; padding: .45rem .65rem; font-size: .9rem; line-height: 1.4; border-radius: var(--radius); }
-.msg-text { white-space: pre-line; }
-/* The mark on a message from the Coach's background mind (js/ui/coach.js). */
-.msg > .src { float: right; margin: .1rem 0 0 .4rem; opacity: .75; }
-.msg > .src svg { width: .8rem; height: .8rem; }
-.msg.coach { align-self: flex-start; background: var(--accent-soft); color: var(--ink); }
-.msg.george { align-self: flex-end; background: var(--panel); border: 1px solid var(--border); }
-.msg .did { margin: .35rem 0 0; padding: .3rem 0 0; font-size: .78rem; color: var(--muted); list-style: none; border-top: 1px solid var(--border); }
-.msg .did li { display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; }
-.talk-tabs { display: flex; flex-wrap: wrap; gap: .35rem; margin: .2rem 0 .4rem; }
+.list li.checkin.missed { border-left-color: var(--warn); }
+.checkin-q { margin: 0 0 .45rem; font-size: .95rem; font-weight: 500; }
+.checkin-q .muted { font-weight: 400; font-size: .8rem; }
+.checkin-box { display: flex; align-items: flex-end; gap: .5rem; }
+.checkin-box textarea {
+  flex: 1; min-width: 0; min-height: 2.4rem; max-height: 14rem; padding: .4rem .55rem; resize: none; overflow-y: auto;
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.checkin-box textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.checkin .btn.mic { display: inline-flex; align-items: center; justify-content: center; padding: .45rem .6rem; }
+.checkin .btn.mic.on { background: var(--accent); color: var(--bg); animation: mic-pulse 1.2s ease-in-out infinite; }
+@keyframes mic-pulse { 50% { opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .checkin .btn.mic.on { animation: none; } }
+.checkin .buttons { display: flex; align-items: center; gap: .75rem; margin-top: .45rem; }
+.checkin .error { min-height: 0; margin: .4rem 0 0; }
+.list li.checkin-saved { grid-column: 1 / -1; display: block; margin: 0 0 .6rem; padding: .35rem .75rem; font-size: .85rem; color: var(--muted); }
 .chip.on { color: var(--accent); border-color: var(--accent); }
-.talk-box .buttons { align-items: center; margin-top: .4rem; }
-.coach .handoff { font-size: .8rem; color: var(--muted); }
-.entry { margin: .5rem 0 .7rem; padding: .55rem .7rem; font-size: .85rem; border: 1px dashed var(--border); border-radius: var(--radius); }
-.entry-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-.collapse-btn {
-  width: 1.25rem; height: 1.25rem; padding: 0; line-height: 1; font-size: .85rem; color: var(--muted);
-  background: transparent; border: 1px solid var(--border); border-radius: .2rem; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; flex: none;
-}
-.collapse-btn:hover { background: var(--border); }
-.entry .entry-text { margin: .3rem 0; white-space: pre-line; }
-.entry ul { margin: .3rem 0; padding-left: 1.1rem; color: var(--muted); }
-.entry-links { display: flex; gap: .75rem; }
-.entry.editing { display: flex; flex-direction: column; gap: .4rem; }
-.planner-notes .coach-line { color: var(--ink); }
-.planner-notes .coach-line .src svg { width: .9rem; height: .9rem; }
-.coach-sheet { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; padding: 1rem; color: var(--ink); background: var(--bg); border: 0; }
-.sheet-head { display: flex; justify-content: space-between; align-items: baseline; }
 
-.coach details, .digest {
-  margin-bottom: .5rem; padding: .5rem .75rem; font-size: .9rem;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-}
-.coach summary, .digest summary { cursor: pointer; font-weight: 500; }
-.coach details p, .digest p { margin: .5rem 0 0; }
-.coach .feedback-text { white-space: pre-line; }
-
-/* Shape with AI, and the suggested goal it makes */
-.panel-links { display: flex; gap: .75rem; }
-.shape { margin-bottom: .75rem; }
-.shape textarea {
-  width: 100%; padding: .35rem .5rem; resize: vertical;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
-}
-.shape textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.shape .buttons { align-items: center; margin-top: .4rem; }
-.shape .error { min-height: 0; margin: .4rem 0 0; }
+/* The suggested goal a plan makes */
 .goal.suggested.plan { opacity: .85; }
 .goal .why { margin: .35rem 0 0; font-size: .85rem; }
 .proposal { margin: .35rem 0 0; padding-left: 1.2rem; font-size: .85rem; }
 .proposal li { padding: .05rem 0; }
 .goal .plan-note { margin-top: .35rem; font-size: .8rem; }
 .row .for { color: var(--accent); font-weight: 500; }
-
-/* Last week's digest, under Last 3 weeks */
-.digest { margin: .75rem 0 0; }
-.digest-summary { white-space: pre-line; }
-.digest strong { font-weight: 600; }
-.digest-write { margin-top: .75rem; font-size: .9rem; }
 
 /* Arrange mode (js/ui/widgets.js): today's list stays put and dims, each widget gets a dashed
    frame with a grip (or ↑ ↓ on touch and in the one-column view), and hidden widgets wait below
@@ -574,44 +526,16 @@ button.link.update-ready { color: var(--accent); }
 .checklist-step input { width: auto; flex: 0 0 auto; }
 .goal-review { margin-top: .75rem; font-size: .85rem; overflow-wrap: anywhere; }
 .goal-review p { margin: .3rem 0; }
-/* One conversation and the same confirmed agenda as Calendar. */
+/* The same confirmed agenda as Calendar. */
 .agenda-entry { padding: .65rem 0; border-bottom: 1px solid var(--border); }
 .agenda-entry h3 { margin: .6rem 0; font-size: .9rem; }
 .agenda-entry p { margin: .25rem 0; font-size: .85rem; }
 .agenda-title { text-align: left; font-size: .95rem; }
-.coach-proposal { margin: .8rem 0; padding: .8rem; border: 1px solid var(--border); border-radius: .5rem; }
-.coach-proposal input[type=date] { max-width: 100%; }
-.conversation-segment .talk { max-height: none; }
-.conversation-stream { max-height: 48vh; overflow-y: auto; overflow-wrap: anywhere; }
-.talk-box { background: var(--panel); padding-top: .5rem; }
 #task-card { max-width: min(34rem, 92vw); border-radius: .7rem; }
 
 /* Compact side panels (2026-09-18). A habit's streak and dots sit with its logo and tag, so tags
-   line up down Today; the Coach's box sits flat on the panel and grows as you type; ⤢ opens the
-   conversation big; goals are one line each; Last 3 weeks is a strip of small squares. */
+   line up down Today; goals are one line each; Last 3 weeks is a strip of small squares. */
 .row .meta .prog { display: inline-flex; }
-.talk-box { background: none; }
-.talk-box.panel { display: flex; align-items: flex-end; gap: .5rem; padding-top: .4rem; }
-.talk-box.panel textarea { flex: 1; min-height: 2.2rem; max-height: 10rem; resize: none; overflow-y: hidden; }
-.talk-box.panel .buttons { margin: 0; flex: none; }
-.talk-box .btn.mic { display: inline-flex; align-items: center; justify-content: center; padding: .35rem .5rem; }
-.talk-box .btn.mic.on { background: var(--accent); color: var(--bg); animation: mic-pulse 1.2s ease-in-out infinite; }
-@keyframes mic-pulse { 50% { opacity: .6; } }
-@media (prefers-reduced-motion: reduce) { .talk-box .btn.mic.on { animation: none; } }
-.coach .panel-links .pop-out { font-size: 1rem; line-height: 1; }
-.panel.coach .conversation-stream { max-height: 18rem; }
-.coach-sheet .sheet-body { display: flex; flex-direction: column; height: 100%; }
-.coach-sheet .talk-area { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.coach-sheet .conversation-stream { flex: 1; max-height: none; }
-.coach-sheet .talk-box textarea { max-height: 14rem; resize: none; }
-@media (min-width: 760px) {
-  .coach-sheet {
-    width: min(56rem, 92vw); height: min(88vh, 60rem); margin: auto; padding: 1.25rem 1.5rem;
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  }
-  .coach-sheet::backdrop { background: rgb(0 0 0 / .35); }
-  .coach-sheet .msg { max-width: 75%; }
-}
 .goal.line { margin: 0; padding: .35rem 0; background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
 .goal.line:last-child { border-bottom: 0; }
 .goal.line .goal-head { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem 2.6rem; align-items: center; gap: .6rem; font-size: .9rem; }

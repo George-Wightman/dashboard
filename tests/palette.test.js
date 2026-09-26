@@ -104,5 +104,6 @@ test('gold means "you did this" and is used for nothing else', () => {
     '.rung.done .rung-mark', '.spark .dot.pr', '.streak',
   ]);
   const amber = rules().filter(([, body]) => body.includes('var(--warn)')).map(([sel]) => sel).sort();
-  assert.deepEqual(amber, ['.carry', '.coach h2 .fake']);
+  // Amber is for work that slipped: a carried-over task, and a check-in about a missed block.
+  assert.deepEqual(amber, ['.carry', '.list li.checkin.missed']);
 });

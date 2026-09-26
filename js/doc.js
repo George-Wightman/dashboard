@@ -103,7 +103,13 @@ export function recordProblem(map, id, r) {
     if (r.kind === 'amount' && !(finite(r.amount) && r.amount > 0)) return 'Invalid logged amount';
   }
   if (map === 'journal') {
-    if (!['checkin', 'digest', 'brief', 'talk', 'entry', 'guide'].includes(r.kind) || !day(r.day)) return 'Invalid journal record';
+    // talk, entry, checkin, digest and guide are the retired Coach's (kept, never read again).
+    if (!['checkin', 'digest', 'brief', 'talk', 'entry', 'guide', 'reflect'].includes(r.kind) || !day(r.day)) return 'Invalid journal record';
+    if (r.kind === 'reflect') {
+      if (!string(r.itemId) || !['done', 'missed'].includes(r.why)) return 'Invalid check-in';
+      for (const key of ['askedAt', 'answeredAt', 'pushedAt']) if (!optional(key, timestamp, true)) return `Invalid ${key}`;
+      if (!optional('said', string) || !optional('summary', string)) return 'Invalid check-in answer';
+    }
     for (const key of ['questions', 'answers', 'tomorrowIds', 'wins', 'slipped', 'handoffs', 'pointers', 'forClaude', 'flagIds']) {
       if (!optional(key, strings)) return `Invalid ${key}`;
     }

@@ -5,18 +5,18 @@ import {
   todayRows, streak, weekTotal, doneBetween, doneIndex, milestonesOf, goalProgress, history, dayDetail,
   dayCompletion, dayScore,
 } from '../js/schedule.js';
-import { longDate, weekStart, addDays, shortWeekday, carryLabel, forLabel } from '../js/dates.js';
+import { longDate, weekStart, addDays, shortWeekday, carryLabel, forLabel, logicalDay, daysBetween } from '../js/dates.js';
 import { formatProgress } from '../js/parse.js';
 import { openFlags, FLAG_KINDS, flagKind, flagSourceName } from '../js/flags.js';
 import { changeList } from '../js/changes.js';
 import {
-  readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText,
+  readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText, countdowns, daysLeft,
 } from '../js/calendar.js';
 import { attention } from '../js/attention.js';
 import {
-  gymConfig, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText,
+  gymConfig, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
 } from '../js/gym.js';
-import { guideFor, recentEntries, talksOn, entryOf, slotName } from '../js/talk.js';
+import { checkinsSince } from '../js/checkins.js';
 
 // A row's notes, on their own indented line under it.
 const withNote = (line, item) => (item.notes ? `${line}\n      note: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 300)}` : line);
@@ -94,6 +94,8 @@ function week(doc, day) {
     out.push(`  habit ${q(i.title)} ${tag(i.id)} · ${n} of ${i.repeat.n}${n >= i.repeat.n ? ' · met' : ''}`);
   }
   if (out.length === 2) out.push('  No weekly targets or times-a-week habits.');
+  const counting = countdowns(doc, day);
+  if (counting.length) out.push('Counting down to:', ...counting.map((c) => `  ${q(c.title)} · ${dayName(c.day, day)} (${daysLeft(c.days)}) ${tag(c.id)}`));
   const offs = timeOff(doc).filter((o) => o.end.slice(0, 10) >= day);
   if (offs.length) out.push('Time off coming:', ...offs.map((o) => `  ${offText(o)} ${tag(o.id)}`));
   out.push(...calendarLines(doc, day));
@@ -238,44 +240,94 @@ function hist(doc, today) {
   return out.join('\n');
 }
 
-// The journal: your guide for the Coach this week, the last 14 days' entries from conversations
-// with the Coach, the latest weekly digest, and the last evening check-ins from before the Coach
-// talked.
-function journal(doc, today) {
-  const recs = values(doc.journal).filter((r) => r.status === 'active');
-  const newest = (a, b) => (a.day < b.day ? 1 : -1);
-  const digest = recs.filter((r) => r.kind === 'digest').sort(newest)[0];
-  const checkins = recs.filter((r) => r.kind === 'checkin').sort(newest).slice(0, 3);
+// ---- Check-ins and the catch-up -------------------------------------------------------------------
+
+// What George said about a task, as one or two lines: Gemini's tidy version, and his own words when
+// they say more.
+function checkinLines(r, today, indent = '  ') {
+  const head = `${indent}${dayName(r.day, today)} · ${q(r.title)} ${tag(r.itemId)} · ${r.why === 'missed' ? 'block passed unticked' : 'ticked'}`;
+  if (r.status === 'dismissed') return [`${head} · skipped`];
+  if (!r.answeredAt) return [`${head} · not answered`];
+  const said = String(r.said ?? '').replace(/\s+/g, ' ').trim();
+  const out = [`${head} · answered ${when(r.answeredAt).split(', ')[1]}`];
+  if (r.summary) out.push(`${indent}  summary: ${r.summary}`);
+  if (said && said !== r.summary) out.push(`${indent}  his words: ${said.slice(0, 1500)}`);
+  return out;
+}
+
+// The last `days` days of check-ins (14 by default), newest first.
+function checkins(doc, today, arg) {
+  const days = Number(arg) > 0 ? Math.min(90, Math.floor(Number(arg))) : 14;
+  const list = checkinsSince(doc, addDays(today, 1 - days));
+  return [header(doc, today), list.length ? `Check-ins, last ${days} days (newest first):` : `No check-ins in the last ${days} days.`,
+    ...list.flatMap((r) => checkinLines(r, today))].join('\n');
+}
+
+// Where the last catch-up got to (cli.js writes it once a catch-up has been read).
+export const CAUGHT_UP = 'claude:caughtup';
+export const caughtUpSince = (doc) => (doc.calendar?.[CAUGHT_UP]?.status === 'active' ? doc.calendar[CAUGHT_UP].at ?? null : null);
+const CATCHUP_MAX_DAYS = 7;
+
+// Everything since the last catch-up (or the last `arg` days): each day's ticks and what wasn't done,
+// the check-ins, new flags, workouts, what George changed in Google Calendar, then today's planner
+// notes and what needs attention.
+function catchup(doc, today, arg, now = new Date()) {
+  const n = Number(arg);
+  const since = n > 0 ? null : caughtUpSince(doc);
+  const from = n > 0 ? addDays(today, 1 - Math.min(30, Math.floor(n)))
+    : since ? logicalDay(new Date(since), 4) : addDays(today, -1);
+  const first = daysBetween(from, today) >= CATCHUP_MAX_DAYS ? addDays(today, 1 - CATCHUP_MAX_DAYS) : from;
+  const cutoff = since ?? `${first}T00:00`;
   const out = [header(doc, today)];
-  const guide = guideFor(doc, today);
-  out.push(guide ? `Your guide for the Coach this week: ${guide}` : 'No guide for the Coach this week yet.');
-  const entries = recentEntries(doc, today, { days: 14, limit: 60 });
-  out.push(entries.length ? 'Journal entries from conversations with the Coach (last 14 days, newest first):' : 'No journal entries in the last 14 days.');
-  for (const e of entries) {
-    out.push(`  ${dayName(e.day, today)}, ${slotName(e.slot).toLowerCase()}${e.feeling ? ` · ${e.feeling}` : ''}: ${e.text.replace(/\s+/g, ' ')}`);
-    for (const p of e.pointers ?? []) out.push(`    pointer: ${p}`);
-    for (const f of e.forClaude ?? []) out.push(`    for you: ${f}`);
+  out.push(n > 0 ? `Catching up on the last ${Math.floor(n)} day${n === 1 ? '' : 's'}.`
+    : since ? `Catching up since the last catch-up, ${when(since)}${first > from ? ` (only the last ${CATCHUP_MAX_DAYS} days shown)` : ''}.`
+    : 'First catch-up: yesterday and today.');
+
+  out.push('Day by day:');
+  const idx = doneIndex(doc);
+  for (let d = first; d <= today; d = addDays(d, 1)) {
+    const s = dayScore(doc, d, idx);
+    const ticks = Object.values(doc.logs ?? {}).filter((l) => l.status === 'active' && l.kind === 'done' && l.day === d)
+      .sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? '')))
+      .map((l) => `${q(doc.items[l.itemId]?.title ?? '?')}${l.at ? ` ${when(l.at).split(', ')[1]}` : ''}${l.source && l.source !== 'me' ? ` (${SOURCES[l.source] ?? l.source})` : ''}`);
+    out.push(`  ${dayName(d, today)}: ${s.done} of ${s.total} done${d === today ? ' so far' : ''}`);
+    if (ticks.length) out.push(`    ticked: ${ticks.join(', ')}`);
+    if (s.open.length) out.push(`    ${d === today ? 'still open' : 'not done'}: ${s.open.map((r) => `${q(r.item.title)} ${tag(r.item.id)}`).join(', ')}`);
+    if (s.pushed.length) out.push(`    pushed after the lock: ${s.pushed.map((e) => `${q(e.item.title)} → ${dayName(e.to, today)}`).join(', ')}`);
+    if (s.missed.length || s.dropped.length) out.push(`    counted as missed: ${[...s.missed, ...s.dropped].map((e) => q(e.item.title)).join(', ')}`);
   }
-  if (entries.length) out.push('  (A day\'s conversations in full: talk <day>.)');
-  if (digest) {
-    out.push(`Weekly digest, week of ${dayName(digest.day, today)}:`, `  ${digest.summary}`);
-    if (digest.wins?.length) out.push(`  Went well: ${digest.wins.join('; ')}`);
-    if (digest.slipped?.length) out.push(`  Slipped: ${digest.slipped.join('; ')}`);
-    if (digest.focus) out.push(`  Focus: ${digest.focus}`);
-  } else {
-    out.push('No weekly digest yet.');
+
+  const said = checkinsSince(doc, first).filter((r) => r.day >= first);
+  out.push(said.length ? 'Check-ins (what he said; newest first):' : 'No check-ins in that time.', ...said.flatMap((r) => checkinLines(r, today)));
+
+  const flagsNew = Object.values(doc.flags ?? {}).filter((f) => f.status === 'active' && String(f.at ?? f.updated ?? '') > cutoff);
+  if (flagsNew.length) {
+    out.push('New flags:', ...flagsNew.map((f) => `  ${FLAG_KINDS[flagKind(f)]}: ${q(String(f.text).replace(/\s+/g, ' '), 600)} ${tag(f.id)} · from ${flagSourceName(f)}`));
   }
-  for (const c of checkins) {
-    out.push(`Check-in, ${dayName(c.day, today)}:`);
-    (c.questions ?? []).forEach((question, i) => out.push(`  Q: ${question}`, `  A: ${c.answers?.[i] || '(not answered)'}`));
-    if (c.feedback) out.push(`  Coach: ${c.feedback}`);
+
+  const trained = workouts(doc).filter((w) => w.day >= first && w.day <= today);
+  if (trained.length) out.push('Workouts (Hevy):', ...trained.map((w) => `  ${dayName(w.day, today)}: ${sessionLine(doc, w)}`));
+  if (workouts(doc).length) out.push(`Training this week: ${trainingWeek(doc, today)}`);
+
+  const moved = changeList(doc).filter((c) => c.source === 'calendar' && String(c.at) > cutoff)
+    .flatMap((c) => (c.edits ?? []).filter((e) => e.map === 'items' && e.before && e.after)
+      .map((e) => ({ at: c.at, title: e.after.title ?? e.before.title, from: `${e.before.date ?? ''} ${e.before.time ?? ''}`.trim(), to: `${e.after.date ?? ''} ${e.after.time ?? ''}`.trim(), gone: e.after.status === 'archived' && e.before.status === 'active' })))
+    .filter((m) => m.gone || m.from !== m.to);
+  if (moved.length) {
+    out.push('What he changed in Google Calendar:', ...moved.reverse().map((m) => `  ${when(m.at)}: ${q(m.title)} ${m.gone ? 'deleted' : `${m.from || '?'} → ${m.to || '?'}`}`));
   }
-  if (!checkins.length) out.push('No check-ins yet.');
+
+  const notes = plannerNotes(doc, today);
+  if (notes.length) out.push("The planner's notes today:", ...notes.map((x) => `  ${x}`));
+  const needs = attention(doc, today);
+  if (needs.length) out.push('Needs attention:', ...needs.map((x) => `  ${x}`));
+  const open = openFlags(doc).length;
+  if (open) out.push(`${open} open flag${open === 1 ? '' : 's'} in all (flags).`);
   return out.join('\n');
 }
 
 // Open flags in full, grouped by what they're for: George's feature requests and bugs, notes left
-// for you (his own and the Coach's handoffs from his conversations), and notes for him. `flags
+// for you (his own, and handoffs the retired Coach made), and notes for him. `flags
 // <kind>` shows one group.
 const KIND_WORDS = { feature: 'feature', features: 'feature', bug: 'bug', bugs: 'bug', claude: 'claude', 'for claude': 'claude', note: 'note', notes: 'note' };
 function flags(doc, today, arg = '') {
@@ -300,24 +352,6 @@ function changes(doc, today, arg) {
   const state = (c) => (c.undoneAt ? ' · undone' : c.pruned ? ' · too old to undo' : '');
   return [header(doc, today), list.length ? `Claude's last ${list.length} changes (newest first):` : "Claude hasn't changed anything yet.",
     ...list.map((c) => `  ${tag(c.id)} · ${when(c.at)} · ${c.summary}${c.source === 'coach' ? ' · by the Coach' : ''}${state(c)}`)].join('\n');
-}
-
-// A day's conversations with the Coach, in full, with what it did and the entry each left.
-function talkRead(doc, today, arg) {
-  const d = toDay(arg || 'today', today);
-  const talks = talksOn(doc, d);
-  const out = [header(doc, today), talks.length ? `Conversations with the Coach, ${dayName(d, today)}:` : `No conversations with the Coach on ${dayName(d, today)}.`];
-  for (const t of talks) {
-    out.push(`${slotName(t.slot)}${t.done ? '' : ' (still open)'}${t.pruned ? ' — over 30 days old: only its entry is kept' : ''}:`);
-    for (const m of t.messages ?? []) {
-      out.push(`  ${m.who === 'george' ? 'George' : 'Coach'}: ${String(m.text).replace(/\s+/g, ' ')}`);
-      for (const x of m.did ?? []) out.push(`    did: ${x.text}`);
-    }
-    for (const x of t.handoffs ?? []) out.push(`  for you: ${x}`);
-    const e = entryOf(doc, d, t.slot);
-    if (e) out.push(`  Entry${e.feeling ? ` (${e.feeling})` : ''}: ${e.text.replace(/\s+/g, ' ')}`);
-  }
-  return out.join('\n');
 }
 
 // What needs Claude's attention (js/attention.js).
@@ -378,5 +412,7 @@ export const READS = {
     'Goal reviews:', ...Object.values(doc.reviews ?? {}).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 10).map((r) => `${tag(r.id)} ${r.result.state}: ${r.result.summary ?? r.result.message ?? r.reason}`),
     'Pending reviews require the planner and its GEMINI_KEY. Review suggestions wait for acceptance.'
   ].join('\n'),
-  today, week, goals, list, find, day, history: hist, journal, talk: talkRead, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead,
+  today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead,
+  // What older copies of the skill still ask for.
+  journal: checkins,
 };

@@ -1,5 +1,6 @@
 // The list: today's tasks and habits, one row each — the tick, then the title from the left and
-// its logo and tag at the right. Nothing is added here: the Coach takes new work (js/ui/coach.js).
+// its logo and tag at the right. Nothing is added here: new work comes through Claude. A waiting
+// check-in (js/ui/checkin.js) leads the list.
 // Weekly targets aren't rows either: each is shown by the widget it belongs to — Cardio in Gym,
 // Hebrew's in Hebrew, the rest in This week (js/ui/side.js).
 
@@ -10,6 +11,7 @@ import { sourceMark } from './sources.js';
 import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { openOutcome } from './outcome.js';
+import { renderCheckin, tickAndAsk } from './checkin.js';
 
 // A weekly habit's dots: one per time a week, filled for each tick so far.
 export function pipState(ticks, n) {
@@ -103,7 +105,7 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
     h('input', { type: 'checkbox', checked: row.done, disabled: !!row.blocked, 'aria-label': `Done: ${item.title}`,
         onchange: (e) => {
           if (!row.done && item.details?.outcomeForm?.length) { e.target.checked = false; openOutcome(ctx, item.id, true); return; }
-          try { store.toggleDone(item.id, store.today()); }
+          try { tickAndAsk(ctx, item.id); }
           catch (error) { ctx.ui.taskError = error.message; ctx.render(); }
         } }),
     mainCell(h('span', { class: 'title-cell' },
@@ -152,8 +154,9 @@ export const listRows = (rows) => rows.filter((r) => r.kind !== 'quota' || r.sug
 export function renderToday(ctx) {
   const list = document.getElementById('list');
   const rows = listRows(todayRows(ctx.store.doc(), ctx.store.today()));
+  const checkin = renderCheckin(ctx);
   if (!rows.length) {
-    list.replaceChildren(h('li', { class: 'empty' }, 'Nothing on today. Tell the Coach what you want to get done.'));
+    list.replaceChildren(...[checkin, h('li', { class: 'empty' }, 'Nothing on today. Tell Claude what you want to get done.')].filter(Boolean));
     return;
   }
   const doc = ctx.store.doc();
@@ -161,7 +164,7 @@ export function renderToday(ctx) {
   const { config } = readPlannerConfig(doc);
   const today = ctx.store.today();
   const gymId = gymHabitId(doc);
-  const els = [];
+  const els = checkin ? [checkin] : [];
   if (ctx.ui.taskError) els.push(h('li', { class: 'note-row error', role: 'alert' }, ctx.ui.taskError,
     h('button', { class: 'link', type: 'button', onclick: () => { ctx.ui.taskError = null; ctx.render(); } }, 'Dismiss')));
   const add = (row) => {

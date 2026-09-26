@@ -1,5 +1,5 @@
 // The shared schedule contract. A requested day is not a booking. Calendar, the
-// Dashboard and the Coach resolve the same confirmed placements through here.
+// Today and Upcoming resolve the same confirmed placements through here.
 import { blockers } from './workflow.js';
 import { addDays } from './dates.js';
 

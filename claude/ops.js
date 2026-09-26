@@ -7,16 +7,15 @@ import { parseAmount, parseLength, parseClock, formatAmount, checkNotes } from '
 import { undoLine } from '../js/changes.js';
 import {
   checkConfigField, readPlannerConfig, mergeSetting, MERGED_SETTINGS, plannerStatus, COLOR_NAMES, checkTimeOff, nextOffId, offText,
+  checkCountdown, nextCountdownId, daysLeft,
 } from '../js/calendar.js';
+import { daysBetween } from '../js/dates.js';
 import { gymConfig, gymHabitId } from '../js/gym.js';
 import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
-import { GUIDE_MAX } from '../js/talk.js';
-import { weekStart } from '../js/dates.js';
 import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
-import { makeMindOps } from './mind.js';
 
 const extraDetails = (op) => op.details === undefined ? {} : { details: checkDetails(op.details) };
 
@@ -464,8 +463,15 @@ function archive(store, op) {
     case 'milestones':
       store.archiveMilestone(id);
       break;
-    default:
+    default: {
+      // Released: no longer needed, in George's own words — a task he'd committed to that's archived
+      // with a reason doesn't count as a miss (js/schedule.js's dayScore). Only when he says so.
+      const reason = str(op.released);
+      if (reason.length > 200) throw new Error('A release reason is at most 200 characters');
+      if (reason) store.updateItem(id, { released: reason });
       store.archiveItem(id);
+      if (reason) return `Archived ${noun(map, rec)} ${q(rec.title)}, released: ${q(reason)}`;
+    }
   }
   return `Archived ${noun(map, rec)} ${q(rec.title)}`;
 }
@@ -494,7 +500,7 @@ function flag(store, op) {
   const text = str(op.text);
   if (!text) throw new Error('A flag needs text');
   // addFlag slices silently at the cap, which cut two long notes off mid-sentence in September
-  // before anyone read them. brief and guide both refuse rather than cut; so does this.
+  // before anyone read them. brief refuses rather than cut; so does this.
   if (text.length > FLAG_TEXT_MAX) {
     throw new Error(`A flag can be at most ${FLAG_TEXT_MAX} characters — for anything longer, and for anything meant for whoever maintains the app, use handoff instead: it has no limit`);
   }
@@ -582,6 +588,23 @@ function off(store, op) {
   return `Time off: ${offText(t)} · #${id}`;
 }
 
+// A date George is counting down to — the assessment centre, a birthday — shown in his Countdown
+// widget; nothing is booked for it. `cancel` stops one, by its id.
+function countdown(store, op) {
+  const today = store.today();
+  if (op.cancel != null) {
+    const key = String(op.cancel).trim().replace(/^#/, '');
+    const rec = key.startsWith('count:') ? store.doc().calendar[key] : null;
+    if (!rec || rec.status !== 'active') throw new Error(`There's no countdown ${key} — the week read lists them with their ids`);
+    store.putCalendar(key, { status: 'archived', archivedOn: today }, CLAUDE);
+    return `Stopped counting down to ${q(rec.title)}`;
+  }
+  const c = checkCountdown({ title: op.title, day: op.day == null ? null : toDay(op.day, today) }, today);
+  const id = nextCountdownId(store.doc(), c.day);
+  store.putCalendar(id, c, CLAUDE);
+  return `Counting down to ${q(c.title)} on ${dayName(c.day, today)} (${daysLeft(daysBetween(today, c.day))}) · #${id}`;
+}
+
 // Today's brief (or another day's): one or two lines on what matters and why.
 function brief(store, op) {
   const text = str(op.text);
@@ -591,18 +614,6 @@ function brief(store, op) {
   const day = toDay(op.day ?? 'today', today);
   store.saveJournal({ kind: 'brief', day, text }, CLAUDE);
   return `Brief for ${dayName(day, today)}: ${q(text, 80)}`;
-}
-
-// The Coach's guide for a week (a few lines on what to focus on and ask about), given to it every
-// time it talks with George. Filed under the week's Monday; writing one again replaces it.
-function guide(store, op) {
-  const text = str(op.text);
-  if (!text) throw new Error('A guide needs text');
-  if (text.length > GUIDE_MAX) throw new Error(`A guide can be at most ${GUIDE_MAX} characters`);
-  const today = store.today();
-  const monday = weekStart(toDay(op.week ?? 'today', today));
-  store.saveJournal({ kind: 'guide', day: monday, text }, CLAUDE);
-  return `Guide for the Coach, week of ${dayName(monday, today)}: ${q(text, 80)}`;
 }
 
 // ---- The gym --------------------------------------------------------------------------------------
@@ -692,7 +703,7 @@ export const FIELDS = {
   undone: ['id', 'day'],
   log: ['id', 'amount', 'day', 'note'],
   edit: ['id', 'set'],
-  archive: ['id'],
+  archive: ['id', 'released'],
   accept: ['id'],
   dismiss: ['id'],
   flag: ['text', 'kind'],
@@ -700,12 +711,7 @@ export const FIELDS = {
   undo: ['change', 'id'],
   off: ['start', 'end', 'areas', 'reason', 'cancel'],
   brief: ['text', 'day'],
-  guide: ['text', 'week'],
-  // The Coach's deep mind (claude/mind.js). `mind` checks its own settings, so it isn't listed.
-  picture: ['text', 'opener'],
-  say: ['text', 'notify', 'ref'],
-  propose: ['text', 'ops', 'notify', 'ref'],
-  handled: ['events', 'summary'],
+  countdown: ['title', 'day', 'cancel'],
 };
 
 // Plan entries retain the same practical controls as their standalone counterparts.
@@ -741,21 +747,17 @@ export function fieldWarnings(op) {
   return out;
 }
 
-// The Mind's ops, given runOp so a proposal can run plan ops on a copy of the document.
-const MIND_OPS = makeMindOps((store, op) => runOp(store, op));
-
 export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
-  log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, gym, guide,
+  log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym,
   details, rule, report, review,
-  ...MIND_OPS,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff
 // changes no record at all, so there is nothing for George to see or undo.
-export const UNLOGGED = new Set(['undo', 'handoff', 'handled']);
+export const UNLOGGED = new Set(['undo', 'handoff']);
 
 export function runOp(store, op) {
   if (!op || typeof op !== 'object' || Array.isArray(op)) throw new Error('Each op is an object like {"op": "task", "title": "…"}');
