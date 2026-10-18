@@ -307,3 +307,18 @@ test("keys: the dashboard's own first, then the Hebrew app's two, trimmed and wi
   class Denied extends MemoryStorage { getItem() { throw new Error('denied'); } }
   assert.deepEqual(geminiKeys({ geminiKey: 'mine' }, new Denied()), ['mine']);
 });
+
+test('a photo goes with the words, as an inline image in the same message', async () => {
+  const fetch = fakeFetch(reply({ ok: true }));
+  await askGemini({ keys: [KEY], system: 'S', prompt: 'P', image: { mimeType: 'image/jpeg', data: 'AAAA' }, fetch });
+  const parts = fetch.calls[0].body.contents[0].parts;
+  assert.deepEqual(parts[0], { inlineData: { mimeType: 'image/jpeg', data: 'AAAA' } });
+  assert.deepEqual(parts[1], { text: 'P' });
+});
+
+test('the fake answers a meal with an estimate the food logic accepts', async () => {
+  const { fakeGeminiFetch } = await import('../dev/fake-gemini.js');
+  const { MEAL_SYSTEM, parseEstimate } = await import('../js/food.js');
+  const { data } = await askGemini({ keys: ['fake'], system: MEAL_SYSTEM, prompt: 'lunch', image: { mimeType: 'image/jpeg', data: 'AAAA' }, fetch: fakeGeminiFetch('meal', { delayMs: 0 }) });
+  assert.ok(parseEstimate(data).protein.mid > 0);
+});
