@@ -78,6 +78,35 @@ Where each classic widget went: Upcoming became Needs you plus the "Tomorrow" li
 became Tell Claude under the day; Gym, Muscles and Cardio trend became Body (Muscles and Cardio trend in
 its big view); Last 3 weeks became Your weeks.
 
+## Food
+
+Snap a meal and get on with your day ([`docs/superpowers/plans/2026-10-18-food.md`](docs/superpowers/plans/2026-10-18-food.md)).
+
+- **Snap a meal** on the Fuel tile, or a breakfast, lunch or dinner marker on the timeline (they show
+  until that meal is logged). Take a photo, choose one, or just type or say what it was; a line about
+  it ("a big one, cooked in oil") makes the estimate better than any photo can.
+- **Gemini estimates** protein (the number that matters) and calories, each as a range, with the
+  items it saw. Pick a portion (lighter, about right, bigger) and save. You can close the sheet at any
+  point: it finishes on its own.
+- **Usual meals.** Tick *Save as a usual meal* and it becomes a one-tap chip with exact numbers next
+  time, with no photo and no estimate.
+- **The Fuel tile** fills a plate towards your protein target (180 g), lists today's meals with their
+  photos while this device has them, and gives the week's calories as an average against your
+  maintenance figure (Claude sets it once there are two weeks of meals). Never a daily calorie target.
+  Opened big: the last 14 days.
+- **Offline, or Gemini busy:** the meal is kept and estimated when it can be. The tile says how many
+  are waiting. Nothing is lost.
+- **Photos** are shrunk on the device and kept there until the meal is estimated and a small copy
+  (about 40 KB) is in the sync repo under `photos/YYYY/MM/`, then let go.
+- **Claude** reads every meal with `food`, opens a photo with `photo <id>`, and corrects a big miss
+  with a reason you'll see on the meal.
+
+**Privacy.** A meal sends Gemini the photo, your line and the time, nothing else. On Google's free
+tier they may use it to improve their products. Your watch data is never sent to Gemini.
+
+**Trying it locally:** `?fakegemini=meal` answers every meal with a canned estimate; `meal-slow`,
+`meal-nonsense`, `offline` and `quota` try the other paths.
+
 ## Arranging the widgets
 
 Today's list always stays in the first column. Upcoming, Goals, Countdown, This week,
