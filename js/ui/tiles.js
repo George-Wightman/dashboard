@@ -5,7 +5,7 @@
 // narrow windows), hidden, and brought back. The arrangement is this device's own (js/tiles.js).
 
 import { h } from './dom.js';
-import { moveTile, nudgeTile, hideTile, showTile, bodyHero, hebrewHero } from '../tiles.js';
+import { moveTile, nudgeTile, hideTile, showTile, bodyHero, hebrewHero, daylightShows } from '../tiles.js';
 import { renderNeeds } from './needs.js';
 import { renderGym, renderGymBig } from './gym.js';
 import { renderMuscles, renderCardioTrend } from './training.js';
@@ -37,7 +37,11 @@ export const TILES = [
   { id: 'goals', title: 'Goals', area: 'goals', render: renderGoals },
   { id: 'weeks', title: 'Your weeks', area: 'weeks', render: renderHistory, big: renderHistoryBig },
   { id: 'countdown', title: 'Countdown', area: 'countdown', render: renderCountdown },
-  { id: 'week', title: 'This week', area: 'week', render: renderWeek },
+  {
+    id: 'week', title: 'This week', area: 'week',
+    // Only the targets no other tile shows (each number in one place).
+    render: (ctx) => renderWeek({ ...ctx, weekShows: () => daylightShows(ctx.tiles(), ctx.store.doc(), ctx.store.today()) }),
+  },
 ];
 const BY_ID = new Map(TILES.map((t) => [t.id, t]));
 

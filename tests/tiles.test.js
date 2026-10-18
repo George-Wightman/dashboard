@@ -56,3 +56,17 @@ test("Hebrew's hero: hours and minutes this week against the target in hours", (
   assert.deepEqual(hebrewHero(doc, '2026-10-20'), { number: '4:52', caption: 'of 7 h this week' });
   assert.equal(hebrewHero(fixture(), '2026-10-20'), null);
 });
+
+test('final review: what Daylight shows elsewhere decides This week, not the classic hidden list', async () => {
+  const { daylightShows } = await import('../js/tiles.js');
+  const { weekTargets } = await import('../js/ui/side.js');
+  const doc = fixture({ items: [{ id: 'cardio', type: 'quota', title: 'Cardio', unit: 'minutes', target: 150 }] });
+  doc.gym.config = { id: 'config', status: 'active', cardioQuota: 'cardio' };
+  const shown = { v: 1, order: [...TILE_IDS], hidden: [] };
+  // Body shows cardio as its big number even with no workouts yet, so This week leaves it out.
+  assert.deepEqual(daylightShows(shown, doc, '2026-10-20'), { cardio: true, hebrew: false });
+  assert.deepEqual(weekTargets(doc, '2026-10-20', [], daylightShows(shown, doc, '2026-10-20')).map((q) => q.id), []);
+  // Body hidden: cardio comes back to This week.
+  const hidden = hideTile(shown, 'body');
+  assert.deepEqual(weekTargets(doc, '2026-10-20', [], daylightShows(hidden, doc, '2026-10-20')).map((q) => q.id), ['cardio']);
+});

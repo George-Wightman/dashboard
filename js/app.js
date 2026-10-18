@@ -23,7 +23,7 @@ import { createUpdater, runningBuild, IDLE_CHECK_GAP } from './version.js';
 import { h } from './ui/dom.js';
 import { plannerNotes, staleSince, visibleNotes, briefFor, offLine } from './calendar.js';
 import { LOGOS } from './ui/sources.js';
-import { syncLabel, headerModel } from './header.js';
+import { syncLabel, headerModel, progressText } from './header.js';
 import { placeFor } from './sky.js';
 import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
@@ -173,7 +173,7 @@ function renderHeader() {
   const today = store.today();
   document.getElementById('date').textContent = longDate(today);
   const { done, total, pushed } = dayScore(store.doc(), today);
-  document.getElementById('count').textContent = total ? `${done} of ${total} done${pushed.length ? ` · ${pushed.length} pushed` : ''}` : '';
+  document.getElementById('count').textContent = progressText(done, total, pushed.length);
   document.title = total ? `Today · ${done}/${total}` : 'Today';
 
   const warning = document.getElementById('save-warning');
@@ -234,6 +234,13 @@ function renderHeader() {
 // The look (js/look.js): data-theme on <html>, and the title bar's colour. index.html's inline
 // script has already set both before the first paint; this keeps them right as the hours pass,
 // on focus, and whenever ⚙ changes. Only touches the page when something actually changes.
+// The screen not showing is emptied when the screen changes, so its old boxes (the classic note,
+// a check-in card) can't catch dictation or a notification's focus while hidden.
+function clearOtherScreen(screen) {
+  const ids = screen === 'daylight' ? ['list', 'under', 'side'] : ['dl-sky', 'timeline', 'tiles'];
+  for (const id of ids) document.getElementById(id)?.replaceChildren();
+}
+
 function applyLook() {
   const look = resolveLook(new Date(), store.settings());
   const root = document.documentElement;
@@ -241,7 +248,10 @@ function applyLook() {
   // Daylight or the classic screen: ⚙ → Look → Screen, or ?daylight for this visit (index.html's
   // <head> script made the same choice before the first paint).
   const screen = params.has('daylight') || store.settings().screen === 'daylight' ? 'daylight' : 'classic';
-  if (root.dataset.screen !== screen) root.dataset.screen = screen;
+  if (root.dataset.screen !== screen) {
+    root.dataset.screen = screen;
+    clearOtherScreen(screen);
+  }
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta && meta.getAttribute('content') !== THEME_COLORS[look]) meta.setAttribute('content', THEME_COLORS[look]);
 }

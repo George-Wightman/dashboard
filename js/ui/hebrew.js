@@ -83,7 +83,7 @@ function stat(doc, id, label, today, extra = null) {
   const met = total >= q.target;
   const shown = q.unit === 'minutes' ? Math.round(total) : formatAmount(total, q.unit);
   const target = q.unit === 'minutes' ? Math.round(q.target) : formatAmount(q.target, q.unit);
-  return h('div', { class: 'heb-stat', title: `${q.title}: ${shown} of ${target}${q.unit === 'minutes' ? ' minutes' : ''} this week` },
+  return h('div', { class: 'heb-stat', 'data-target': id, title: `${q.title}: ${shown} of ${target}${q.unit === 'minutes' ? ' minutes' : ''} this week` },
     h('span', { class: 'muted' }, label),
     h('span', { class: met ? 'heb-num met' : 'heb-num' }, String(shown), h('span', { class: 'of' }, ` / ${target}`)),
     extra ? h('span', { class: 'heb-extra' }, extra) : null);

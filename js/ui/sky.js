@@ -5,7 +5,7 @@
 
 import { h } from './dom.js';
 import { sunTimes, skyPhase, sunAt, blockDots } from '../sky.js';
-import { syncLabel } from '../header.js';
+import { syncLabel, progressText } from '../header.js';
 import { todaySlots } from '../calendar.js';
 import { todayRows } from '../schedule.js';
 import { LOGOS } from './sources.js';
@@ -49,8 +49,8 @@ function blocksOf(doc, today) {
     .map((r) => ({ id: r.item.id, title: r.item.title, start: slots.get(r.item.id).start, done: r.done, area: r.item.area ?? null }));
 }
 
-function progress(done, total) {
-  const text = `${done} of ${total} done`;
+function progress(done, total, pushed) {
+  const text = progressText(done, total, pushed);
   if (!total) return null;
   const segs = total <= 12
     ? h('span', { class: 'dl-segs', role: 'img', 'aria-label': text }, Array.from({ length: total }, (_, i) => h('i', { class: i < done ? 'on' : null })))
@@ -108,7 +108,7 @@ export function renderSky(ctx) {
   const words = h('div', { class: 'dl-sky-words' },
     h('div', { class: 'dl-sky-top' }, h('span', { class: 'dl-date' }, `${m.date} · ${ctx.place().name}`), actions),
     h('div', { class: 'dl-sky-bottom' },
-      h('div', { class: 'dl-hello' }, h('h1', {}, m.greeting), progress(m.done, m.total)),
+      h('div', { class: 'dl-hello' }, h('h1', {}, m.greeting), progress(m.done, m.total, m.pushed.length)),
       h('div', { class: 'dl-notes' },
         m.warnings.map((w) => h('p', { class: 'dl-chip dl-warning', role: 'status' }, icon(CLOUD), h('span', {}, w))),
         m.brief ? noteChip(ctx, today, m.brief, claudeMark(), 'dl-brief') : null,

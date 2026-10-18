@@ -39,3 +39,17 @@ test('taken out of Calendar, and waiting for a slot, have no buttons', () => {
 test('needsEntries is empty on an empty dashboard', () => {
   assert.deepEqual(needsEntries(emptyDoc(), '2026-10-20'), []);
 });
+
+test('final review: a block moved to another day says the day, not the same time twice', () => {
+  const doc = emptyDoc();
+  const item = { id: 'g', title: 'Gym', date: '2026-10-20', time: '17:30' };
+  doc.calendar['conflict:g'] = { open: true, changes: { date: '2026-10-21', time: '17:30' }, calendarValid: true };
+  assert.deepEqual(needsCopy(entry(item, 'conflict'), doc), {
+    text: 'You moved Gym to Wed in Google Calendar, but the dashboard still has Tue.',
+    choices: [{ choice: 'calendar', label: 'Keep Wed' }, { choice: 'dashboard', label: 'Back to Tue' }],
+  });
+  doc.calendar['conflict:g'].changes = { date: '2026-10-21', time: '18:30' };
+  assert.equal(needsCopy(entry(item, 'conflict'), doc).text, 'You moved Gym to Wed 18:30 in Google Calendar, but the dashboard still has Tue 17:30.');
+  doc.calendar['conflict:g'].changes = { date: '2026-10-20', time: '17:30' };
+  assert.deepEqual(needsCopy(entry(item, 'conflict'), doc).choices.map((c) => c.label), ["Keep Calendar's", "Keep the dashboard's"]);
+});

@@ -63,3 +63,13 @@ test('Needs you resolves through the existing conflict path', () => {
 test('another window rearranging tiles is followed', () => {
   assert.match(read('js/app.js'), /e\.key === TILES_KEY/);
 });
+
+test('final review: the Hebrew tile shows the week minutes once (its big number)', () => {
+  assert.match(read('js/ui/hebrew.js'), /'data-target': id/);
+  assert.match(read('styles/daylight.css'), /\.tile\[data-tile="hebrew"\] \.heb-stat\[data-target="hebrew-minutes"\] \{ display: none; \}/);
+});
+
+test('final review: switching screens empties the hidden one, so its old boxes catch nothing', () => {
+  assert.match(read('js/app.js'), /function clearOtherScreen\(screen\)/);
+  assert.match(read('js/app.js'), /clearOtherScreen\(screen\)/);
+});

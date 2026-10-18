@@ -24,3 +24,10 @@ test('the brief, time off and notes, minus the ones hidden today; warnings in or
   assert.equal(hidden.brief, null);
   assert.deepEqual(hidden.warnings, []);
 });
+
+test('final review: progress names pushed work, on both screens', async () => {
+  const { progressText } = await import('../js/header.js');
+  assert.equal(progressText(2, 6, 0), '2 of 6 done');
+  assert.equal(progressText(2, 6, 1), '2 of 6 done · 1 pushed');
+  assert.equal(progressText(0, 0, 0), '');
+});

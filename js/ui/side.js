@@ -54,10 +54,10 @@ function bar(pct, label, met = false) {
 // The weekly targets This week shows: the ones no other widget does, and none in an area on time
 // off today (paused, not behind). Cardio shows in Gym and Hebrew's three in Hebrew — unless that
 // widget is hidden (or Gym has no workouts yet), when they come back here. `hidden` is the hidden
-// widgets' ids.
-export function weekTargets(doc, today, hidden = []) {
-  const gymShows = !hidden.includes('gym') && workouts(doc).length > 0;
-  const hebrewShows = !hidden.includes('hebrew') && doc.goals[HEBREW_IDS.goal]?.status === 'active';
+// widgets' ids. Daylight passes `shows` instead ({ cardio, hebrew }: what its tiles already show).
+export function weekTargets(doc, today, hidden = [], shows = null) {
+  const gymShows = shows ? shows.cardio : !hidden.includes('gym') && workouts(doc).length > 0;
+  const hebrewShows = shows ? shows.hebrew : !hidden.includes('hebrew') && doc.goals[HEBREW_IDS.goal]?.status === 'active';
   const cardio = cardioQuotaId(doc);
   return values(doc.items)
     .filter((i) => i.type === 'quota' && i.status === 'active' && countsOn(i, today) && !excused(doc, i, today))
@@ -68,7 +68,7 @@ export function weekTargets(doc, today, hidden = []) {
 export function renderWeek(ctx) {
   const doc = ctx.store.doc();
   const today = ctx.store.today();
-  const quotas = weekTargets(doc, today, ctx.layout?.().hidden ?? []);
+  const quotas = weekTargets(doc, today, ctx.layout?.().hidden ?? [], ctx.weekShows?.() ?? null);
   if (!quotas.length) return null;
   return h('section', { class: 'panel' },
     h('h2', {}, 'This week'),

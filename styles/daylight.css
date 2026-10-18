@@ -127,7 +127,7 @@
 .dl-sky[data-phase="midday"] { --s1: #9CC8F2; --s2: #BCDBF7; --s3: #DDEEFF; --hz: #FFF4E4; }
 .dl-sky[data-phase="afternoon"] { --s1: #A9CDEF; --s2: #C9DFF5; --s3: #E9F2FB; --hz: #FFEFD9; }
 .dl-sky[data-phase="golden"] { --s1: #FFB27A; --s2: #FFCB98; --s3: #FFE6C7; --hz: #FFDDB8; }
-.dl-sky[data-phase="dusk"] { --s1: #5E4B8F; --s2: #8E6BA0; --s3: #D99A92; --hz: #3A2E5E; --sky-ink: #FFF4EA; }
+.dl-sky[data-phase="dusk"] { --s1: #3E3270; --s2: #5A4683; --s3: #7A5A88; --hz: #2E2552; --sky-ink: #FFF4EA; }
 .dl-sky[data-phase="night"] { --s1: #1B1840; --s2: #221E4E; --s3: #2A2560; --hz: #14122B; --sky-ink: #EDEAF7; }
 .dl-bands { position: absolute; inset: 0; width: 100%; height: 100%; }
 .dl-bands .b1 { fill: var(--s1); }
@@ -283,6 +283,7 @@
 .tile-cap { font-weight: 600; padding-bottom: 2px; max-width: 12em; }
 /* Each number in one place: the big number replaces the widget's own bar for it. */
 .tile[data-tile="body"] .gym > .bar-row { display: none; }
+.tile[data-tile="hebrew"] .heb-stat[data-target="hebrew-minutes"] { display: none; }
 
 /* Your weeks: one sun per day, fuller gold for a better day. */
 .tile[data-tile="weeks"] .cell { border-radius: 50%; aspect-ratio: 1; }

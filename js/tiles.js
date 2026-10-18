@@ -90,6 +90,16 @@ export function bodyHero(doc, today) {
   return { number: String(Math.round(weekTotal(doc, q.id, today))), caption: `of ${q.target} cardio minutes this week` };
 }
 
+// What Daylight's tiles already show, for This week to leave out: cardio when Body shows its big
+// number, Hebrew's targets when the Hebrew tile shows (as the classic Hebrew widget does).
+export function daylightShows(tiles, doc, today) {
+  const shown = (id) => !tiles.hidden.includes(id);
+  return {
+    cardio: shown('body') && bodyHero(doc, today) != null,
+    hebrew: shown('hebrew') && doc?.goals?.['hebrew-goal']?.status === 'active',
+  };
+}
+
 export function hebrewHero(doc, today) {
   const q = minutesQuota(doc, 'hebrew-minutes');
   if (!q) return null;

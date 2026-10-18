@@ -29,3 +29,16 @@ for (const [name, sel] of [['day', DAY], ['night', NIGHT]]) {
     }
   });
 }
+
+test('final review: the words over the sky stay readable in every phase', () => {
+  const base = CSS.match(/\n\.dl-sky \{([^}]*)\}/)[1];
+  const defaultInk = base.match(/--sky-ink:\s*(#[0-9a-fA-F]{6})/)[1];
+  for (const phase of ['dawn', 'morning', 'midday', 'afternoon', 'golden', 'dusk', 'night']) {
+    const body = CSS.match(new RegExp(`\\.dl-sky\\[data-phase="${phase}"\\] \\{([^}]*)\\}`))[1];
+    const get = (k) => body.match(new RegExp(`${k}:\\s*(#[0-9a-fA-F]{6})`))?.[1];
+    const ink = get('--sky-ink') ?? defaultInk;
+    for (const band of ['--s1', '--s2', '--s3']) {
+      assert.ok(ratio(ink, get(band)) >= 4.5, `${phase}: ink ${ink} on ${band} ${get(band)} is ${ratio(ink, get(band)).toFixed(2)}`);
+    }
+  }
+});

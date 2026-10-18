@@ -15,6 +15,12 @@ export function syncLabel(sync) {
   }
 }
 
+// "2 of 6 done · 1 pushed": moving work never makes a day a success, so pushed work is named.
+export function progressText(done, total, pushed) {
+  if (!total) return '';
+  return `${done} of ${total} done${pushed ? ` · ${pushed} pushed` : ''}`;
+}
+
 export function greeting(now) {
   const hour = now.getHours();
   return `${hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening'}, George.`;

@@ -24,11 +24,17 @@ export function needsCopy(entry, doc) {
     if (conflict.calendarValid === false) {
       return { text: `The Calendar edit to ${item.title} isn't a time the dashboard can use.`, choices: [{ choice: 'dashboard', label: DASHBOARD }] };
     }
-    const moved = conflict.changes?.time;
-    if (moved && item.time) {
+    // A drag in Calendar records the block's new day and time; say whichever changed.
+    const { date, time } = conflict.changes ?? {};
+    const dayMoved = !!(date && item.date && date !== item.date);
+    const timeMoved = !!(time && item.time && /^\d\d:\d\d$/.test(time) && time !== item.time);
+    if (dayMoved || timeMoved) {
+      const when = (d, t) => [dayMoved ? shortWeekday(d) : null, timeMoved ? t : null].filter(Boolean).join(' ');
+      const to = when(date, time);
+      const from = when(item.date, item.time);
       return {
-        text: `You moved ${item.title} to ${moved} in Google Calendar, but the dashboard still has ${item.time}.`,
-        choices: [{ choice: 'calendar', label: `Keep ${moved}` }, { choice: 'dashboard', label: `Back to ${item.time}` }],
+        text: `You moved ${item.title} to ${to} in Google Calendar, but the dashboard still has ${from}.`,
+        choices: [{ choice: 'calendar', label: `Keep ${to}` }, { choice: 'dashboard', label: `Back to ${from}` }],
       };
     }
     return { text: `${item.title} was changed in Google Calendar and here.`, choices: [{ choice: 'calendar', label: "Keep Calendar's" }, { choice: 'dashboard', label: DASHBOARD }] };
