@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '851581b9';
+var PLANNER_BUILD = '9ca3d391';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -5392,13 +5392,14 @@ return { tagPrompt, readArea };
 // ---- planner/hevy.js
 const __planner_hevy = (() => {
 // Hevy, for the planner's run: George's workouts copied into the dashboard's `gym` map, and the
-// ticks and cardio minutes they give. Read only — nothing is ever sent to Hevy but the key, in its
-// header. `fetch` is the app's (in Apps Script, planner/shims.js's, over UrlFetchApp). A failure is
+// ticks and cardio minutes they give. Read only — nothing is sent to Hevy here but the key, in its
+// header (the coach's routines are written by planner/routines.js). `fetch` is the app's (in Apps Script, planner/shims.js's, over UrlFetchApp). A failure is
 // kept as a sentence in the gym's status for the dashboard and never stops the planner.
 
 const { workoutRecord, workouts, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, cardioOf, KEEP_SETS_DAYS } = __js_gym;
 const { addDays, weekStart, logicalDay } = __js_dates;
 const { countsOn } = __js_schedule;
+const { routinesOf } = __js_coach;
 
 const HEVY = 'https://api.hevyapp.com/v1';
 const BACKFILL_PAGES = 20; // pages of history a run, inside Apps Script's time limit
@@ -5437,20 +5438,22 @@ function drop(store, hevyId, today) {
 }
 
 // The ticks and cardio minutes every workout gives, made once each (fixed ids), following edits,
-// taken off when the workout goes — and never put back once George has taken one off. Old
-// workouts lose their sets.
+// taken off when the workout goes — and never put back once George has taken one off. A workout
+// saved from one of the coach's routines also ticks that session's task. Old workouts lose their sets.
 function reconcile(store, startedOn, today) {
   const config = gymConfig(store.doc());
   const habitId = gymHabitId(store.doc(), config);
   const quotaId = cardioQuotaId(store.doc(), config);
   const cutoff = addDays(today, -KEEP_SETS_DAYS);
   const all = Object.values(store.doc().gym).filter((r) => String(r.id).startsWith('w:'));
+  const pool = routinesOf(store.doc()).byRoutine ?? {};
   for (const w of all) {
     const doneId = `hevy-done-${w.hevyId}`;
     const cardioId = `hevy-cardio-${w.hevyId}`;
+    const sessionId = `hevy-session-${w.hevyId}`;
     const logs = store.doc().logs;
     if (w.status !== 'active') {
-      for (const id of [doneId, cardioId]) if (logs[id]?.status === 'active') store.putLog(id, { status: 'archived' });
+      for (const id of [doneId, cardioId, sessionId]) if (logs[id]?.status === 'active') store.putLog(id, { status: 'archived' });
       continue;
     }
     if (w.day < cutoff && w.exercises.some((e) => e.sets)) store.putGym(w.id, { exercises: w.exercises.map(({ sets, ...e }) => e) });
@@ -5460,6 +5463,19 @@ function reconcile(store, startedOn, today) {
       const tick = logs[doneId];
       if (!tick) store.putLog(doneId, { itemId: habitId, kind: 'done', day: w.day, at: w.end, from: w.start, source: 'hevy' });
       else if (tick.status === 'active') store.putLog(doneId, { day: w.day, at: w.end, from: w.start });
+    }
+    // The routine's current session, if this workout is on or after its day (a routine reused for a
+    // later session doesn't claim the workouts of the one before).
+    const entry = w.routineId ? pool[w.routineId] : null;
+    const task = entry && w.day >= entry.day ? store.doc().items[entry.taskId] : null;
+    const tick = logs[sessionId];
+    if (!tick) {
+      const already = task && Object.values(logs).some((l) => l.itemId === task.id && l.kind === 'done' && l.status === 'active');
+      if (task && task.status === 'active' && task.type === 'task' && !already) {
+        store.putLog(sessionId, { itemId: task.id, kind: 'done', day: w.day, at: w.end, from: w.start, source: 'hevy' });
+      }
+    } else if (tick.status === 'active') {
+      store.putLog(sessionId, { day: w.day, at: w.end, from: w.start });
     }
     const minutes = Math.round(cardioOf(w).minutes);
     const cardio = logs[cardioId];
@@ -5570,6 +5586,129 @@ async function syncHevy({
   return status;
 }
 return { HEVY, BACKFILL_PAGES, syncHevy };
+})();
+
+// ---- planner/routines.js
+const __planner_routines = (() => {
+// The coach's sessions into Hevy, for the planner's run: each session Claude wrote on a dated task
+// (js/coach.js) for the coming 7 days becomes a routine in George's "Dashboard" folder, so he
+// starts it in Hevy with the weights filled in. The only thing the planner ever writes to Hevy, and
+// only in that folder. Hevy's API can't delete a routine, so they're a small pool: a routine whose
+// session has passed or gone is rewritten for the next one. The pool is the `gym` record
+// `routines`; a failure is a sentence in it and never stops the planner.
+
+const { logicalDay, addDays, shortWeekday, shortDate } = __js_dates;
+const { templatesOf } = __js_gym;
+const { sessionTasks, routinesOf, routineBody } = __js_coach;
+const { doneIndex } = __js_schedule;
+const { HEVY } = __planner_hevy;
+
+const FOLDER = 'Dashboard';
+const WINDOW_DAYS = 7;
+const FOLDER_PAGES = 10;
+
+class HevyError extends Error {}
+
+async function call(fetch, key, method, path, body) {
+  let res;
+  try {
+    res = await fetch(`${HEVY}${path}`, {
+      method,
+      headers: { 'api-key': key, accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  } catch {
+    throw new HevyError("Couldn't reach Hevy");
+  }
+  if (res.status === 401 || res.status === 403) throw new HevyError("Hevy refused the key — check HEVY_KEY in the planner script's properties");
+  let data = null;
+  try { data = await res.json(); } catch { /* answered without JSON */ }
+  if (!res.ok) {
+    const said = typeof data?.error === 'string' ? `: ${data.error.slice(0, 200)}` : '';
+    const err = new HevyError(`it answered ${res.status}${said}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// Hevy answers a routine write with { routine: [ {...} ] } (a list of one), a folder with
+// { routine_folder: {...} }; either may come as a bare object.
+const first = (v) => (Array.isArray(v) ? v[0] : v);
+
+const routineTitle = (session, day) => `${session.name} · ${shortWeekday(day)} ${shortDate(day)}`;
+
+// A short fingerprint of what Hevy was last sent for a routine, so an unchanged session isn't sent again.
+function hash(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+async function findFolder(fetch, key) {
+  for (let page = 1, count = 1; page <= count && page <= FOLDER_PAGES; page++) {
+    const r = await call(fetch, key, 'GET', `/routine_folders?page=${page}&pageSize=10`);
+    const hit = (r?.routine_folders ?? []).find((f) => String(f?.title ?? '').trim() === FOLDER);
+    if (hit) return hit.id;
+    count = Math.max(0, Math.floor(Number(r?.page_count) || 0));
+  }
+  const made = first((await call(fetch, key, 'POST', '/routine_folders', { routine_folder: { title: FOLDER } }))?.routine_folder);
+  if (made?.id == null) throw new HevyError("Hevy's reply to making the Dashboard folder didn't make sense");
+  return made.id;
+}
+
+// One run. Returns the pool as it now stands.
+async function syncRoutines({ fetch, key, store, now = () => new Date(), dayStartHour = 4, scrub = (s) => s }) {
+  const today = logicalDay(now(), dayStartHour);
+  const doc = store.doc();
+  const prev = routinesOf(doc);
+  const state = { folderId: prev.folderId ?? null, byRoutine: structuredClone(prev.byRoutine ?? {}), lastError: null };
+  const idx = doneIndex(doc);
+  const sessions = sessionTasks(doc, today, addDays(today, WINDOW_DAYS - 1)).filter((t) => !idx.get(t.id)?.has(t.date));
+  if (!sessions.length && prev.lastError == null) return prev;
+  const templates = templatesOf(doc);
+  const problems = [];
+  const wanted = new Set(sessions.map((t) => t.id));
+  const held = (taskId) => Object.keys(state.byRoutine).find((id) => state.byRoutine[id]?.taskId === taskId);
+  const spare = Object.keys(state.byRoutine).filter((id) => !wanted.has(state.byRoutine[id]?.taskId));
+  try {
+    for (const t of sessions) {
+      const label = `${JSON.stringify(t.session.name)} (${shortWeekday(t.date)} ${shortDate(t.date)})`;
+      const missing = t.session.exercises.filter((e) => !templates[e.tpl]);
+      if (missing.length) {
+        problems.push(`${label}: ${missing.map((e) => e.name).join(', ')} isn't in Hevy's exercise list any more — write the session again`);
+        continue;
+      }
+      const body = routineBody(t.session, { title: routineTitle(t.session, t.date) });
+      const sig = hash(JSON.stringify(body));
+      let id = held(t.id);
+      if (id && state.byRoutine[id].hash === sig && state.byRoutine[id].day === t.date) continue;
+      if (!id && spare.length) id = spare.shift();
+      try {
+        if (id) {
+          await call(fetch, key, 'PUT', `/routines/${encodeURIComponent(id)}`, body);
+        } else {
+          if (state.folderId == null) state.folderId = await findFolder(fetch, key);
+          const made = first((await call(fetch, key, 'POST', '/routines', routineBody(t.session, { title: body.routine.title, folderId: state.folderId })))?.routine);
+          if (typeof made?.id !== 'string' && typeof made?.id !== 'number') throw new HevyError("Hevy's reply to a new routine didn't make sense");
+          id = String(made.id);
+        }
+      } catch (e) {
+        // A routine Hevy no longer has (he deleted it in the app) is forgotten, and made again next run.
+        if (e.status === 404 && id) delete state.byRoutine[id];
+        if (e instanceof HevyError && e.status) { problems.push(`Hevy wouldn't take the routine for ${label} (${e.message})`); continue; }
+        throw e;
+      }
+      state.byRoutine[id] = { taskId: t.id, day: t.date, hash: sig };
+    }
+  } catch (err) {
+    problems.push(err instanceof HevyError ? err.message : `Putting sessions into Hevy stopped: ${err?.message ?? err}`);
+  }
+  state.lastError = problems.length ? scrub(problems.join('; ')) : null;
+  store.putGym('routines', state, 'planner');
+  return state;
+}
+return { FOLDER, routineTitle, syncRoutines };
 })();
 
 // ---- planner/properties.js
@@ -6356,6 +6495,7 @@ const { P, atText } = __planner_events;
 const { at } = __planner_time;
 const { tagPrompt, readArea } = __planner_tag;
 const { syncHevy } = __planner_hevy;
+const { syncRoutines } = __planner_routines;
 const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner_properties;
 const { processWorkflows } = __js_workflow;
 const { runGoalReviews } = __planner_reviews;
@@ -6503,7 +6643,7 @@ function createPlanner({
     writeProperty(props(), 'TAGGED', Object.fromEntries(Object.entries(asked).filter(([id]) => live.has(id)).slice(-500)));
   }
 
-  // Hevy first, so a workout's tick is planned around in the same run. With no HEVY_KEY it's
+  // Hevy first, so a workout's tick is planned around in the same run, then the coach's routines. With no HEVY_KEY it's
   // skipped; its problems go in the gym's status for the dashboard and never stop the planner.
   // While Hevy keeps failing it's tried every half hour, not every run.
   async function hevy(store) {
@@ -6513,7 +6653,10 @@ function createPlanner({
     if (failing && now().getTime() - Number(get('HEVY_TRIED') ?? 0) < HEVY_RETRY_MS) return;
     put('HEVY_TRIED', now().getTime());
     const s = await syncHevy({ fetch, key, store, now, dayStartHour: dayStartHour(), scrub: clean });
-    if (s.lastError) log(`Hevy: ${s.lastError}`);
+    if (s.lastError) { log(`Hevy: ${s.lastError}`); return; }
+    // Then the coach's sessions into Hevy as routines (the only thing written there).
+    const r = await syncRoutines({ fetch, key, store, now, dayStartHour: dayStartHour(), scrub: clean });
+    if (r.lastError) log(`Hevy routines: ${r.lastError}`);
   }
 
   function apply(actions, events) {

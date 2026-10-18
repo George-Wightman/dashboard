@@ -1,6 +1,6 @@
 // Hevy, for the planner's run: George's workouts copied into the dashboard's `gym` map, and the
-// ticks and cardio minutes they give. Read only — nothing is ever sent to Hevy but the key, in its
-// header. `fetch` is the app's (in Apps Script, planner/shims.js's, over UrlFetchApp). A failure is
+// ticks and cardio minutes they give. Read only — nothing is sent to Hevy here but the key, in its
+// header (the coach's routines are written by planner/routines.js). `fetch` is the app's (in Apps Script, planner/shims.js's, over UrlFetchApp). A failure is
 // kept as a sentence in the gym's status for the dashboard and never stops the planner.
 
 import {
@@ -8,6 +8,7 @@ import {
 } from '../js/gym.js';
 import { addDays, weekStart, logicalDay } from '../js/dates.js';
 import { countsOn } from '../js/schedule.js';
+import { routinesOf } from '../js/coach.js';
 
 export const HEVY = 'https://api.hevyapp.com/v1';
 export const BACKFILL_PAGES = 20; // pages of history a run, inside Apps Script's time limit
@@ -46,20 +47,22 @@ function drop(store, hevyId, today) {
 }
 
 // The ticks and cardio minutes every workout gives, made once each (fixed ids), following edits,
-// taken off when the workout goes — and never put back once George has taken one off. Old
-// workouts lose their sets.
+// taken off when the workout goes — and never put back once George has taken one off. A workout
+// saved from one of the coach's routines also ticks that session's task. Old workouts lose their sets.
 function reconcile(store, startedOn, today) {
   const config = gymConfig(store.doc());
   const habitId = gymHabitId(store.doc(), config);
   const quotaId = cardioQuotaId(store.doc(), config);
   const cutoff = addDays(today, -KEEP_SETS_DAYS);
   const all = Object.values(store.doc().gym).filter((r) => String(r.id).startsWith('w:'));
+  const pool = routinesOf(store.doc()).byRoutine ?? {};
   for (const w of all) {
     const doneId = `hevy-done-${w.hevyId}`;
     const cardioId = `hevy-cardio-${w.hevyId}`;
+    const sessionId = `hevy-session-${w.hevyId}`;
     const logs = store.doc().logs;
     if (w.status !== 'active') {
-      for (const id of [doneId, cardioId]) if (logs[id]?.status === 'active') store.putLog(id, { status: 'archived' });
+      for (const id of [doneId, cardioId, sessionId]) if (logs[id]?.status === 'active') store.putLog(id, { status: 'archived' });
       continue;
     }
     if (w.day < cutoff && w.exercises.some((e) => e.sets)) store.putGym(w.id, { exercises: w.exercises.map(({ sets, ...e }) => e) });
@@ -69,6 +72,19 @@ function reconcile(store, startedOn, today) {
       const tick = logs[doneId];
       if (!tick) store.putLog(doneId, { itemId: habitId, kind: 'done', day: w.day, at: w.end, from: w.start, source: 'hevy' });
       else if (tick.status === 'active') store.putLog(doneId, { day: w.day, at: w.end, from: w.start });
+    }
+    // The routine's current session, if this workout is on or after its day (a routine reused for a
+    // later session doesn't claim the workouts of the one before).
+    const entry = w.routineId ? pool[w.routineId] : null;
+    const task = entry && w.day >= entry.day ? store.doc().items[entry.taskId] : null;
+    const tick = logs[sessionId];
+    if (!tick) {
+      const already = task && Object.values(logs).some((l) => l.itemId === task.id && l.kind === 'done' && l.status === 'active');
+      if (task && task.status === 'active' && task.type === 'task' && !already) {
+        store.putLog(sessionId, { itemId: task.id, kind: 'done', day: w.day, at: w.end, from: w.start, source: 'hevy' });
+      }
+    } else if (tick.status === 'active') {
+      store.putLog(sessionId, { day: w.day, at: w.end, from: w.start });
     }
     const minutes = Math.round(cardioOf(w).minutes);
     const cardio = logs[cardioId];

@@ -20,6 +20,7 @@ import { P, atText } from './events.js';
 import { at } from './time.js';
 import { tagPrompt, readArea } from './tag.js';
 import { syncHevy } from './hevy.js';
+import { syncRoutines } from './routines.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
@@ -167,7 +168,7 @@ export function createPlanner({
     writeProperty(props(), 'TAGGED', Object.fromEntries(Object.entries(asked).filter(([id]) => live.has(id)).slice(-500)));
   }
 
-  // Hevy first, so a workout's tick is planned around in the same run. With no HEVY_KEY it's
+  // Hevy first, so a workout's tick is planned around in the same run, then the coach's routines. With no HEVY_KEY it's
   // skipped; its problems go in the gym's status for the dashboard and never stop the planner.
   // While Hevy keeps failing it's tried every half hour, not every run.
   async function hevy(store) {
@@ -177,7 +178,10 @@ export function createPlanner({
     if (failing && now().getTime() - Number(get('HEVY_TRIED') ?? 0) < HEVY_RETRY_MS) return;
     put('HEVY_TRIED', now().getTime());
     const s = await syncHevy({ fetch, key, store, now, dayStartHour: dayStartHour(), scrub: clean });
-    if (s.lastError) log(`Hevy: ${s.lastError}`);
+    if (s.lastError) { log(`Hevy: ${s.lastError}`); return; }
+    // Then the coach's sessions into Hevy as routines (the only thing written there).
+    const r = await syncRoutines({ fetch, key, store, now, dayStartHour: dayStartHour(), scrub: clean });
+    if (r.lastError) log(`Hevy routines: ${r.lastError}`);
   }
 
   function apply(actions, events) {

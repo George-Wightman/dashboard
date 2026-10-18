@@ -177,3 +177,17 @@ test("a Hevy tick moves the Gym block to when he trained", () => {
   assert.deepEqual([block.start.dateTime, block.end.dateTime], [at(TUE, '17:10').toISOString(), at(TUE, '18:05').toISOString()]);
   assert.equal(block.extendedProperties.private.dashState, 'done');
 });
+
+test("the planner run puts the coach's session into Hevy as a routine, after reading Hevy", async () => {
+  const session = { name: 'Legs A', exercises: [{ name: 'Squat (Barbell)', tpl: 'SQ', sets: 3, reps: 5, kg: 100 }] };
+  const doc = fixture({ items: [{ id: 'legs', type: 'task', title: 'Gym · Legs A', date: THU, session, notes: 'Squat (Barbell) 3×5 @ 100 kg', created: '2026-09-01' }] });
+  const hevy = new FakeHevy();
+  const route = (url, opts) => hevy.handle(url, opts.headers ?? {}, String(opts.method ?? 'get').toUpperCase(), opts.payload ?? null);
+  const repo = new FakeRepo(doc);
+  const run = appsScript({ cal: new FakeCalendar(), repo, gemini: route, props: { GITHUB_TOKEN: 'ghp_dummy_token', SYNC_REPO: 'o/r', HEVY_KEY }, now: () => at(THU, '09:00') });
+  assert.equal(await createPlanner({ ...run, version: 't' }).run(), 'ok');
+  assert.deepEqual(hevy.writes.map(([m, p]) => `${m} ${p}`), ['POST /v1/routine_folders', 'POST /v1/routines']);
+  assert.equal(hevy.writes[1][2].routine.title, 'Legs A · Thu 17 Sep');
+  assert.equal(repo.doc().gym.routines.byRoutine['rt-1'].taskId, 'legs');
+  assert.ok(!repo.text.includes(HEVY_KEY));
+});
