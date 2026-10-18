@@ -1,8 +1,9 @@
 import { h } from './dom.js';
 import { scheduleView, localDate } from '../plan-state.js';
 import { clockLabel } from '../calendar.js';
-import { shortWeekday, addDays } from '../dates.js';
+import { shortWeekday } from '../dates.js';
 import { openOutcome } from './outcome.js';
+import { needsEntries } from '../needs.js';
 import { tickAndAsk } from './checkin.js';
 
 export function resolveConflict(ctx, itemId, choice) {
@@ -20,8 +21,6 @@ export function resolveConflict(ctx, itemId, choice) {
 // taken out of Calendar, a later one still without a slot — five at a time. Today's own tasks
 // are already on Today's list, so an unbooked one only shows here if it's for a later day.
 const NEEDS_SHOWN = 5;
-const needsYou = (e, today, end) => e.state === 'conflict' || e.item.scheduleHold
-  || (e.state === 'unscheduled' && e.day > today && e.day < end);
 
 function whenLabel(day, today, start) {
   const clock = start ? clockLabel(start) : '';
@@ -33,13 +32,12 @@ export function renderAgenda(ctx) {
   const today = ctx.store.today();
   const plan = scheduleView(ctx.store.doc(), today);
   const now = ctx.now?.() ?? new Date();
-  const horizon = addDays(today, 14);
   const upcoming = [
     ...plan.entries.filter((e) => e.state === 'scheduled' && !e.bookings[0].allDay).map((e) => ({ title: e.item.title, id: e.item.id, start: e.bookings[0].start })),
     ...plan.commitments.filter((b) => !b.allDay).map((b) => ({ title: b.title, id: null, start: b.start })),
   ].filter((x) => new Date(x.start) > now).sort((a, b) => a.start.localeCompare(b.start));
   const next = upcoming[0];
-  const needs = plan.entries.filter((e) => needsYou(e, today, horizon));
+  const needs = needsEntries(ctx.store.doc(), today);
   if (!next && !needs.length && !ctx.ui.agendaError) return null;
   const shown = ctx.ui.agendaExpanded ? needs : needs.slice(0, NEEDS_SHOWN);
   const titleEl = (title, id) => (id
