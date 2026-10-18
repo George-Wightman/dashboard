@@ -98,10 +98,10 @@
   max-width: 1360px; margin: 0 auto; padding: 24px 48px 56px; box-sizing: border-box;
   display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start;
 }
-.dl-today { flex: 1 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.dl-today { flex: 2 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .dl-today > h2 { margin: 0; font: 800 28px/1.1 var(--dl-display); }
 .dl-tiles {
-  flex: 999 1 620px; min-width: 0; display: grid; gap: 18px; align-items: start;
+  flex: 3 1 620px; min-width: 0; display: grid; gap: 18px; align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
 }
 
@@ -259,6 +259,53 @@
   :root[data-screen="daylight"] #timeline li.row.tl-entry, .tl-now, .tl-busy { grid-template-columns: 44px 40px 1fr; }
   .tl-sub { margin-left: 84px; }
 }
+
+/* ---- The tiles ---------------------------------------------------------------------------------- */
+
+.tile { --tile-bg: var(--dl-card); --tile-ink: var(--dl-ink); background: var(--tile-bg); color: var(--tile-ink); border-radius: 28px; padding: 20px 22px 22px; box-sizing: border-box; min-width: 0; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 3px 0 var(--dl-shadow); }
+.tile[data-area="body"] { --tile-bg: var(--dl-body); --tile-ink: var(--dl-on-body); box-shadow: none; }
+.tile[data-area="hebrew"] { --tile-bg: var(--dl-hebrew); --tile-ink: var(--dl-on-hebrew); box-shadow: none; }
+.tile[data-area="needs"] { --tile-bg: var(--dl-needs); --tile-ink: var(--dl-on-needs); box-shadow: none; grid-column: 1 / -1; }
+.tile[data-area="goals"] { --tile-bg: var(--dl-goals); box-shadow: none; }
+.tile[data-area="countdown"] { --tile-bg: var(--dl-soft); box-shadow: none; }
+/* The classic widget inside a tile takes the tile's colours. */
+.tile { --ink: var(--tile-ink); --muted: color-mix(in srgb, var(--tile-ink) 78%, var(--tile-bg)); --panel: color-mix(in srgb, var(--tile-ink) 10%, var(--tile-bg)); --border: color-mix(in srgb, var(--tile-ink) 22%, var(--tile-bg)); }
+.tile[data-area="hebrew"] { --accent: #FFD36B; --gold: #FFD36B; --lvl1: rgba(255, 211, 107, .25); --lvl2: rgba(255, 211, 107, .5); --lvl3: rgba(255, 211, 107, .75); --lvl4: #FFD36B; }
+.tile[data-area="body"] { --accent: var(--dl-on-body); }
+.tile .panel { background: transparent; border: 0; box-shadow: none; padding: 0; margin: 0; color: var(--tile-ink); }
+.tile .panel > h2 { display: none; }
+.tile-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.tile-head h2 { margin: 0; font: 800 22px/1.15 var(--dl-display); color: var(--tile-ink); }
+.tile-open { width: 36px; height: 36px; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--tile-ink) 14%, transparent); color: var(--tile-ink); cursor: pointer; font-size: 16px; }
+.tile-stack { display: flex; flex-direction: column; gap: 12px; }
+.tile-hero { margin: 0; display: flex; align-items: flex-end; gap: 12px; }
+.tile-num { font: 800 64px/0.85 var(--dl-display); letter-spacing: -0.04em; }
+.tile-cap { font-weight: 600; padding-bottom: 2px; max-width: 12em; }
+/* Each number in one place: the big number replaces the widget's own bar for it. */
+.tile[data-tile="body"] .gym > .bar-row { display: none; }
+
+/* Your weeks: one sun per day, fuller gold for a better day. */
+.tile[data-tile="weeks"] .cell { border-radius: 50%; aspect-ratio: 1; }
+.tile[data-tile="weeks"] .cell.off { border-style: dashed; }
+.tile[data-tile="weeks"] .cell.today { outline-offset: 2px; }
+
+/* Needs you. */
+.needs { display: flex; flex-direction: column; gap: 10px; }
+.needs-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.needs-text { margin: 0; flex: 1 1 280px; }
+.needs-open { color: inherit; text-decoration: underline; }
+.needs-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.dl-btn { min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--tile-ink, var(--dl-ink)) 12%, transparent); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.dl-btn.primary { background: var(--dl-ink); color: var(--dl-ground); }
+.tile[data-area="needs"] .dl-btn.primary { background: #1D1A2B; color: #FFF8EF; }
+
+/* Arranging the tiles. */
+.tile.arranging { outline: 2px dashed color-mix(in srgb, var(--dl-ink) 35%, transparent); outline-offset: 3px; }
+.tile.arranging.drop-before, .tile-drop.drop-before { box-shadow: 0 -4px 0 var(--dl-accent); }
+.tile-bar { display: flex; align-items: center; gap: 8px; }
+.tile-grip { cursor: grab; padding: 8px; font-weight: 700; letter-spacing: -2px; }
+.tile-drop { grid-column: 1 / -1; padding: 14px; border: 2px dashed var(--dl-line); border-radius: 20px; color: var(--dl-muted); text-align: center; }
+.tile-add { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* A tick: a short gold burst. */
 :root[data-screen="daylight"] #timeline li.row.just-done > input[type=checkbox] { animation: dl-burst .6s ease-out; }

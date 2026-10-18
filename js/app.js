@@ -27,6 +27,8 @@ import { syncLabel, headerModel } from './header.js';
 import { placeFor } from './sky.js';
 import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
+import { renderTiles } from './ui/tiles.js';
+import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -50,6 +52,8 @@ const hebrew = { state: 'off', at: null, error: null, words: null, strong: null,
 // 1500px wide shows two widget columns (the same media query as styles.css), a smaller one one.
 const WIDE = matchMedia('(min-width: 1500px)');
 let layout = loadLayout(localStorage, WIDGET_IDS);
+// Daylight's tiles (js/tiles.js): this device's own too, started from the arrangement above.
+let tiles = loadTiles(localStorage, layout);
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
 // fake mode the real keys are never read, and dev/fake-gemini.js answers instead of Google (the
@@ -119,6 +123,12 @@ const ctx = {
   // saved on this device, drawn (js/ui/widgets.js).
   layout: () => layout,
   columnCount: () => (WIDE.matches ? 2 : 1),
+  tiles: () => tiles,
+  setTiles(next) {
+    tiles = normalizeTiles(next);
+    saveTiles(localStorage, tiles);
+    render();
+  },
   setLayout(next) {
     layout = normalizeLayout(next, WIDGET_IDS);
     saveLayout(localStorage, layout);
@@ -240,6 +250,7 @@ function render() {
   if (daylight()) {
     renderSky(ctx);
     renderTimeline(ctx);
+    renderTiles(ctx);
   } else {
     renderHeader();
     renderToday(ctx);
@@ -432,6 +443,11 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => { absorbPending(); scheduler.flush(); });
 window.addEventListener('storage', (e) => {
   // Another window on this device rearranged the widgets: follow it, once nothing is being typed.
+  if (e.key === TILES_KEY) {
+    tiles = loadTiles(localStorage, layout);
+    whenIdle().then(render);
+    return;
+  }
   if (e.key === LAYOUT_KEY) {
     layout = loadLayout(localStorage, WIDGET_IDS);
     whenIdle().then(render);

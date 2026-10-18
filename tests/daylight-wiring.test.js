@@ -48,3 +48,18 @@ test('the timeline reuses the classic rows and check-in, and drag no longer assu
 test('motion stops for reduced motion', () => {
   assert.match(read('styles/daylight.css'), /@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*animation: none/);
 });
+
+test('the tile registry has the seven tiles, in the default order, each with a renderer', () => {
+  const src = read('js/ui/tiles.js');
+  for (const id of ['needs', 'body', 'hebrew', 'goals', 'weeks', 'countdown', 'week']) assert.match(src, new RegExp(`id: '${id}'`));
+  assert.match(src, /setTiles\(/);
+});
+
+test('Needs you resolves through the existing conflict path', () => {
+  assert.match(read('js/ui/needs.js'), /resolveConflict\(ctx, /);
+  assert.match(read('js/ui/needs.js'), /needsCopy\(/);
+});
+
+test('another window rearranging tiles is followed', () => {
+  assert.match(read('js/app.js'), /e\.key === TILES_KEY/);
+});

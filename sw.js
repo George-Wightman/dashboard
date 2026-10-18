@@ -11,7 +11,7 @@ const SHELL = [
   'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/checkin.js', 'js/ui/mic.js', 'js/ui/note.js',
   'js/ui/widgets.js', 'js/ui/flags.js', 'js/ui/changes.js', 'js/ui/claude.js', 'js/ui/sources.js', 'js/ui/gym.js', 'js/ui/hebrew.js', 'js/ui/countdown.js', 'js/ui/big.js',
   'js/ui/training.js',
-  'js/sky.js', 'js/timeline.js', 'js/header.js', 'js/needs.js', 'js/tiles.js', 'js/ui/sky.js', 'js/ui/timeline.js',
+  'js/sky.js', 'js/timeline.js', 'js/header.js', 'js/needs.js', 'js/tiles.js', 'js/ui/sky.js', 'js/ui/timeline.js', 'js/ui/tiles.js', 'js/ui/needs.js',
 ];
 
 const META = 'today-dashboard-meta';
