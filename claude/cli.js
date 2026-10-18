@@ -13,14 +13,20 @@ import { scrubText, APP_VERSION } from '../js/flags.js';
 import { capabilities } from './capabilities.js';
 import { CAUGHT_UP, caughtUpSince } from './read.js';
 import { when } from './text.js';
+import { resolveId } from './ids.js';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+
+const saveFile = (path, bytes) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, bytes); };
 
 // Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
 // what never to touch. Served from the clone like the reference, so they can't go stale.
-export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews'];
+export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews', 'food'];
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · reference [topic] · handoffs · handoff <name>',
+  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · reference [topic] · handoffs · handoff <name>',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
   'Discover: capabilities [topic|op] · inspect <id> · workflows. Test any JSON batch with preview before apply; preview writes nothing.',
@@ -44,7 +50,7 @@ function parseOps(text) {
 
 export async function main({
   argv, readText, readStdin, makeClient = githubClient, makeFiles = createFileStore,
-  now = () => new Date(), newId, env = process.env,
+  now = () => new Date(), newId, env = process.env, writeFile = saveFile,
 }) {
   const out = [];
   let secrets = [];
@@ -150,7 +156,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -176,6 +182,27 @@ export async function main({
       return finish(2);
     }
     const { store } = session;
+
+    // A meal's photo, from the sync repo to a file Claude can open and look at.
+    if (command === 'photo') {
+      try {
+        const { id, rec } = resolveId(store.doc(), rest.join(' '), ['meals']);
+        if (rec.kind !== 'meal') throw new Error(`${id} isn't a meal`);
+        if (!rec.photo) {
+          say(rec.photoState === 'local' ? `That meal's photo is on George's phone and hasn't been uploaded yet.` : 'That meal has no photo.');
+          return finish(0);
+        }
+        const bytes = await files.readBytes(rec.photo);
+        if (!bytes) { say(`The photo ${rec.photo} isn't in the sync repo.`); return finish(1); }
+        const path = join(tmpdir(), 'dashboard-photos', `${id.replace(/[^\w.-]+/g, '-')}.jpg`);
+        writeFile(path, bytes);
+        say(`Saved ${rec.photo} to ${path} — open it to look at the meal.`);
+        return finish(0);
+      } catch (e) {
+        say(e.message);
+        return finish(1);
+      }
+    }
 
     // The catch-up remembers where it got to, so the next one starts there: the one read that writes.
     // A fixed look back (`catchup 3`) reads without moving the marker.

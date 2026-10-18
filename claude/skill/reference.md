@@ -22,6 +22,7 @@ Pick the row, not the whole file. The detail for each command is below.
 | Break a big job into stages | `goals` | `plan` |
 | See what needs you | `attention` | `edit`, `off`, `brief` |
 | Check his training | `gym` | `gym` settings, the Gym habit's `notes` |
+| Check what he's eaten, and correct a big miss | `food`, `photo <meal id>` | `meal` |
 | See how a piece of work went, in his words | `checkins`, `catchup` | `edit` with `notes` on the next attempt |
 | Change how the calendar books | `planner` | `planner` |
 | Tell the app's developer something | `handoffs` | `handoff` |
@@ -33,12 +34,12 @@ Pick the row, not the whole file. The detail for each command is below.
 | Review goal direction and suggest next steps | `reference reviews`, `inspect <goal-id>` | `review` |
 | Check a batch without writing | `preview` with the same JSON as apply | `apply` after checking the result |
 
-Three jobs have a playbook of their own, and they are the three that go wrong most. Read the playbook
-**first**, before any of the reads above:
+Four jobs have a playbook of their own. Read the playbook **first**, before any of the reads above:
 
     bash run.sh reference calendar    # anything touching his Google Calendar
     bash run.sh reference planning    # "plan my week", or any reshuffle
     bash run.sh reference gym         # his training
+    bash run.sh reference food        # his meals: checking estimates, corrections, maintenance
 
 If a command the tool mentions isn't in this file, this copy is older than the tool: run
 `bash run.sh reference` for the current one.
@@ -135,7 +136,7 @@ With no topic: this file, from the live tool rather than the copy in this folder
 tool mentions an op or a read you don't recognise, and whenever run.sh says these docs are older than
 the tool.
 
-With a topic — `calendar`, `planning` or `gym` — a short playbook for that job: which read to run
+With a topic — `calendar`, `planning`, `gym` or `food` — a short playbook for that job: which read to run
 first, what to change, and what never to touch. **Read the playbook before you start**, not after
 something has gone wrong. Each is a page, and each exists because a session got that job badly wrong
 without it.
@@ -145,6 +146,17 @@ Training from Hevy: whether it's connected (and any problem), each key lift (est
 set, last PR, pace in kg a week over 8 weeks, its target and roughly when it'll be reached), cardio
 against the linked weekly target and by week, the last 14 days' sessions in a line each, and the
 settings.
+
+### `food [days]`
+Meals over the last 7 days (or `days`), newest first: each with its time and slot, Gemini's name for
+it, the protein and calories counted (with the portion he chose, or your correction and why), his own
+words, and its photo's path in the sync repo (or that it's still on his phone). Protein against the
+target for each day; the week's calories against maintenance; how many meals are waiting to be
+estimated. Read `reference food` first.
+
+### `photo <meal id>`
+Saves that meal's photo from the sync repo to a local file and prints the path, so you can open it and
+look before correcting an estimate. A meal whose photo hasn't been uploaded yet says so.
 
 ## Ops
 
@@ -291,6 +303,14 @@ towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 12
 1RM target in kg, one lift per op, `null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
 "Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts followed closely (Hevy's exercise names).
 `{"op": "gym", "habit": "Gym"}` — the habit a workout ticks (by id or the start of its title).
+
+### `meal`
+Food (`reference food` first). `{"op": "meal", "id": "meal:…", "protein": 35, "kcal": 1050, "why": "the oil and
+cheese"}` corrects a meal Gemini got badly wrong; the why is required and shown to George, and the
+correction replaces his number in every total. `{"op": "meal", "usual": {"name": "Usual breakfast", "protein":
+42, "kcal": 610}}` saves (or updates) a usual meal he can log in one tap. `{"op": "meal", "fuel":
+{"protein": 180, "maintenanceKcal": 3100}}` sets the daily protein target and his maintenance calories
+(`null` clears maintenance).
 
 ## Optional advanced controls
 

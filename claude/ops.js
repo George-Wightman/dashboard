@@ -616,6 +616,40 @@ function brief(store, op) {
   return `Brief for ${dayName(day, today)}: ${q(text, 80)}`;
 }
 
+// ---- Food ----------------------------------------------------------------------------------------
+
+// Correct a meal Gemini got badly wrong (with a reason), save a usual meal, or set Fuel's protein
+// target and maintenance calories.
+function meal(store, op) {
+  const amount = (v, what) => {
+    if (!(typeof v === 'number' && Number.isFinite(v) && v >= 0)) throw new Error(`meal needs ${what} as a number, 0 or more`);
+    return Math.round(v);
+  };
+  if (op.id) {
+    const { id, rec } = resolveId(store.doc(), op.id, ['meals']);
+    if (rec.kind !== 'meal') throw new Error(`${op.id} isn't a meal`);
+    const why = String(op.why ?? '').trim();
+    if (!why) throw new Error('A correction needs a why: say what the estimate missed, e.g. "the oil and cheese"');
+    const protein = amount(op.protein, 'protein');
+    const kcal = amount(op.kcal, 'kcal');
+    store.updateMeal(id, { correction: { by: 'claude', protein, kcal, why: why.slice(0, 200), at: store.now().toISOString() } });
+    return `Corrected ${q(rec.estimate?.name ?? rec.text ?? 'the meal')} to ${protein} g protein, ${kcal} kcal`;
+  }
+  if (op.usual) {
+    const u = store.saveUsual({ name: op.usual.name, protein: amount(op.usual.protein, 'protein'), kcal: amount(op.usual.kcal, 'kcal') });
+    return `Saved the usual meal ${q(u.name)}: ${u.protein} g, ${u.kcal} kcal`;
+  }
+  if (op.fuel) {
+    const changes = {};
+    if (op.fuel.protein !== undefined) changes.protein = amount(op.fuel.protein, 'a protein target');
+    if (op.fuel.maintenanceKcal !== undefined) changes.maintenanceKcal = op.fuel.maintenanceKcal === null ? null : amount(op.fuel.maintenanceKcal, 'maintenance kcal');
+    if (!Object.keys(changes).length) throw new Error('meal fuel takes protein and/or maintenanceKcal');
+    store.setFuel(changes);
+    return `Changed Fuel: ${Object.entries(changes).map(([k, v]) => `${k} ${v}`).join(', ')}`;
+  }
+  throw new Error('meal needs an id to correct, a usual meal, or fuel settings — e.g. {"op": "meal", "id": "…", "protein": 35, "kcal": 1050, "why": "…"}');
+}
+
 // ---- The gym --------------------------------------------------------------------------------------
 
 // The weekly target cardio minutes count towards: a live one in minutes, by title or id.
@@ -690,6 +724,7 @@ function gym(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   details: ['id', 'set'],
+  meal: ['id', 'protein', 'kcal', 'why', 'usual', 'fuel'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],
   review: ['id'],
@@ -752,7 +787,7 @@ export const OPS = {
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
   log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym,
-  details, rule, report, review,
+  details, rule, report, review, meal,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff

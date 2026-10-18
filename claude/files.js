@@ -47,6 +47,16 @@ export function createFileStore({ token, repo, fetch = (...args) => globalThis.f
       return { text: decodeBase64(body.content), sha: body.sha };
     },
 
+    // A binary file (a meal photo), as bytes.
+    async readBytes(path) {
+      const res = await fetch(url(path), { headers, cache: 'no-store' });
+      if (res.status === 404) return null;
+      if (!res.ok) throw await fail(res, path);
+      const body = await res.json();
+      if (Array.isArray(body) || !body.content) return null;
+      return Buffer.from(String(body.content).replace(/\s/g, ''), 'base64');
+    },
+
     // Writing over a file needs its sha, so read first. These files have one writer at a time, so
     // there is no conflict dance to do here — unlike the document, which two devices share.
     async write(path, text, message) {

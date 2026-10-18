@@ -14,7 +14,7 @@ test("runOp refuses what isn't an op", () => {
   assert.throws(() => runOp(s, { op: 'fly' }),
     /Unknown op "fly" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief/);
   assert.throws(() => runOp(s, { op: 'toString' }), /Unknown op "toString"/);
-  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'handoff', 'undo', 'planner', 'off', 'brief', 'countdown', 'gym', 'details', 'rule', 'report', 'review']);
+  assert.deepEqual(Object.keys(OPS), ['task', 'habit', 'target', 'goal', 'milestone', 'plan', 'done', 'undone', 'log', 'edit', 'archive', 'accept', 'dismiss', 'flag', 'handoff', 'undo', 'planner', 'off', 'brief', 'countdown', 'gym', 'details', 'rule', 'report', 'review', 'meal']);
   assert.deepEqual([...UNLOGGED], ['undo', 'handoff']);
 });
 

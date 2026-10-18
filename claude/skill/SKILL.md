@@ -55,11 +55,12 @@ Additional controls: `details`, `rule`, `report`, `review`; inspect their capabi
 Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.
 
-**Three jobs have a playbook, and they are the three that go wrong most. Read it before you start:**
+**Four jobs have a playbook. Read it before you start:**
 
     bash run.sh reference calendar    # anything touching his Google Calendar
     bash run.sh reference planning    # "plan my week", or any reshuffle
     bash run.sh reference gym         # his training
+    bash run.sh reference food        # his meals
 
 **Not sure which command?** The table at the top of `reference.md` — *to do this → run this* — maps
 what you want to do to the command that does it. Start there rather than reading the whole file.

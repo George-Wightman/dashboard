@@ -5,7 +5,7 @@ import {
   todayRows, streak, weekTotal, doneBetween, doneIndex, milestonesOf, goalProgress, history, dayDetail,
   dayCompletion, dayScore,
 } from '../js/schedule.js';
-import { longDate, weekStart, addDays, shortWeekday, carryLabel, forLabel, logicalDay, daysBetween } from '../js/dates.js';
+import { longDate, weekStart, addDays, shortWeekday, shortDate, carryLabel, forLabel, logicalDay, daysBetween } from '../js/dates.js';
 import { formatProgress } from '../js/parse.js';
 import { openFlags, FLAG_KINDS, flagKind, flagSourceName } from '../js/flags.js';
 import { changeList } from '../js/changes.js';
@@ -17,6 +17,7 @@ import {
   gymConfig, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
 } from '../js/gym.js';
 import { checkinsSince } from '../js/checkins.js';
+import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES } from '../js/food.js';
 
 // A row's notes, on their own indented line under it.
 const withNote = (line, item) => (item.notes ? `${line}\n      note: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 300)}` : line);
@@ -316,6 +317,8 @@ function catchup(doc, today, arg, now = new Date()) {
   const trained = workouts(doc).filter((w) => w.day >= first && w.day <= today);
   if (trained.length) out.push('Workouts (Hevy):', ...trained.map((w) => `  ${dayName(w.day, today)}: ${sessionLine(doc, w)}`));
   if (workouts(doc).length) out.push(`Training this week: ${trainingWeek(doc, today)}`);
+  const food = foodLine(doc, first, today);
+  if (food) out.push(food);
 
   // Each task once: where it started, where it ended up, and how many times it moved in between.
   const byItem = new Map();
@@ -417,6 +420,68 @@ function gymRead(doc, day) {
   return out.join('\n');
 }
 
+// ---- Food (js/food.js) ------------------------------------------------------------------------------
+
+const kcalText = (n) => Math.round(n).toLocaleString('en-GB');
+const PORTION_WORDS = { lighter: 'lighter', right: 'about right', bigger: 'bigger' };
+const waitingMeals = (doc) => Object.values(doc.meals ?? {})
+  .filter((m) => m?.kind === 'meal' && m.status === 'active' && (m.state === 'pending' || (m.state === 'failed' && (m.tries ?? 0) < MAX_TRIES))).length;
+
+function mealText(m) {
+  const name = m.estimate?.name ?? m.text ?? m.slot;
+  const parts = [`${clockLabel(m.at)} ${m.slot}`, name];
+  if (m.correction) parts.push(`${m.correction.protein} g, ${kcalText(m.correction.kcal)} kcal — corrected by you from ${m.final ? kcalText(m.final.kcal) : '?'} (${m.correction.why})`);
+  else if (m.final) parts.push(`${m.final.protein} g, ${kcalText(m.final.kcal)} kcal (${PORTION_WORDS[m.portion] ?? 'about right'})`);
+  else if (m.state === 'failed') parts.push(`couldn't estimate it${m.error ? ` (${m.error})` : ''}, try ${m.tries ?? 0} of ${MAX_TRIES}`);
+  else parts.push('waiting to be estimated');
+  if (m.text && m.estimate?.name && m.text !== m.estimate.name) parts.push(`he said "${m.text}"`);
+  if (m.photo) parts.push(`photo ${m.photo}`);
+  else if (m.photoState === 'local') parts.push('(photo on the phone, not uploaded yet)');
+  parts.push(tag(m.id));
+  return `  ${parts.join(' · ')}`;
+}
+
+// Every meal of the last `days` days, newest day first, with protein against the target, then the
+// week's calories against maintenance and what's still waiting.
+function foodRead(doc, today, arg) {
+  const days = Math.max(1, Math.min(31, Number.parseInt(arg, 10) || 7));
+  const { protein: target, maintenanceKcal } = fuelSettings(doc);
+  const out = [header(doc, today)];
+  for (let i = 0; i < days; i++) {
+    const day = addDays(today, -i);
+    const meals = mealsOn(doc, day);
+    if (!meals.length) continue;
+    out.push(`${shortWeekday(day)} ${shortDate(day)}: protein ${dayProtein(doc, day)} of ${target} g`, ...meals.map(mealText));
+  }
+  if (out.length === 1) out.push(`No meals logged in the last ${days} day${days === 1 ? '' : 's'}.`);
+  const week = weekKcal(doc, today);
+  if (week.average != null) {
+    const verdict = maintenanceVerdict(week.average, maintenanceKcal);
+    out.push(`Week: about ${kcalText(week.average)} kcal a day over ${week.days} day${week.days === 1 ? '' : 's'}${verdict
+      ? ` — ${verdict} (${kcalText(maintenanceKcal)})`
+      : ' — no maintenance figure yet; set one with {"op": "meal", "fuel": {"maintenanceKcal": …}} once there are two weeks of meals'}`);
+  }
+  const waiting = waitingMeals(doc);
+  if (waiting) out.push(`${waiting} meal${waiting === 1 ? '' : 's'} waiting to be estimated`);
+  out.push('Look at a photo with `photo <meal id>`; correct a big miss with {"op": "meal", "id": "…", "protein": …, "kcal": …, "why": "…"}.');
+  return out.join('\n');
+}
+
+// One line for the catch-up: protein days on target, the week's calories, what's waiting.
+function foodLine(doc, first, today) {
+  const { protein: target, maintenanceKcal } = fuelSettings(doc);
+  const days = [];
+  for (let d = first; d <= today; d = addDays(d, 1)) if (mealsOn(doc, d).length) days.push(d);
+  if (!days.length && !waitingMeals(doc)) return null;
+  const onTarget = days.filter((d) => dayProtein(doc, d) >= target).length;
+  const week = weekKcal(doc, today);
+  const verdict = maintenanceVerdict(week.average, maintenanceKcal);
+  const waiting = waitingMeals(doc);
+  return [`Food: protein on target ${onTarget} of ${days.length} day${days.length === 1 ? '' : 's'}`,
+    week.average != null ? `about ${kcalText(week.average)} kcal a day${verdict ? ` (${verdict})` : ''}` : null,
+    waiting ? `${waiting} waiting` : null].filter(Boolean).join(' · ');
+}
+
 export const READS = {
   inspect: (doc, today, ref) => {
     if (!ref) return header(doc, today) + '\ninspect needs the ID from find or list';
@@ -432,7 +497,7 @@ export const READS = {
     'Goal reviews:', ...Object.values(doc.reviews ?? {}).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 10).map((r) => `${tag(r.id)} ${r.result.state}: ${r.result.summary ?? r.result.message ?? r.reason}`),
     'Pending reviews require the planner and its GEMINI_KEY. Review suggestions wait for acceptance.'
   ].join('\n'),
-  today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead,
+  today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead, food: foodRead,
   // What older copies of the skill still ask for.
   journal: checkins,
 };
