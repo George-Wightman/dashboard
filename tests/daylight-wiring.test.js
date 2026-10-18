@@ -73,3 +73,12 @@ test('final review: switching screens empties the hidden one, so its old boxes c
   assert.match(read('js/app.js'), /function clearOtherScreen\(screen\)/);
   assert.match(read('js/app.js'), /clearOtherScreen\(screen\)/);
 });
+
+test('the fonts are self-hosted, offline-shelled and loaded with @font-face', () => {
+  const sw = read('sw.js');
+  const css = read('styles/daylight.css');
+  for (const [family, file] of [['Bricolage Grotesque', 'BricolageGrotesque'], ['Figtree', 'Figtree'], ['Rubik', 'Rubik-Hebrew']]) {
+    assert.ok(sw.includes(`'fonts/${file}.woff2'`), file);
+    assert.match(css, new RegExp(`@font-face \\{[^}]*font-family: '${family}';[^}]*url\\('\\.\\./fonts/${file}\\.woff2'\\)`));
+  }
+});

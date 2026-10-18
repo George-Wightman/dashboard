@@ -4,6 +4,11 @@
    colour variables (--ink, --panel, --gold…) to its own, so the widgets it reuses take its look.
    Gold means "you did it" and nothing else; area colours: Body coral, Fuel green, Hebrew indigo. */
 
+/* Self-hosted (SIL OFL, fonts/OFL.txt), so Daylight looks the same offline. Variable weight. */
+@font-face { font-family: 'Bricolage Grotesque'; src: url('../fonts/BricolageGrotesque.woff2') format('woff2'); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: 'Figtree'; src: url('../fonts/Figtree.woff2') format('woff2'); font-weight: 300 900; font-display: swap; }
+@font-face { font-family: 'Rubik'; src: url('../fonts/Rubik-Hebrew.woff2') format('woff2'); font-weight: 300 900; font-display: swap; unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+
 :root[data-screen="daylight"] {
   --dl-ground: #FFF8EF;
   --dl-card: #FFFFFF;
@@ -278,6 +283,7 @@
 .tile-head h2 { margin: 0; font: 800 22px/1.15 var(--dl-display); color: var(--tile-ink); }
 .tile-open { width: 36px; height: 36px; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--tile-ink) 14%, transparent); color: var(--tile-ink); cursor: pointer; font-size: 16px; }
 .tile-stack { display: flex; flex-direction: column; gap: 12px; }
+:root[data-screen="daylight"] [lang="he"] { font-family: var(--dl-hebrew-font); }
 .tile-hero { margin: 0; display: flex; align-items: flex-end; gap: 12px; }
 .tile-num { font: 800 64px/0.85 var(--dl-display); letter-spacing: -0.04em; }
 .tile-cap { font-weight: 600; padding-bottom: 2px; max-width: 12em; }

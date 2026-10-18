@@ -1,10 +1,13 @@
 {
-  "id": "592ae882cfb8c4b393d4c75489415c2f64bda6a85647f80e85254f60b49177c6",
+  "id": "1fc0fab75f017ee87078714616f1d4c4afacd0f673e5ad284f39b0b0d28fa5fa",
   "files": {
     "./": "b2e789f23e26587a49c73aed576d5c9bb47ee64ce62f57f8e40dc596e0751593",
     "index.html": "b2e789f23e26587a49c73aed576d5c9bb47ee64ce62f57f8e40dc596e0751593",
     "styles.css": "596b0b0bf8cabc3bb3edd67d4693f2545c2322aca4b01ebe9a1c367e229448c0",
-    "styles/daylight.css": "5a8cb13a316abbc4841fca0a24c38f3a094bccc3e84c4db1b42f8225ff71dce5",
+    "styles/daylight.css": "4daa4ed2268fab1f8434b624031650af6bc1c00aecda3d0fa638aeef9d960cf0",
+    "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
+    "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
+    "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
     "manifest.webmanifest": "58f74b20448e1d6278a03a86d28062713b0ba50ef3b2aafe3e4af83a80e0e954",
     "icons/icon.svg": "ed047463e6d4922fd9c4f21dbedf11b9e4b5cdc3b471b5a4bffcd63dca624754",
     "icons/icon-192.png": "8e7e849913dea81b5333285f54b427c3be4d5de5a20fa90ca0cc99de7dd1db04",
