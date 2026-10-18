@@ -2,7 +2,7 @@
 
 import { WORKFLOW_MAPS, checkDetails, workflowRecordProblem } from './workflow.js';
 
-export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', ...WORKFLOW_MAPS];
+export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', 'meals', ...WORKFLOW_MAPS];
 
 export function emptyDoc() {
   return { schema: 1, ...Object.fromEntries(MAPS.map((map) => [map, {}])) };

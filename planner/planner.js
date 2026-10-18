@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '24bf65c7';
+var PLANNER_BUILD = 'f23d4d29';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -390,7 +390,7 @@ const __js_doc = (() => {
 
 const { WORKFLOW_MAPS, checkDetails, workflowRecordProblem } = __js_workflow;
 
-const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', ...WORKFLOW_MAPS];
+const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', 'meals', ...WORKFLOW_MAPS];
 
 function emptyDoc() {
   return { schema: 1, ...Object.fromEntries(MAPS.map((map) => [map, {}])) };
@@ -1690,6 +1690,135 @@ const CHECKIN_STATUS = 'checkins:status';
 return { SAID_MAX, SUMMARY_MAX, MISS_GRACE_MINUTES, checkinId, questionFor, waitingCheckins, checkinsSince, missedTasks, SUMMARY_SYSTEM, summaryPrompt, parseSummary, CHECKIN_STATUS };
 })();
 
+// ---- js/food.js
+const __js_food = (() => {
+// Food: a meal snapped (a photo and/or a line) or a usual meal logged in one tap. Gemini estimates
+// protein and calories as ranges; George picks a portion; Claude can correct a big miss later. Protein
+// is the number that matters day to day; calories only as a weekly average against maintenance (he's
+// maintaining, not cutting). Meals live in the `meals` map of data.json; a meal's progress is its
+// `state` (pending, estimated, failed), since `status` is the record's own (active, archived). Pure.
+
+const { addDays } = __js_dates;
+
+const PORTIONS = { lighter: 0.75, right: 1, bigger: 1.3 };
+const MAX_TRIES = 3;
+const FUEL_ID = 'fuel:settings';
+const DEFAULT_PROTEIN = 180;
+
+const pad = (n) => String(n).padStart(2, '0');
+
+function slotFor(date) {
+  const minutes = date.getHours() * 60 + date.getMinutes();
+  if (minutes < 11 * 60) return 'breakfast';
+  if (minutes < 15 * 60) return 'lunch';
+  if (minutes >= 17 * 60 && minutes < 21 * 60 + 30) return 'dinner';
+  return 'snack';
+}
+
+const MEAL_SYSTEM = [
+  'You estimate the protein and calories in a meal, from a photo of it, a few words about it, or both.',
+  'Assume typical UK portions unless the words say otherwise. Be honest about uncertainty: give a low, a middle and a high value.',
+  'Reply only with JSON, exactly this shape:',
+  '{"name": "a short name for the meal", "items": [{"name": "an item", "protein": grams, "kcal": calories}], "protein": {"low": g, "mid": g, "high": g}, "kcal": {"low": n, "mid": n, "high": n}}',
+].join('\n');
+
+function mealPrompt({ text, at, hasPhoto }) {
+  const words = String(text ?? '').trim();
+  return [
+    hasPhoto ? 'The photo is the meal.' : 'There is no photo; go by the words.',
+    words ? `What George says about it: ${words}` : 'George added no words.',
+    `Eaten at ${pad(at.getHours())}:${pad(at.getMinutes())}.`,
+  ].join('\n');
+}
+
+const BAD = 'Gemini’s estimate didn’t make sense';
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+const roundProtein = (g) => Math.round(g);
+const roundKcal = (k) => Math.round(k / 10) * 10;
+
+function range(r, round) {
+  if (!r || typeof r !== 'object' || ![r.low, r.mid, r.high].every(isNum)) throw new Error(BAD);
+  const out = { low: round(r.low), mid: round(r.mid), high: round(r.high) };
+  if (!(out.low <= out.mid && out.mid <= out.high)) throw new Error(BAD);
+  return out;
+}
+
+function parseEstimate(data) {
+  if (!data || typeof data !== 'object' || typeof data.name !== 'string' || !data.name.trim()) throw new Error(BAD);
+  const items = (Array.isArray(data.items) ? data.items : [])
+    .filter((i) => i && typeof i.name === 'string' && i.name.trim() && isNum(i.protein) && isNum(i.kcal))
+    .map((i) => ({ name: i.name.trim(), protein: roundProtein(i.protein), kcal: roundKcal(i.kcal) }));
+  return { name: data.name.trim(), items, protein: range(data.protein, roundProtein), kcal: range(data.kcal, roundKcal) };
+}
+
+function finalFor(estimate, portion = 'right') {
+  const k = PORTIONS[portion] ?? 1;
+  return { protein: roundProtein(estimate.protein.mid * k), kcal: roundKcal(estimate.kcal.mid * k) };
+}
+
+// What a meal counts for: Claude's correction if he made one, else what George saved.
+function mealValue(meal) {
+  const v = meal?.correction ?? meal?.final;
+  return v && isNum(v.protein) && isNum(v.kcal) ? { protein: v.protein, kcal: v.kcal } : null;
+}
+
+const meals = (doc) => Object.values(doc?.meals ?? {}).filter((m) => m && m.kind === 'meal' && m.status !== 'archived' && m.status !== 'dismissed');
+
+function mealsOn(doc, day) {
+  return meals(doc).filter((m) => m.day === day).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
+function dayProtein(doc, day) {
+  return mealsOn(doc, day).reduce((sum, m) => sum + (mealValue(m)?.protein ?? 0), 0);
+}
+
+// The mean of each day's calories over the last seven days that have a counted meal.
+function weekKcal(doc, today) {
+  const totals = [];
+  for (let i = 6; i >= 0; i--) {
+    const values = mealsOn(doc, addDays(today, -i)).map(mealValue).filter(Boolean);
+    if (values.length) totals.push(values.reduce((s, v) => s + v.kcal, 0));
+  }
+  if (!totals.length) return { average: null, days: 0 };
+  return { average: roundKcal(totals.reduce((s, t) => s + t, 0) / totals.length), days: totals.length };
+}
+
+function fuelSettings(doc) {
+  const rec = doc?.meals?.[FUEL_ID];
+  const live = rec && rec.status !== 'archived' ? rec : {};
+  return {
+    protein: isNum(live.protein) && live.protein > 0 ? live.protein : DEFAULT_PROTEIN,
+    maintenanceKcal: isNum(live.maintenanceKcal) && live.maintenanceKcal > 0 ? live.maintenanceKcal : null,
+  };
+}
+
+function maintenanceVerdict(average, maintenanceKcal) {
+  if (!isNum(average) || !isNum(maintenanceKcal) || !maintenanceKcal) return null;
+  const off = (average - maintenanceKcal) / maintenanceKcal;
+  if (Math.abs(off) <= 0.1) return 'about maintenance';
+  return off > 0 ? 'above maintenance' : 'below maintenance';
+}
+
+function usualMeals(doc) {
+  return Object.values(doc?.meals ?? {})
+    .filter((m) => m && m.kind === 'usual' && m.status !== 'archived')
+    .map((m) => ({ id: m.id, name: m.name, protein: m.protein, kcal: m.kcal, uses: m.uses ?? 0 }))
+    .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name));
+}
+
+// What this device should do next: estimate the meals it holds a photo for (and any meal with
+// only words, which any device can do), and upload the photos it holds.
+function mealWork(doc, localIds) {
+  const needsEstimate = (m) => m.state === 'pending' || (m.state === 'failed' && (m.tries ?? 0) < MAX_TRIES);
+  const all = meals(doc);
+  return {
+    estimate: all.filter((m) => needsEstimate(m) && (localIds.has(m.id) || !m.photoState)),
+    upload: all.filter((m) => m.photoState === 'local' && localIds.has(m.id)),
+  };
+}
+return { PORTIONS, MAX_TRIES, FUEL_ID, slotFor, MEAL_SYSTEM, mealPrompt, parseEstimate, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
+})();
+
 // ---- js/data.js
 const __js_data = (() => {
 // The store: the whole state is one document in localStorage. Every change goes through here,
@@ -1704,6 +1833,7 @@ const { checkLength, checkClock, checkNotes } = __js_parse;
 const { reviseRecord, recordContent } = __js_record;
 const { checkinId, SAID_MAX } = __js_checkins;
 const { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } = __js_workflow;
+const { slotFor, fuelSettings, FUEL_ID } = __js_food;
 
 const DATA_KEY = 'dash_data';
 const SETTINGS_KEY = 'dash_settings';
@@ -2249,6 +2379,32 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // The calendar planner's records (js/calendar.js).
   const putCalendar = (id, fields, source = 'planner') => putRecord('calendar', id, fields, source);
 
+  // Food (js/food.js): a meal snapped (a photo and/or words, estimated later) or logged from a usual
+  // meal (exact at once, and the usual meal counts a use); usual meals; Fuel's settings.
+  function addMeal({ at, text = '', hasPhoto = false, usualId = null }) {
+    const when = at instanceof Date ? at : new Date(at);
+    const base = { kind: 'meal', day: logicalDay(when, settings.dayStartHour), at: when.toISOString(), slot: slotFor(when), portion: 'right', correction: null, tries: 0 };
+    if (usualId) {
+      const usual = doc.meals[usualId];
+      if (!usual || usual.kind !== 'usual') throw new Error(`No usual meal ${usualId}`);
+      const meal = build('meals', { ...base, id: `meal:${newId()}`, text: usual.name, usualId, state: 'estimated', photoState: null, estimate: null,
+        final: { protein: usual.protein, kcal: usual.kcal } });
+      writeRecord('meals', usualId, { ...usual, uses: (usual.uses ?? 0) + 1, updated: stamp() });
+      commit('local');
+      return meal;
+    }
+    return create('meals', { ...base, id: `meal:${newId()}`, text: String(text ?? '').trim(), state: 'pending', photoState: hasPhoto ? 'local' : null, estimate: null, final: null });
+  }
+
+  function saveUsual({ name, protein, kcal }) {
+    const title = requireTitle(name, 'A usual meal');
+    if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
+    const id = `usual:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meal'}`;
+    return putRecord('meals', id, { kind: 'usual', name: title, protein, kcal, uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
+  }
+
+  const setFuel = (changes) => putRecord('meals', FUEL_ID, { kind: 'settings', ...fuelSettings(doc), ...changes }, 'me').rec;
+
   // The gym's records (js/gym.js): workouts, templates and status from Hevy, settings from Claude.
   const putGym = (id, fields, source = 'hevy') => putRecord('gym', id, fields, source);
 
@@ -2419,6 +2575,11 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
 
     putCalendar,
     putGym,
+    addMeal,
+    updateMeal: (id, changes) => patch('meals', id, changes),
+    archiveMeal: (id) => patch('meals', id, { status: 'archived', archivedOn: today() }),
+    saveUsual,
+    setFuel,
     putLog,
     transaction,
     commitDraft,

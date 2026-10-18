@@ -10,6 +10,7 @@ import { checkLength, checkClock, checkNotes } from './parse.js';
 import { reviseRecord, recordContent } from './record.js';
 import { checkinId, SAID_MAX } from './checkins.js';
 import { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } from './workflow.js';
+import { slotFor, fuelSettings, FUEL_ID } from './food.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -555,6 +556,32 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // The calendar planner's records (js/calendar.js).
   const putCalendar = (id, fields, source = 'planner') => putRecord('calendar', id, fields, source);
 
+  // Food (js/food.js): a meal snapped (a photo and/or words, estimated later) or logged from a usual
+  // meal (exact at once, and the usual meal counts a use); usual meals; Fuel's settings.
+  function addMeal({ at, text = '', hasPhoto = false, usualId = null }) {
+    const when = at instanceof Date ? at : new Date(at);
+    const base = { kind: 'meal', day: logicalDay(when, settings.dayStartHour), at: when.toISOString(), slot: slotFor(when), portion: 'right', correction: null, tries: 0 };
+    if (usualId) {
+      const usual = doc.meals[usualId];
+      if (!usual || usual.kind !== 'usual') throw new Error(`No usual meal ${usualId}`);
+      const meal = build('meals', { ...base, id: `meal:${newId()}`, text: usual.name, usualId, state: 'estimated', photoState: null, estimate: null,
+        final: { protein: usual.protein, kcal: usual.kcal } });
+      writeRecord('meals', usualId, { ...usual, uses: (usual.uses ?? 0) + 1, updated: stamp() });
+      commit('local');
+      return meal;
+    }
+    return create('meals', { ...base, id: `meal:${newId()}`, text: String(text ?? '').trim(), state: 'pending', photoState: hasPhoto ? 'local' : null, estimate: null, final: null });
+  }
+
+  function saveUsual({ name, protein, kcal }) {
+    const title = requireTitle(name, 'A usual meal');
+    if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
+    const id = `usual:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meal'}`;
+    return putRecord('meals', id, { kind: 'usual', name: title, protein, kcal, uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
+  }
+
+  const setFuel = (changes) => putRecord('meals', FUEL_ID, { kind: 'settings', ...fuelSettings(doc), ...changes }, 'me').rec;
+
   // The gym's records (js/gym.js): workouts, templates and status from Hevy, settings from Claude.
   const putGym = (id, fields, source = 'hevy') => putRecord('gym', id, fields, source);
 
@@ -725,6 +752,11 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
 
     putCalendar,
     putGym,
+    addMeal,
+    updateMeal: (id, changes) => patch('meals', id, changes),
+    archiveMeal: (id) => patch('meals', id, { status: 'archived', archivedOn: today() }),
+    saveUsual,
+    setFuel,
     putLog,
     transaction,
     commitDraft,

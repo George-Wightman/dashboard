@@ -1,7 +1,8 @@
 // Food: a meal snapped (a photo and/or a line) or a usual meal logged in one tap. Gemini estimates
 // protein and calories as ranges; George picks a portion; Claude can correct a big miss later. Protein
 // is the number that matters day to day; calories only as a weekly average against maintenance (he's
-// maintaining, not cutting). Meals live in the `meals` map of data.json. Pure.
+// maintaining, not cutting). Meals live in the `meals` map of data.json; a meal's progress is its
+// `state` (pending, estimated, failed), since `status` is the record's own (active, archived). Pure.
 
 import { addDays } from './dates.js';
 
@@ -114,7 +115,7 @@ export function usualMeals(doc) {
 // What this device should do next: estimate the meals it holds a photo for (and any meal with
 // only words, which any device can do), and upload the photos it holds.
 export function mealWork(doc, localIds) {
-  const needsEstimate = (m) => m.status === 'pending' || (m.status === 'failed' && (m.tries ?? 0) < MAX_TRIES);
+  const needsEstimate = (m) => m.state === 'pending' || (m.state === 'failed' && (m.tries ?? 0) < MAX_TRIES);
   const all = meals(doc);
   return {
     estimate: all.filter((m) => needsEstimate(m) && (localIds.has(m.id) || !m.photoState)),

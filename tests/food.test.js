@@ -7,7 +7,7 @@ import {
 import { fixture } from './helpers.js';
 
 const est = { name: 'Chicken wrap and crisps', items: [{ name: 'Wrap', protein: 40, kcal: 560 }], protein: { low: 38, mid: 46, high: 54 }, kcal: { low: 650, mid: 780, high: 900 } };
-const meal = (id, day, extra) => ({ id, kind: 'meal', day, at: `${day}T12:30:00.000Z`, status: 'estimated', estimate: est, portion: 'right', final: { protein: 46, kcal: 780 }, ...extra });
+const meal = (id, day, extra) => ({ id, kind: 'meal', day, at: `${day}T12:30:00.000Z`, state: 'estimated', estimate: est, portion: 'right', final: { protein: 46, kcal: 780 }, ...extra });
 
 test('slots follow the clock', () => {
   assert.equal(slotFor(new Date(2026, 9, 20, 7, 20)), 'breakfast');
@@ -34,7 +34,7 @@ test("Claude's correction wins in every total", () => {
   const doc = fixture();
   doc.meals = { a: meal('a', '2026-10-20'), b: meal('b', '2026-10-20', { correction: { by: 'claude', protein: 20, kcal: 900, why: 'big pasta' } }) };
   assert.deepEqual(mealValue(doc.meals.b), { protein: 20, kcal: 900 });
-  assert.equal(mealValue(meal('p', '2026-10-20', { status: 'pending', final: null })), null);
+  assert.equal(mealValue(meal('p', '2026-10-20', { state: 'pending', final: null })), null);
   assert.equal(dayProtein(doc, '2026-10-20'), 66);
 });
 
@@ -73,11 +73,11 @@ test('usual meals by use; work only for meals this device holds a photo for, plu
   doc.meals = {
     u1: { id: 'u1', kind: 'usual', name: 'Whey shake', protein: 25, kcal: 120, uses: 9, status: 'active' },
     u2: { id: 'u2', kind: 'usual', name: 'Usual breakfast', protein: 42, kcal: 610, uses: 14, status: 'active' },
-    p: meal('p', '2026-10-20', { status: 'pending', photoState: 'local', tries: 0 }),
-    f: meal('f', '2026-10-20', { status: 'failed', tries: 3, photoState: 'uploaded' }),
-    g: meal('g', '2026-10-20', { status: 'failed', tries: 1, photoState: 'local' }),
-    w: meal('w', '2026-10-20', { status: 'pending', photoState: null, tries: 0 }),
-    o: meal('o', '2026-10-20', { status: 'pending', photoState: 'local', tries: 0 }),
+    p: meal('p', '2026-10-20', { state: 'pending', photoState: 'local', tries: 0 }),
+    f: meal('f', '2026-10-20', { state: 'failed', tries: 3, photoState: 'uploaded' }),
+    g: meal('g', '2026-10-20', { state: 'failed', tries: 1, photoState: 'local' }),
+    w: meal('w', '2026-10-20', { state: 'pending', photoState: null, tries: 0 }),
+    o: meal('o', '2026-10-20', { state: 'pending', photoState: 'local', tries: 0 }),
   };
   assert.deepEqual(usualMeals(doc).map((u) => u.name), ['Usual breakfast', 'Whey shake']);
   const work = mealWork(doc, new Set(['p', 'g']));
