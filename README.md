@@ -107,6 +107,27 @@ tier they may use it to improve their products. Your watch data is never sent to
 **Trying it locally:** `?fakegemini=meal` answers every meal with a canned estimate; `meal-slow`,
 `meal-nonsense`, `offline` and `quota` try the other paths.
 
+## Coach
+
+Claude coaches your training in a chat; the dashboard shows the plan and keeps a few fixed rules
+([`docs/superpowers/plans/2026-10-18-coach.md`](docs/superpowers/plans/2026-10-18-coach.md)).
+
+- **Ask Claude to plan your training.** It reads Hevy, your back mornings, your meals and your
+  calendar, follows the rules from your 17 Oct health report (heart, then back, then cardio, without
+  losing squat and bench), and writes each session onto a dated *Gym* task.
+- **Each session goes into Hevy as a routine** in a folder called *Dashboard*, with the sets and
+  weights filled in, within 10 minutes. Start it in Hevy and save: that ticks the session. The
+  calendar block lists the exercises, so they're on your phone and watch too.
+- **The morning question.** Until 11:00 the day starts with "How's your back this morning?" (fine,
+  stiff, sore or bad). One tap. A sore or bad morning puts a warning on a session with deadlifts or a
+  heavy squat. Two sore mornings in a row leave Claude a note for the next plan.
+- **Ready for more weight.** When you do every set of a lift at the weight, at the top of the reps,
+  Claude sees it and adds weight next time.
+- **Body** shows the next session and the week's back mornings; opened big, the coming sessions, 90
+  mornings and what's ready for more weight.
+
+Not medical advice: your osteopath and GP have the final say.
+
 ## Arranging the widgets
 
 Today's list always stays in the first column. Upcoming, Goals, Countdown, This week,
@@ -358,8 +379,10 @@ arrive by themselves: the script loads the planner from this site each time it r
 
 ## Hevy
 
-The same script reads your Hevy workouts (Hevy Pro's API) every 10 minutes. It only ever reads:
-nothing is written to Hevy, and your sessions stay yours to plan.
+The same script reads your Hevy workouts (Hevy Pro's API) every 10 minutes. The only thing it ever
+writes to Hevy is the coach's sessions, as routines in your *Dashboard* folder (see Coach). It never
+writes a workout and never touches your own routines. Hevy can't delete routines through its API, so
+the few in *Dashboard* are reused for each new session.
 
 - **A workout ticks Gym**, and the Gym block in your calendar moves to when you actually trained.
   Its cardio minutes count towards your Cardio target (Claude links it). Untick it and it stays
