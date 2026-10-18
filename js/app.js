@@ -25,6 +25,7 @@ import { plannerNotes, staleSince, visibleNotes, briefFor, offLine } from './cal
 import { LOGOS } from './ui/sources.js';
 import { syncLabel, headerModel, progressText } from './header.js';
 import { placeFor } from './sky.js';
+import { runMealPass } from './photos.js';
 import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
 import { renderTiles } from './ui/tiles.js';
@@ -119,6 +120,8 @@ const ctx = {
     userAgent: navigator.userAgent,
   }),
   whenIdle,
+  // Meals waiting to be estimated or uploaded (js/photos.js): a pass now, quietly.
+  mealPass: () => runMealPass({ ctx }).catch(() => {}),
   // The widget arrangement, how many widget columns show, and every change to it: normalised,
   // saved on this device, drawn (js/ui/widgets.js).
   layout: () => layout,
@@ -139,10 +142,10 @@ const ctx = {
     fake: FAKE,
     // Every key to try, in order: the one in ⚙, then the Hebrew app's on this device.
     keys: () => (FAKE ? (FAKE === 'nokey' ? [] : ['fake-key']) : geminiKeys(store.settings(), localStorage)),
-    async ask({ system, prompt }) {
+    async ask({ system, prompt, image = null }) {
       // The fake module is only ever loaded in fake mode; otherwise askGemini uses the real fetch.
       const fetch = FAKE ? (await import('../dev/fake-gemini.js')).fakeGeminiFetch(FAKE) : undefined;
-      return askGemini({ keys: ctx.gemini.keys(), system, prompt, fetch });
+      return askGemini({ keys: ctx.gemini.keys(), system, prompt, image, fetch });
     },
   },
 };
@@ -365,7 +368,9 @@ const scheduler = createSyncScheduler({
     // Hebrew first: a goal or target it creates on its first run then rides along on this same
     // pass's push to the main sync repo, rather than waiting for the next one.
     await runHebrewSync();
-    return runSync();
+    const result = await runSync();
+    ctx.mealPass();
+    return result;
   },
   canRun,
   canPoll: () => ctx.syncOn() && !document.hidden && navigator.onLine !== false,
@@ -441,7 +446,7 @@ document.addEventListener('pointerdown', (e) => {
   if (!editor.hidden && !ui.editorDirty && !editor.contains(e.target) && !e.target.closest?.('dialog')) ui.closeEditor?.();
 });
 window.addEventListener('focus', wake);
-window.addEventListener('online', () => scheduler.now());
+window.addEventListener('online', () => { scheduler.now(); ctx.mealPass(); });
 // Crossing 1500px changes the number of widget columns: redrawn once nothing is being typed
 // (until then the old columns stay on screen, every widget still showing, in the same order).
 WIDE.addEventListener('change', () => { whenIdle().then(render); });
@@ -496,6 +501,7 @@ store.pruneTalks(30);
 store.pruneChanges();
 render();
 scheduler.now();
+ctx.mealPass();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
