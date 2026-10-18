@@ -1,0 +1,58 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  TILE_IDS, DEFAULT_TILES, fromClassic, normalizeTiles, moveTile, nudgeTile, hideTile, showTile, loadTiles, saveTiles, TILES_KEY,
+  bodyHero, hebrewHero,
+} from '../js/tiles.js';
+import { MemoryStorage, fixture } from './helpers.js';
+
+test('a classic arrangement becomes tiles in the same reading order', () => {
+  const classic = { v: 4, under: ['goals', 'agenda'], columns: [['note', 'countdown', 'gym'], ['history', 'hebrew', 'muscles']], hidden: ['week', 'cardio'] };
+  assert.deepEqual(fromClassic(classic), { v: 1, order: ['goals', 'needs', 'countdown', 'body', 'weeks', 'hebrew', 'week'], hidden: ['week'] });
+});
+
+test('normalising drops strangers and repeats, adds the missing, and rejects junk', () => {
+  assert.deepEqual(normalizeTiles({ v: 1, order: ['body', 'body', 'nope'], hidden: [] }).order, ['body', ...TILE_IDS.filter((id) => id !== 'body')]);
+  assert.deepEqual(normalizeTiles('junk'), DEFAULT_TILES);
+});
+
+test('moving, nudging, hiding and showing', () => {
+  let t = DEFAULT_TILES;
+  t = moveTile(t, 'weeks', 'needs');
+  assert.equal(t.order[0], 'weeks');
+  t = nudgeTile(t, 'weeks', 1);
+  assert.deepEqual(t.order.slice(0, 2), ['needs', 'weeks']);
+  t = hideTile(t, 'goals');
+  assert.ok(t.hidden.includes('goals'));
+  t = showTile(t, 'goals');
+  assert.equal(t.order.at(-1), 'goals');
+  assert.ok(!t.hidden.includes('goals'));
+});
+
+test('loading prefers the saved tiles, and otherwise starts from the classic layout', () => {
+  const storage = new MemoryStorage();
+  const classic = { v: 4, under: [], columns: [['gym'], []], hidden: [] };
+  assert.equal(loadTiles(storage, classic).order[0], 'body');
+  saveTiles(storage, { v: 1, order: ['hebrew', ...TILE_IDS.filter((id) => id !== 'hebrew')], hidden: [] });
+  assert.equal(JSON.parse(storage.getItem(TILES_KEY)).order[0], 'hebrew');
+  assert.equal(loadTiles(storage, classic).order[0], 'hebrew');
+});
+
+test("Body's hero: cardio minutes this week against the target", () => {
+  const doc = fixture({
+    items: [{ id: 'cardio', type: 'quota', title: 'Cardio', unit: 'minutes', target: 150 }],
+    logs: [{ id: 'l1', itemId: 'cardio', kind: 'amount', amount: 25, day: '2026-10-19' }, { id: 'l2', itemId: 'cardio', kind: 'amount', amount: 13, day: '2026-10-20' }],
+  });
+  doc.gym.config = { id: 'config', status: 'active', cardioQuota: 'cardio' };
+  assert.deepEqual(bodyHero(doc, '2026-10-20'), { number: '38', caption: 'of 150 cardio minutes this week' });
+  assert.equal(bodyHero(fixture(), '2026-10-20'), null);
+});
+
+test("Hebrew's hero: hours and minutes this week against the target in hours", () => {
+  const doc = fixture({
+    items: [{ id: 'hebrew-minutes', type: 'quota', title: 'Hebrew learning time', unit: 'minutes', target: 420 }],
+    logs: [{ id: 'h1', itemId: 'hebrew-minutes', kind: 'amount', amount: 230, day: '2026-10-19' }, { id: 'h2', itemId: 'hebrew-minutes', kind: 'amount', amount: 62, day: '2026-10-20' }],
+  });
+  assert.deepEqual(hebrewHero(doc, '2026-10-20'), { number: '4:52', caption: 'of 7 h this week' });
+  assert.equal(hebrewHero(fixture(), '2026-10-20'), null);
+});

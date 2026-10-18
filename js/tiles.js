@@ -1,0 +1,99 @@
+// Daylight's tiles: their order and which are hidden, kept on this device in
+// localStorage['dash_tiles'] as { v: 1, order: [ids], hidden: [ids] } (every known id is in `order`;
+// the hidden ones are listed in `hidden` too). The first time, the arrangement comes from the classic
+// screen's widgets (js/layout.js), read in its order: under the list, then each column. Also the
+// big number at the top of Body and Hebrew. Pure apart from loadTiles/saveTiles' storage.
+
+import { UNDER } from './layout.js';
+import { weekTotal } from './schedule.js';
+import { cardioQuotaId } from './gym.js';
+
+export const TILES_KEY = 'dash_tiles';
+export const TILE_IDS = ['needs', 'body', 'hebrew', 'goals', 'weeks', 'countdown', 'week'];
+export const DEFAULT_TILES = Object.freeze({ v: 1, order: Object.freeze([...TILE_IDS]), hidden: Object.freeze([]) });
+
+// The classic widgets with a tile. Note for Claude moved into the timeline; Muscles and Cardio
+// trend into Body's big view.
+export const CLASSIC_TO_TILE = {
+  agenda: 'needs', gym: 'body', history: 'weeks', hebrew: 'hebrew', goals: 'goals', countdown: 'countdown', week: 'week',
+};
+
+const list = (v) => (Array.isArray(v) ? v : []);
+const unique = (ids) => [...new Set(ids)];
+
+export function fromClassic(layout) {
+  const reading = [...list(layout?.[UNDER]), ...list(layout?.columns?.[0]), ...list(layout?.columns?.[1])];
+  const mapped = (ids) => unique(ids.map((id) => CLASSIC_TO_TILE[id]).filter(Boolean));
+  const order = mapped(reading);
+  const hidden = mapped(list(layout?.hidden));
+  return { v: 1, order: [...order, ...TILE_IDS.filter((id) => !order.includes(id))], hidden };
+}
+
+export function normalizeTiles(saved, known = TILE_IDS) {
+  if (!saved || typeof saved !== 'object' || saved.v !== 1 || !Array.isArray(saved.order)) {
+    return { v: 1, order: [...DEFAULT_TILES.order], hidden: [] };
+  }
+  const order = unique(saved.order.filter((id) => known.includes(id)));
+  return {
+    v: 1,
+    order: [...order, ...known.filter((id) => !order.includes(id))],
+    hidden: unique(list(saved.hidden).filter((id) => known.includes(id))),
+  };
+}
+
+// `id` goes just before `beforeId`, or to the end when beforeId is null or unknown.
+export function moveTile(tiles, id, beforeId) {
+  const rest = tiles.order.filter((x) => x !== id);
+  const at = beforeId == null ? -1 : rest.indexOf(beforeId);
+  if (at === -1) rest.push(id);
+  else rest.splice(at, 0, id);
+  return { ...tiles, order: rest };
+}
+
+// One step up (-1) or down (1) among the tiles that show.
+export function nudgeTile(tiles, id, dir) {
+  const shown = tiles.order.filter((x) => !tiles.hidden.includes(x));
+  const i = shown.indexOf(id);
+  const j = i + dir;
+  if (i === -1 || j < 0 || j >= shown.length) return tiles;
+  return dir < 0 ? moveTile(tiles, id, shown[j]) : moveTile(tiles, id, shown[j + 1] ?? null);
+}
+
+export const hideTile = (tiles, id) => ({ ...tiles, hidden: unique([...tiles.hidden, id]) });
+
+export function showTile(tiles, id) {
+  return { ...moveTile(tiles, id, null), hidden: tiles.hidden.filter((x) => x !== id) };
+}
+
+export function loadTiles(storage, classicLayout) {
+  try {
+    const saved = JSON.parse(storage.getItem(TILES_KEY));
+    if (saved && saved.v === 1 && Array.isArray(saved.order)) return normalizeTiles(saved);
+  } catch { /* unreadable: start from the classic layout */ }
+  return fromClassic(classicLayout);
+}
+
+export function saveTiles(storage, tiles) {
+  try { storage.setItem(TILES_KEY, JSON.stringify(tiles)); } catch { /* best effort, like the classic layout */ }
+}
+
+// ---- The hero numbers ----------------------------------------------------------------------------
+
+const minutesQuota = (doc, id) => {
+  const q = id ? doc?.items?.[id] : null;
+  return q && q.type === 'quota' && q.status === 'active' && q.unit === 'minutes' ? q : null;
+};
+
+export function bodyHero(doc, today) {
+  const q = minutesQuota(doc, cardioQuotaId(doc));
+  if (!q) return null;
+  return { number: String(Math.round(weekTotal(doc, q.id, today))), caption: `of ${q.target} cardio minutes this week` };
+}
+
+export function hebrewHero(doc, today) {
+  const q = minutesQuota(doc, 'hebrew-minutes');
+  if (!q) return null;
+  const total = Math.round(weekTotal(doc, q.id, today));
+  const hours = Number((q.target / 60).toFixed(1));
+  return { number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`, caption: `of ${hours} h this week` };
+}
