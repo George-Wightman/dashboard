@@ -91,6 +91,13 @@ test('a timed row says its calendar block on hover', () => {
   assert.match(read('js/ui/timeline.js'), /in your calendar/);
 });
 
+test('food: the snap sheet takes a photo with the camera, the Fuel tile is registered, and both are shelled', () => {
+  assert.match(read('index.html'), /<dialog id="snap" class="sheet snap"/);
+  assert.match(read('js/ui/snap.js'), /capture: 'environment'/);
+  assert.match(read('js/ui/tiles.js'), /id: 'fuel'/);
+  for (const f of ['js/ui/snap.js', 'js/ui/fuel.js']) assert.ok(read('sw.js').includes(`'${f}'`), f);
+});
+
 test('the fonts are self-hosted, offline-shelled and loaded with @font-face', () => {
   const sw = read('sw.js');
   const css = read('styles/daylight.css');

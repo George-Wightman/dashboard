@@ -13,6 +13,9 @@ const DEFAULT_PROTEIN = 180;
 
 const pad = (n) => String(n).padStart(2, '0');
 
+const SLOT_NAMES = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
+export const slotName = (slot) => SLOT_NAMES[slot] ?? 'Meal';
+
 export function slotFor(date) {
   const minutes = date.getHours() * 60 + date.getMinutes();
   if (minutes < 11 * 60) return 'breakfast';

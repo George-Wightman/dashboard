@@ -4,7 +4,9 @@
 // ticked. The rows are the classic list's own (js/ui/today.js), so they keep everything they show.
 
 import { h } from './dom.js';
-import { timelineModel, tomorrowLine } from '../timeline.js';
+import { timelineModel, tomorrowLine, mealMarkers } from '../timeline.js';
+import { slotName } from '../food.js';
+import { openSnap } from './snap.js';
 import { todayRows } from '../schedule.js';
 import { todaySlots, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { scheduleView } from '../plan-state.js';
@@ -41,7 +43,7 @@ export function renderTimeline(ctx) {
   const today = ctx.store.today();
   const rows = listRows(todayRows(doc, today));
   const slots = todaySlots(doc, today);
-  const model = timelineModel({ rows, slots, commitments: scheduleView(doc, today).commitments, today, now: new Date() });
+  const model = timelineModel({ rows, slots, commitments: scheduleView(doc, today).commitments, today, now: new Date(), markers: mealMarkers(doc, today) });
   const { config } = readPlannerConfig(doc);
   const gymId = gymHabitId(doc);
 
@@ -63,6 +65,11 @@ export function renderTimeline(ctx) {
   const timed = [];
   model.timed.forEach((e, i) => {
     if (i === model.nowIndex) timed.push(nowLine());
+    if (e.kind === 'meal') {
+      timed.push(h('li', { class: 'tl-meal' }, clock(e.start), h('span', { class: 'tl-meal-mark', 'aria-hidden': 'true' }),
+        h('button', { class: 'tl-meal-btn', type: 'button', onclick: () => openSnap(ctx) }, `${slotName(e.slot)}: snap it`)));
+      return;
+    }
     if (e.kind === 'commitment') {
       timed.push(h('li', { class: 'tl-busy' }, clock(e.start), h('span', { class: 'tl-busy-mark', 'aria-hidden': 'true' }),
         h('span', { class: 'tl-busy-card' }, h('span', {}, e.title), h('span', { class: 'tl-busy-when' }, `until ${clockLabel(e.end)}${e.calendar ? ` · ${e.calendar}` : ''}`))));

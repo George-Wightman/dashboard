@@ -29,6 +29,7 @@ import { runMealPass } from './photos.js';
 import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
 import { renderTiles } from './ui/tiles.js';
+import { paintSnap } from './ui/snap.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
 
 const store = createStore({ storage: localStorage });
@@ -270,6 +271,7 @@ function render() {
     renderSide(ctx);
   }
   paintBig(ctx);
+  paintSnap(ctx);
   if (!ui.openedLinkedTask && params.has('task') && store.doc().items[params.get('task')]) {
     ui.openedLinkedTask = true;
     queueMicrotask(() => openTaskCard(ctx, params.get('task')));

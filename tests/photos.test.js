@@ -79,6 +79,14 @@ test('with no Gemini key the meal stays pending; offline nothing happens; two pa
   assert.equal(c.asked.length, 1);
 });
 
+test('no connection to Gemini, or its daily limit used up, waits untried rather than spending a try', async () => {
+  for (const code of ['offline', 'quota']) {
+    const s = setup({ reply: new GeminiError(code) });
+    await runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+    assert.deepEqual([s.store.doc().meals[s.meal.id].state, s.store.doc().meals[s.meal.id].tries], ['pending', 0], code);
+  }
+});
+
 test('without sync set up the photo stays on the device after the estimate', async () => {
   const { store, ctx, meal, photos, uploads, upload } = setup({ sync: false });
   await runMealPass({ ctx, photos, upload, online: () => true });

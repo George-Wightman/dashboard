@@ -306,6 +306,65 @@
 .dl-btn.primary { background: var(--dl-ink); color: var(--dl-ground); }
 .tile[data-area="needs"] .dl-btn.primary { background: #1D1A2B; color: #FFF8EF; }
 
+/* Fuel. */
+.tile[data-area="fuel"] { --tile-bg: var(--dl-fuel); --tile-ink: var(--dl-on-fuel); box-shadow: none; }
+.fuel { display: flex; flex-direction: column; gap: 12px; }
+.fuel-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.fuel-plate { position: relative; width: 132px; height: 132px; flex: none; }
+.fuel-plate-ring { width: 100%; height: 100%; }
+.fuel-plate-ring .plate { fill: color-mix(in srgb, var(--tile-bg) 80%, black); }
+.fuel-plate-ring .track { fill: none; stroke: color-mix(in srgb, var(--tile-ink) 16%, transparent); stroke-width: 22; }
+.fuel-plate-ring .fill { fill: none; stroke: var(--tile-ink); stroke-width: 22; stroke-linecap: round; transition: stroke-dasharray .8s ease-out; }
+.fuel-plate-words { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; }
+.fuel-plate-num { font: 800 30px/1 var(--dl-display); }
+.fuel-meals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; flex: 1 1 160px; min-width: 0; }
+.fuel-meal { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; }
+.fuel-thumb { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; }
+.fuel-thumb.placeholder { display: flex; align-items: center; justify-content: center; font-weight: 700; background: color-mix(in srgb, var(--tile-ink) 14%, transparent); }
+.fuel-meal-words { display: flex; flex-direction: column; font-size: 14px; line-height: 1.3; min-width: 0; }
+.fuel-meal-words strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fuel-none, .fuel-week, .fuel-waiting { margin: 0; font-size: 14px; }
+.fuel-snap { min-height: 52px; border: 0; border-radius: 999px; background: var(--tile-ink); color: var(--tile-bg); font: 700 16px/1 var(--dl-text); cursor: pointer; }
+.fuel-big { display: flex; flex-direction: column; gap: 14px; }
+.fuel-day h3 { margin: 0 0 6px; font-size: 15px; }
+.fuel-big .fuel-meal { grid-template-columns: 44px 1fr auto; }
+.fuel-big .fuel-thumb.placeholder { background: var(--dl-soft); }
+
+/* Meal markers on the timeline. */
+.tl-meal { display: grid; grid-template-columns: 56px 40px 1fr; align-items: center; }
+.tl-meal-mark { justify-self: center; width: 12px; height: 12px; border-radius: 50%; border: 2px dashed var(--dl-fuel); background: var(--dl-ground); position: relative; z-index: 1; }
+.tl-meal-btn { justify-self: start; min-height: 44px; padding: 0 14px; border: 2px dashed var(--dl-fuel); border-radius: 16px; background: transparent; color: var(--dl-ink); font: 600 15px/1 var(--dl-text); cursor: pointer; }
+@media (max-width: 759px) { .tl-meal { grid-template-columns: 44px 40px 1fr; } }
+
+/* The snap sheet. */
+:root[data-screen="daylight"] dialog.snap, dialog.snap { width: min(440px, calc(100vw - 24px)); padding: 0; }
+.snap .sheet-body { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px 20px; }
+.snap .sheet-head { display: flex; justify-content: space-between; align-items: center; }
+.snap .sheet-head h2 { margin: 0; font: 800 22px/1.1 var(--dl-display, inherit); }
+.snap-when { margin: 0; color: var(--dl-muted, var(--muted)); font-size: 14px; }
+.snap-usual, .snap-actions, .snap-portion { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.snap-line { display: flex; gap: 8px; align-items: flex-end; }
+.snap-line textarea { flex: 1; min-height: 44px; border: 0; border-radius: 16px; padding: 12px 14px; background: var(--dl-soft, #FFF3E3); color: inherit; font: inherit; resize: none; }
+.snap-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.snap-shutter { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 20px; border-radius: 999px; background: var(--dl-fuel, #24785A); color: #FFFFFF; font-weight: 700; cursor: pointer; }
+.snap-shutter:focus-within, label.dl-btn:focus-within { outline: 3px solid var(--dl-accent, #3F3A9E); outline-offset: 2px; }
+label.dl-btn { display: inline-flex; align-items: center; }
+.snap-preview { width: 100%; max-height: 260px; object-fit: cover; border-radius: 18px; }
+.snap-preview.small { max-height: 160px; }
+.snap-working { display: flex; align-items: center; gap: 12px; }
+.snap-spinner { width: 28px; height: 28px; border-radius: 50%; border: 4px solid #CFE6DB; border-top-color: #24785A; animation: dl-spin 1s linear infinite; }
+@keyframes dl-spin { to { transform: rotate(360deg); } }
+.snap-name { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.snap-name strong { font: 800 22px/1.15 var(--dl-display, inherit); }
+.snap-numbers { display: flex; gap: 10px; }
+.snap-num { flex: 1; display: flex; flex-direction: column; padding: 12px 14px; border-radius: 18px; background: var(--dl-card, #FFFFFF); box-shadow: 0 2px 0 var(--dl-shadow, #F3E3CF); font-size: 13px; }
+.snap-num strong { font: 800 28px/1.1 var(--dl-display, inherit); }
+.snap-num.protein { background: var(--dl-fuel, #24785A); color: #FFFFFF; box-shadow: none; }
+.snap-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.snap-items li { display: flex; justify-content: space-between; gap: 10px; }
+.snap-usual-tick { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.snap-foot { margin: 0; font-size: 12px; text-align: center; }
+
 /* Arranging the tiles. */
 .tile.arranging { outline: 2px dashed color-mix(in srgb, var(--dl-ink) 35%, transparent); outline-offset: 3px; }
 .tile.arranging.drop-before, .tile-drop.drop-before { box-shadow: 0 -4px 0 var(--dl-accent); }

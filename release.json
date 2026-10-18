@@ -1,10 +1,10 @@
 {
-  "id": "2ee3c94a4ac873f46060c1066cf816a31dd25814ab708d273c98b9161fcc51b8",
+  "id": "d5ffa4a488f0b2e5f5a55abaa068f55e9e1c61e3a0ff30cc4ff24e3644c66016",
   "files": {
-    "./": "b2e789f23e26587a49c73aed576d5c9bb47ee64ce62f57f8e40dc596e0751593",
-    "index.html": "b2e789f23e26587a49c73aed576d5c9bb47ee64ce62f57f8e40dc596e0751593",
+    "./": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
+    "index.html": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
     "styles.css": "596b0b0bf8cabc3bb3edd67d4693f2545c2322aca4b01ebe9a1c367e229448c0",
-    "styles/daylight.css": "4daa4ed2268fab1f8434b624031650af6bc1c00aecda3d0fa638aeef9d960cf0",
+    "styles/daylight.css": "1f89cc912d0efc965bebf4786b43c29c5088565658662c3fa53714bd3d782064",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
@@ -12,7 +12,7 @@
     "icons/icon.svg": "ed047463e6d4922fd9c4f21dbedf11b9e4b5cdc3b471b5a4bffcd63dca624754",
     "icons/icon-192.png": "8e7e849913dea81b5333285f54b427c3be4d5de5a20fa90ca0cc99de7dd1db04",
     "icons/icon-512.png": "20842b1a050ea876ecb8cbf7e83fffb62fba540645a1430d4e59f1cf5defdd48",
-    "js/app.js": "97e743fe2f4174973aeb576e3ae9f8649d8c3b6a9a00543d9094e06a3a55b9c4",
+    "js/app.js": "396b9834004a8fa68819c55b1c80bfdd0aadd94fa72e0a79cc2d35aeb3adadac",
     "js/commit.js": "a03407e778be6c3081eb9a4c8b7e25ef190810011b04dacd0beb71a4354e1453",
     "js/data.js": "0b47f40187a4dfcf6a87f108a362ab8e31d6d7b935a169db950c5040bb710d04",
     "js/doc.js": "9332c4d3b1299f180bfb34aa4d7c3c7692fc00c09d95aba919254f957f56b37d",
@@ -58,15 +58,17 @@
     "js/ui/big.js": "8223f8b14bcb71845398ccacca7fe3ce3a75c2dd374defa9bff0760655368527",
     "js/ui/training.js": "c830df17cccebf218f819511b3f7d3eff8575f1f6c7f8a9550657b882e599bbf",
     "js/sky.js": "53314cfa41d49525c51220e55a51a4faf7acdbca4e0c6cec07efc5d7426b9599",
-    "js/timeline.js": "712079d955e6126aecb36fba5eb67735a41e69b3f9d8df3a6643360cd06fb24f",
+    "js/timeline.js": "b9334c563bdb8b3fdedad574fad833768cefc17d020e672630154082657c22d1",
     "js/header.js": "f64640447d8875223d3374dcc23edac15e46c5aadfe589b9b0e5b788c15604a7",
     "js/needs.js": "8e42564cfe1078ba841ede5c29c5feee5029d014b560a3e8f9f41da72c94f504",
-    "js/tiles.js": "e5aac3bab4149c71bea2e5b7535cda0f614f3530c14caeab1780cd57dd532d46",
+    "js/tiles.js": "e6068d9301e9dfcb0616362cf2ebbe42d8de5c5978d675e4ee00c1f95683e33a",
     "js/ui/sky.js": "f0956a47f71865585ee1f3d7353dae9177b07a13c6e2bb8371f62513ecc77e3b",
-    "js/ui/timeline.js": "5491055b664b0714a6b2509a0fb0badee4822e7ee1cf1d3406c3782d281d62aa",
-    "js/ui/tiles.js": "33aca02524bd73d40f35bdc0988a4c335424882360239f524b973f42c07011c9",
+    "js/ui/timeline.js": "83f540483fcb350fa7cbbed23729089aae2885679d809c974ab70f5d90ff3d60",
+    "js/ui/tiles.js": "6f760db97c5c64399901a121cb0a1911ff42f110f48b1f46af9ae0bc93d75130",
     "js/ui/needs.js": "8846f64984a01844a337eba2a888721f9d540e3b1880f443f488b76d1796b5aa",
-    "js/food.js": "271b539a3e365ea6044561bc91ad3a6ae83dbbc4bf2139f5ea058aab76ffc540",
-    "js/photos.js": "1a8e94bc0bf5b7f31d1266570dfaa46e36025cdba3052700da71662546fc326e"
+    "js/food.js": "4bd973d0b778fa9000cfd1cd2a47f7176665a8c5fea5a271de2e4b1f5f145293",
+    "js/photos.js": "957a7a1bad9c9f84e54d517276249f2e8f00061091b2f0c435b7b4c1d81dc0c0",
+    "js/ui/snap.js": "8226e990402b36741d0f9b759593da5adf6c38b6c1f35518183a31c7846b6c31",
+    "js/ui/fuel.js": "7d23e5e08ba67f3ab85b5b699eac2847dabf1c454bbac605ff7ec31b7561478a"
   }
 }

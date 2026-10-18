@@ -9,7 +9,7 @@ import { weekTotal } from './schedule.js';
 import { cardioQuotaId } from './gym.js';
 
 export const TILES_KEY = 'dash_tiles';
-export const TILE_IDS = ['needs', 'body', 'hebrew', 'goals', 'weeks', 'countdown', 'week'];
+export const TILE_IDS = ['needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'week'];
 export const DEFAULT_TILES = Object.freeze({ v: 1, order: Object.freeze([...TILE_IDS]), hidden: Object.freeze([]) });
 
 // The classic widgets with a tile. Note for Claude moved into the timeline; Muscles and Cardio

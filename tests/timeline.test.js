@@ -43,6 +43,23 @@ test('after midnight, still the same logical day, the now line comes after every
   assert.equal(m.nowIndex, 1);
 });
 
+test('meal markers at 08:00, 12:30 and 19:00, each only while its slot has no meal', async () => {
+  const { mealMarkers } = await import('../js/timeline.js');
+  const doc = emptyDoc();
+  const at = (m) => new Date(m.start);
+  const three = mealMarkers(doc, today);
+  assert.deepEqual(three.map((m) => [m.slot, at(m).getHours(), at(m).getMinutes()]), [['breakfast', 8, 0], ['lunch', 12, 30], ['dinner', 19, 0]]);
+  doc.meals = { 'meal:a': { id: 'meal:a', kind: 'meal', day: today, slot: 'lunch', status: 'active', at: '2026-10-20T11:40:00.000Z' } };
+  assert.deepEqual(mealMarkers(doc, today).map((m) => m.slot), ['breakfast', 'dinner']);
+});
+
+test('meal markers take their place in the day, after rows at the same time', () => {
+  const slots = new Map([['heb', { start: '2026-10-20T07:00:00Z', end: '2026-10-20T08:00:00Z' }]]);
+  const m = timelineModel({ rows: [row('heb')], slots, commitments: [], today, now, markers: [{ slot: 'lunch', start: '2026-10-20T11:30:00Z' }] });
+  assert.deepEqual(m.timed.map((e) => e.kind), ['row', 'meal']);
+  assert.equal(m.timed[1].slot, 'lunch');
+});
+
 test("tomorrow's line, with rough times marked", () => {
   const doc = emptyDoc();
   doc.calendar[dayRecordId('2026-10-21')] = { status: 'active', day: '2026-10-21', blocks: [

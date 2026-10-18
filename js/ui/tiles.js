@@ -12,6 +12,7 @@ import { renderMuscles, renderCardioTrend } from './training.js';
 import { renderHebrew, renderHebrewBig } from './hebrew.js';
 import { renderGoals, renderHistory, renderHistoryBig, renderWeek, keptFocus, restoreFocus } from './side.js';
 import { renderCountdown } from './countdown.js';
+import { renderFuel, renderFuelBig } from './fuel.js';
 import { openBig } from './big.js';
 
 // A widget's content with its big number above it.
@@ -29,6 +30,7 @@ export const TILES = [
     render: (ctx) => withHero(bodyHero(ctx.store.doc(), ctx.store.today()), renderGym(ctx)),
     big: (ctx) => h('div', { class: 'tile-big' }, renderGymBig(ctx), renderMuscles(ctx), renderCardioTrend(ctx)),
   },
+  { id: 'fuel', title: 'Fuel', area: 'fuel', render: renderFuel, big: renderFuelBig },
   {
     id: 'hebrew', title: 'Hebrew', area: 'hebrew',
     render: (ctx) => withHero(hebrewHero(ctx.store.doc(), ctx.store.today()), renderHebrew(ctx)),

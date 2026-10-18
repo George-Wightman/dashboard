@@ -91,8 +91,9 @@ export function runMealPass({ ctx, photos = localPhotos, upload = uploadPhoto, o
         store.updateMeal(meal.id, { state: 'estimated', estimate, final: finalFor(estimate, meal.portion ?? 'right'), error: null });
         result.estimated++;
       } catch (e) {
-        // No key yet: it waits, untried. Anything else counts as a try.
-        if (e?.code === 'nokey') continue;
+        // No key, no connection, or today's free limit used up: it waits, untried. Anything else
+        // (a reply that made no sense, a refusal) counts as one of its tries.
+        if (['nokey', 'offline', 'quota'].includes(e?.code)) continue;
         store.updateMeal(meal.id, { state: 'failed', tries: (meal.tries ?? 0) + 1, error: String(e?.message ?? e).slice(0, 200) });
         result.failed++;
       }

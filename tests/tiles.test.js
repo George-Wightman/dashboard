@@ -8,7 +8,13 @@ import { MemoryStorage, fixture } from './helpers.js';
 
 test('a classic arrangement becomes tiles in the same reading order', () => {
   const classic = { v: 4, under: ['goals', 'agenda'], columns: [['note', 'countdown', 'gym'], ['history', 'hebrew', 'muscles']], hidden: ['week', 'cardio'] };
-  assert.deepEqual(fromClassic(classic), { v: 1, order: ['goals', 'needs', 'countdown', 'body', 'weeks', 'hebrew', 'week'], hidden: ['week'] });
+  assert.deepEqual(fromClassic(classic), { v: 1, order: ['goals', 'needs', 'countdown', 'body', 'weeks', 'hebrew', 'fuel', 'week'], hidden: ['week'] });
+});
+
+test('Fuel is a tile after Body, and a saved arrangement from before it gains it at the end', () => {
+  assert.deepEqual(TILE_IDS.slice(1, 3), ['body', 'fuel']);
+  const old = { v: 1, order: ['needs', 'body', 'hebrew', 'goals', 'weeks', 'countdown', 'week'], hidden: [] };
+  assert.equal(normalizeTiles(old).order.at(-1), 'fuel');
 });
 
 test('normalising drops strangers and repeats, adds the missing, and rejects junk', () => {

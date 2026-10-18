@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'cff5e09b';
+var PLANNER_BUILD = '6bc9396a';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1707,6 +1707,9 @@ const DEFAULT_PROTEIN = 180;
 
 const pad = (n) => String(n).padStart(2, '0');
 
+const SLOT_NAMES = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
+const slotName = (slot) => SLOT_NAMES[slot] ?? 'Meal';
+
 function slotFor(date) {
   const minutes = date.getHours() * 60 + date.getMinutes();
   if (minutes < 11 * 60) return 'breakfast';
@@ -1816,7 +1819,7 @@ function mealWork(doc, localIds) {
     upload: all.filter((m) => m.photoState === 'local' && localIds.has(m.id)),
   };
 }
-return { PORTIONS, MAX_TRIES, FUEL_ID, slotFor, MEAL_SYSTEM, mealPrompt, parseEstimate, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
+return { PORTIONS, MAX_TRIES, FUEL_ID, slotName, slotFor, MEAL_SYSTEM, mealPrompt, parseEstimate, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
 })();
 
 // ---- js/data.js
