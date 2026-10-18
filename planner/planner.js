@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9ca3d391';
+var PLANNER_BUILD = 'd12c5563';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2619,7 +2619,7 @@ const __js_coach = (() => {
 // both sides share: how a session reads, checking it against Hevy's exercises, the routine Hevy
 // is sent, the morning back question and its warning, and lifts ready for more weight. Pure.
 
-const { addDays } = __js_dates;
+const { addDays, shortWeekday } = __js_dates;
 const { kgText } = __js_gym;
 
 const norm = (s) => String(s ?? '').trim().toLowerCase();
@@ -2824,7 +2824,37 @@ function sessionWorkout(doc, item) {
   if (!ids.size) return null;
   return Object.values(doc?.gym ?? {}).find((w) => w.status === 'active' && String(w.id).startsWith('w:') && ids.has(w.routineId) && w.day === item.date) ?? null;
 }
-return { BACK, BACK_UNTIL_HOUR, sessionLines, sessionText, checkSession, routineBody, isHinge, backFlag, backScores, readyMarks, sessionTasks, routinesOf, routineFor, sessionWorkout };
+
+// ---- The morning question, on the screen ----------------------------------------------------------
+
+// What the timeline's first row is: the question from the day's start until 11:00, the answer after
+// it's given (until 11:00 too), else nothing.
+function backRowState(doc, today, now, dayStartHour = 4) {
+  const hour = now.getHours();
+  if (hour < dayStartHour || hour >= BACK_UNTIL_HOUR) return null;
+  const r = doc?.gym?.[`back:${today}`];
+  if (r && r.status === 'active' && isInt(r.score, 0, 3)) return { state: 'answered', score: r.score, word: BACK[r.score] };
+  return { state: 'ask' };
+}
+
+// Sore (2) or bad (3) this morning and the one before.
+function soreRun(doc, today) {
+  const [a, b] = [addDays(today, -1), today].map((d) => doc?.gym?.[`back:${d}`]);
+  return [a, b].every((r) => r && r.status === 'active' && r.score >= 2);
+}
+
+// The For Claude flag two sore mornings leave.
+function soreFlagText(doc, today) {
+  const word = (d) => `${shortWeekday(d)} ${BACK[doc.gym[`back:${d}`].score]}`;
+  return `Back sore two mornings running (${word(addDays(today, -1))}, ${word(today)})`;
+}
+
+// The first session from today on (two weeks ahead) not yet done.
+function nextSession(doc, today) {
+  const done = (t) => Object.values(doc?.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === t.id);
+  return sessionTasks(doc, today, addDays(today, 13)).find((t) => !done(t)) ?? null;
+}
+return { BACK, BACK_UNTIL_HOUR, sessionLines, sessionText, checkSession, routineBody, isHinge, backFlag, backScores, readyMarks, sessionTasks, routinesOf, routineFor, sessionWorkout, backRowState, soreRun, soreFlagText, nextSession };
 })();
 
 // ---- js/data.js

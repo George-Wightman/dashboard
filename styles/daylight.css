@@ -365,6 +365,34 @@ label.dl-btn { display: inline-flex; align-items: center; }
 .snap-usual-tick { display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .snap-foot { margin: 0; font-size: 12px; text-align: center; }
 
+/* The coach: the morning back question, a session's lines under its row, Body's next session and back mornings. */
+.tl-backq { list-style: none; margin: 0; padding: 0; }
+.tl-back { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; padding: 14px 18px; border-radius: 22px; background: var(--dl-card); box-shadow: 0 3px 0 var(--dl-shadow); }
+.tl-back-q { font-weight: 700; font-size: 16px; }
+.tl-back-answers { display: flex; flex-wrap: wrap; gap: 8px; }
+.tl-back-answers .dl-btn[aria-pressed="true"] { background: var(--dl-ink); color: var(--dl-ground); }
+.tl-back.answered { justify-content: flex-start; padding: 8px 18px; background: transparent; box-shadow: none; color: var(--dl-muted); font-size: 14px; }
+.tl-back.answered .link { min-height: 44px; }
+.tl-session { color: var(--dl-ink); }
+.tl-warn { margin-top: 2px; margin-bottom: 2px; border-radius: 12px; background: var(--dl-carry); color: var(--dl-carry-ink); font-weight: 600; }
+.tile-parts { display: flex; flex-direction: column; gap: 14px; }
+.coach { display: flex; flex-direction: column; gap: 10px; }
+.coach-next { display: flex; flex-direction: column; gap: 2px; }
+.coach-name, .coach-line { margin: 0; }
+.coach-line { font-size: 14px; }
+.coach-back { display: flex; align-items: center; gap: 10px; }
+.coach-label { font-size: 13px; font-weight: 700; }
+.back-cells { display: flex; gap: 4px; flex-wrap: wrap; }
+.back-cell { width: 18px; height: 18px; border-radius: 5px; background: var(--tile-ink, var(--dl-ink)); }
+.back-cell.s0 { opacity: .18; }
+.back-cell.s1 { opacity: .42; }
+.back-cell.s2 { opacity: .68; }
+.back-cell.s3 { opacity: 1; }
+.back-cell.none { background: transparent; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tile-ink, var(--dl-ink)) 25%, transparent); }
+.back-cells.many { max-width: 100%; }
+.back-cells.many .back-cell { width: 14px; height: 14px; border-radius: 4px; }
+.coach-ready { margin: 0; padding-left: 18px; }
+
 /* Arranging the tiles. */
 .tile.arranging { outline: 2px dashed color-mix(in srgb, var(--dl-ink) 35%, transparent); outline-offset: 3px; }
 .tile.arranging.drop-before, .tile-drop.drop-before { box-shadow: 0 -4px 0 var(--dl-accent); }

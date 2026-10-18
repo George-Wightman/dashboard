@@ -14,6 +14,7 @@ import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { renderRow, enableDrag, listRows } from './today.js';
 import { renderCheckin } from './checkin.js';
 import { renderNote } from './note.js';
+import { renderBackRow, sessionExtras } from './coach.js';
 import { keptFocus, restoreFocus } from './side.js';
 
 const JUST_DONE_MS = 1200;
@@ -47,14 +48,17 @@ export function renderTimeline(ctx) {
   const { config } = readPlannerConfig(doc);
   const gymId = gymHabitId(doc);
 
-  // One row as the classic list draws it, marked with its area, its gym lines and its open note.
+  // One row as the classic list draws it, marked with its area, its gym lines, a coach's session
+  // (its exercises, and the sore-back warning) and its open note.
   const rowEls = (row) => {
     const isGym = !row.suggested && row.item.id === gymId;
-    const li = renderRow(row, ctx, null, !row.suggested && isPriority(doc, row.item, config), isGym ? hevyTick(doc, gymId, today) : null);
+    const via = isGym ? hevyTick(doc, gymId, today) : row.item.session ? hevyTick(doc, row.item.id, today) : null;
+    const li = renderRow(row, ctx, null, !row.suggested && isPriority(doc, row.item, config), via);
     li.dataset.area = row.item.area || 'none';
     if (row.done && ctx.ui.justTicked === row.item.id) li.classList.add('just-done');
     const extra = [];
     if (isGym) for (const line of dayLines(doc, today)) extra.push(h('li', { class: 'tl-sub' }, line));
+    extra.push(...sessionExtras(ctx, row));
     if (row.item.notes && ctx.ui.noteFor === row.item.id) extra.push(h('li', { class: 'tl-sub note-row' }, row.item.notes));
     return { li, extra };
   };
@@ -88,11 +92,13 @@ export function renderTimeline(ctx) {
     return [li, ...extra];
   });
 
+  const back = renderBackRow(ctx);
   const checkin = renderCheckin(ctx);
   const tomorrow = tomorrowLine(doc, today);
   const note = renderNote(ctx);
   note.classList.add('dl-note');
   root.replaceChildren(...[
+    back ? h('ul', { class: 'tl-checkin tl-backq' }, back) : null,
     checkin ? h('ul', { class: 'tl-checkin' }, checkin) : null,
     ctx.ui.taskError ? h('p', { class: 'error', role: 'alert' }, ctx.ui.taskError,
       h('button', { class: 'link', type: 'button', onclick: () => { ctx.ui.taskError = null; ctx.render(); } }, 'Dismiss')) : null,

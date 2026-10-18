@@ -1,10 +1,10 @@
 {
-  "id": "f9887b41ba698473fe162c2037859bac5e80cf6a73166285ce4c3fc4ef250e0a",
+  "id": "ef20928838ef3cd501bf5c3e2269c15ff9a0158a0e0408ab518070c5d2bac916",
   "files": {
     "./": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
     "index.html": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
     "styles.css": "596b0b0bf8cabc3bb3edd67d4693f2545c2322aca4b01ebe9a1c367e229448c0",
-    "styles/daylight.css": "1f89cc912d0efc965bebf4786b43c29c5088565658662c3fa53714bd3d782064",
+    "styles/daylight.css": "923519c6e6aed8de3127a384825027f000b7f725192df3b3c2432752206f29a5",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
@@ -63,13 +63,14 @@
     "js/needs.js": "8e42564cfe1078ba841ede5c29c5feee5029d014b560a3e8f9f41da72c94f504",
     "js/tiles.js": "e6068d9301e9dfcb0616362cf2ebbe42d8de5c5978d675e4ee00c1f95683e33a",
     "js/ui/sky.js": "f0956a47f71865585ee1f3d7353dae9177b07a13c6e2bb8371f62513ecc77e3b",
-    "js/ui/timeline.js": "8686d837d477246e87de31d800e54a0c39c380952351144102f0e13180983d19",
-    "js/ui/tiles.js": "6f760db97c5c64399901a121cb0a1911ff42f110f48b1f46af9ae0bc93d75130",
+    "js/ui/timeline.js": "ea71f33ee1365a6446edfe13a7150db47050df11fd01b2165786b0de83cf65ed",
+    "js/ui/tiles.js": "e48dcc0369ee84814972f99f9c3f54c3672a1b6e1bdef8d7ed1b0cbaa6bfbf92",
     "js/ui/needs.js": "8846f64984a01844a337eba2a888721f9d540e3b1880f443f488b76d1796b5aa",
     "js/food.js": "ae3be3a1acc5bbade969fb45497e03e2d9a06debcd9e1fbf51bc7d20fb89070c",
     "js/photos.js": "404dde94bee2d08e0962d473f31c6d3913f71adecfde6ece21edb153eef38ae2",
     "js/ui/snap.js": "0dbd8773924a8690c94005e708bf138ee2fc9928132eb5bfb6cc3ed6d14705a8",
     "js/ui/fuel.js": "03b0cac13e84427ff95d540fde2adcfd6a8bf46efc0b667c643572e0813a4f11",
-    "js/coach.js": "bc9e5f952ab681d56f969e5756290250507001ff9f18f1fac523d180e32abb2d"
+    "js/coach.js": "926f52f6ebb855076638a8a5f6bd1485fd30f07929060bd5882928df24e7f56d",
+    "js/ui/coach.js": "66f72411d96eea289c888d43201fa012cf68a1a69fc8289b3f9cb8c98d78ef4e"
   }
 }

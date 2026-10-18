@@ -13,7 +13,14 @@ import { renderHebrew, renderHebrewBig } from './hebrew.js';
 import { renderGoals, renderHistory, renderHistoryBig, renderWeek, keptFocus, restoreFocus } from './side.js';
 import { renderCountdown } from './countdown.js';
 import { renderFuel, renderFuelBig } from './fuel.js';
+import { renderCoach, renderCoachBig } from './coach.js';
 import { openBig } from './big.js';
+
+// Parts of a tile one under the other, or nothing when none has anything to show.
+const stacked = (...parts) => {
+  const shown = parts.filter(Boolean);
+  return shown.length ? h('div', { class: 'tile-parts' }, shown) : null;
+};
 
 // A widget's content with its big number above it.
 const withHero = (hero, content) => {
@@ -27,8 +34,8 @@ export const TILES = [
   { id: 'needs', title: 'Needs you', area: 'needs', render: renderNeeds },
   {
     id: 'body', title: 'Body', area: 'body',
-    render: (ctx) => withHero(bodyHero(ctx.store.doc(), ctx.store.today()), renderGym(ctx)),
-    big: (ctx) => h('div', { class: 'tile-big' }, renderGymBig(ctx), renderMuscles(ctx), renderCardioTrend(ctx)),
+    render: (ctx) => withHero(bodyHero(ctx.store.doc(), ctx.store.today()), stacked(renderCoach(ctx), renderGym(ctx))),
+    big: (ctx) => h('div', { class: 'tile-big' }, renderCoachBig(ctx), renderGymBig(ctx), renderMuscles(ctx), renderCardioTrend(ctx)),
   },
   { id: 'fuel', title: 'Fuel', area: 'fuel', render: renderFuel, big: renderFuelBig },
   {
