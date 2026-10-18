@@ -52,8 +52,8 @@ test('the timeline asks the back question first and shows a session under its ro
   const ui = read('js/ui/coach.js');
   assert.match(ui, /How's your back this morning\?/);
   assert.match(ui, /ctx\.store\.setBack\(/);
-  assert.match(ui, /soreFlagText\(/);
-  assert.match(ui, /addFlag\([^)]*'claude'/);
+  assert.match(ui, /ctx\.store\.setBack\(today, score\);\s*ctx\.store\.soreFlag\(today\);/);
+  assert.doesNotMatch(ui, /addFlag\(/);
   assert.match(ui, /backFlag\(/);
 });
 
@@ -66,4 +66,9 @@ test('Body shows the next session and the back mornings, and its big view 90 of 
   assert.match(ui, /backCells\(doc, today, 90\)/);
   assert.match(ui, /readyMarks\(/);
   assert.ok(read('sw.js').includes("'js/ui/coach.js'"));
+});
+
+test('review minors: the playbook and the README say a session trained early ticks only once its task is moved to that day', () => {
+  assert.match(read('claude/skill/playbooks/gym.md'), /trains?\s+(a\s+session|it)\s+early[^.]*move\s+(the|its)\s+task\s+to\s+(that|the)\s+day\s+first/i);
+  assert.match(read('README.md'), /train(ing)?\s+(a\s+session|it)\s+early[^.]*move\s+(the|its)\s+task\s+to\s+(that|the)\s+day\s+first/i);
 });

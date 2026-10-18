@@ -14,7 +14,7 @@ import {
 } from '../js/calendar.js';
 import { attention } from '../js/attention.js';
 import {
-  gymConfig, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
+  gymConfig, gymStatus, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
 } from '../js/gym.js';
 import { checkinsSince } from '../js/checkins.js';
 import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES } from '../js/food.js';
@@ -435,12 +435,17 @@ function sessionBlock(doc, day) {
   const out = [];
   const idx = doneIndex(doc);
   const ahead = sessionTasks(doc, day, addDays(day, 6));
+  // planner/gas.js puts sessions into Hevy only after reading Hevy works, so while that fails they wait.
+  const readFailing = gymStatus(doc)?.lastError;
+  const waiting = readFailing
+    ? `not in Hevy: the planner puts sessions in only after reading Hevy, and that is failing (${readFailing})`
+    : 'waiting for the planner to put it into Hevy';
   if (ahead.length) {
     out.push("Sessions you've planned (next 7 days):");
     for (const t of ahead) {
       const w = sessionWorkout(doc, t);
       const bits = [`${dayName(t.date, day)}${t.time ? ` ${t.time}` : ''}: ${q(t.session.name)} ${tag(t.id)}`, sessionLines(t.session).join('; ')];
-      bits.push(routineFor(doc, t) ? 'in Hevy' : 'waiting for the planner to put it into Hevy');
+      bits.push(routineFor(doc, t) ? 'in Hevy' : waiting);
       if (w) bits.push('trained (Hevy workout)');
       else if (idx.get(t.id)?.has(t.date)) bits.push('ticked done');
       out.push(`  ${bits.join(' · ')}`);

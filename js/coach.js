@@ -206,7 +206,7 @@ export function sessionTasks(doc, from, to) {
 }
 
 // The planner's routine pool (planner/routines.js): { folderId, byRoutine: { routineId: { taskId,
-// day, hash } }, lastError }.
+// day, hash, since } }, checkedOn, lastError }.
 export function routinesOf(doc) {
   const r = doc?.gym?.routines;
   return r && r.status === 'active' ? r : { folderId: null, byRoutine: {}, lastError: null };

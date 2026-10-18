@@ -73,10 +73,12 @@ function reconcile(store, startedOn, today) {
       if (!tick) store.putLog(doneId, { itemId: habitId, kind: 'done', day: w.day, at: w.end, from: w.start, source: 'hevy' });
       else if (tick.status === 'active') store.putLog(doneId, { day: w.day, at: w.end, from: w.start });
     }
-    // The routine's current session, if this workout is on or after its day (a routine reused for a
-    // later session doesn't claim the workouts of the one before).
+    // The routine's current session, if this workout is on or after its day and was started after
+    // the routine became that session's (a routine reused for a later session, even the same day,
+    // doesn't claim the workouts of the one before).
     const entry = w.routineId ? pool[w.routineId] : null;
-    const task = entry && w.day >= entry.day ? store.doc().items[entry.taskId] : null;
+    const after = !entry?.since || Date.parse(w.start) >= Date.parse(entry.since);
+    const task = entry && w.day >= entry.day && after ? store.doc().items[entry.taskId] : null;
     const tick = logs[sessionId];
     if (!tick) {
       const already = task && Object.values(logs).some((l) => l.itemId === task.id && l.kind === 'done' && l.status === 'active');

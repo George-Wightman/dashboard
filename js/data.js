@@ -11,7 +11,7 @@ import { reviseRecord, recordContent } from './record.js';
 import { checkinId, SAID_MAX } from './checkins.js';
 import { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } from './workflow.js';
 import { slotFor, fuelSettings, FUEL_ID } from './food.js';
-import { BACK, notesWith } from './coach.js';
+import { BACK, notesWith, soreRun, soreFlagText } from './coach.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -594,6 +594,22 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return putGym(`back:${day}`, { kind: 'back', day, score, at: stamp() }, 'me').rec;
   }
 
+  // The For Claude flag two sore mornings leave, after a back answer: one record a morning (a fixed
+  // id, so changing sore to bad, or both devices answering before a sync, make the same flag), its
+  // text following the answers. Taken off if the morning drops below sore, and put back if it goes
+  // up again — but one George has marked addressed stays addressed.
+  function soreFlag(day) {
+    const id = `back-sore-${day}`;
+    const rec = doc.flags[id];
+    if (!soreRun(doc, day)) {
+      return rec?.status === 'active' ? patch('flags', id, { status: 'archived', archivedOn: today(), withdrawn: true }) : rec ?? null;
+    }
+    const text = soreFlagText(doc, day);
+    if (!rec) return create('flags', { id, text, ctx: null, source: 'me', kind: 'claude', at: stamp() });
+    if (rec.status === 'archived' && rec.withdrawn) return patch('flags', id, { status: 'active', archivedOn: null, withdrawn: false, text });
+    return rec.status === 'active' && rec.text !== text ? patch('flags', id, { text }) : rec;
+  }
+
   function setSession(id, session) {
     const item = doc.items[id];
     if (!item) throw new Error(`No task ${id}`);
@@ -768,6 +784,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     putCalendar,
     putGym,
     setBack,
+    soreFlag,
     setSession,
     addMeal,
     updateMeal: (id, changes) => patch('meals', id, changes),

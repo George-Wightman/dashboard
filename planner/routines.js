@@ -2,7 +2,8 @@
 // (js/coach.js) for the coming 7 days becomes a routine in George's "Dashboard" folder, so he
 // starts it in Hevy with the weights filled in. The only thing the planner ever writes to Hevy, and
 // only in that folder. Hevy's API can't delete a routine, so they're a small pool: a routine whose
-// session has passed or gone is rewritten for the next one. The pool is the `gym` record
+// session has passed or gone is rewritten for the next one, and one he deleted in the app is
+// noticed (a daily look-up) and made again. The pool is the `gym` record
 // `routines`; a failure is a sentence in it and never stops the planner.
 
 import { logicalDay, addDays, shortWeekday, shortDate } from '../js/dates.js';
@@ -35,10 +36,15 @@ async function call(fetch, key, method, path, body) {
     const said = typeof data?.error === 'string' ? `: ${data.error.slice(0, 200)}` : '';
     const err = new HevyError(`it answered ${res.status}${said}`);
     err.status = res.status;
+    err.said = typeof data?.error === 'string' ? data.error : '';
     throw err;
   }
   return data;
 }
+
+// Hevy saying it has no such routine (he deleted it in the app) — not any 404, which a wrong path
+// or a missing folder answers too.
+const gone = (e) => e?.status === 404 && /\broutine\b(?! folder)[^.]*\bnot found\b/i.test(e.said ?? '');
 
 // Hevy answers a routine write with { routine: [ {...} ] } (a list of one), a folder with
 // { routine_folder: {...} }; either may come as a bare object.
@@ -82,7 +88,7 @@ export async function syncRoutines({ fetch, key, store, now = () => new Date(), 
   const today = logicalDay(now(), dayStartHour);
   const doc = store.doc();
   const prev = routinesOf(doc);
-  const state = { folderId: prev.folderId ?? null, byRoutine: structuredClone(prev.byRoutine ?? {}), lastError: null };
+  const state = { folderId: prev.folderId ?? null, byRoutine: structuredClone(prev.byRoutine ?? {}), checkedOn: prev.checkedOn ?? null, lastError: null };
   const idx = doneIndex(doc);
   const sessions = sessionTasks(doc, today, addDays(today, WINDOW_DAYS - 1)).filter((t) => !idx.get(t.id)?.has(t.date));
   if (!sessions.length && prev.lastError == null) return prev;
@@ -103,7 +109,21 @@ export async function syncRoutines({ fetch, key, store, now = () => new Date(), 
       const body = routineBody(t.session, { title: routineTitle(t.session, t.date) });
       const sig = hash(JSON.stringify(body));
       let id = held(t.id);
-      if (id && state.byRoutine[id].hash === sig && state.byRoutine[id].day === t.date) continue;
+      if (id && state.byRoutine[id].hash === sig && state.byRoutine[id].day === t.date) {
+        // Unchanged, so nothing is sent; but once a day it's looked up, in case he deleted it in Hevy.
+        if (state.checkedOn === today) continue;
+        try {
+          await call(fetch, key, 'GET', `/routines/${encodeURIComponent(id)}`);
+          continue;
+        } catch (e) {
+          if (!gone(e)) {
+            if (e instanceof HevyError && e.status) { problems.push(`Couldn't check the routine for ${label} in Hevy (${e.message})`); continue; }
+            throw e;
+          }
+          delete state.byRoutine[id];
+          id = undefined;
+        }
+      }
       try {
         if (!id && !spare.length && !looked) {
           looked = true;
@@ -124,14 +144,18 @@ export async function syncRoutines({ fetch, key, store, now = () => new Date(), 
         }
       } catch (e) {
         // A routine Hevy no longer has (he deleted it in the app) is forgotten, and made again next run.
-        if (e.status === 404 && id) delete state.byRoutine[id];
+        if (gone(e) && id) delete state.byRoutine[id];
         // A new routine refused: the folder may be gone (deleted in the app), so look it up again next run.
         if (e.status && !id) state.folderId = null;
         if (e instanceof HevyError && e.status) { problems.push(`Hevy wouldn't take the routine for ${label} (${e.message})`); continue; }
         throw e;
       }
-      state.byRoutine[id] = { taskId: t.id, day: t.date, hash: sig };
+      // `since`: when the routine became this session's, so a workout started from it before then
+      // (for the session it had) doesn't tick this one (planner/hevy.js).
+      const was = state.byRoutine[id];
+      state.byRoutine[id] = { taskId: t.id, day: t.date, hash: sig, since: was?.taskId === t.id ? was.since ?? null : now().toISOString() };
     }
+    state.checkedOn = today;
   } catch (err) {
     problems.push(err instanceof HevyError ? err.message : `Putting sessions into Hevy stopped: ${err?.message ?? err}`);
   }

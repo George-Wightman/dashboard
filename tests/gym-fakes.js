@@ -1,6 +1,6 @@
 // Hevy in memory, for the gym tests: its exercise templates, workouts in its own JSON shape, and
 // the three read endpoints the planner uses, and routine folders and routines (the coach's
-// sessions: list and create folders, create and update routines; Hevy has no delete), behind an
+// sessions: list and create folders, list, get, create and update routines; Hevy has no delete), behind an
 // `api-key` header.
 
 import { at } from '../planner/time.js';
@@ -84,6 +84,11 @@ export class FakeHevy {
         return { status: 200, body: { routine: [r] } };
       }
       return { status: 404, body: { error: 'Not found' } };
+    }
+    const one = /^\/v1\/routines\/([^/]+)$/.exec(u.pathname);
+    if (one) {
+      if (!this.routines.has(one[1])) return { status: 404, body: { error: 'Routine not found' } };
+      return { status: 200, body: { routine: this.routines.get(one[1]) } };
     }
     if (u.pathname === '/v1/routines') {
       const s = slice([...this.routines.values()]);

@@ -177,3 +177,61 @@ test('final review: a Dashboard folder deleted in Hevy is looked up again, not u
   assert.equal(routinesOf(store.doc()).lastError, null);
   assert.equal(hevy.routines.size, 1);
 });
+
+test('review minors: a routine moved to a second session the same day ticks it only with workouts started after the move', async () => {
+  const { store, hevy, sync, session, now } = setup();
+  const a = session(TUE, legs);
+  await sync();
+  store.toggleDone(a.id, TUE); // ticked by hand, so rt-1 is free for the next session
+  now.set(at(TUE, '12:00'));
+  const b = session(TUE, upper);
+  await sync();
+  assert.equal(routinesOf(store.doc()).byRoutine['rt-1'].taskId, b.id);
+  // Started from rt-1 at 11:00, while it was still the first session's.
+  hevy.save({ ...hevyWorkout('h1', TUE, '11:00', '11:50', [lift('SQ', [95, 5])]), routine_id: 'rt-1' }, at(TUE, '12:05').toISOString());
+  now.set(at(TUE, '12:10'));
+  await syncHevy({ fetch: hevy.fetch, key: HEVY_KEY, store, now });
+  assert.equal(store.doc().logs['hevy-session-h1'], undefined);
+  hevy.save({ ...hevyWorkout('h2', TUE, '18:00', '19:00', [lift('BP', [80, 5])]), routine_id: 'rt-1' }, at(TUE, '19:00').toISOString());
+  now.set(at(TUE, '19:10'));
+  await syncHevy({ fetch: hevy.fetch, key: HEVY_KEY, store, now });
+  assert.equal(store.doc().logs['hevy-session-h2']?.itemId, b.id);
+});
+
+test('review minors: a routine deleted in Hevy is noticed the next day and made again, though its session is unchanged', async () => {
+  const { store, hevy, sync, session, now } = setup();
+  const t = session('2026-10-22', legs);
+  await sync();
+  hevy.routines.delete('rt-1');
+  now.advance(10 * 60000);
+  await sync();
+  assert.equal(hevy.calls.filter((c) => c.endsWith('/v1/routines/rt-1')).length, 0, 'checked once a day, not every run');
+  now.set(at('2026-10-21', '08:00'));
+  await sync();
+  assert.equal(hevy.calls.filter((c) => c.endsWith('/v1/routines/rt-1')).length, 1);
+  const state = routinesOf(store.doc());
+  assert.deepEqual(Object.entries(state.byRoutine).map(([id, v]) => [id, v.taskId]), [['rt-2', t.id]]);
+  assert.equal(hevy.routines.size, 1);
+  assert.equal(state.lastError, null);
+});
+
+test("review minors: a 404 that doesn't say the routine is gone keeps it; one that does forgets it", async () => {
+  const { store, hevy, sync, session } = setup();
+  const t = session(TUE, legs);
+  await sync();
+  store.setSession(t.id, { ...legs, exercises: [{ ...legs.exercises[0], kg: 97.5 }] });
+  hevy.refuse = { status: 404, body: { error: 'Not found' } };
+  await sync();
+  let state = routinesOf(store.doc());
+  assert.equal(state.byRoutine['rt-1']?.taskId, t.id);
+  assert.match(state.lastError, /Hevy wouldn't take the routine for "Legs A" \(Tue 20 Oct\) \(it answered 404: Not found\)/);
+  hevy.refuse = null;
+  await sync();
+  assert.deepEqual(hevy.writes.at(-1).slice(0, 2), ['PUT', '/v1/routines/rt-1']);
+  assert.equal(routinesOf(store.doc()).lastError, null);
+  hevy.routines.delete('rt-1');
+  store.setSession(t.id, { ...legs, exercises: [{ ...legs.exercises[0], kg: 100 }] });
+  await sync();
+  state = routinesOf(store.doc());
+  assert.equal(state.byRoutine['rt-1'], undefined);
+});

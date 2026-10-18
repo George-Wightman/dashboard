@@ -83,7 +83,9 @@ In priority order: **heart, then back and posture, then cardio, without losing h
 
 A Hevy workout ticks the Gym habit and moves the Gym block to when he actually trained, and its
 cardio minutes count towards the linked weekly target. A workout saved from one of your sessions'
-routines also ticks that session's task. Those are the **only** automatic ticks anywhere in the
+routines also ticks that session's task, on or after the session's day. If he trains a session
+early, move the task to that day first (or he ticks it by hand); a workout before the day ticks
+nothing. Those are the **only** automatic ticks anywhere in the
 dashboard. Nothing else ticks itself: a calendar event never does, however it is tagged.
 
 ## Setting it up

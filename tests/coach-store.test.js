@@ -7,6 +7,7 @@ import { mergeDocs } from '../js/merge.js';
 import { recordProblem } from '../js/doc.js';
 import { backScores } from '../js/coach.js';
 import { workoutRecord } from '../js/gym.js';
+import { openFlags } from '../js/flags.js';
 import { TEMPLATES, hevyWorkout, lift } from './gym-fakes.js';
 
 const session = { name: 'Legs A', exercises: [{ name: 'Squat (Barbell)', tpl: 'SQ', sets: 3, reps: 5, kg: 95 }] };
@@ -77,4 +78,39 @@ test("final review: setting a session keeps George's own notes, before the sessi
   assert.equal(store.doc().items[t.id].notes, 'With Maya, bring the belt\n\nSquat (Barbell) 3×5 @ 97.5 kg');
   store.setSession(t.id, null);
   assert.equal(store.doc().items[t.id].notes, 'With Maya, bring the belt');
+});
+
+test('review minors: two sore mornings leave one flag that morning, whatever the answer changes to', () => {
+  const store = makeStore();
+  store.setBack('2026-10-19', 2);
+  store.setBack('2026-10-20', 2);
+  store.soreFlag('2026-10-20');
+  store.setBack('2026-10-20', 3);
+  store.soreFlag('2026-10-20');
+  const open = () => openFlags(store.doc(), 'claude').map((f) => [f.id, f.text]);
+  assert.deepEqual(open(), [['back-sore-2026-10-20', 'Back sore two mornings running (Mon sore, Tue bad)']]);
+  // Changed to below sore, it's taken off; back up to sore, it's back.
+  store.setBack('2026-10-20', 1);
+  store.soreFlag('2026-10-20');
+  assert.deepEqual(open(), []);
+  store.setBack('2026-10-20', 2);
+  store.soreFlag('2026-10-20');
+  assert.deepEqual(open(), [['back-sore-2026-10-20', 'Back sore two mornings running (Mon sore, Tue sore)']]);
+  // Once George has marked it addressed, it stays addressed.
+  store.addressFlag('back-sore-2026-10-20');
+  store.setBack('2026-10-20', 3);
+  store.soreFlag('2026-10-20');
+  assert.deepEqual(open(), []);
+});
+
+test('review minors: the phone and the laptop both answering sore before a sync make one flag', () => {
+  const phone = makeStore({ prefix: 'p' });
+  const laptop = makeStore({ prefix: 'l' });
+  for (const s of [phone, laptop]) {
+    s.setBack('2026-10-19', 2);
+    s.setBack('2026-10-20', 3);
+    s.soreFlag('2026-10-20');
+  }
+  const merged = mergeDocs(phone.doc(), laptop.doc());
+  assert.equal(openFlags(merged, 'claude').length, 1);
 });

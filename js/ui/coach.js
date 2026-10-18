@@ -3,9 +3,8 @@
 // the next session and the back mornings (the big view: 90 of them, and lifts ready for more weight).
 
 import { h } from './dom.js';
-import { BACK, backRowState, backScores, backFlag, soreRun, soreFlagText, nextSession, sessionLines, sessionTasks, sessionWorkout, readyMarks } from '../coach.js';
+import { BACK, backRowState, backScores, backFlag, nextSession, sessionLines, sessionTasks, sessionWorkout, readyMarks } from '../coach.js';
 import { liftSessions, kgText } from '../gym.js';
-import { openFlags } from '../flags.js';
 import { addDays, shortWeekday, shortDate } from '../dates.js';
 import { bigSection } from './big.js';
 
@@ -21,11 +20,7 @@ function answer(ctx, score) {
   const today = ctx.store.today();
   try {
     ctx.store.setBack(today, score);
-    const doc = ctx.store.doc();
-    if (soreRun(doc, today)) {
-      const text = soreFlagText(doc, today);
-      if (!openFlags(doc, 'claude').some((f) => f.text === text)) ctx.store.addFlag(text, null, 'me', 'claude');
-    }
+    ctx.store.soreFlag(today);
     ctx.ui.backAsk = false;
   } catch (e) {
     ctx.ui.taskError = e.message;

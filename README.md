@@ -116,7 +116,8 @@ Claude coaches your training in a chat; the dashboard shows the plan and keeps a
   calendar, follows the rules from your 17 Oct health report (heart, then back, then cardio, without
   losing squat and bench), and writes each session onto a dated *Gym* task.
 - **Each session goes into Hevy as a routine** in a folder called *Dashboard*, with the sets and
-  weights filled in, within 10 minutes. Start it in Hevy and save: that ticks the session. The
+  weights filled in, within 10 minutes. Start it in Hevy and save: that ticks the session. Training
+  a session early? Move its task to that day first, or tick it yourself. The
   calendar block lists the exercises, so they're on your phone and watch too.
 - **The morning question.** Until 11:00 the day starts with "How's your back this morning?" (fine,
   stiff, sore or bad). One tap. A sore or bad morning puts a warning on a session with deadlifts or a

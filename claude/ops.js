@@ -734,6 +734,12 @@ function session(store, op) {
   if (op.id == null && op.date == null) {
     throw new Error('session needs a date or an id — e.g. {"op": "session", "date": "2026-10-21", "session": {"name": "Legs A", "exercises": [...]}}');
   }
+  if (op.id != null && (op.date != null || op.time != null)) {
+    const set = Object.entries({ date: op.date, time: op.time }).filter(([, v]) => v != null).map(([k, v]) => `"${k}": ${JSON.stringify(v)}`).join(', ');
+    throw new Error(`With an id the session goes on that task as it is — move the task with {"op": "edit", "id": ${JSON.stringify(String(op.id))}, "set": {${set}}} first, then give the session without a date or time`);
+  }
+  const date = op.id ? null : toDay(op.date, today);
+  if (date && date < today) throw new Error(`${dayName(date, today)} is in the past — a session goes on today or a day ahead`);
   const target = op.id ? resolveId(doc, op.id, ['items']) : null;
   if (target && (target.rec.type !== 'task' || target.rec.status !== 'active')) {
     throw new Error(`${q(target.rec.title)} isn't a dated task — a session goes on a task, or give a date to make one`);
@@ -752,7 +758,7 @@ function session(store, op) {
   }
   const time = clockOf(op.time);
   const rec = store.addItem({
-    type: 'task', title: op.title == null ? `Gym · ${s.name}` : title(op.title, 'A session task'), date: toDay(op.date, today),
+    type: 'task', title: op.title == null ? `Gym · ${s.name}` : title(op.title, 'A session task'), date,
     area: 'Health', goalId: null, status: 'active', source: CLAUDE, minutes: 75, ...(time ? { time } : {}),
   });
   store.setSession(rec.id, s);
