@@ -1,5 +1,5 @@
 {
-  "id": "fa03652e0e83ed11eab4e82e9245cc2229b252ec61bc5f2ed1f31c451f848a83",
+  "id": "ef84af3d9b238daa3f8ffe62fd4315270c6e9da5aa5a85195fe30c89617d8beb",
   "files": {
     "./": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
     "index.html": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
@@ -69,6 +69,7 @@
     "js/food.js": "ae3be3a1acc5bbade969fb45497e03e2d9a06debcd9e1fbf51bc7d20fb89070c",
     "js/photos.js": "404dde94bee2d08e0962d473f31c6d3913f71adecfde6ece21edb153eef38ae2",
     "js/ui/snap.js": "0dbd8773924a8690c94005e708bf138ee2fc9928132eb5bfb6cc3ed6d14705a8",
-    "js/ui/fuel.js": "03b0cac13e84427ff95d540fde2adcfd6a8bf46efc0b667c643572e0813a4f11"
+    "js/ui/fuel.js": "03b0cac13e84427ff95d540fde2adcfd6a8bf46efc0b667c643572e0813a4f11",
+    "js/coach.js": "fd543755d1557185592c857c691159a9e33f23bec0d3bd8d54af87fd29d8cfe5"
   }
 }
