@@ -23,6 +23,7 @@ import { createUpdater, runningBuild, IDLE_CHECK_GAP } from './version.js';
 import { h } from './ui/dom.js';
 import { plannerNotes, staleSince, visibleNotes, briefFor, offLine } from './calendar.js';
 import { LOGOS } from './ui/sources.js';
+import { syncLabel } from './header.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -125,15 +126,6 @@ const ctx = {
 
 let shownDay = store.today();
 
-function syncLabel() {
-  switch (sync.state) {
-    case 'off': return ['on this device', 'Sync is off. Add a repo and an access key in settings.'];
-    case 'syncing': return ['syncing…', ''];
-    case 'offline': return ['offline', "Can't reach GitHub. Working on this device."];
-    case 'failing': return ['sync failing', `${sync.error ?? ''} — click for details`];
-    default: return [`synced ${sync.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 'Click to sync now'];
-  }
-}
 
 // The planner's notes under the date (js/calendar.js), each hidden with × on this device until the
 // next day. Kept as "<day>|<note>"; only today's are kept.
@@ -193,7 +185,7 @@ function renderHeader() {
   plannerWarning.textContent = stale ? `calendar planner hasn't run since ${stale}` : '';
 
   const status = document.getElementById('sync-status');
-  const [text, title] = syncLabel();
+  const [text, title] = syncLabel(sync);
   status.textContent = text;
   status.title = title;
   status.classList.toggle('sync-failing', sync.state === 'failing');
