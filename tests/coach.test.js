@@ -115,4 +115,9 @@ test('ready to add weight: every set at the top of the reps, at the weight', () 
   // Fewer sets than prescribed isn't ready; no kg prescribed is never ready.
   assert.deepEqual(readyMarks(s, { exercises: [{ tpl: 'T1', sets: [[95, 5, null], [95, 5, null]] }, { tpl: 'T2', sets: [[100, 6], [100, 6], [100, 6]] }] }), []);
   assert.deepEqual(readyMarks(s, { exercises: [] }), []);
+  // At or under the prescribed RPE, where Hevy has one.
+  const row = s.exercises.find((e) => e.tpl === 'T4');
+  const over = { exercises: [{ tpl: 'T4', sets: [[22.5, 12, 8], [22.5, 12, 9], [22.5, 12, null]] }] };
+  assert.deepEqual(readyMarks({ ...s, exercises: [row] }, over), []);
+  assert.deepEqual(readyMarks({ ...s, exercises: [row] }, { exercises: [{ tpl: 'T4', sets: [[22.5, 12, 8], [22.5, 12, 7.5], [22.5, 12, null]] }] }), [row.name]);
 });

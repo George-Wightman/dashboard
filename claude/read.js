@@ -18,6 +18,7 @@ import {
 } from '../js/gym.js';
 import { checkinsSince } from '../js/checkins.js';
 import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES } from '../js/food.js';
+import { BACK, backScores, sessionTasks, sessionLines, routinesOf, routineFor, sessionWorkout, readyMarks } from '../js/coach.js';
 
 // A row's notes, on their own indented line under it.
 const withNote = (line, item) => (item.notes ? `${line}\n      note: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 300)}` : line);
@@ -319,6 +320,8 @@ function catchup(doc, today, arg, now = new Date()) {
   if (workouts(doc).length) out.push(`Training this week: ${trainingWeek(doc, today)}`);
   const food = foodLine(doc, first, today);
   if (food) out.push(food);
+  const coach = coachLine(doc, first, today);
+  if (coach) out.push(coach);
 
   // Each task once: where it started, where it ended up, and how many times it moved in between.
   const byItem = new Map();
@@ -414,10 +417,71 @@ function gymRead(doc, day) {
   const recent = all.filter((w) => w.day > addDays(day, -14) && w.day <= day);
   out.push(recent.length ? 'Last 14 days:' : 'No sessions in the last 14 days.');
   for (const w of [...recent].reverse()) out.push(`  ${dayName(w.day, day)}: ${sessionLine(doc, w, config)}`);
+  out.push(...sessionBlock(doc, day));
   const habit = gymHabitId(doc, config);
   const targets = Object.entries(config.liftTargets).map(([l, kg]) => `${l} ${kgText(kg)}`).join(', ') || 'none';
   out.push(`Settings: keyLifts ${config.keyLifts.join(', ')} · liftTargets ${targets} · habit ${habit ? `${q(doc.items[habit].title)} ${tag(habit)}` : `"${config.habit}" (no single live habit matches)`}`);
   return out.join('\n');
+}
+
+// ---- The coach (js/coach.js) ---------------------------------------------------------------------
+
+const backCounts = (scores) => BACK.map((word, i) => [word, scores.filter((s) => s.score === i).length])
+  .filter(([, n]) => n).map(([word, n]) => `${word} ${n}`).join(', ');
+
+// The sessions Claude planned for the next 7 days (with whether each is in Hevy yet, and done), and
+// lifts from the last 14 days' sessions done in full at the weight — ready for more.
+function sessionBlock(doc, day) {
+  const out = [];
+  const idx = doneIndex(doc);
+  const ahead = sessionTasks(doc, day, addDays(day, 6));
+  if (ahead.length) {
+    out.push("Sessions you've planned (next 7 days):");
+    for (const t of ahead) {
+      const w = sessionWorkout(doc, t);
+      const bits = [`${dayName(t.date, day)}${t.time ? ` ${t.time}` : ''}: ${q(t.session.name)} ${tag(t.id)}`, sessionLines(t.session).join('; ')];
+      bits.push(routineFor(doc, t) ? 'in Hevy' : 'waiting for the planner to put it into Hevy');
+      if (w) bits.push('trained (Hevy workout)');
+      else if (idx.get(t.id)?.has(t.date)) bits.push('ticked done');
+      out.push(`  ${bits.join(' · ')}`);
+    }
+  }
+  const { lastError } = routinesOf(doc);
+  if (lastError) out.push(`Putting sessions into Hevy failed: ${lastError}`);
+  const ready = [];
+  for (const t of sessionTasks(doc, addDays(day, -13), day)) {
+    const w = sessionWorkout(doc, t);
+    if (!w) continue;
+    for (const name of readyMarks(t.session, w)) {
+      const ex = t.session.exercises.find((e) => e.name === name);
+      ready.push(`${name} (${dayName(t.date, day)}, ${kgText(ex.kg)} kg)`);
+    }
+  }
+  if (ready.length) out.push(`Ready for more weight: ${ready.join(', ')}`);
+  return out;
+}
+
+// Each morning's back answer over the last `days` days (14 by default).
+function backRead(doc, today, arg) {
+  const days = Math.max(1, Math.min(90, Number.parseInt(arg, 10) || 14));
+  const scores = backScores(doc, today, days);
+  const out = [header(doc, today)];
+  if (!scores.length) return [...out, `No back answers in the last ${days} days.`].join('\n');
+  out.push('Back, each morning (0 fine … 3 bad), oldest first:', ...scores.map((s) => `  ${dayName(s.day, today)}: ${BACK[s.score]}`));
+  out.push(`${scores.length} of ${days} mornings answered: ${backCounts(scores)}`);
+  return out.join('\n');
+}
+
+// One line for the catch-up: the back mornings and the sessions done in that time.
+function coachLine(doc, first, today) {
+  const scores = backScores(doc, today, daysBetween(first, today) + 1);
+  const planned = sessionTasks(doc, first, today);
+  if (!scores.length && !planned.length) return null;
+  const idx = doneIndex(doc);
+  const sore = scores.filter((s) => s.score >= 2).map((s) => (s.day === today ? 'today' : shortWeekday(s.day)));
+  const done = planned.filter((t) => sessionWorkout(doc, t) || idx.get(t.id)?.has(t.date)).length;
+  return [scores.length ? `Back: ${backCounts(scores)}${sore.length ? ` (sore ${sore.join(', ')})` : ''}` : 'Back: no answers',
+    planned.length ? `sessions done ${done} of ${planned.length}` : null].filter(Boolean).join(' · ');
 }
 
 // ---- Food (js/food.js) ------------------------------------------------------------------------------
@@ -497,7 +561,7 @@ export const READS = {
     'Goal reviews:', ...Object.values(doc.reviews ?? {}).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 10).map((r) => `${tag(r.id)} ${r.result.state}: ${r.result.summary ?? r.result.message ?? r.reason}`),
     'Pending reviews require the planner and its GEMINI_KEY. Review suggestions wait for acceptance.'
   ].join('\n'),
-  today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead, food: foodRead,
+  today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead, food: foodRead, back: backRead,
   // What older copies of the skill still ask for.
   journal: checkins,
 };

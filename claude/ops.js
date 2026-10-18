@@ -10,7 +10,9 @@ import {
   checkCountdown, nextCountdownId, daysLeft,
 } from '../js/calendar.js';
 import { daysBetween } from '../js/dates.js';
-import { gymConfig, gymHabitId } from '../js/gym.js';
+import { gymConfig, gymHabitId, templatesOf } from '../js/gym.js';
+import { checkSession, sessionText } from '../js/coach.js';
+import { NOTES_MAX } from '../js/parse.js';
 import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
 import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
@@ -718,6 +720,45 @@ function gym(store, op) {
   return `Changed the gym settings: ${said.join(', ')}`;
 }
 
+// A training session on a dated task (js/coach.js): on a task by id, on a new gym task by date
+// (Health, 75 minutes), or cleared with null. The planner puts it into Hevy as a routine.
+function session(store, op) {
+  const doc = store.doc();
+  const today = store.today();
+  if (op.session === null) {
+    if (!op.id) throw new Error('Clearing a session needs the id of its task');
+    const { id, rec } = resolveId(doc, op.id, ['items']);
+    store.setSession(id, null);
+    return tagged(`Cleared the session on ${q(rec.title)}`, id);
+  }
+  if (op.id == null && op.date == null) {
+    throw new Error('session needs a date or an id — e.g. {"op": "session", "date": "2026-10-21", "session": {"name": "Legs A", "exercises": [...]}}');
+  }
+  const target = op.id ? resolveId(doc, op.id, ['items']) : null;
+  if (target && (target.rec.type !== 'task' || target.rec.status !== 'active')) {
+    throw new Error(`${q(target.rec.title)} isn't a dated task — a session goes on a task, or give a date to make one`);
+  }
+  const templates = templatesOf(doc);
+  if (!Object.keys(templates).length) {
+    throw new Error("Hevy's exercise list isn't on the dashboard yet — the planner fetches it on its next run once HEVY_KEY is set (see `gym`)");
+  }
+  const s = checkSession(op.session, templates);
+  if (sessionText(s).length > NOTES_MAX) throw new Error(`That session is too long to show in the calendar (${NOTES_MAX} characters) — shorten its notes`);
+  const count = `(${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'})`;
+  if (target) {
+    const { id, rec } = target;
+    store.setSession(id, s);
+    return tagged(`Set session ${q(s.name)} on ${q(rec.title)} ${dayName(rec.date, today)}${rec.time ? ` at ${rec.time}` : ''} ${count}`, id);
+  }
+  const time = clockOf(op.time);
+  const rec = store.addItem({
+    type: 'task', title: op.title == null ? `Gym · ${s.name}` : title(op.title, 'A session task'), date: toDay(op.date, today),
+    area: 'Health', goalId: null, status: 'active', source: CLAUDE, minutes: 75, ...(time ? { time } : {}),
+  });
+  store.setSession(rec.id, s);
+  return tagged(`Added session ${q(s.name)} on ${dayName(rec.date, today)}${time ? ` at ${time}` : ''} ${count}`, rec.id);
+}
+
 // What each op actually reads. A key that isn't here is dropped without a word, which is the worst
 // thing that can happen to a model working from a half-remembered shape: it reports a length it
 // never set and George never finds out. planner and gym check their own fields and say so
@@ -725,6 +766,7 @@ function gym(store, op) {
 export const FIELDS = {
   details: ['id', 'set'],
   meal: ['id', 'protein', 'kcal', 'why', 'usual', 'fuel'],
+  session: ['id', 'date', 'time', 'title', 'session'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],
   review: ['id'],
@@ -787,7 +829,7 @@ export const OPS = {
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
   log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym,
-  details, rule, report, review, meal,
+  details, rule, report, review, meal, session,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff

@@ -22,6 +22,7 @@ Pick the row, not the whole file. The detail for each command is below.
 | Break a big job into stages | `goals` | `plan` |
 | See what needs you | `attention` | `edit`, `off`, `brief` |
 | Check his training | `gym` | `gym` settings, the Gym habit's `notes` |
+| Write his next sessions (into Hevy) | `gym`, `back` | `session` |
 | Check what he's eaten, and correct a big miss | `food`, `photo <meal id>` | `meal` |
 | See how a piece of work went, in his words | `checkins`, `catchup` | `edit` with `notes` on the next attempt |
 | Change how the calendar books | `planner` | `planner` |
@@ -38,7 +39,7 @@ Four jobs have a playbook of their own. Read the playbook **first**, before any 
 
     bash run.sh reference calendar    # anything touching his Google Calendar
     bash run.sh reference planning    # "plan my week", or any reshuffle
-    bash run.sh reference gym         # his training
+    bash run.sh reference gym         # his training: coaching, sessions, the back
     bash run.sh reference food        # his meals: checking estimates, corrections, maintenance
 
 If a command the tool mentions isn't in this file, this copy is older than the tool: run
@@ -145,7 +146,14 @@ without it.
 Training from Hevy: whether it's connected (and any problem), each key lift (estimated 1RM, last top
 set, last PR, pace in kg a week over 8 weeks, its target and roughly when it'll be reached), cardio
 against the linked weekly target and by week, the last 14 days' sessions in a line each, and the
-settings.
+settings. Then the sessions you've planned for the next 7 days — each with its exercises, whether
+the planner has put it into Hevy yet, and whether he trained it — any problem putting them into Hevy,
+and lifts from the last 14 days' sessions done in full at the weight ("Ready for more weight").
+
+### `back [days]`
+His answer to the morning question "How's your back?" — fine, stiff, sore or bad — for each of the
+last 14 days (or `days`) he answered, oldest first, and the counts. Two sore mornings running also
+leave you a For Claude flag. Read it before writing a session with a hinge or a heavy squat.
 
 ### `food [days]`
 Meals over the last 7 days (or `days`), newest first: each with its time and slot, Gemini's name for
@@ -303,6 +311,27 @@ towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 12
 1RM target in kg, one lift per op, `null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
 "Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts followed closely (Hevy's exercise names).
 `{"op": "gym", "habit": "Gym"}` — the habit a workout ticks (by id or the start of its title).
+
+### `session`
+A training session on a dated task (`reference gym` first). The planner puts it into Hevy as a routine
+in his "Dashboard" folder (within 10 minutes), the calendar block shows its lines, and a workout he
+saves from that routine ticks the task.
+
+    {"op": "session", "date": "2026-10-21", "time": "17:30", "session": {
+      "name": "Legs A", "note": "Brace and breathe between reps.",
+      "exercises": [
+        {"name": "Squat (Barbell)", "sets": 3, "reps": 5, "kg": 95},
+        {"name": "Trap Bar Deadlift", "sets": 3, "reps": 6, "rpe": 7},
+        {"name": "Bulgarian Split Squat", "sets": 3, "reps": 8, "kg": 16, "each": true},
+        {"name": "Chest Supported Incline Row (Dumbbell)", "sets": 3, "repRange": [8, 12], "kg": 22.5}],
+      "cardio": {"kind": "Bike", "minutes": 25, "hr": [118, 138]}}}
+
+With a `date` it makes the task (title `Gym · <name>` unless you give `title`; Health, 75 minutes;
+`time` optional). With an `id` instead it puts the session on that task, replacing any session there;
+`"session": null` clears it. Each exercise: `name` exactly as Hevy names it (the op refuses anything
+else and names the closest), `sets` 1–10, `reps` 1–50 or `repRange` [low, high], and optionally `kg`,
+`rpe` 5–10, `each` (each side), `restSec`, `note`. RPE, "each side" and the cardio go in the routine's
+notes, since Hevy's sets have no field for them.
 
 ### `meal`
 Food (`reference food` first). `{"op": "meal", "id": "meal:…", "protein": 35, "kcal": 1050, "why": "the oil and

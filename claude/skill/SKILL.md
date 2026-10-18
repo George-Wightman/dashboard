@@ -34,7 +34,7 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
     bash <skill folder>/run.sh today
 
 **Reads:** `catchup [days]`, `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`,
-`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `reference`. Each
+`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `back`, `reference`. Each
 starts with today's date — work other dates out from it.
 
 If the tool names an op or a read that isn't in your `reference.md`, your copy is older than the
@@ -50,7 +50,8 @@ are safe. Several ops in one `apply` are one sync:
     EOF
 
 Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `log`, `edit`,
-`archive`, `accept`, `dismiss`, `flag`, `handoff`, `undo`, `planner`, `off`, `brief`, `countdown`, `gym`.
+`archive`, `accept`, `dismiss`, `flag`, `handoff`, `undo`, `planner`, `off`, `brief`, `countdown`, `gym`,
+`session`, `meal`.
 Additional controls: `details`, `rule`, `report`, `review`; inspect their capabilities before use.
 Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.
@@ -59,7 +60,7 @@ or log.
 
     bash run.sh reference calendar    # anything touching his Google Calendar
     bash run.sh reference planning    # "plan my week", or any reshuffle
-    bash run.sh reference gym         # his training
+    bash run.sh reference gym         # his training: you coach him
     bash run.sh reference food        # his meals
 
 **Not sure which command?** The table at the top of `reference.md` — *to do this → run this* — maps
@@ -200,13 +201,15 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
 George logs every workout in Hevy. The planner's script copies them into the dashboard every 10
 minutes: a workout ticks his Gym habit (and moves the Gym block in his calendar to when he trained),
 and its cardio minutes count towards his Cardio target. Read `gym` for his key lifts — estimated 1RM,
-PRs, pace over 8 weeks, when a target will be reached — cardio by week, and the last two weeks'
-sessions. He's training for more cardio while still progressing his squat and bench.
+PRs, pace over 8 weeks, when a target will be reached — cardio by week, the last two weeks'
+sessions, and the sessions you've planned. He's training for more cardio while still progressing his
+squat and bench, with his back first.
 
-- **He plans his own sessions.** Never write a session or a routine for him, and never try to reach
-  Hevy — there's no way to from here. Predict and guide: read the trend, say what it means, and put
-  advice where he'll see it — the Gym habit's `notes` (they lead the Gym block in his calendar, so
-  he has them in the gym), the brief, or a task.
+- **You coach him, in the chat.** When he asks, write his sessions with the `session` op: each goes
+  on a dated task, into Hevy as a routine (the planner does that), and into the calendar block. Read
+  `reference gym` first — it has the rules from his health report, and they are not optional. You
+  never write a workout, and you never touch a routine outside the "Dashboard" folder.
+- **The morning back answer** (`back`): read it before any hinge or heavy squat.
 - **Set up with him:** a weekly target in minutes (`{"op": "target", "title": "Cardio", "target":
   "150m", "unit": "minutes"}`), then link it: `{"op": "gym", "cardioQuota": "Cardio"}`. Targets for
   key lifts as an estimated 1RM: `{"op": "gym", "liftTargets": {"Squat (Barbell)": 120}}`. Key lifts

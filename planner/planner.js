@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '82a5d363';
+var PLANNER_BUILD = '851581b9';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2780,7 +2780,8 @@ function backScores(doc, today, days = 14) {
 // ---- Ready for more weight -------------------------------------------------------------------------
 
 // The exercises in `session` that `workout` (as js/gym.js keeps it, sets as [kg, reps, rpe]) did
-// in full: every prescribed set at the weight and at the top of the reps.
+// in full: every prescribed set at the weight, at the top of the reps, and at or under the RPE
+// where Hevy has one.
 function readyMarks(session, workout) {
   const done = workout?.exercises ?? [];
   const out = [];
@@ -2789,11 +2790,41 @@ function readyMarks(session, workout) {
     const hit = done.find((d) => (ex.tpl && d.tpl ? d.tpl === ex.tpl : norm(d.name) === norm(ex.name)));
     const sets = Array.isArray(hit?.sets) ? hit.sets : [];
     const top = ex.repRange ? ex.repRange[1] : ex.reps;
-    if (sets.length >= ex.sets && sets.filter((s) => s[0] >= ex.kg && s[1] >= top).length >= ex.sets) out.push(ex.name);
+    const easyEnough = (s) => ex.rpe == null || s[2] == null || s[2] <= ex.rpe;
+    if (sets.filter((s) => s[0] >= ex.kg && s[1] >= top && easyEnough(s)).length >= ex.sets) out.push(ex.name);
   }
   return out;
 }
-return { BACK, BACK_UNTIL_HOUR, sessionLines, sessionText, checkSession, routineBody, isHinge, backFlag, backScores, readyMarks };
+
+// ---- Sessions on the dashboard -------------------------------------------------------------------
+
+// Live tasks with a session, dated `from` to `to`, in date and time order.
+function sessionTasks(doc, from, to) {
+  return Object.values(doc?.items ?? {})
+    .filter((i) => i.type === 'task' && i.status === 'active' && i.session && i.date >= from && i.date <= to)
+    .sort((a, b) => (a.date + (a.time || '99')).localeCompare(b.date + (b.time || '99')));
+}
+
+// The planner's routine pool (planner/routines.js): { folderId, byRoutine: { routineId: { taskId,
+// day, hash } }, lastError }.
+function routinesOf(doc) {
+  const r = doc?.gym?.routines;
+  return r && r.status === 'active' ? r : { folderId: null, byRoutine: {}, lastError: null };
+}
+
+// The Hevy routine a session task is in, if the planner has put it there.
+function routineFor(doc, item) {
+  const hit = Object.entries(routinesOf(doc).byRoutine ?? {}).find(([, v]) => v?.taskId === item.id && v.day === item.date);
+  return hit ? hit[0] : null;
+}
+
+// The workout he saved from a session's routine, on the session's day.
+function sessionWorkout(doc, item) {
+  const ids = new Set(Object.entries(routinesOf(doc).byRoutine ?? {}).filter(([, v]) => v?.taskId === item.id).map(([id]) => id));
+  if (!ids.size) return null;
+  return Object.values(doc?.gym ?? {}).find((w) => w.status === 'active' && String(w.id).startsWith('w:') && ids.has(w.routineId) && w.day === item.date) ?? null;
+}
+return { BACK, BACK_UNTIL_HOUR, sessionLines, sessionText, checkSession, routineBody, isHinge, backFlag, backScores, readyMarks, sessionTasks, routinesOf, routineFor, sessionWorkout };
 })();
 
 // ---- js/data.js

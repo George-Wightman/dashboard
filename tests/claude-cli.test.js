@@ -251,7 +251,7 @@ test('a trail that will not write leaves the original error exactly as it was', 
   broken.read = async () => { throw new Error('GitHub 500'); };
   const r = await run(['apply'], { files: broken, stdin: JSON.stringify({ op: 'dayOff' }) });
   assert.equal(r.code, 1);
-  assert.equal(r.text, 'Nothing was changed. Op 1 of 1 (dayOff) failed: Unknown op "dayOff" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym, details, rule, report, review, meal');
+  assert.equal(r.text, 'Nothing was changed. Op 1 of 1 (dayOff) failed: Unknown op "dayOff" — ops: task, habit, target, goal, milestone, plan, done, undone, log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym, details, rule, report, review, meal, session');
   assert.doesNotMatch(r.text, /trail/i);
 });
 
