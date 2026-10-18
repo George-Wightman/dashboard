@@ -50,6 +50,34 @@ the same palette as the Hebrew app. ⚙ → **Look** picks *Follow the day* (the
 *Night*. The installed app's title bar changes to match, and it never flickers the wrong one on
 load — the theme is set before the page even paints.
 
+## Daylight
+
+A second screen, built beside the classic one while you try it
+([`docs/superpowers/specs/2026-10-18-daylight-health-design.md`](docs/superpowers/specs/2026-10-18-daylight-health-design.md)).
+Turn it on in ⚙ → **Look → Screen: Daylight**, or for one visit add `?daylight` to the address.
+Classic stays the default until Daylight replaces it.
+
+- **The sky: how today is going.** The header is the sky for this moment: dawn, morning, midday,
+  afternoon, golden hour, dusk or night. The sun sits on its arc at the time, worked out on the
+  device from sunrise and sunset where you are, and the moon shows at night. Each of today's timed
+  blocks is a dot on the arc, gold once done. Over it: the greeting, how much of the day is done,
+  Claude's brief, time off and the planner's notes (× hides one for today), any warning, and sync, ⚑,
+  Arrange and ⚙. ⚙ → **The day → Place** picks London or Salzburg; it follows the time zone by default.
+- **Today: what to do.** One timeline, and the only place you tick. Rows with a calendar time sit at
+  their time, with the calendar's own commitments (a shift, an appointment) greyed between them and a
+  "now" line that moves. Everything without a time is under **Any time today**, where rows can still be
+  dragged into order. A check-in waits at the top; tomorrow's blocks and **Tell Claude** come last. Rows
+  keep everything they show on the classic list.
+- **Tiles: how your aims are going.** Needs you (only when a calendar conflict or a task without a slot
+  needs a decision, in plain words), Body (cardio this week as one big number, your lifts and today's
+  session), Hebrew, Goals, Your weeks (a gold sun per day, fuller for a better day), Countdown and This
+  week. ⤢ opens a tile big. **Arrange** drags tiles (↑ ↓ on touch and narrow windows), hides them and
+  brings them back; the order is kept on this device and starts from your classic arrangement.
+
+Where each classic widget went: Upcoming became Needs you plus the "Tomorrow" line; Note for Claude
+became Tell Claude under the day; Gym, Muscles and Cardio trend became Body (Muscles and Cardio trend in
+its big view); Last 3 weeks became Your weeks.
+
 ## Arranging the widgets
 
 Today's list always stays in the first column. Upcoming, Goals, Countdown, This week,
