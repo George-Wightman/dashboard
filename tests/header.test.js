@@ -9,6 +9,17 @@ test('the greeting follows the hour', () => {
   assert.equal(greeting(new Date(2026, 9, 20, 17, 0)), 'Evening, George.');
 });
 
+test('before the day starts it is still the evening', () => {
+  assert.equal(greeting(new Date(2026, 9, 21, 1, 0)), 'Evening, George.');
+  assert.equal(greeting(new Date(2026, 9, 21, 5, 0), 6), 'Evening, George.');
+  assert.equal(greeting(new Date(2026, 9, 21, 6, 0), 6), 'Morning, George.');
+});
+
+test('the date line carries the time', () => {
+  const m = headerModel({ doc: emptyDoc(), today: '2026-10-20', now: new Date(2026, 9, 20, 10, 20), hiddenNotes: [], saveProblem: null });
+  assert.equal(m.time, '10:20');
+});
+
 test('the sync label is the one the classic header shows', () => {
   assert.deepEqual(syncLabel({ state: 'off' }), ['on this device', 'Sync is off. Add a repo and an access key in settings.']);
   assert.equal(syncLabel({ state: 'failing', error: 'GitHub 500' })[0], 'sync failing');

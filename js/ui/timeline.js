@@ -35,6 +35,8 @@ export function renderTimeline(ctx) {
   const root = document.getElementById('timeline');
   const kept = keptFocus(root);
   listenForTicks(root, ctx);
+  // Arranging moves tiles only: the day can't be ticked or dragged meanwhile (as the classic list).
+  root.inert = !!ctx.ui.arranging;
   const doc = ctx.store.doc();
   const today = ctx.store.today();
   const rows = listRows(todayRows(doc, today));
@@ -54,7 +56,7 @@ export function renderTimeline(ctx) {
     if (row.item.notes && ctx.ui.noteFor === row.item.id) extra.push(h('li', { class: 'tl-sub note-row' }, row.item.notes));
     return { li, extra };
   };
-  const clock = (iso) => h('span', { class: 'tl-time' }, clockLabel(iso));
+  const clock = (iso, end = null) => h('span', { class: 'tl-time', title: end ? `${clockLabel(iso)}–${clockLabel(end)} in your calendar` : null }, clockLabel(iso));
   const nowLine = () => h('li', { class: 'tl-now', 'aria-label': `Now, ${clockLabel(new Date().toISOString())}` },
     clock(new Date().toISOString()), h('span', { class: 'tl-now-dot' }), h('span', { class: 'tl-now-line' }));
 
@@ -68,7 +70,7 @@ export function renderTimeline(ctx) {
     }
     const { li, extra } = rowEls(e.row);
     li.classList.add('tl-entry');
-    li.prepend(clock(e.start));
+    li.prepend(clock(e.start, e.end));
     timed.push(li, ...extra);
   });
   if (model.timed.length && model.nowIndex === model.timed.length) timed.push(nowLine());

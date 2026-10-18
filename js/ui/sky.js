@@ -106,7 +106,7 @@ export function renderSky(ctx) {
   ];
 
   const words = h('div', { class: 'dl-sky-words' },
-    h('div', { class: 'dl-sky-top' }, h('span', { class: 'dl-date' }, `${m.date} · ${ctx.place().name}`), actions),
+    h('div', { class: 'dl-sky-top' }, h('span', { class: 'dl-date' }, `${m.date} · ${m.time} · ${ctx.place().name}`), actions),
     h('div', { class: 'dl-sky-bottom' },
       h('div', { class: 'dl-hello' }, h('h1', {}, m.greeting), progress(m.done, m.total, m.pushed.length)),
       h('div', { class: 'dl-notes' },

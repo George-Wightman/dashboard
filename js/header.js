@@ -21,20 +21,22 @@ export function progressText(done, total, pushed) {
   return `${done} of ${total} done${pushed ? ` · ${pushed} pushed` : ''}`;
 }
 
-export function greeting(now) {
+// Before the day starts (⚙ → The day) it is still last night's evening.
+export function greeting(now, dayStartHour = 4) {
   const hour = now.getHours();
-  return `${hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening'}, George.`;
+  return `${hour < dayStartHour ? 'Evening' : hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening'}, George.`;
 }
 
 // hiddenNotes are this device's "<day>|<text>" keys for lines hidden with × today.
-export function headerModel({ doc, today, now, hiddenNotes, saveProblem }) {
+export function headerModel({ doc, today, now, hiddenNotes, saveProblem, dayStartHour = 4 }) {
   const { done, total, pushed } = dayScore(doc, today);
   const hidden = new Set(hiddenNotes);
   const shown = (text) => (text && !hidden.has(`${today}|${text}`) ? text : null);
   const stale = staleSince(doc, now);
   return {
-    greeting: greeting(now),
+    greeting: greeting(now, dayStartHour),
     date: longDate(today),
+    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
     done,
     total,
     pushed,

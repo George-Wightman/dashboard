@@ -6,13 +6,14 @@
 import { h } from './dom.js';
 import { hebrewKeys } from '../gemini.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
-
-const SCREEN_CHOICES = [['classic', 'Classic'], ['daylight', 'Daylight']];
-const PLACE_CHOICES = [['auto', 'Follow the time zone'], ['london', 'London'], ['salzburg', 'Salzburg']];
 import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
 import { claudePanel, claudeSummary } from './claude.js';
 import { pushState, turnOn, turnOff } from '../push-client.js';
+
+// Daylight or the classic screen, and where Daylight's sky reckons the sun from.
+const SCREEN_CHOICES = [['classic', 'Classic'], ['daylight', 'Daylight']];
+const PLACE_CHOICES = [['auto', 'Follow the time zone'], ['london', 'London'], ['salzburg', 'Salzburg']];
 
 // The Version section: filled in once the site and GitHub have answered. Asked fresh every time
 // ⚙ opens, so "up to date" is about now, not about when the page was opened.

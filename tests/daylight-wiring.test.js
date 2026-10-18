@@ -74,6 +74,23 @@ test('final review: switching screens empties the hidden one, so its old boxes c
   assert.match(read('js/app.js'), /clearOtherScreen\(screen\)/);
 });
 
+test('the minute redraw leaves a focused row or a drag alone', () => {
+  assert.match(read('js/app.js'), /function timelineBusy\(\)/);
+  assert.match(read('js/app.js'), /if \(daylight\(\) && canRun\(\)\) \{ renderSky\(ctx\); if \(!timelineBusy\(\)\) renderTimeline\(ctx\); \}/);
+});
+
+test('Arrange freezes the timeline, as it does the classic list', () => {
+  assert.match(read('js/ui/timeline.js'), /root\.inert = !!ctx\.ui\.arranging;/);
+});
+
+test('before the tiles are first saved, they follow the classic layout from another window', () => {
+  assert.match(read('js/app.js'), /if \(e\.key === LAYOUT_KEY\) \{\s*layout = loadLayout\(localStorage, WIDGET_IDS\);\s*tiles = loadTiles\(localStorage, layout\);/);
+});
+
+test('a timed row says its calendar block on hover', () => {
+  assert.match(read('js/ui/timeline.js'), /in your calendar/);
+});
+
 test('the fonts are self-hosted, offline-shelled and loaded with @font-face', () => {
   const sw = read('sw.js');
   const css = read('styles/daylight.css');

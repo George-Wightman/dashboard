@@ -85,7 +85,7 @@ const ctx = {
   // waiting, hiding a line for today, and where the sun is reckoned from.
   syncState: () => sync,
   headerModel: () => headerModel({
-    doc: store.doc(), today: store.today(), now: new Date(), hiddenNotes: hiddenNotes(),
+    doc: store.doc(), today: store.today(), now: new Date(), hiddenNotes: hiddenNotes(), dayStartHour: store.settings().dayStartHour,
     saveProblem: store.saveError() ? "Couldn't save on this device. Export a backup from settings." : store.loadError(),
   }),
   flagWaiting: () => ctx.syncOn() && waitingFlags(store.doc(), ctx.lastSynced()).length > 0,
@@ -335,6 +335,14 @@ function typing() {
     && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky');
 }
 
+// The minute redraw moves the now line, but never under a focused row or a drag in progress.
+let dragging = false;
+document.addEventListener('dragstart', () => { dragging = true; });
+document.addEventListener('dragend', () => { dragging = false; });
+function timelineBusy() {
+  return dragging || !!document.activeElement?.closest?.('#timeline');
+}
+
 function canRun() {
   return !ui.editorDirty && !typing();
 }
@@ -460,6 +468,7 @@ window.addEventListener('storage', (e) => {
   }
   if (e.key === LAYOUT_KEY) {
     layout = loadLayout(localStorage, WIDGET_IDS);
+    tiles = loadTiles(localStorage, layout);
     whenIdle().then(render);
     return;
   }
@@ -475,7 +484,7 @@ setInterval(() => {
   applyLook();
   checkRollover();
   // The sun and the now line move: Daylight's sky redraws each minute, never over typing.
-  if (daylight() && canRun()) { renderSky(ctx); renderTimeline(ctx); }
+  if (daylight() && canRun()) { renderSky(ctx); if (!timelineBusy()) renderTimeline(ctx); }
   lockDay();
   if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });
   scheduler.poll().catch(() => {});
