@@ -10,16 +10,23 @@
     // resolveLook in js/look.js; tests/look.test.js runs this script to keep the two in step.
     (function () {
       var s = { look: 'auto', checkinHour: 18, dayStartHour: 4 };
-      try { var saved = JSON.parse(localStorage.getItem('dash_settings')); for (var k in s) if (saved && k in saved) s[k] = saved[k]; } catch (e) {}
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem('dash_settings')); for (var k in s) if (saved && k in saved) s[k] = saved[k]; } catch (e) {}
       var h = new Date().getHours();
       var look = s.look === 'paper' || s.look === 'night' ? s.look : (h >= s.checkinHour || h < s.dayStartHour ? 'night' : 'paper');
       document.documentElement.dataset.theme = look;
       document.querySelector('meta[name="theme-color"]').content = look === 'night' ? '#1c232b' : '#f5f0e7';
+      // Daylight or the classic screen (⚙ → Look → Screen), or Daylight for one visit with ?daylight.
+      var screen = 'classic';
+      try { if (saved && saved.screen === 'daylight') screen = 'daylight'; } catch (e) {}
+      if (typeof location !== 'undefined' && /[?&]daylight/.test(location.search)) screen = 'daylight';
+      document.documentElement.dataset.screen = screen;
     })();
   </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles/daylight.css">
 </head>
 <body>
   <header class="top">
@@ -47,6 +54,17 @@
     </section>
     <aside id="side" class="side" aria-label="Widgets"></aside>
   </main>
+
+  <div id="daylight" class="dl" hidden>
+    <header id="dl-sky" class="dl-sky"></header>
+    <main class="dl-main">
+      <section id="dl-today" class="dl-today" aria-labelledby="dl-today-h">
+        <h2 id="dl-today-h">Today</h2>
+        <div id="timeline"></div>
+      </section>
+      <div id="tiles" class="dl-tiles" aria-label="Tiles"></div>
+    </main>
+  </div>
 
   <aside id="editor" class="editor" hidden aria-label="Edit"></aside>
   <dialog id="settings" class="settings"></dialog>

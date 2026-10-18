@@ -17,6 +17,7 @@ export const CORRUPT_KEY = 'dash_data_corrupt';
 export const BACKUP_KEY = 'dash_data_previous';
 export const DEFAULT_SETTINGS = {
   token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto', hebrewRepo: '', hebrewToken: '',
+  screen: 'classic', place: 'auto',
 };
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];

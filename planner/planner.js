@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '0536188f';
+var PLANNER_BUILD = '24bf65c7';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -760,7 +760,7 @@ const FLAG_CTX_MAX = 4096; // bytes of a flag's context, as UTF-8 JSON
 const LAST_SYNCED_KEY = 'dash_last_synced'; // device-local: when a sync last succeeded
 // The app's version as a flag records it: sw.js's CACHE name. Bump the two together
 // (tests/sw.test.js, added with the offline-shell change, checks they match).
-const APP_VERSION = 'today-dashboard-v15';
+const APP_VERSION = 'today-dashboard-v16';
 
 // A "secret" shorter than this would blank ordinary words, so it isn't scrubbed.
 const SECRET_MIN = 6;
@@ -1711,6 +1711,7 @@ const CORRUPT_KEY = 'dash_data_corrupt';
 const BACKUP_KEY = 'dash_data_previous';
 const DEFAULT_SETTINGS = {
   token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto', hebrewRepo: '', hebrewToken: '',
+  screen: 'classic', place: 'auto',
 };
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];

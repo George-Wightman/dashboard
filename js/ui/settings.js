@@ -6,6 +6,9 @@
 import { h } from './dom.js';
 import { hebrewKeys } from '../gemini.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
+
+const SCREEN_CHOICES = [['classic', 'Classic'], ['daylight', 'Daylight']];
+const PLACE_CHOICES = [['auto', 'Follow the time zone'], ['london', 'London'], ['salzburg', 'Salzburg']];
 import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
 import { claudePanel, claudeSummary } from './claude.js';
@@ -106,6 +109,12 @@ export function openSettings(ctx) {
   hebrewToken.value = s.hebrewToken ?? '';
   const look = h('select', { name: 'look' },
     LOOK_CHOICES.map(([value, label]) => h('option', { value, selected: s.look === value }, label)));
+  // Daylight or the classic screen, while both exist (docs/superpowers/specs/2026-10-18-daylight-health-design.md).
+  const screen = h('select', { name: 'screen' },
+    SCREEN_CHOICES.map(([value, label]) => h('option', { value, selected: (s.screen ?? 'classic') === value }, label)));
+  // Where Daylight's sky takes its sunrise and sunset from (js/sky.js).
+  const place = h('select', { name: 'place' },
+    PLACE_CHOICES.map(([value, label]) => h('option', { value, selected: (s.place ?? 'auto') === value }, label)));
   // Whether the Hebrew app has saved a key on this device (same origin, same localStorage). Only
   // the fact is shown, never the key.
   const hebrewFound = hebrewKeys(localStorage).length > 0;
@@ -168,6 +177,8 @@ export function openSettings(ctx) {
       repo: repoValue, token: token.value.trim(), dayStartHour: hour,
       geminiKey: geminiKey.value.trim(), checkinHour: checkin,
       look: LOOKS.includes(look.value) ? look.value : 'auto',
+      screen: screen.value === 'daylight' ? 'daylight' : 'classic',
+      place: PLACE_CHOICES.some(([value]) => value === place.value) ? place.value : 'auto',
       hebrewRepo: hebrewRepoValue, hebrewToken: hebrewToken.value.trim(),
     });
     dialog.close();
@@ -209,13 +220,15 @@ export function openSettings(ctx) {
         h('button', { class: 'btn', type: 'button', onclick: () => { ctx.hebrewSyncNow(); dialog.close(); } }, 'Sync now'))),
     group('The day', `starts at ${hourLabel(s.dayStartHour)}`, false,
       h('label', { class: 'field' }, h('span', {}, 'The day starts at (hour, 0–12)'), dayStart),
-      h('p', { class: 'note' }, 'Anything done before this hour counts as the day before.')),
+      h('p', { class: 'note' }, 'Anything done before this hour counts as the day before.'),
+      h('label', { class: 'field' }, h('span', {}, 'Place (for the sky in Daylight)'), place)),
     group('Gemini', geminiWhich, false,
       h('label', { class: 'field' }, h('span', {}, 'Gemini API key (optional)'), geminiKey),
       h('p', { class: 'note' }, `Leave blank to use the Hebrew app's key on this device.${hebrewFound ? ' One was found here.' : ' None was found here.'}`),
       h('p', { class: 'note' }, "Gemini tidies what you say in a check-in into a short note for Claude. It's sent your answer and the task's name; on Google's free tier they may use it to improve their products. Without a key your words are kept as they are.")),
     notificationsGroup(ctx),
-    group('Look', `${lookName}, evening from ${hourLabel(s.checkinHour)}`, false,
+    group('Look', `${s.screen === 'daylight' ? 'Daylight' : 'Classic'} screen, ${lookName}, evening from ${hourLabel(s.checkinHour)}`, false,
+      h('label', { class: 'field' }, h('span', {}, 'Screen'), screen),
       h('label', { class: 'field' }, h('span', {}, 'Look'), look),
       h('label', { class: 'field' }, h('span', {}, 'Evening from (hour, 12–23)'), checkinHour),
       h('p', { class: 'note' }, 'Following the day, the Night look starts at this hour.')),

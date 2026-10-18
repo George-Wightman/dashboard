@@ -1,0 +1,119 @@
+/* Daylight: the sky, the timeline and the tiles (docs/superpowers/specs/2026-10-18-daylight-health-design.md).
+   Everything here applies only when <html data-screen="daylight">, which index.html's <head> script
+   sets before the first paint, so the classic screen is untouched. Daylight also sets the classic
+   colour variables (--ink, --panel, --gold…) to its own, so the widgets it reuses take its look.
+   Gold means "you did it" and nothing else; area colours: Body coral, Fuel green, Hebrew indigo. */
+
+:root[data-screen="daylight"] {
+  --dl-ground: #FFF8EF;
+  --dl-card: #FFFFFF;
+  --dl-ink: #1D1A2B;
+  --dl-muted: #5E5872;
+  --dl-line: #F0DFC9;
+  --dl-soft: #FFF3E3;
+  --dl-accent: #3F3A9E;
+  --dl-body: #FF8A65;
+  --dl-on-body: #1D1A2B;
+  --dl-body-soft: #FFE3D8;
+  --dl-fuel: #24785A;
+  --dl-on-fuel: #FFFFFF;
+  --dl-hebrew: #3F3A9E;
+  --dl-on-hebrew: #FFFFFF;
+  --dl-hebrew-soft: #EEEDF8;
+  --dl-needs: #FFD36B;
+  --dl-on-needs: #1D1A2B;
+  --dl-goals: #FFE9D2;
+  --dl-gold: #E2A400;
+  --dl-gold-1: #FBEFD2;
+  --dl-gold-2: #F8E1A6;
+  --dl-gold-3: #F2C95A;
+  --dl-carry: #FFE2C2;
+  --dl-carry-ink: #9A4A00;
+  --dl-busy-1: #F6EEE3;
+  --dl-busy-2: #F1E7D9;
+  --dl-shadow: #F3E3CF;
+  --dl-display: 'Bricolage Grotesque', ui-rounded, system-ui, 'Segoe UI', sans-serif;
+  --dl-text: 'Figtree', system-ui, 'Segoe UI', sans-serif;
+  --dl-hebrew-font: 'Rubik', 'Segoe UI', 'Arial Hebrew', sans-serif;
+
+  --bg: var(--dl-ground);
+  --panel: var(--dl-card);
+  --ink: var(--dl-ink);
+  --muted: var(--dl-muted);
+  --border: var(--dl-line);
+  --accent: var(--dl-accent);
+  --accent-soft: var(--dl-hebrew-soft);
+  --gold: var(--dl-gold);
+  --warn: var(--dl-carry-ink);
+  --lvl1: var(--dl-gold-1);
+  --lvl2: var(--dl-gold-2);
+  --lvl3: var(--dl-gold-3);
+  --lvl4: var(--dl-gold);
+  --font: var(--dl-text);
+  --display: var(--dl-display);
+  color-scheme: light;
+}
+
+:root[data-screen="daylight"][data-theme="night"] {
+  --dl-ground: #14122B;
+  --dl-card: #1F1C3A;
+  --dl-ink: #EDEAF7;
+  --dl-muted: #A7A2C4;
+  --dl-line: #2E2A55;
+  --dl-soft: #24204A;
+  --dl-accent: #B9B3FF;
+  --dl-body: #3A2530;
+  --dl-on-body: #FFD0C2;
+  --dl-body-soft: #2E2030;
+  --dl-fuel: #1E3A31;
+  --dl-on-fuel: #C6E2D6;
+  --dl-hebrew: #2A2763;
+  --dl-on-hebrew: #D5D2F5;
+  --dl-hebrew-soft: #23214A;
+  --dl-needs: #4A3D12;
+  --dl-on-needs: #FFE7A3;
+  --dl-goals: #2B2440;
+  --dl-gold: #F2C94C;
+  --dl-gold-1: #3A3320;
+  --dl-gold-2: #5C4E22;
+  --dl-gold-3: #A88A2E;
+  --dl-carry: #4A2E12;
+  --dl-carry-ink: #FFD3A8;
+  --dl-busy-1: #1C1A36;
+  --dl-busy-2: #221F40;
+  --dl-shadow: #0E0C20;
+  color-scheme: dark;
+}
+
+/* ---- The two screens ------------------------------------------------------------------------- */
+
+:root[data-screen="daylight"] body { background: var(--dl-ground); color: var(--dl-ink); font: 1rem/1.45 var(--dl-text); }
+:root[data-screen="daylight"] .top,
+:root[data-screen="daylight"] #planner-notes,
+:root[data-screen="daylight"] main.layout { display: none; }
+:root[data-screen="daylight"] #daylight { display: block; }
+
+.dl-main {
+  max-width: 1360px; margin: 0 auto; padding: 24px 48px 56px; box-sizing: border-box;
+  display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start;
+}
+.dl-today { flex: 1 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.dl-today > h2 { margin: 0; font: 800 28px/1.1 var(--dl-display); }
+.dl-tiles {
+  flex: 999 1 620px; min-width: 0; display: grid; gap: 18px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+}
+
+@media (max-width: 759px) {
+  .dl-main { padding: 14px 16px 96px; gap: 18px; }
+}
+
+/* ---- Shared dialogs, in Daylight's clothes --------------------------------------------------- */
+
+:root[data-screen="daylight"] dialog,
+:root[data-screen="daylight"] #editor {
+  background: var(--dl-card); color: var(--dl-ink); border: 0; border-radius: 24px;
+  box-shadow: 0 18px 50px rgba(29, 26, 43, 0.25); font-family: var(--dl-text);
+}
+:root[data-screen="daylight"] dialog::backdrop { background: rgba(20, 18, 43, 0.35); }
+:root[data-screen="daylight"] .btn.primary { background: var(--dl-ink); color: var(--dl-ground); border-radius: 999px; }
