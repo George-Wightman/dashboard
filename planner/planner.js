@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'd12c5563';
+var PLANNER_BUILD = 'd445c3e9';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2654,6 +2654,22 @@ function sessionLines(session) {
 
 const sessionText = (session) => sessionLines(session).join('\n');
 
+// The part of a task's notes George (or Claude) wrote, without the session's lines the store adds
+// after them; and the notes with a session's lines after that part.
+function ownNotes(item) {
+  const notes = String(item?.notes ?? '');
+  if (!item?.session) return notes;
+  const lines = sessionText(item.session);
+  if (notes === lines) return '';
+  return notes.endsWith(`\n\n${lines}`) ? notes.slice(0, -(lines.length + 2)) : notes;
+}
+
+function notesWith(item, session) {
+  const own = ownNotes(item);
+  if (!session) return own;
+  return own ? `${own}\n\n${sessionText(session)}` : sessionText(session);
+}
+
 // ---- Checking a session ------------------------------------------------------------------------
 
 const words = (s) => new Set(norm(s).replace(/[()]/g, ' ').split(/[^a-z0-9]+/).filter(Boolean));
@@ -2818,8 +2834,12 @@ function routineFor(doc, item) {
   return hit ? hit[0] : null;
 }
 
-// The workout he saved from a session's routine, on the session's day.
+// The workout he saved from a session's routine: the one its Hevy tick names (that lasts after the
+// routine is reused for a later session), else the routine's on the session's day.
 function sessionWorkout(doc, item) {
+  const tick = Object.values(doc?.logs ?? {}).find((l) => l.status === 'active' && l.itemId === item.id && String(l.id).startsWith('hevy-session-'));
+  const ticked = tick ? doc?.gym?.[`w:${String(tick.id).slice('hevy-session-'.length)}`] : null;
+  if (ticked && ticked.status === 'active') return ticked;
   const ids = new Set(Object.entries(routinesOf(doc).byRoutine ?? {}).filter(([, v]) => v?.taskId === item.id).map(([id]) => id));
   if (!ids.size) return null;
   return Object.values(doc?.gym ?? {}).find((w) => w.status === 'active' && String(w.id).startsWith('w:') && ids.has(w.routineId) && w.day === item.date) ?? null;
@@ -2854,7 +2874,7 @@ function nextSession(doc, today) {
   const done = (t) => Object.values(doc?.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === t.id);
   return sessionTasks(doc, today, addDays(today, 13)).find((t) => !done(t)) ?? null;
 }
-return { BACK, BACK_UNTIL_HOUR, sessionLines, sessionText, checkSession, routineBody, isHinge, backFlag, backScores, readyMarks, sessionTasks, routinesOf, routineFor, sessionWorkout, backRowState, soreRun, soreFlagText, nextSession };
+return { BACK, BACK_UNTIL_HOUR, sessionLines, sessionText, ownNotes, notesWith, checkSession, routineBody, isHinge, backFlag, backScores, readyMarks, sessionTasks, routinesOf, routineFor, sessionWorkout, backRowState, soreRun, soreFlagText, nextSession };
 })();
 
 // ---- js/data.js
@@ -2872,7 +2892,7 @@ const { reviseRecord, recordContent } = __js_record;
 const { checkinId, SAID_MAX } = __js_checkins;
 const { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } = __js_workflow;
 const { slotFor, fuelSettings, FUEL_ID } = __js_food;
-const { BACK, sessionText } = __js_coach;
+const { BACK, notesWith } = __js_coach;
 
 const DATA_KEY = 'dash_data';
 const SETTINGS_KEY = 'dash_settings';
@@ -3448,8 +3468,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   const putGym = (id, fields, source = 'hevy') => putRecord('gym', id, fields, source);
 
   // The coach (js/coach.js): the morning back answer (0 fine … 3 bad), one record a day so two
-  // devices merge into one; and a session Claude wrote, on its task, with its lines in the notes so
-  // the calendar event shows them. Clearing a session clears only notes it wrote.
+  // devices merge into one; and a session Claude wrote, on its task, with its lines after the
+  // task's own notes so the calendar event shows them. Clearing a session takes only its lines away.
   function setBack(day, score) {
     if (!Number.isInteger(score) || score < 0 || score >= BACK.length) throw new Error('The back is fine, stiff, sore or bad');
     return putGym(`back:${day}`, { kind: 'back', day, score, at: stamp() }, 'me').rec;
@@ -3458,9 +3478,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   function setSession(id, session) {
     const item = doc.items[id];
     if (!item) throw new Error(`No task ${id}`);
-    if (session) return patch('items', id, { session: structuredClone(session), notes: sessionText(session) });
-    const wrote = item.session && item.notes === sessionText(item.session);
-    return patch('items', id, { session: null, ...(wrote ? { notes: '' } : {}) });
+    return patch('items', id, { session: session ? structuredClone(session) : null, notes: notesWith(item, session) });
   }
 
   // A log with a fixed id (a Hevy workout's tick or cardio minutes): made once, then only its given
@@ -5675,6 +5693,18 @@ function hash(text) {
   return h.toString(36);
 }
 
+// Routines in the folder the pool doesn't know: ones Hevy made when its reply never reached the
+// planner (a timeout), or after the pool failed to save. Taken back in, so nothing piles up.
+async function strays(fetch, key, folderId, known) {
+  const out = [];
+  for (let page = 1, count = 1; page <= count && page <= FOLDER_PAGES; page++) {
+    const r = await call(fetch, key, 'GET', `/routines?page=${page}&pageSize=10`);
+    for (const x of r?.routines ?? []) if (x?.id != null && x.folder_id === folderId && !known.has(String(x.id))) out.push(String(x.id));
+    count = Math.max(0, Math.floor(Number(r?.page_count) || 0));
+  }
+  return out;
+}
+
 async function findFolder(fetch, key) {
   for (let page = 1, count = 1; page <= count && page <= FOLDER_PAGES; page++) {
     const r = await call(fetch, key, 'GET', `/routine_folders?page=${page}&pageSize=10`);
@@ -5701,6 +5731,7 @@ async function syncRoutines({ fetch, key, store, now = () => new Date(), dayStar
   const wanted = new Set(sessions.map((t) => t.id));
   const held = (taskId) => Object.keys(state.byRoutine).find((id) => state.byRoutine[id]?.taskId === taskId);
   const spare = Object.keys(state.byRoutine).filter((id) => !wanted.has(state.byRoutine[id]?.taskId));
+  let looked = false;
   try {
     for (const t of sessions) {
       const label = `${JSON.stringify(t.session.name)} (${shortWeekday(t.date)} ${shortDate(t.date)})`;
@@ -5713,8 +5744,16 @@ async function syncRoutines({ fetch, key, store, now = () => new Date(), dayStar
       const sig = hash(JSON.stringify(body));
       let id = held(t.id);
       if (id && state.byRoutine[id].hash === sig && state.byRoutine[id].day === t.date) continue;
-      if (!id && spare.length) id = spare.shift();
       try {
+        if (!id && !spare.length && !looked) {
+          looked = true;
+          if (state.folderId == null) state.folderId = await findFolder(fetch, key);
+          for (const stray of await strays(fetch, key, state.folderId, new Set(Object.keys(state.byRoutine)))) {
+            state.byRoutine[stray] = { taskId: null, day: null, hash: null };
+            spare.push(stray);
+          }
+        }
+        if (!id && spare.length) id = spare.shift();
         if (id) {
           await call(fetch, key, 'PUT', `/routines/${encodeURIComponent(id)}`, body);
         } else {
@@ -5726,6 +5765,8 @@ async function syncRoutines({ fetch, key, store, now = () => new Date(), dayStar
       } catch (e) {
         // A routine Hevy no longer has (he deleted it in the app) is forgotten, and made again next run.
         if (e.status === 404 && id) delete state.byRoutine[id];
+        // A new routine refused: the folder may be gone (deleted in the app), so look it up again next run.
+        if (e.status && !id) state.folderId = null;
         if (e instanceof HevyError && e.status) { problems.push(`Hevy wouldn't take the routine for ${label} (${e.message})`); continue; }
         throw e;
       }

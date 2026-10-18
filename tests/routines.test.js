@@ -152,3 +152,28 @@ test("a workout saved from a session's routine ticks the session; one that wasn'
   await syncHevy({ fetch: hevy.fetch, key: HEVY_KEY, store, now });
   assert.equal(store.doc().logs['hevy-session-h1'].status, 'archived');
 });
+
+test('final review: a routine Hevy made but the planner never recorded is taken back into the pool, not made again', async () => {
+  const { store, hevy, sync, session } = setup();
+  session(TUE, legs);
+  hevy.folders.push({ id: 8, index: 0, title: 'Dashboard' });
+  hevy.routines.set('lost-1', { id: 'lost-1', title: 'Old · Mon 19 Oct', folder_id: 8, exercises: [] });
+  hevy.routines.set('his-own', { id: 'his-own', title: 'Push day', folder_id: null, exercises: [] });
+  await sync();
+  assert.deepEqual(hevy.writes.map(([m, p]) => `${m} ${p}`), ['PUT /v1/routines/lost-1']);
+  assert.equal(hevy.routines.size, 2);
+});
+
+test('final review: a Dashboard folder deleted in Hevy is looked up again, not used forever', async () => {
+  const { store, hevy, sync, session } = setup();
+  session(TUE, legs);
+  store.putGym('routines', { folderId: 999, byRoutine: {}, lastError: null }, 'planner');
+  hevy.refuseFolder = 999;
+  await sync();
+  assert.match(routinesOf(store.doc()).lastError, /Hevy wouldn't take/);
+  assert.equal(routinesOf(store.doc()).folderId, null);
+  hevy.refuseFolder = null;
+  await sync();
+  assert.equal(routinesOf(store.doc()).lastError, null);
+  assert.equal(hevy.routines.size, 1);
+});

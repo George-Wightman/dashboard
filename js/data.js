@@ -11,7 +11,7 @@ import { reviseRecord, recordContent } from './record.js';
 import { checkinId, SAID_MAX } from './checkins.js';
 import { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } from './workflow.js';
 import { slotFor, fuelSettings, FUEL_ID } from './food.js';
-import { BACK, sessionText } from './coach.js';
+import { BACK, notesWith } from './coach.js';
 
 export const DATA_KEY = 'dash_data';
 export const SETTINGS_KEY = 'dash_settings';
@@ -587,8 +587,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   const putGym = (id, fields, source = 'hevy') => putRecord('gym', id, fields, source);
 
   // The coach (js/coach.js): the morning back answer (0 fine … 3 bad), one record a day so two
-  // devices merge into one; and a session Claude wrote, on its task, with its lines in the notes so
-  // the calendar event shows them. Clearing a session clears only notes it wrote.
+  // devices merge into one; and a session Claude wrote, on its task, with its lines after the
+  // task's own notes so the calendar event shows them. Clearing a session takes only its lines away.
   function setBack(day, score) {
     if (!Number.isInteger(score) || score < 0 || score >= BACK.length) throw new Error('The back is fine, stiff, sore or bad');
     return putGym(`back:${day}`, { kind: 'back', day, score, at: stamp() }, 'me').rec;
@@ -597,9 +597,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   function setSession(id, session) {
     const item = doc.items[id];
     if (!item) throw new Error(`No task ${id}`);
-    if (session) return patch('items', id, { session: structuredClone(session), notes: sessionText(session) });
-    const wrote = item.session && item.notes === sessionText(item.session);
-    return patch('items', id, { session: null, ...(wrote ? { notes: '' } : {}) });
+    return patch('items', id, { session: session ? structuredClone(session) : null, notes: notesWith(item, session) });
   }
 
   // A log with a fixed id (a Hevy workout's tick or cardio minutes): made once, then only its given

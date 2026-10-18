@@ -1,5 +1,5 @@
 {
-  "id": "ef20928838ef3cd501bf5c3e2269c15ff9a0158a0e0408ab518070c5d2bac916",
+  "id": "000facad9ea9c07f571ffbd696f028d2096a2f37073769b6701f8a70aa4f2133",
   "files": {
     "./": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
     "index.html": "544ea14462ef94d06330fdbff7604258015327c002db1008e1dd665fd8f09213",
@@ -14,7 +14,7 @@
     "icons/icon-512.png": "20842b1a050ea876ecb8cbf7e83fffb62fba540645a1430d4e59f1cf5defdd48",
     "js/app.js": "396b9834004a8fa68819c55b1c80bfdd0aadd94fa72e0a79cc2d35aeb3adadac",
     "js/commit.js": "a03407e778be6c3081eb9a4c8b7e25ef190810011b04dacd0beb71a4354e1453",
-    "js/data.js": "242174b0b501f02c6e3a6e2b885f9a296c20f52823432622ee64f4a973caf08a",
+    "js/data.js": "8ebb613299b5fc66e8d32dedfb1298723557ecde2c975367d82de0b9759a4945",
     "js/doc.js": "7c31d3bc8495e31552f65ab381f7b675febc48b9ed4e9ceaccdea514b3e242a5",
     "js/dates.js": "2dda4426edef203d9d3fb2db293d0bf72c15b863eb73c5631155105ab76a8da9",
     "js/parse.js": "8b6c418ba04c3953a99cc3db1df7073c7db47958212aa832738f344019f10be8",
@@ -70,7 +70,7 @@
     "js/photos.js": "404dde94bee2d08e0962d473f31c6d3913f71adecfde6ece21edb153eef38ae2",
     "js/ui/snap.js": "0dbd8773924a8690c94005e708bf138ee2fc9928132eb5bfb6cc3ed6d14705a8",
     "js/ui/fuel.js": "03b0cac13e84427ff95d540fde2adcfd6a8bf46efc0b667c643572e0813a4f11",
-    "js/coach.js": "926f52f6ebb855076638a8a5f6bd1485fd30f07929060bd5882928df24e7f56d",
+    "js/coach.js": "df928abdba20fd67731b8df6c780f1408a68f9de29cf351b6f02ec07d28c028d",
     "js/ui/coach.js": "66f72411d96eea289c888d43201fa012cf68a1a69fc8289b3f9cb8c98d78ef4e"
   }
 }

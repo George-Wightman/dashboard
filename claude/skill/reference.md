@@ -327,7 +327,8 @@ saves from that routine ticks the task.
       "cardio": {"kind": "Bike", "minutes": 25, "hr": [118, 138]}}}
 
 With a `date` it makes the task (title `Gym · <name>` unless you give `title`; Health, 75 minutes;
-`time` optional). With an `id` instead it puts the session on that task, replacing any session there;
+`time` optional). With an `id` instead it puts the session on that task, replacing any session there
+(the task's own notes stay, with the session's lines after them);
 `"session": null` clears it. Each exercise: `name` exactly as Hevy names it (the op refuses anything
 else and names the closest), `sets` 1–10, `reps` 1–50 or `repRange` [low, high], and optionally `kg`,
 `rpe` 5–10, `each` (each side), `restSec`, `note`. RPE, "each side" and the cardio go in the routine's

@@ -53,6 +53,18 @@ function hash(text) {
   return h.toString(36);
 }
 
+// Routines in the folder the pool doesn't know: ones Hevy made when its reply never reached the
+// planner (a timeout), or after the pool failed to save. Taken back in, so nothing piles up.
+async function strays(fetch, key, folderId, known) {
+  const out = [];
+  for (let page = 1, count = 1; page <= count && page <= FOLDER_PAGES; page++) {
+    const r = await call(fetch, key, 'GET', `/routines?page=${page}&pageSize=10`);
+    for (const x of r?.routines ?? []) if (x?.id != null && x.folder_id === folderId && !known.has(String(x.id))) out.push(String(x.id));
+    count = Math.max(0, Math.floor(Number(r?.page_count) || 0));
+  }
+  return out;
+}
+
 async function findFolder(fetch, key) {
   for (let page = 1, count = 1; page <= count && page <= FOLDER_PAGES; page++) {
     const r = await call(fetch, key, 'GET', `/routine_folders?page=${page}&pageSize=10`);
@@ -79,6 +91,7 @@ export async function syncRoutines({ fetch, key, store, now = () => new Date(), 
   const wanted = new Set(sessions.map((t) => t.id));
   const held = (taskId) => Object.keys(state.byRoutine).find((id) => state.byRoutine[id]?.taskId === taskId);
   const spare = Object.keys(state.byRoutine).filter((id) => !wanted.has(state.byRoutine[id]?.taskId));
+  let looked = false;
   try {
     for (const t of sessions) {
       const label = `${JSON.stringify(t.session.name)} (${shortWeekday(t.date)} ${shortDate(t.date)})`;
@@ -91,8 +104,16 @@ export async function syncRoutines({ fetch, key, store, now = () => new Date(), 
       const sig = hash(JSON.stringify(body));
       let id = held(t.id);
       if (id && state.byRoutine[id].hash === sig && state.byRoutine[id].day === t.date) continue;
-      if (!id && spare.length) id = spare.shift();
       try {
+        if (!id && !spare.length && !looked) {
+          looked = true;
+          if (state.folderId == null) state.folderId = await findFolder(fetch, key);
+          for (const stray of await strays(fetch, key, state.folderId, new Set(Object.keys(state.byRoutine)))) {
+            state.byRoutine[stray] = { taskId: null, day: null, hash: null };
+            spare.push(stray);
+          }
+        }
+        if (!id && spare.length) id = spare.shift();
         if (id) {
           await call(fetch, key, 'PUT', `/routines/${encodeURIComponent(id)}`, body);
         } else {
@@ -104,6 +125,8 @@ export async function syncRoutines({ fetch, key, store, now = () => new Date(), 
       } catch (e) {
         // A routine Hevy no longer has (he deleted it in the app) is forgotten, and made again next run.
         if (e.status === 404 && id) delete state.byRoutine[id];
+        // A new routine refused: the folder may be gone (deleted in the app), so look it up again next run.
+        if (e.status && !id) state.folderId = null;
         if (e instanceof HevyError && e.status) { problems.push(`Hevy wouldn't take the routine for ${label} (${e.message})`); continue; }
         throw e;
       }

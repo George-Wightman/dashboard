@@ -93,3 +93,18 @@ test('the catch-up says how the back has been and how many sessions were done', 
   const text = READS.catchup(store.doc(), TODAY, '2');
   assert.match(text, /Back: sore 2 \(sore Mon, today\) · sessions done 0 of 1/);
 });
+
+test('final review: a session done earlier is still found once its routine is reused, so its ready marks stay', () => {
+  const store = coachStore();
+  runOp(store, { op: 'session', date: '2026-10-19', session: legs });
+  const [mon] = sessionTasks(store.doc(), '2026-10-19', '2026-10-19');
+  store.putGym('w:h1', {
+    hevyId: 'h1', title: 'Legs A', day: '2026-10-19', start: '2026-10-19T16:00:00.000Z', end: '2026-10-19T17:00:00.000Z', minutes: 60, routineId: 'r-1',
+    exercises: [{ name: 'Squat (Barbell)', tpl: 'SQ', kind: 'lift', n: 3, sets: [[95, 5, null], [95, 5, null], [95, 5, null]] }],
+  });
+  store.putLog('hevy-session-h1', { itemId: mon.id, kind: 'done', day: '2026-10-19', source: 'hevy' });
+  // The routine has since gone to another session.
+  store.putGym('routines', { folderId: 7, byRoutine: { 'r-1': { taskId: 'someone-else', day: '2026-10-26', hash: 'h' } }, lastError: null });
+  assert.equal(sessionWorkout(store.doc(), store.doc().items[mon.id])?.hevyId, 'h1');
+  assert.match(READS.gym(store.doc(), TODAY, ''), /Ready for more weight: Squat \(Barbell\) \(Mon 19 Oct, 95 kg\)/);
+});

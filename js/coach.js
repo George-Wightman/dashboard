@@ -38,6 +38,22 @@ export function sessionLines(session) {
 
 export const sessionText = (session) => sessionLines(session).join('\n');
 
+// The part of a task's notes George (or Claude) wrote, without the session's lines the store adds
+// after them; and the notes with a session's lines after that part.
+export function ownNotes(item) {
+  const notes = String(item?.notes ?? '');
+  if (!item?.session) return notes;
+  const lines = sessionText(item.session);
+  if (notes === lines) return '';
+  return notes.endsWith(`\n\n${lines}`) ? notes.slice(0, -(lines.length + 2)) : notes;
+}
+
+export function notesWith(item, session) {
+  const own = ownNotes(item);
+  if (!session) return own;
+  return own ? `${own}\n\n${sessionText(session)}` : sessionText(session);
+}
+
 // ---- Checking a session ------------------------------------------------------------------------
 
 const words = (s) => new Set(norm(s).replace(/[()]/g, ' ').split(/[^a-z0-9]+/).filter(Boolean));
@@ -202,8 +218,12 @@ export function routineFor(doc, item) {
   return hit ? hit[0] : null;
 }
 
-// The workout he saved from a session's routine, on the session's day.
+// The workout he saved from a session's routine: the one its Hevy tick names (that lasts after the
+// routine is reused for a later session), else the routine's on the session's day.
 export function sessionWorkout(doc, item) {
+  const tick = Object.values(doc?.logs ?? {}).find((l) => l.status === 'active' && l.itemId === item.id && String(l.id).startsWith('hevy-session-'));
+  const ticked = tick ? doc?.gym?.[`w:${String(tick.id).slice('hevy-session-'.length)}`] : null;
+  if (ticked && ticked.status === 'active') return ticked;
   const ids = new Set(Object.entries(routinesOf(doc).byRoutine ?? {}).filter(([, v]) => v?.taskId === item.id).map(([id]) => id));
   if (!ids.size) return null;
   return Object.values(doc?.gym ?? {}).find((w) => w.status === 'active' && String(w.id).startsWith('w:') && ids.has(w.routineId) && w.day === item.date) ?? null;

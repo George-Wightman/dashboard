@@ -44,6 +44,7 @@ export class FakeHevy {
     this.folders = [];
     this.routines = new Map();
     this.n = 0;
+    this.refuseFolder = null; // a folder id a new routine is refused for (deleted in the app)
     this.refuse = null; // a { status, body } every routine write answers with, when set
   }
 
@@ -69,6 +70,7 @@ export class FakeHevy {
         return { status: 201, body: { routine_folder: folder } };
       }
       if (method === 'POST' && u.pathname === '/v1/routines') {
+        if (data.routine.folder_id === this.refuseFolder) return { status: 404, body: { error: 'Routine folder not found' } };
         const r = { id: `rt-${++this.n}`, ...data.routine };
         this.routines.set(r.id, r);
         return { status: 201, body: { routine: [r] } };
@@ -82,6 +84,10 @@ export class FakeHevy {
         return { status: 200, body: { routine: [r] } };
       }
       return { status: 404, body: { error: 'Not found' } };
+    }
+    if (u.pathname === '/v1/routines') {
+      const s = slice([...this.routines.values()]);
+      return { status: 200, body: { page, page_count: s.page_count, routines: s.items } };
     }
     if (u.pathname === '/v1/routine_folders') {
       const s = slice(this.folders);

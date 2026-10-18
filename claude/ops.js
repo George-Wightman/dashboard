@@ -11,7 +11,7 @@ import {
 } from '../js/calendar.js';
 import { daysBetween } from '../js/dates.js';
 import { gymConfig, gymHabitId, templatesOf } from '../js/gym.js';
-import { checkSession, sessionText } from '../js/coach.js';
+import { checkSession, notesWith } from '../js/coach.js';
 import { NOTES_MAX } from '../js/parse.js';
 import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
 import { resolveId, shortId } from './ids.js';
@@ -743,7 +743,7 @@ function session(store, op) {
     throw new Error("Hevy's exercise list isn't on the dashboard yet — the planner fetches it on its next run once HEVY_KEY is set (see `gym`)");
   }
   const s = checkSession(op.session, templates);
-  if (sessionText(s).length > NOTES_MAX) throw new Error(`That session is too long to show in the calendar (${NOTES_MAX} characters) — shorten its notes`);
+  if (notesWith(target?.rec ?? {}, s).length > NOTES_MAX) throw new Error(`That session and the task's notes are too long to show in the calendar (${NOTES_MAX} characters) — shorten the notes`);
   const count = `(${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'})`;
   if (target) {
     const { id, rec } = target;
