@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '08cf2fcb';
+var PLANNER_BUILD = '82a5d363';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -472,6 +472,8 @@ function recordProblem(map, id, r) {
       || (a.add !== undefined && !amount(a.add))) return 'Invalid milestone rule';
   }
   if (map === 'items') {
+    if (r.session != null && !(isPlainObject(r.session) && string(r.session.name) && Array.isArray(r.session.exercises)
+      && r.session.exercises.every((e) => isPlainObject(e) && string(e.name) && finite(e.sets)))) return 'Invalid session';
     if (!['task', 'habit', 'quota'].includes(r.type)) return 'Invalid item type';
     if (r.type === 'task' && !day(r.date)) return 'A task needs a real date';
     if (r.type === 'quota' && !(finite(r.target) && r.target > 0)) return 'A quota needs a positive target';
@@ -1830,6 +1832,970 @@ function mealWork(doc, localIds) {
 return { PORTIONS, MAX_TRIES, FUEL_ID, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, parseEstimate, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
 })();
 
+// ---- js/schedule.js
+const __js_schedule = (() => {
+// What's on a day, and the numbers derived from it. Pure: a document and a day in, values out.
+
+const { addDays, weekday, weekStart, dayOfMonth, daysInMonth } = __js_dates;
+const { timeOff, excused, offCovers } = __js_calendar;
+const { blockers, completedBefore } = __js_workflow;
+const { plannedTaskDay, bookingsFor, localDate } = __js_plan_state;
+
+const values = (map) => Object.values(map ?? {});
+const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
+const activeLogs = (doc, pred) => values(doc.logs).filter((l) => l.status === 'active' && pred(l));
+
+// Live (or since archived), created by `day`, and not yet archived on it.
+function countsOn(record, day) {
+  if (record.status !== 'active' && record.status !== 'archived') return false;
+  if (record.created > day) return false;
+  return !record.archivedOn || day < record.archivedOn;
+}
+
+// Every active 'done' log, grouped by item, built in one pass. Pass this to the functions below
+// (as their last argument) to avoid re-scanning all logs once per item.
+function doneIndex(doc) {
+  const idx = new Map();
+  for (const l of values(doc.logs)) {
+    if (l.status !== 'active' || l.kind !== 'done') continue;
+    let set = idx.get(l.itemId);
+    if (!set) idx.set(l.itemId, set = new Set());
+    set.add(l.day);
+  }
+  return idx;
+}
+
+// Habits let off for a day (a 'skip' log, which the retired Coach wrote), as "itemId|day": excused like time off.
+function skipSet(doc) {
+  const out = new Set();
+  for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'skip') out.add(`${l.itemId}|${l.day}`);
+  return out;
+}
+
+function doneDays(doc, itemId, idx) {
+  if (idx) return idx.get(itemId) ?? new Set();
+  return new Set(activeLogs(doc, (l) => l.itemId === itemId && l.kind === 'done').map((l) => l.day));
+}
+
+// Ticks on days in [from, to).
+function doneBetween(doc, itemId, from, to, idx) {
+  let n = 0;
+  for (const d of doneDays(doc, itemId, idx)) if (d >= from && d < to) n++;
+  return n;
+}
+
+function isHabitDue(doc, item, day, idx) {
+  const r = item.repeat ?? { kind: 'daily' };
+  switch (r.kind) {
+    case 'daily': return true;
+    case 'weekdays': return (r.days ?? []).includes(weekday(day));
+    case 'weekly': return weekday(day) === r.day;
+    case 'monthly': return dayOfMonth(day) === Math.min(r.date, daysInMonth(day));
+    case 'perWeek': return doneBetween(doc, item.id, weekStart(day), day, idx) < r.n;
+    default: return false;
+  }
+}
+
+function taskRow(doc, item, day, idx) {
+  const doneOn = [...doneDays(doc, item.id, idx)].sort()[0] ?? null;
+  if (doneOn && doneOn < day) return null;
+  if (doneOn === day) return { item, kind: 'task', done: true, carriedFrom: item.date < day ? item.date : null, suggested: false };
+  const anchor = doc.calendar?.agenda?.from;
+  const planned = anchor && day < anchor ? item.date : plannedTaskDay(doc, item);
+  if (planned > day) return null;
+  const slots = bookingsFor(doc, item);
+  if (anchor && day >= anchor && slots.length && !slots.some((b) => localDate(b.start) === day)) return null;
+  if (anchor && day > anchor && !slots.length && item.date !== day) return null;
+  return { item, kind: 'task', done: false, carriedFrom: planned < day ? planned : null, suggested: false };
+}
+
+// The tasks and habits that count on a day — what the header and the history measure. Anything
+// excused by time off (js/calendar.js) isn't on it; a task dated then carries to the next day.
+function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
+  const rows = [];
+  let completed = null;
+  const skipped = skipSet(doc);
+  for (const item of values(doc.items)) {
+    if (!countsOn(item, day)) continue;
+    if (item.details?.dependsOn?.length) completed ??= completedBefore(doc, day);
+    if (blockers(doc, item, day, completed).length) continue;
+    if (offs.length && excused(doc, item, day, offs)) continue;
+    if (skipped.has(`${item.id}|${day}`)) continue;
+    if (item.type === 'task') {
+      const row = taskRow(doc, item, day, idx);
+      if (row) rows.push(row);
+    } else if (item.type === 'habit' && isHabitDue(doc, item, day, idx)) {
+      rows.push({ item, kind: 'habit', done: doneDays(doc, item.id, idx).has(day), carriedFrom: null, suggested: false });
+    }
+  }
+  return rows.sort(byOrder);
+}
+
+// Amounts logged against an item or a goal in the Monday–Sunday week containing `day`.
+function weekTotal(doc, id, day) {
+  const start = weekStart(day);
+  const end = addDays(start, 6);
+  return activeLogs(doc, (l) =>
+    l.kind === 'amount' && (l.itemId === id || l.goalId === id) && l.day >= start && l.day <= end)
+    .reduce((sum, l) => sum + l.amount, 0);
+}
+
+// Everything on Today, in display order.
+function todayRows(doc, today) {
+  const idx = doneIndex(doc);
+  const completed = values(doc.items).some((i) => i.details?.dependsOn?.length) ? completedBefore(doc, today) : null;
+  const suggestions = values(doc.items)
+    .filter((item) => item.status === 'suggested')
+    .map((item) => ({ item, kind: item.type, done: false, carriedFrom: null, suggested: true }))
+    .sort(byOrder);
+  const quotas = values(doc.items)
+    .filter((item) => item.type === 'quota' && item.status === 'active' && countsOn(item, today) && !blockers(doc, item, today, completed).length)
+    .map((item) => {
+      const total = weekTotal(doc, item.id, today);
+      return { item, kind: 'quota', done: total >= item.target, carriedFrom: null, suggested: false, total };
+    });
+  const rows = [...rowsForDay(doc, today, idx).filter((r) => r.item.status === 'active'), ...quotas].sort(byOrder);
+  const waiting = values(doc.items).filter((i) => i.status === 'active' && countsOn(i, today)
+    && (i.type !== 'task' || (i.date <= today && !idx.get(i.id)?.size)) && blockers(doc, i, today, completed).length)
+    .map((item) => ({ item, kind: item.type, done: false, suggested: false, blocked: blockers(doc, item, today, completed), carriedFrom: null }));
+  return [...suggestions, ...rows.filter((r) => !r.done), ...rows.filter((r) => r.done), ...waiting];
+}
+
+// ---- Streaks --------------------------------------------------------------------------------
+
+function runs(outcomes) {
+  let best = 0;
+  let current = 0;
+  for (const ok of outcomes) {
+    current = ok ? current + 1 : 0;
+    best = Math.max(best, current);
+  }
+  return { current, best };
+}
+
+function occurrenceStreak(doc, item, today) {
+  const idx = doneIndex(doc);
+  const ticked = doneDays(doc, item.id, idx);
+  const offs = timeOff(doc);
+  const skipped = skipSet(doc);
+  const outcomes = [];
+  for (let day = item.created; day <= today; day = addDays(day, 1)) {
+    if (!isHabitDue(doc, item, day, idx)) continue;
+    const ok = ticked.has(day);
+    // Time off, or let off for the day: a miss doesn't count, a tick still does.
+    if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
+    if (day === today && !ok) continue; // today isn't over yet
+    outcomes.push(ok);
+  }
+  return runs(outcomes);
+}
+
+// One pass over an item/goal's active amount logs, totalled by the Monday it falls in.
+function weekTotals(doc, id) {
+  const totals = new Map();
+  for (const l of activeLogs(doc, (l) => l.kind === 'amount' && (l.itemId === id || l.goalId === id))) {
+    // A log whose day isn't a real YYYY-MM-DD string can't be placed in a week — skip it, matching
+    // weekTotal's old behaviour of silently ignoring what it can't place, instead of throwing.
+    if (typeof l.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(l.day)) continue;
+    const w = weekStart(l.day);
+    totals.set(w, (totals.get(w) ?? 0) + l.amount);
+  }
+  return totals;
+}
+
+function weeklyStreak(doc, item, today) {
+  const idx = doneIndex(doc);
+  const thisWeek = weekStart(today);
+  const totals = item.type === 'quota' ? weekTotals(doc, item.id) : null;
+  const outcomes = [];
+  for (let week = weekStart(item.created); week <= thisWeek; week = addDays(week, 7)) {
+    const ok = item.type === 'quota'
+      ? (totals.get(week) ?? 0) >= item.target
+      : doneBetween(doc, item.id, week, addDays(week, 7), idx) >= item.repeat.n;
+    if (week === thisWeek && !ok) continue; // this week isn't over yet
+    outcomes.push(ok);
+  }
+  return runs(outcomes);
+}
+
+function streak(doc, item, today) {
+  if (item.type === 'quota' || item.repeat?.kind === 'perWeek') return weeklyStreak(doc, item, today);
+  if (item.type === 'habit') return occurrenceStreak(doc, item, today);
+  return { current: 0, best: 0 };
+}
+
+// ---- Completion, history, goals --------------------------------------------------------------
+
+// The day's score as two numbers — what the header and the history show. dayScore has the detail.
+function dayCompletion(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
+  const { done, total } = dayScore(doc, day, idx, offs);
+  return { done, total };
+}
+
+// A times-a-week habit counts on a day only when the week needs it: as many still to do as days left,
+// that day included and days off for it not. Otherwise skipping it is a rest day.
+function neededOn(doc, item, day, idx, offs) {
+  const monday = weekStart(day);
+  const left = item.repeat.n - doneBetween(doc, item.id, monday, day, idx);
+  if (left <= 0) return false;
+  let daysLeft = 0;
+  for (let d = day; d <= addDays(monday, 6); d = addDays(d, 1)) if (!(offs.length && excused(doc, item, d, offs))) daysLeft++;
+  return left >= daysLeft;
+}
+
+// How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
+// times-a-week habit it didn't need; plus what George committed to at the 11:00 lock
+// (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
+// time and a miss the second; deleting is a miss unless it was released as no longer needed (Claude's `archive` with his reason). A
+// task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
+function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
+  const rows = rowsForDay(doc, day, idx, offs);
+  const counted = [];
+  const optional = [];
+  for (const r of rows) {
+    if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
+    else counted.push(r);
+  }
+  const pushed = [];
+  const missed = [];
+  const dropped = [];
+  const released = [];
+  const commitment = doc.calendar?.[`commit:${day}`];
+  if (commitment?.tasks?.length) {
+    const onDay = new Set(rows.map((r) => r.item.id));
+    const earlier = values(doc.calendar).filter((c) => c?.day < day && typeof c.id === 'string' && c.id.startsWith('commit:'));
+    for (const id of commitment.tasks) {
+      const item = doc.items?.[id];
+      if (!item || onDay.has(id)) continue;
+      if (doneDays(doc, id, idx).has(day)) continue;
+      if (item.status !== 'active') {
+        if (item.released) released.push({ item });
+        else dropped.push({ item });
+      } else if (item.date > day) {
+        const before = earlier.some((c) => c.tasks?.includes(id) && !doneDays(doc, id, idx).has(c.day));
+        (before ? missed : pushed).push({ item, to: item.date });
+      }
+    }
+  }
+  const done = counted.filter((r) => r.done).length;
+  return {
+    done, total: counted.length + missed.length + dropped.length,
+    open: counted.filter((r) => !r.done), pushed, missed, dropped, released, optional,
+  };
+}
+
+// The current week and the ones before it — `weeks` in all, three by default — Monday first, a cell
+// a day. A day of time off for everything carries `off`, its reason, instead of reading as 0/0.
+function history(doc, today, weeks = 3) {
+  const idx = doneIndex(doc);
+  const offs = timeOff(doc);
+  const start = addDays(weekStart(today), -7 * (weeks - 1));
+  return Array.from({ length: weeks * 7 }, (_, i) => {
+    const day = addDays(start, i);
+    if (day > today) return { day, future: true, done: 0, total: 0 };
+    const off = offs.find((o) => offCovers(o, day) && !o.areas?.length);
+    return { day, future: false, ...dayCompletion(doc, day, idx, offs), ...(off ? { off: off.reason || 'Time off' } : {}) };
+  });
+}
+
+// What a history cell opens up to.
+function dayDetail(doc, day) {
+  const amounts = activeLogs(doc, (l) => l.kind === 'amount' && l.day === day)
+    .map((log) => ({ log, item: doc.items[log.itemId] ?? null, goal: doc.goals[log.goalId] ?? null }))
+    .sort((a, b) => ((a.log.at ?? '') < (b.log.at ?? '') ? -1 : 1));
+  return { rows: rowsForDay(doc, day, doneIndex(doc)), amounts };
+}
+
+function goalTotal(doc, goalId) {
+  return activeLogs(doc, (l) => l.kind === 'amount' && l.goalId === goalId)
+    .reduce((sum, l) => sum + l.amount, 0);
+}
+
+function milestonesOf(doc, goalId) {
+  return values(doc.milestones)
+    .filter((m) => m.goalId === goalId && (m.status === 'active' || m.status === 'suggested'))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function goalItems(doc, goalId) {
+  return values(doc.items)
+    .filter((i) => i.goalId === goalId && i.status === 'active')
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function goalProgress(doc, goal) {
+  if (goal.target > 0) {
+    const total = goalTotal(doc, goal.id);
+    return { numeric: true, done: total, total: goal.target, pct: Math.min(100, Math.round((total / goal.target) * 100)) };
+  }
+  const live = milestonesOf(doc, goal.id).filter((m) => m.status === 'active');
+  const ticked = live.filter((m) => m.done).length;
+  return { numeric: false, done: ticked, total: live.length, pct: live.length ? Math.round((ticked / live.length) * 100) : 0 };
+}
+return { countsOn, doneIndex, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, dayScore, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
+})();
+
+// ---- js/gym.js
+const __js_gym = (() => {
+// The gym, from Hevy. planner/hevy.js copies George's workouts into the `gym` map (records
+// `w:<hevy id>`, plus `templates`, `status` and Claude's `config`); this works out what the
+// dashboard and Claude show from them — estimated 1RMs, PRs, pace and projections for
+// his key lifts, cardio minutes, and each day's sessions in a line. Pure: a document and a day in.
+
+const { addDays, weekStart, shortWeekday, logicalDay, daysBetween } = __js_dates;
+const { weekTotal } = __js_schedule;
+
+const GYM_DEFAULTS = Object.freeze({
+  keyLifts: Object.freeze(['Squat (Barbell)', 'Bench Press (Barbell)']), liftTargets: Object.freeze({}), cardioQuota: null, habit: 'Gym',
+});
+const KEEP_SETS_DAYS = 400; // after this a workout keeps its summary and drops its sets
+const PACE_DAYS = 56; // pace is fitted over the last 8 weeks …
+const PACE_MIN = 4; // … and only with this many sessions in them
+const SPARK = 12; // session bests in a lift's sparkline
+const CARDIO_TYPES = new Set(['duration', 'distance_duration']);
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const values = (map) => Object.values(map ?? {});
+const norm = (s) => String(s ?? '').trim().toLowerCase();
+const round1 = (n) => Math.round(n * 10) / 10;
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const sameLift = (a, b) => norm(a) === norm(b);
+
+// Kilograms as George reads them: to the nearest half, without a trailing ".0".
+const half = (n) => Math.round(n * 2) / 2;
+const kgText = (n) => (Number.isInteger(half(n)) ? String(half(n)) : half(n).toFixed(1));
+
+// 'Squat (Barbell)' → 'Squat'.
+const shortLift = (name) => String(name ?? '').replace(/\s*\((barbell|dumbbell|machine|smith machine|cable)\)\s*$/i, '').trim();
+
+// Estimated one-rep max (Epley), from a set of 1–12 reps; null for anything else.
+function e1rm(kg, reps) {
+  const w = Number(kg);
+  const r = Number(reps);
+  return w > 0 && Number.isFinite(r) && r >= 1 && r <= 12 ? w * (1 + r / 30) : null;
+}
+
+// ---- Settings and status ------------------------------------------------------------------------
+
+// Claude's settings (the `gym` op), with the defaults for anything unset or unreadable.
+function gymConfig(doc) {
+  const c = doc?.gym?.config;
+  const live = c && c.status === 'active' ? c : {};
+  const lifts = Array.isArray(live.keyLifts) ? live.keyLifts.filter((l) => typeof l === 'string' && l.trim()).map((l) => l.trim()) : null;
+  const targets = live.liftTargets && typeof live.liftTargets === 'object' && !Array.isArray(live.liftTargets) ? live.liftTargets : {};
+  return {
+    keyLifts: lifts?.length ? lifts : [...GYM_DEFAULTS.keyLifts],
+    liftTargets: Object.fromEntries(Object.entries(targets).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])),
+    cardioQuota: typeof live.cardioQuota === 'string' && live.cardioQuota ? live.cardioQuota : null,
+    habit: typeof live.habit === 'string' && live.habit.trim() ? live.habit.trim() : GYM_DEFAULTS.habit,
+  };
+}
+
+function gymStatus(doc) {
+  const s = doc?.gym?.status;
+  return s && s.status === 'active' ? s : null;
+}
+
+// Hevy's exercise templates as the script keeps them: { id: [title, type, primary muscle] }.
+function templatesOf(doc) {
+  const t = doc?.gym?.templates;
+  return t && t.status === 'active' && t.list && typeof t.list === 'object' ? t.list : {};
+}
+
+// The habit Hevy ticks: by id, or the one active habit whose title starts with the setting.
+function gymHabitId(doc, config = gymConfig(doc)) {
+  const habits = values(doc?.items).filter((i) => i.type === 'habit' && i.status === 'active');
+  const byId = habits.filter((h) => h.id === config.habit);
+  const hits = byId.length ? byId : habits.filter((h) => norm(h.title).startsWith(norm(config.habit)));
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+// The weekly target cardio minutes count towards (a live one, measured in minutes), or null.
+function cardioQuotaId(doc, config = gymConfig(doc)) {
+  if (!config.cardioQuota) return null;
+  const q = doc?.items?.[config.cardioQuota];
+  return q && q.type === 'quota' && q.status === 'active' && q.unit === 'minutes' ? q.id : null;
+}
+
+// ---- A workout from Hevy -----------------------------------------------------------------------
+
+function exerciseKind(tpl, sets = []) {
+  const [, type, muscle] = Array.isArray(tpl) ? tpl : [];
+  if (CARDIO_TYPES.has(type) || muscle === 'cardio') return 'cardio';
+  if (type === 'weight_reps') return 'lift';
+  if (!tpl) {
+    if (sets.some((s) => Number(s?.weight_kg) > 0 && Number(s?.reps) > 0)) return 'lift';
+    if (sets.some((s) => Number(s?.duration_seconds) > 0 || Number(s?.distance_meters) > 0)) return 'cardio';
+  }
+  return 'other';
+}
+
+function exerciseRecord(ex, templates, keyLifts, allSets = false) {
+  const all = Array.isArray(ex?.sets) ? ex.sets : [];
+  const working = all.filter((s) => s?.type !== 'warmup');
+  const tpl = String(ex?.exercise_template_id ?? '');
+  const name = String(ex?.title ?? '').trim() || templates[tpl]?.[0] || 'Exercise';
+  const kind = exerciseKind(templates[tpl], all);
+  const out = { name, tpl, kind, n: working.length };
+  if (kind === 'cardio') {
+    // A cardio "warm-up" is still cardio, so every set counts.
+    out.minutes = round1(all.reduce((sum, s) => sum + (Number(s?.duration_seconds) || 0), 0) / 60);
+    out.km = Math.round(all.reduce((sum, s) => sum + (Number(s?.distance_meters) || 0), 0) / 10) / 100;
+    return out;
+  }
+  let best = null;
+  let volume = 0;
+  for (const s of working) {
+    const kg = Number(s?.weight_kg) || 0;
+    const reps = Number(s?.reps) || 0;
+    volume += kg * reps;
+    const e = e1rm(kg, reps);
+    if (e != null && (!best || e > best.e)) best = { kg, reps, e };
+  }
+  if (best) {
+    out.best = [best.kg, best.reps];
+    out.e1rm = round1(best.e);
+  }
+  if (volume) out.volume = Math.round(volume);
+  // Sets are kept for the key lifts, and for every lift of a workout from a routine (the coach's
+  // sessions are routines; js/coach.js readyMarks reads them).
+  if ((kind === 'lift' && allSets) || keyLifts.some((l) => sameLift(l, name))) {
+    out.sets = working.map((s) => [Number(s?.weight_kg) || 0, Number(s?.reps) || 0, s?.rpe ?? null]);
+  }
+  return out;
+}
+
+// One of Hevy's workout objects as the `gym` map keeps it. Throws on anything that isn't one.
+function workoutRecord(w, templates = {}, keyLifts = GYM_DEFAULTS.keyLifts, dayStartHour = 4) {
+  const start = Date.parse(w?.start_time ?? '');
+  const end = Date.parse(w?.end_time ?? '');
+  if (typeof w?.id !== 'string' || !w.id || !Number.isFinite(start) || !Array.isArray(w.exercises)) {
+    throw new Error("Hevy's reply didn't make sense");
+  }
+  const finish = Number.isFinite(end) && end >= start ? end : start;
+  return {
+    hevyId: w.id,
+    title: String(w.title ?? '').trim() || 'Workout',
+    day: logicalDay(new Date(start), dayStartHour),
+    start: new Date(start).toISOString(),
+    end: new Date(finish).toISOString(),
+    minutes: Math.round((finish - start) / 60000),
+    routineId: typeof w.routine_id === 'string' && w.routine_id ? w.routine_id : null,
+    exercises: w.exercises.map((ex) => exerciseRecord(ex, templates, keyLifts, !!w.routine_id)),
+  };
+}
+
+// ---- Reading the workouts ----------------------------------------------------------------------
+
+function workouts(doc) {
+  return values(doc?.gym)
+    .filter((r) => r.status === 'active' && String(r.id).startsWith('w:'))
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+}
+
+const workoutsOn = (doc, day) => workouts(doc).filter((w) => w.day === day);
+
+function cardioOf(w) {
+  let minutes = 0;
+  let km = 0;
+  for (const e of w?.exercises ?? []) {
+    if (e.kind !== 'cardio') continue;
+    minutes += Number(e.minutes) || 0;
+    km += Number(e.km) || 0;
+  }
+  return { minutes: round1(minutes), km: Math.round(km * 100) / 100 };
+}
+
+// Every session with the lift in it, oldest first: its best estimated 1RM, that set, and the
+// working sets (when kept).
+function liftSessions(doc, lift) {
+  const out = [];
+  for (const w of workouts(doc)) {
+    let top = null;
+    const sets = [];
+    for (const e of w.exercises ?? []) {
+      if (!sameLift(e.name, lift) || e.e1rm == null) continue;
+      if (!top || e.e1rm > top.e1rm) top = e;
+      if (Array.isArray(e.sets)) sets.push(...e.sets);
+    }
+    if (top) out.push({ day: w.day, hevyId: w.hevyId, e1rm: top.e1rm, best: top.best, sets });
+  }
+  return out;
+}
+
+// Each session marked with whether it beat every one before it (the first never does).
+function marked(sessions) {
+  let max = null;
+  return sessions.map((s) => {
+    const pr = max != null && s.e1rm > max;
+    max = max == null ? s.e1rm : Math.max(max, s.e1rm);
+    return { ...s, pr };
+  });
+}
+
+// '+1 rep' when the last session's best set beat the most reps done at that weight before.
+function repNote(sessions) {
+  if (sessions.length < 2) return null;
+  const last = sessions.at(-1);
+  const [kg, reps] = last.best;
+  let before = null;
+  for (const s of sessions.slice(0, -1)) {
+    for (const [w, r] of [...s.sets, s.best]) if (w === kg && (before == null || r > before)) before = r;
+  }
+  if (before == null || reps <= before) return null;
+  return `+${plural(reps - before, 'rep')}`;
+}
+
+// A straight line through the last 8 weeks' session bests: kg a week, and where it is today.
+function paceOf(sessions, today) {
+  const from = addDays(today, -PACE_DAYS);
+  const pts = sessions.filter((s) => s.day > from && s.day <= today).map((s) => [daysBetween(from, s.day), s.e1rm]);
+  if (pts.length < PACE_MIN) return null;
+  const mx = pts.reduce((a, [x]) => a + x, 0) / pts.length;
+  const my = pts.reduce((a, [, y]) => a + y, 0) / pts.length;
+  const sxx = pts.reduce((a, [x]) => a + (x - mx) ** 2, 0);
+  if (!sxx) return null;
+  const slope = pts.reduce((a, [x, y]) => a + (x - mx) * (y - my), 0) / sxx;
+  return { perWeek: round1(slope * 7), perDay: slope };
+}
+
+// '~late Oct': the part of the month a day falls in.
+function roughDate(day) {
+  const d = Number(day.slice(8, 10));
+  return `${d <= 10 ? 'early' : d <= 20 ? 'mid' : 'late'} ${MONTHS[Number(day.slice(5, 7)) - 1]}`;
+}
+
+function projectionOf(pace, target, current, today) {
+  if (!target) return null;
+  if (current >= target) return { reached: true };
+  if (!pace || !(pace.perDay > 0)) return null;
+  const days = Math.ceil((target - current) / pace.perDay);
+  if (days > 365) return null;
+  const day = addDays(today, days);
+  return { reached: false, day, label: roughDate(day) };
+}
+
+// Everything the Gym panel and Claude say about one key lift, or null before it's been done.
+function liftSummary(doc, lift, today, config = gymConfig(doc)) {
+  const sessions = marked(liftSessions(doc, lift).filter((s) => s.day <= today));
+  if (!sessions.length) return null;
+  const last = sessions.at(-1);
+  const lastPr = [...sessions].reverse().find((s) => s.pr) ?? null;
+  const pace = paceOf(sessions, today);
+  const key = Object.keys(config.liftTargets).find((k) => sameLift(k, lift));
+  const target = key ? config.liftTargets[key] : null;
+  return {
+    lift,
+    name: shortLift(lift),
+    e1rm: last.e1rm,
+    best: sessions.reduce((m, s) => Math.max(m, s.e1rm), 0),
+    pr: last.pr,
+    prDay: lastPr?.day ?? null,
+    last: { kg: last.best[0], reps: last.best[1], day: last.day },
+    repNote: repNote(sessions),
+    pace: pace?.perWeek ?? null,
+    target,
+    projection: projectionOf(pace, target, last.e1rm, today),
+    points: sessions.slice(-SPARK).map((s) => s.e1rm),
+    sessions: sessions.length,
+  };
+}
+
+// Whether a workout set a PR on a lift.
+function prIn(doc, lift, w) {
+  return marked(liftSessions(doc, lift)).find((s) => s.hevyId === w.hevyId)?.pr === true;
+}
+
+// ---- Weeks and days ----------------------------------------------------------------------------
+
+// Monday to Sunday of the week containing `today`: sessions, whether he lifted, cardio minutes.
+function weekStrip(doc, today) {
+  const start = weekStart(today);
+  const list = workouts(doc);
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = addDays(start, i);
+    const ws = list.filter((w) => w.day === day);
+    return {
+      day,
+      future: day > today,
+      sessions: ws.length,
+      lifted: ws.some((w) => w.exercises.some((e) => e.kind === 'lift')),
+      cardio: round1(ws.reduce((m, w) => m + cardioOf(w).minutes, 0)),
+    };
+  });
+}
+
+// One session in a line: 'Legs A · 62 min · Squat 100 × 5 PR · 3 other exercises · Walking 15 min'.
+function sessionLine(doc, w, config = gymConfig(doc)) {
+  const parts = [`${w.title} · ${w.minutes} min`];
+  const used = new Set();
+  for (const lift of config.keyLifts) {
+    const ex = (w.exercises ?? []).filter((e) => sameLift(e.name, lift) && e.best);
+    if (!ex.length) continue;
+    ex.forEach((e) => used.add(e));
+    const top = ex.reduce((a, b) => (b.e1rm > a.e1rm ? b : a));
+    parts.push(`${shortLift(lift)} ${kgText(top.best[0])} × ${top.best[1]}${prIn(doc, lift, w) ? ' PR' : ''}`);
+  }
+  const others = (w.exercises ?? []).filter((e) => e.kind !== 'cardio' && !used.has(e)).length;
+  if (others) parts.push(plural(others, used.size ? 'other exercise' : 'exercise'));
+  for (const e of w.exercises ?? []) {
+    if (e.kind === 'cardio' && e.minutes) parts.push(`${e.name} ${Math.round(e.minutes)} min${e.km ? `, ${e.km} km` : ''}`);
+  }
+  return parts.join(' · ');
+}
+
+const dayLines = (doc, day) => workoutsOn(doc, day).map((w) => sessionLine(doc, w));
+
+// ---- Muscles and cardio over time (the Muscles and Cardio trend widgets) ----------------------
+
+// Broad groups, the way they're trained together, in the order the radar goes round (clockwise
+// from the top). Hevy's primary muscle for an exercise decides its group; forearms go with
+// biceps, traps with back, calves with quads. Cardio, full body and "other" count for none.
+const MUSCLE_GROUPS = Object.freeze([
+  { name: 'Chest', muscles: ['chest'] },
+  { name: 'Shoulders', muscles: ['shoulders', 'neck'] },
+  { name: 'Triceps', muscles: ['triceps'] },
+  { name: 'Biceps', muscles: ['biceps', 'forearms'] },
+  { name: 'Back', muscles: ['lats', 'upper_back', 'lower_back', 'traps'] },
+  { name: 'Core', muscles: ['abdominals'] },
+  { name: 'Glutes & hams', muscles: ['glutes', 'hamstrings', 'abductors', 'adductors'] },
+  { name: 'Quads', muscles: ['quadriceps', 'calves'] },
+].map((g) => Object.freeze({ name: g.name, muscles: Object.freeze(g.muscles) })));
+
+const GROUP_OF = new Map(MUSCLE_GROUPS.flatMap((g) => g.muscles.map((m) => [m, g.name])));
+const muscleGroupOf = (muscle) => GROUP_OF.get(norm(muscle)) ?? null;
+
+// Each non-cardio exercise done by `today` as [day, group, working sets]; exercises whose
+// template the app hasn't been sent, or whose muscle has no group, are left out.
+function groupSets(doc, today) {
+  const templates = templatesOf(doc);
+  const out = [];
+  for (const w of workouts(doc)) {
+    if (w.day > today) continue;
+    for (const e of w.exercises ?? []) {
+      if (e.kind === 'cardio') continue;
+      const group = muscleGroupOf(templates[e.tpl]?.[2]);
+      if (group && Number(e.n) > 0) out.push([w.day, group, Number(e.n)]);
+    }
+  }
+  return out;
+}
+
+// Working sets per group over the 7 days ending `today`, in MUSCLE_GROUPS order.
+function muscleWeek(doc, today) {
+  const from = addDays(today, -6);
+  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, 0]));
+  for (const [day, group, n] of groupSets(doc, today)) if (day >= from) sets.set(group, sets.get(group) + n);
+  return MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) }));
+}
+
+// The `count` groups longest since a working set: days since, or null for never (those first).
+function longestRested(doc, today, count = 3) {
+  const last = new Map();
+  for (const [day, group] of groupSets(doc, today)) if (!(last.get(group) >= day)) last.set(group, day);
+  const rest = MUSCLE_GROUPS.map((g, i) => ({ i, name: g.name, days: last.has(g.name) ? daysBetween(last.get(g.name), today) : null }));
+  rest.sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.i - b.i);
+  return rest.slice(0, count).map(({ name, days }) => ({ name, days }));
+}
+
+// Cardio minutes for each of the `count` weeks up to this one (so far), oldest first. With a
+// cardio target they're its weekly totals, as the Gym panel shows; without, Hevy's minutes.
+function cardioWeeks(doc, today, config = gymConfig(doc), count = 8) {
+  const quota = cardioQuotaId(doc, config);
+  const list = workouts(doc);
+  const thisWeek = weekStart(today);
+  const weeks = Array.from({ length: count }, (_, i) => {
+    const monday = addDays(thisWeek, 7 * (i - count + 1));
+    const last = monday === thisWeek ? today : addDays(monday, 6);
+    const minutes = quota
+      ? weekTotal(doc, quota, monday)
+      : list.filter((w) => w.day >= monday && w.day <= last).reduce((m, w) => m + cardioOf(w).minutes, 0);
+    return { monday, minutes: Math.round(minutes), current: monday === thisWeek };
+  });
+  return { weeks, target: quota ? Number(doc.items[quota].target) : null };
+}
+
+// ---- The long view (Gym opened big, js/ui/gym.js) ----------------------------------------------
+
+// Every lift he has done, with its best ever: estimated 1RM, the set behind it, and the day. The
+// ones he does most first (then the heavier), `limit` of them.
+function prBoard(doc, today, limit = 12) {
+  const byLift = new Map();
+  for (const w of workouts(doc)) {
+    if (w.day > today) continue;
+    const seen = new Set();
+    for (const e of w.exercises ?? []) {
+      if (e.kind !== 'lift' || e.e1rm == null || !Array.isArray(e.best)) continue;
+      const key = norm(e.name);
+      const row = byLift.get(key) ?? { name: e.name, sessions: 0, e1rm: 0, best: null, day: null, last: null };
+      if (!seen.has(key)) { row.sessions++; seen.add(key); }
+      if (e.e1rm > row.e1rm) Object.assign(row, { e1rm: e.e1rm, best: e.best, day: w.day });
+      row.last = w.day;
+      byLift.set(key, row);
+    }
+  }
+  return [...byLift.values()]
+    .sort((a, b) => b.sessions - a.sessions || b.e1rm - a.e1rm || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
+
+// The `weeks` weeks up to this one, Monday to Sunday, each day with whether he lifted, cardio
+// minutes and sessions — the year of training as a grid.
+function sessionDays(doc, today, weeks = 52) {
+  const first = addDays(weekStart(today), -7 * (weeks - 1));
+  const byDay = new Map();
+  for (const w of workouts(doc)) {
+    if (w.day < first || w.day > today) continue;
+    const d = byDay.get(w.day) ?? { sessions: 0, lifted: false, cardio: 0 };
+    d.sessions++;
+    d.lifted ||= (w.exercises ?? []).some((e) => e.kind === 'lift');
+    d.cardio = round1(d.cardio + cardioOf(w).minutes);
+    byDay.set(w.day, d);
+  }
+  return Array.from({ length: weeks * 7 }, (_, i) => {
+    const day = addDays(first, i);
+    return { day, future: day > today, ...(byDay.get(day) ?? { sessions: 0, lifted: false, cardio: 0 }) };
+  });
+}
+
+// Working sets per muscle group, week by week for the `count` weeks up to this one (so far):
+// { weeks: [monday…], groups: [{ name, sets: [n per week] }] }, groups in MUSCLE_GROUPS order.
+function groupWeeks(doc, today, count = 8) {
+  const thisWeek = weekStart(today);
+  const weeks = Array.from({ length: count }, (_, i) => addDays(thisWeek, 7 * (i - count + 1)));
+  const at = new Map(weeks.map((m, i) => [m, i]));
+  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, weeks.map(() => 0)]));
+  for (const [day, group, n] of groupSets(doc, today)) {
+    const i = at.get(weekStart(day));
+    if (i != null) sets.get(group)[i] += n;
+  }
+  return { weeks, groups: MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) })) };
+}
+
+// A week's training in a line, for Claude's catch-up: sessions, cardio, key lifts.
+function trainingWeek(doc, day, config = gymConfig(doc)) {
+  const start = weekStart(day);
+  const end = addDays(start, 6);
+  const ws = workouts(doc).filter((w) => w.day >= start && w.day <= end && w.day <= day);
+  const parts = [plural(ws.length, 'session')];
+  const quota = cardioQuotaId(doc, config);
+  const minutes = Math.round(ws.reduce((m, w) => m + cardioOf(w).minutes, 0));
+  parts.push(quota
+    ? `cardio ${Math.round(weekTotal(doc, quota, day))} of ${doc.items[quota].target} min`
+    : `cardio ${minutes} min`);
+  for (const lift of config.keyLifts) {
+    const s = liftSummary(doc, lift, day, config);
+    if (!s) continue;
+    const pr = s.prDay && s.prDay >= start ? ` (PR ${shortWeekday(s.prDay)})` : '';
+    const pace = s.pace != null ? `, ${s.pace >= 0 ? '+' : ''}${s.pace} kg/wk` : '';
+    parts.push(`${s.name} est. 1RM ${kgText(s.e1rm)}${pr}${pace}`);
+  }
+  return parts.join('; ');
+}
+
+// The Hevy tick on an item for a day, as { from, at } ISO strings, or null.
+function hevyTick(doc, itemId, day) {
+  const log = values(doc?.logs).find((l) => l.status === 'active' && l.kind === 'done' && l.source === 'hevy'
+    && l.itemId === itemId && l.day === day);
+  return log ? { from: log.from ?? null, at: log.at ?? null } : null;
+}
+
+// The connection in a few lines, for ⚙ and Claude. `when` formats a moment.
+function gymStatusLines(doc, when = (iso) => iso) {
+  const s = gymStatus(doc);
+  if (!s) return ["Hevy isn't connected — the planner script needs the key as HEVY_KEY in its Script properties"];
+  const out = [`Hevy: last checked ${s.lastSync ? when(s.lastSync) : 'never'} · ${plural(Number(s.count) || 0, 'workout')}`];
+  if (s.backfillPage != null) out.push(`Still copying your Hevy history — page ${s.backfillPage} next`);
+  if (s.lastError) out.push(`Problem: ${s.lastError}`);
+  return out;
+}
+return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, MUSCLE_GROUPS, muscleGroupOf, muscleWeek, longestRested, cardioWeeks, prBoard, sessionDays, groupWeeks, trainingWeek, hevyTick, gymStatusLines };
+})();
+
+// ---- js/coach.js
+const __js_coach = (() => {
+// The coach. Claude writes George's training sessions onto dated gym tasks (the `session` op);
+// the planner puts each into Hevy as a routine (planner/routines.js); this holds the fixed rules
+// both sides share: how a session reads, checking it against Hevy's exercises, the routine Hevy
+// is sent, the morning back question and its warning, and lifts ready for more weight. Pure.
+
+const { addDays } = __js_dates;
+const { kgText } = __js_gym;
+
+const norm = (s) => String(s ?? '').trim().toLowerCase();
+const isInt = (n, lo, hi) => Number.isInteger(n) && n >= lo && n <= hi;
+const isNum = (n, lo, hi) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
+const isPair = (p, lo, hi) => Array.isArray(p) && p.length === 2 && isInt(p[0], lo, hi) && isInt(p[1], lo, hi) && p[0] < p[1];
+
+const BACK = Object.freeze(['fine', 'stiff', 'sore', 'bad']); // the morning answer's score is its index
+const BACK_UNTIL_HOUR = 11;
+const HEAVY_SHARE = 0.85;
+
+// ---- How a session reads -----------------------------------------------------------------------
+
+function exerciseLine(ex) {
+  const reps = ex.repRange ? `${ex.repRange[0]}–${ex.repRange[1]}` : String(ex.reps);
+  const load = [ex.kg != null ? `${kgText(ex.kg)} kg` : null, ex.rpe != null ? `RPE ${ex.rpe}` : null].filter(Boolean).join(', ');
+  return `${ex.name} ${ex.sets}×${reps}${ex.each ? ' each' : ''}${load ? ` @ ${load}` : ''}${ex.note ? ` (${ex.note})` : ''}`;
+}
+
+function cardioLine(c) {
+  return `${c.kind} ${c.minutes} min${c.hr ? `, ${c.hr[0]}–${c.hr[1]} bpm` : ''}`;
+}
+
+function sessionLines(session) {
+  if (!session) return [];
+  return [
+    ...(session.note ? [session.note] : []),
+    ...(session.exercises ?? []).map(exerciseLine),
+    ...(session.cardio ? [cardioLine(session.cardio)] : []),
+  ];
+}
+
+const sessionText = (session) => sessionLines(session).join('\n');
+
+// ---- Checking a session ------------------------------------------------------------------------
+
+const words = (s) => new Set(norm(s).replace(/[()]/g, ' ').split(/[^a-z0-9]+/).filter(Boolean));
+
+function closest(name, templates, count = 3) {
+  const want = words(name);
+  return Object.values(templates)
+    .map((t) => ({ title: t[0], score: [...words(t[0])].filter((w) => want.has(w)).length }))
+    .filter((t) => t.score > 0)
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .slice(0, count)
+    .map((t) => t.title);
+}
+
+function checkExercise(ex, i, byTitle, templates) {
+  const at = `Exercise ${i + 1}`;
+  if (!ex || typeof ex !== 'object') throw new Error(`${at} isn't an exercise`);
+  if (typeof ex.name !== 'string' || !ex.name.trim()) throw new Error(`${at} needs a name`);
+  const hit = byTitle.get(norm(ex.name));
+  if (!hit) {
+    const near = closest(ex.name, templates);
+    throw new Error(`"${ex.name.trim()}" isn't one of Hevy's exercises.${near.length ? ` Closest: ${near.join(', ')}` : ''}`);
+  }
+  const [tpl, title] = hit;
+  if (!isInt(ex.sets, 1, 10)) throw new Error(`${title}: sets is a whole number from 1 to 10`);
+  if (ex.reps != null && ex.repRange != null) throw new Error(`${title}: give reps or repRange, not both`);
+  if (ex.repRange != null ? !isPair(ex.repRange, 1, 50) : !isInt(ex.reps, 1, 50)) {
+    throw new Error(ex.repRange != null ? `${title}: repRange is [low, high], 1 to 50` : `${title}: reps is a whole number from 1 to 50`);
+  }
+  if (ex.kg != null && !isNum(ex.kg, 0, 500)) throw new Error(`${title}: kg is a weight from 0 to 500`);
+  if (ex.rpe != null && !isNum(ex.rpe, 5, 10)) throw new Error(`${title}: rpe is from 5 to 10`);
+  if (ex.restSec != null && !isInt(ex.restSec, 0, 600)) throw new Error(`${title}: restSec is 0 to 600 seconds`);
+  if (ex.note != null && (typeof ex.note !== 'string' || ex.note.length > 200)) throw new Error(`${title}: note is a sentence`);
+  const out = { name: title, tpl, sets: ex.sets };
+  if (ex.repRange != null) out.repRange = [...ex.repRange]; else out.reps = ex.reps;
+  if (ex.kg != null) out.kg = ex.kg;
+  if (ex.rpe != null) out.rpe = ex.rpe;
+  if (ex.each) out.each = true;
+  if (ex.restSec != null) out.restSec = ex.restSec;
+  if (ex.note?.trim()) out.note = ex.note.trim();
+  return out;
+}
+
+// A session as Claude wrote it, checked and tidied: each exercise named as Hevy names it, with
+// its template id. `templates` is { id: [title, type, muscle] }. Throws a sentence.
+function checkSession(session, templates) {
+  if (!session || typeof session !== 'object' || Array.isArray(session)) throw new Error("A session is { name, exercises: [...] }");
+  if (typeof session.name !== 'string' || !session.name.trim() || session.name.length > 60) throw new Error('A session needs a short name');
+  if (!Array.isArray(session.exercises) || !session.exercises.length) throw new Error('A session needs at least one exercise');
+  if (session.exercises.length > 15) throw new Error('A session has at most 15 exercises');
+  if (session.note != null && (typeof session.note !== 'string' || session.note.length > 300)) throw new Error("The session's note is a sentence or two");
+  const byTitle = new Map(Object.entries(templates ?? {}).map(([id, t]) => [norm(t?.[0]), [id, t[0]]]));
+  const out = { name: session.name.trim(), exercises: session.exercises.map((ex, i) => checkExercise(ex, i, byTitle, templates)) };
+  if (session.note?.trim()) out.note = session.note.trim();
+  const c = session.cardio;
+  if (c != null) {
+    if (typeof c !== 'object' || typeof c.kind !== 'string' || !c.kind.trim()) throw new Error('Cardio is { kind, minutes, hr? }');
+    if (!isInt(c.minutes, 1, 180)) throw new Error('Cardio minutes is a whole number from 1 to 180');
+    if (c.hr != null && !isPair(c.hr, 60, 200)) throw new Error('Cardio hr is [low, high] beats a minute');
+    out.cardio = { kind: c.kind.trim(), minutes: c.minutes, ...(c.hr ? { hr: [...c.hr] } : {}) };
+  }
+  return out;
+}
+
+// ---- The routine Hevy is sent ------------------------------------------------------------------
+
+// A checked session as a Hevy routine (POST /v1/routines; PUT leaves out the folder). Hevy's sets
+// have no RPE or "each side", so those go in the exercise's notes.
+function routineBody(session, { title, folderId } = {}) {
+  const routine = {
+    title,
+    ...(folderId != null ? { folder_id: folderId } : {}),
+    notes: [session.note, session.cardio ? cardioLine(session.cardio) : null].filter(Boolean).join('\n'),
+    exercises: session.exercises.map((ex) => ({
+      exercise_template_id: ex.tpl,
+      superset_id: null,
+      rest_seconds: ex.restSec ?? null,
+      notes: [ex.rpe != null ? `RPE ${ex.rpe}` : null, ex.each ? 'each side' : null, ex.note].filter(Boolean).join(' · '),
+      sets: Array.from({ length: ex.sets }, () => ({
+        type: 'normal',
+        weight_kg: ex.kg ?? null,
+        reps: ex.repRange ? null : ex.reps,
+        distance_meters: null,
+        duration_seconds: null,
+        custom_metric: null,
+        rep_range: ex.repRange ? { start: ex.repRange[0], end: ex.repRange[1] } : null,
+      })),
+    })),
+  };
+  return { routine };
+}
+
+// ---- The back --------------------------------------------------------------------------------------
+
+const isHinge = (name) => /deadlift|good morning|romanian|\brdl\b/i.test(String(name ?? ''));
+const isBigSquat = (name) => /squat/i.test(name) && !/split|bulgarian|goblet|lunge|pistol/i.test(name);
+
+// What the session row says on a sore (2) or bad (3) morning when the session loads the back:
+// a hinge, or a squat at RPE 8+ or at 85% or more of his estimated 1RM. Null otherwise.
+function backFlag(session, score, e1rmOf = () => null) {
+  if (!(score >= 2) || !session) return null;
+  const word = score >= 3 ? 'bad' : 'sore';
+  for (const ex of session.exercises ?? []) {
+    if (isHinge(ex.name)) return `Back's ${word}: swap the ${ex.name.replace(/\s*\(.*\)$/, '').toLowerCase()} for back extensions, or drop the load.`;
+    if (isBigSquat(ex.name)) {
+      const max = e1rmOf(ex.name);
+      if (ex.rpe >= 8 || (max > 0 && ex.kg >= max * HEAVY_SHARE)) return `Back's ${word}: go lighter on the squat, or swap it for split squats.`;
+    }
+  }
+  return null;
+}
+
+// The morning answers, `gym` records `back:<day>`, over the `days` up to today, oldest first.
+function backScores(doc, today, days = 14) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = addDays(today, -i);
+    const r = doc?.gym?.[`back:${day}`];
+    if (r && r.status === 'active' && isInt(r.score, 0, 3)) out.push({ day, score: r.score });
+  }
+  return out;
+}
+
+// ---- Ready for more weight -------------------------------------------------------------------------
+
+// The exercises in `session` that `workout` (as js/gym.js keeps it, sets as [kg, reps, rpe]) did
+// in full: every prescribed set at the weight and at the top of the reps.
+function readyMarks(session, workout) {
+  const done = workout?.exercises ?? [];
+  const out = [];
+  for (const ex of session?.exercises ?? []) {
+    if (!(ex.kg > 0)) continue;
+    const hit = done.find((d) => (ex.tpl && d.tpl ? d.tpl === ex.tpl : norm(d.name) === norm(ex.name)));
+    const sets = Array.isArray(hit?.sets) ? hit.sets : [];
+    const top = ex.repRange ? ex.repRange[1] : ex.reps;
+    if (sets.length >= ex.sets && sets.filter((s) => s[0] >= ex.kg && s[1] >= top).length >= ex.sets) out.push(ex.name);
+  }
+  return out;
+}
+return { BACK, BACK_UNTIL_HOUR, sessionLines, sessionText, checkSession, routineBody, isHinge, backFlag, backScores, readyMarks };
+})();
+
 // ---- js/data.js
 const __js_data = (() => {
 // The store: the whole state is one document in localStorage. Every change goes through here,
@@ -1845,6 +2811,7 @@ const { reviseRecord, recordContent } = __js_record;
 const { checkinId, SAID_MAX } = __js_checkins;
 const { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } = __js_workflow;
 const { slotFor, fuelSettings, FUEL_ID } = __js_food;
+const { BACK, sessionText } = __js_coach;
 
 const DATA_KEY = 'dash_data';
 const SETTINGS_KEY = 'dash_settings';
@@ -2419,6 +3386,22 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // The gym's records (js/gym.js): workouts, templates and status from Hevy, settings from Claude.
   const putGym = (id, fields, source = 'hevy') => putRecord('gym', id, fields, source);
 
+  // The coach (js/coach.js): the morning back answer (0 fine … 3 bad), one record a day so two
+  // devices merge into one; and a session Claude wrote, on its task, with its lines in the notes so
+  // the calendar event shows them. Clearing a session clears only notes it wrote.
+  function setBack(day, score) {
+    if (!Number.isInteger(score) || score < 0 || score >= BACK.length) throw new Error('The back is fine, stiff, sore or bad');
+    return putGym(`back:${day}`, { kind: 'back', day, score, at: stamp() }, 'me').rec;
+  }
+
+  function setSession(id, session) {
+    const item = doc.items[id];
+    if (!item) throw new Error(`No task ${id}`);
+    if (session) return patch('items', id, { session: structuredClone(session), notes: sessionText(session) });
+    const wrote = item.session && item.notes === sessionText(item.session);
+    return patch('items', id, { session: null, ...(wrote ? { notes: '' } : {}) });
+  }
+
   // A log with a fixed id (a Hevy workout's tick or cardio minutes): made once, then only its given
   // fields change, whatever its status — so a tick George has taken off stays off.
   function putLog(id, fields) {
@@ -2586,6 +3569,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
 
     putCalendar,
     putGym,
+    setBack,
+    setSession,
     addMeal,
     updateMeal: (id, changes) => patch('meals', id, changes),
     archiveMeal: (id) => patch('meals', id, { status: 'archived', archivedOn: today() }),
@@ -3278,309 +4263,6 @@ const localDay = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${
 
 const iso = (msOrDate) => new Date(msOrDate).toISOString();
 return { MINUTE, at, localDay, iso };
-})();
-
-// ---- js/schedule.js
-const __js_schedule = (() => {
-// What's on a day, and the numbers derived from it. Pure: a document and a day in, values out.
-
-const { addDays, weekday, weekStart, dayOfMonth, daysInMonth } = __js_dates;
-const { timeOff, excused, offCovers } = __js_calendar;
-const { blockers, completedBefore } = __js_workflow;
-const { plannedTaskDay, bookingsFor, localDate } = __js_plan_state;
-
-const values = (map) => Object.values(map ?? {});
-const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
-const activeLogs = (doc, pred) => values(doc.logs).filter((l) => l.status === 'active' && pred(l));
-
-// Live (or since archived), created by `day`, and not yet archived on it.
-function countsOn(record, day) {
-  if (record.status !== 'active' && record.status !== 'archived') return false;
-  if (record.created > day) return false;
-  return !record.archivedOn || day < record.archivedOn;
-}
-
-// Every active 'done' log, grouped by item, built in one pass. Pass this to the functions below
-// (as their last argument) to avoid re-scanning all logs once per item.
-function doneIndex(doc) {
-  const idx = new Map();
-  for (const l of values(doc.logs)) {
-    if (l.status !== 'active' || l.kind !== 'done') continue;
-    let set = idx.get(l.itemId);
-    if (!set) idx.set(l.itemId, set = new Set());
-    set.add(l.day);
-  }
-  return idx;
-}
-
-// Habits let off for a day (a 'skip' log, which the retired Coach wrote), as "itemId|day": excused like time off.
-function skipSet(doc) {
-  const out = new Set();
-  for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'skip') out.add(`${l.itemId}|${l.day}`);
-  return out;
-}
-
-function doneDays(doc, itemId, idx) {
-  if (idx) return idx.get(itemId) ?? new Set();
-  return new Set(activeLogs(doc, (l) => l.itemId === itemId && l.kind === 'done').map((l) => l.day));
-}
-
-// Ticks on days in [from, to).
-function doneBetween(doc, itemId, from, to, idx) {
-  let n = 0;
-  for (const d of doneDays(doc, itemId, idx)) if (d >= from && d < to) n++;
-  return n;
-}
-
-function isHabitDue(doc, item, day, idx) {
-  const r = item.repeat ?? { kind: 'daily' };
-  switch (r.kind) {
-    case 'daily': return true;
-    case 'weekdays': return (r.days ?? []).includes(weekday(day));
-    case 'weekly': return weekday(day) === r.day;
-    case 'monthly': return dayOfMonth(day) === Math.min(r.date, daysInMonth(day));
-    case 'perWeek': return doneBetween(doc, item.id, weekStart(day), day, idx) < r.n;
-    default: return false;
-  }
-}
-
-function taskRow(doc, item, day, idx) {
-  const doneOn = [...doneDays(doc, item.id, idx)].sort()[0] ?? null;
-  if (doneOn && doneOn < day) return null;
-  if (doneOn === day) return { item, kind: 'task', done: true, carriedFrom: item.date < day ? item.date : null, suggested: false };
-  const anchor = doc.calendar?.agenda?.from;
-  const planned = anchor && day < anchor ? item.date : plannedTaskDay(doc, item);
-  if (planned > day) return null;
-  const slots = bookingsFor(doc, item);
-  if (anchor && day >= anchor && slots.length && !slots.some((b) => localDate(b.start) === day)) return null;
-  if (anchor && day > anchor && !slots.length && item.date !== day) return null;
-  return { item, kind: 'task', done: false, carriedFrom: planned < day ? planned : null, suggested: false };
-}
-
-// The tasks and habits that count on a day — what the header and the history measure. Anything
-// excused by time off (js/calendar.js) isn't on it; a task dated then carries to the next day.
-function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
-  const rows = [];
-  let completed = null;
-  const skipped = skipSet(doc);
-  for (const item of values(doc.items)) {
-    if (!countsOn(item, day)) continue;
-    if (item.details?.dependsOn?.length) completed ??= completedBefore(doc, day);
-    if (blockers(doc, item, day, completed).length) continue;
-    if (offs.length && excused(doc, item, day, offs)) continue;
-    if (skipped.has(`${item.id}|${day}`)) continue;
-    if (item.type === 'task') {
-      const row = taskRow(doc, item, day, idx);
-      if (row) rows.push(row);
-    } else if (item.type === 'habit' && isHabitDue(doc, item, day, idx)) {
-      rows.push({ item, kind: 'habit', done: doneDays(doc, item.id, idx).has(day), carriedFrom: null, suggested: false });
-    }
-  }
-  return rows.sort(byOrder);
-}
-
-// Amounts logged against an item or a goal in the Monday–Sunday week containing `day`.
-function weekTotal(doc, id, day) {
-  const start = weekStart(day);
-  const end = addDays(start, 6);
-  return activeLogs(doc, (l) =>
-    l.kind === 'amount' && (l.itemId === id || l.goalId === id) && l.day >= start && l.day <= end)
-    .reduce((sum, l) => sum + l.amount, 0);
-}
-
-// Everything on Today, in display order.
-function todayRows(doc, today) {
-  const idx = doneIndex(doc);
-  const completed = values(doc.items).some((i) => i.details?.dependsOn?.length) ? completedBefore(doc, today) : null;
-  const suggestions = values(doc.items)
-    .filter((item) => item.status === 'suggested')
-    .map((item) => ({ item, kind: item.type, done: false, carriedFrom: null, suggested: true }))
-    .sort(byOrder);
-  const quotas = values(doc.items)
-    .filter((item) => item.type === 'quota' && item.status === 'active' && countsOn(item, today) && !blockers(doc, item, today, completed).length)
-    .map((item) => {
-      const total = weekTotal(doc, item.id, today);
-      return { item, kind: 'quota', done: total >= item.target, carriedFrom: null, suggested: false, total };
-    });
-  const rows = [...rowsForDay(doc, today, idx).filter((r) => r.item.status === 'active'), ...quotas].sort(byOrder);
-  const waiting = values(doc.items).filter((i) => i.status === 'active' && countsOn(i, today)
-    && (i.type !== 'task' || (i.date <= today && !idx.get(i.id)?.size)) && blockers(doc, i, today, completed).length)
-    .map((item) => ({ item, kind: item.type, done: false, suggested: false, blocked: blockers(doc, item, today, completed), carriedFrom: null }));
-  return [...suggestions, ...rows.filter((r) => !r.done), ...rows.filter((r) => r.done), ...waiting];
-}
-
-// ---- Streaks --------------------------------------------------------------------------------
-
-function runs(outcomes) {
-  let best = 0;
-  let current = 0;
-  for (const ok of outcomes) {
-    current = ok ? current + 1 : 0;
-    best = Math.max(best, current);
-  }
-  return { current, best };
-}
-
-function occurrenceStreak(doc, item, today) {
-  const idx = doneIndex(doc);
-  const ticked = doneDays(doc, item.id, idx);
-  const offs = timeOff(doc);
-  const skipped = skipSet(doc);
-  const outcomes = [];
-  for (let day = item.created; day <= today; day = addDays(day, 1)) {
-    if (!isHabitDue(doc, item, day, idx)) continue;
-    const ok = ticked.has(day);
-    // Time off, or let off for the day: a miss doesn't count, a tick still does.
-    if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
-    if (day === today && !ok) continue; // today isn't over yet
-    outcomes.push(ok);
-  }
-  return runs(outcomes);
-}
-
-// One pass over an item/goal's active amount logs, totalled by the Monday it falls in.
-function weekTotals(doc, id) {
-  const totals = new Map();
-  for (const l of activeLogs(doc, (l) => l.kind === 'amount' && (l.itemId === id || l.goalId === id))) {
-    // A log whose day isn't a real YYYY-MM-DD string can't be placed in a week — skip it, matching
-    // weekTotal's old behaviour of silently ignoring what it can't place, instead of throwing.
-    if (typeof l.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(l.day)) continue;
-    const w = weekStart(l.day);
-    totals.set(w, (totals.get(w) ?? 0) + l.amount);
-  }
-  return totals;
-}
-
-function weeklyStreak(doc, item, today) {
-  const idx = doneIndex(doc);
-  const thisWeek = weekStart(today);
-  const totals = item.type === 'quota' ? weekTotals(doc, item.id) : null;
-  const outcomes = [];
-  for (let week = weekStart(item.created); week <= thisWeek; week = addDays(week, 7)) {
-    const ok = item.type === 'quota'
-      ? (totals.get(week) ?? 0) >= item.target
-      : doneBetween(doc, item.id, week, addDays(week, 7), idx) >= item.repeat.n;
-    if (week === thisWeek && !ok) continue; // this week isn't over yet
-    outcomes.push(ok);
-  }
-  return runs(outcomes);
-}
-
-function streak(doc, item, today) {
-  if (item.type === 'quota' || item.repeat?.kind === 'perWeek') return weeklyStreak(doc, item, today);
-  if (item.type === 'habit') return occurrenceStreak(doc, item, today);
-  return { current: 0, best: 0 };
-}
-
-// ---- Completion, history, goals --------------------------------------------------------------
-
-// The day's score as two numbers — what the header and the history show. dayScore has the detail.
-function dayCompletion(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
-  const { done, total } = dayScore(doc, day, idx, offs);
-  return { done, total };
-}
-
-// A times-a-week habit counts on a day only when the week needs it: as many still to do as days left,
-// that day included and days off for it not. Otherwise skipping it is a rest day.
-function neededOn(doc, item, day, idx, offs) {
-  const monday = weekStart(day);
-  const left = item.repeat.n - doneBetween(doc, item.id, monday, day, idx);
-  if (left <= 0) return false;
-  let daysLeft = 0;
-  for (let d = day; d <= addDays(monday, 6); d = addDays(d, 1)) if (!(offs.length && excused(doc, item, d, offs))) daysLeft++;
-  return left >= daysLeft;
-}
-
-// How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
-// times-a-week habit it didn't need; plus what George committed to at the 11:00 lock
-// (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
-// time and a miss the second; deleting is a miss unless it was released as no longer needed (Claude's `archive` with his reason). A
-// task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
-function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
-  const rows = rowsForDay(doc, day, idx, offs);
-  const counted = [];
-  const optional = [];
-  for (const r of rows) {
-    if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
-    else counted.push(r);
-  }
-  const pushed = [];
-  const missed = [];
-  const dropped = [];
-  const released = [];
-  const commitment = doc.calendar?.[`commit:${day}`];
-  if (commitment?.tasks?.length) {
-    const onDay = new Set(rows.map((r) => r.item.id));
-    const earlier = values(doc.calendar).filter((c) => c?.day < day && typeof c.id === 'string' && c.id.startsWith('commit:'));
-    for (const id of commitment.tasks) {
-      const item = doc.items?.[id];
-      if (!item || onDay.has(id)) continue;
-      if (doneDays(doc, id, idx).has(day)) continue;
-      if (item.status !== 'active') {
-        if (item.released) released.push({ item });
-        else dropped.push({ item });
-      } else if (item.date > day) {
-        const before = earlier.some((c) => c.tasks?.includes(id) && !doneDays(doc, id, idx).has(c.day));
-        (before ? missed : pushed).push({ item, to: item.date });
-      }
-    }
-  }
-  const done = counted.filter((r) => r.done).length;
-  return {
-    done, total: counted.length + missed.length + dropped.length,
-    open: counted.filter((r) => !r.done), pushed, missed, dropped, released, optional,
-  };
-}
-
-// The current week and the ones before it — `weeks` in all, three by default — Monday first, a cell
-// a day. A day of time off for everything carries `off`, its reason, instead of reading as 0/0.
-function history(doc, today, weeks = 3) {
-  const idx = doneIndex(doc);
-  const offs = timeOff(doc);
-  const start = addDays(weekStart(today), -7 * (weeks - 1));
-  return Array.from({ length: weeks * 7 }, (_, i) => {
-    const day = addDays(start, i);
-    if (day > today) return { day, future: true, done: 0, total: 0 };
-    const off = offs.find((o) => offCovers(o, day) && !o.areas?.length);
-    return { day, future: false, ...dayCompletion(doc, day, idx, offs), ...(off ? { off: off.reason || 'Time off' } : {}) };
-  });
-}
-
-// What a history cell opens up to.
-function dayDetail(doc, day) {
-  const amounts = activeLogs(doc, (l) => l.kind === 'amount' && l.day === day)
-    .map((log) => ({ log, item: doc.items[log.itemId] ?? null, goal: doc.goals[log.goalId] ?? null }))
-    .sort((a, b) => ((a.log.at ?? '') < (b.log.at ?? '') ? -1 : 1));
-  return { rows: rowsForDay(doc, day, doneIndex(doc)), amounts };
-}
-
-function goalTotal(doc, goalId) {
-  return activeLogs(doc, (l) => l.kind === 'amount' && l.goalId === goalId)
-    .reduce((sum, l) => sum + l.amount, 0);
-}
-
-function milestonesOf(doc, goalId) {
-  return values(doc.milestones)
-    .filter((m) => m.goalId === goalId && (m.status === 'active' || m.status === 'suggested'))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-}
-
-function goalItems(doc, goalId) {
-  return values(doc.items)
-    .filter((i) => i.goalId === goalId && i.status === 'active')
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-}
-
-function goalProgress(doc, goal) {
-  if (goal.target > 0) {
-    const total = goalTotal(doc, goal.id);
-    return { numeric: true, done: total, total: goal.target, pct: Math.min(100, Math.round((total / goal.target) * 100)) };
-  }
-  const live = milestonesOf(doc, goal.id).filter((m) => m.status === 'active');
-  const ticked = live.filter((m) => m.done).length;
-  return { numeric: false, done: ticked, total: live.length, pct: live.length ? Math.round((ticked / live.length) * 100) : 0 };
-}
-return { countsOn, doneIndex, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, dayScore, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
 })();
 
 // ---- planner/demand.js
@@ -4674,480 +5356,6 @@ function readArea(data, areas) {
   return areas.find((a) => a.toLowerCase() === wanted) ?? '';
 }
 return { tagPrompt, readArea };
-})();
-
-// ---- js/gym.js
-const __js_gym = (() => {
-// The gym, from Hevy. planner/hevy.js copies George's workouts into the `gym` map (records
-// `w:<hevy id>`, plus `templates`, `status` and Claude's `config`); this works out what the
-// dashboard and Claude show from them — estimated 1RMs, PRs, pace and projections for
-// his key lifts, cardio minutes, and each day's sessions in a line. Pure: a document and a day in.
-
-const { addDays, weekStart, shortWeekday, logicalDay, daysBetween } = __js_dates;
-const { weekTotal } = __js_schedule;
-
-const GYM_DEFAULTS = Object.freeze({
-  keyLifts: Object.freeze(['Squat (Barbell)', 'Bench Press (Barbell)']), liftTargets: Object.freeze({}), cardioQuota: null, habit: 'Gym',
-});
-const KEEP_SETS_DAYS = 400; // after this a workout keeps its summary and drops its sets
-const PACE_DAYS = 56; // pace is fitted over the last 8 weeks …
-const PACE_MIN = 4; // … and only with this many sessions in them
-const SPARK = 12; // session bests in a lift's sparkline
-const CARDIO_TYPES = new Set(['duration', 'distance_duration']);
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-const values = (map) => Object.values(map ?? {});
-const norm = (s) => String(s ?? '').trim().toLowerCase();
-const round1 = (n) => Math.round(n * 10) / 10;
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const sameLift = (a, b) => norm(a) === norm(b);
-
-// Kilograms as George reads them: to the nearest half, without a trailing ".0".
-const half = (n) => Math.round(n * 2) / 2;
-const kgText = (n) => (Number.isInteger(half(n)) ? String(half(n)) : half(n).toFixed(1));
-
-// 'Squat (Barbell)' → 'Squat'.
-const shortLift = (name) => String(name ?? '').replace(/\s*\((barbell|dumbbell|machine|smith machine|cable)\)\s*$/i, '').trim();
-
-// Estimated one-rep max (Epley), from a set of 1–12 reps; null for anything else.
-function e1rm(kg, reps) {
-  const w = Number(kg);
-  const r = Number(reps);
-  return w > 0 && Number.isFinite(r) && r >= 1 && r <= 12 ? w * (1 + r / 30) : null;
-}
-
-// ---- Settings and status ------------------------------------------------------------------------
-
-// Claude's settings (the `gym` op), with the defaults for anything unset or unreadable.
-function gymConfig(doc) {
-  const c = doc?.gym?.config;
-  const live = c && c.status === 'active' ? c : {};
-  const lifts = Array.isArray(live.keyLifts) ? live.keyLifts.filter((l) => typeof l === 'string' && l.trim()).map((l) => l.trim()) : null;
-  const targets = live.liftTargets && typeof live.liftTargets === 'object' && !Array.isArray(live.liftTargets) ? live.liftTargets : {};
-  return {
-    keyLifts: lifts?.length ? lifts : [...GYM_DEFAULTS.keyLifts],
-    liftTargets: Object.fromEntries(Object.entries(targets).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])),
-    cardioQuota: typeof live.cardioQuota === 'string' && live.cardioQuota ? live.cardioQuota : null,
-    habit: typeof live.habit === 'string' && live.habit.trim() ? live.habit.trim() : GYM_DEFAULTS.habit,
-  };
-}
-
-function gymStatus(doc) {
-  const s = doc?.gym?.status;
-  return s && s.status === 'active' ? s : null;
-}
-
-// Hevy's exercise templates as the script keeps them: { id: [title, type, primary muscle] }.
-function templatesOf(doc) {
-  const t = doc?.gym?.templates;
-  return t && t.status === 'active' && t.list && typeof t.list === 'object' ? t.list : {};
-}
-
-// The habit Hevy ticks: by id, or the one active habit whose title starts with the setting.
-function gymHabitId(doc, config = gymConfig(doc)) {
-  const habits = values(doc?.items).filter((i) => i.type === 'habit' && i.status === 'active');
-  const byId = habits.filter((h) => h.id === config.habit);
-  const hits = byId.length ? byId : habits.filter((h) => norm(h.title).startsWith(norm(config.habit)));
-  return hits.length === 1 ? hits[0].id : null;
-}
-
-// The weekly target cardio minutes count towards (a live one, measured in minutes), or null.
-function cardioQuotaId(doc, config = gymConfig(doc)) {
-  if (!config.cardioQuota) return null;
-  const q = doc?.items?.[config.cardioQuota];
-  return q && q.type === 'quota' && q.status === 'active' && q.unit === 'minutes' ? q.id : null;
-}
-
-// ---- A workout from Hevy -----------------------------------------------------------------------
-
-function exerciseKind(tpl, sets = []) {
-  const [, type, muscle] = Array.isArray(tpl) ? tpl : [];
-  if (CARDIO_TYPES.has(type) || muscle === 'cardio') return 'cardio';
-  if (type === 'weight_reps') return 'lift';
-  if (!tpl) {
-    if (sets.some((s) => Number(s?.weight_kg) > 0 && Number(s?.reps) > 0)) return 'lift';
-    if (sets.some((s) => Number(s?.duration_seconds) > 0 || Number(s?.distance_meters) > 0)) return 'cardio';
-  }
-  return 'other';
-}
-
-function exerciseRecord(ex, templates, keyLifts) {
-  const all = Array.isArray(ex?.sets) ? ex.sets : [];
-  const working = all.filter((s) => s?.type !== 'warmup');
-  const tpl = String(ex?.exercise_template_id ?? '');
-  const name = String(ex?.title ?? '').trim() || templates[tpl]?.[0] || 'Exercise';
-  const kind = exerciseKind(templates[tpl], all);
-  const out = { name, tpl, kind, n: working.length };
-  if (kind === 'cardio') {
-    // A cardio "warm-up" is still cardio, so every set counts.
-    out.minutes = round1(all.reduce((sum, s) => sum + (Number(s?.duration_seconds) || 0), 0) / 60);
-    out.km = Math.round(all.reduce((sum, s) => sum + (Number(s?.distance_meters) || 0), 0) / 10) / 100;
-    return out;
-  }
-  let best = null;
-  let volume = 0;
-  for (const s of working) {
-    const kg = Number(s?.weight_kg) || 0;
-    const reps = Number(s?.reps) || 0;
-    volume += kg * reps;
-    const e = e1rm(kg, reps);
-    if (e != null && (!best || e > best.e)) best = { kg, reps, e };
-  }
-  if (best) {
-    out.best = [best.kg, best.reps];
-    out.e1rm = round1(best.e);
-  }
-  if (volume) out.volume = Math.round(volume);
-  if (keyLifts.some((l) => sameLift(l, name))) {
-    out.sets = working.map((s) => [Number(s?.weight_kg) || 0, Number(s?.reps) || 0, s?.rpe ?? null]);
-  }
-  return out;
-}
-
-// One of Hevy's workout objects as the `gym` map keeps it. Throws on anything that isn't one.
-function workoutRecord(w, templates = {}, keyLifts = GYM_DEFAULTS.keyLifts, dayStartHour = 4) {
-  const start = Date.parse(w?.start_time ?? '');
-  const end = Date.parse(w?.end_time ?? '');
-  if (typeof w?.id !== 'string' || !w.id || !Number.isFinite(start) || !Array.isArray(w.exercises)) {
-    throw new Error("Hevy's reply didn't make sense");
-  }
-  const finish = Number.isFinite(end) && end >= start ? end : start;
-  return {
-    hevyId: w.id,
-    title: String(w.title ?? '').trim() || 'Workout',
-    day: logicalDay(new Date(start), dayStartHour),
-    start: new Date(start).toISOString(),
-    end: new Date(finish).toISOString(),
-    minutes: Math.round((finish - start) / 60000),
-    exercises: w.exercises.map((ex) => exerciseRecord(ex, templates, keyLifts)),
-  };
-}
-
-// ---- Reading the workouts ----------------------------------------------------------------------
-
-function workouts(doc) {
-  return values(doc?.gym)
-    .filter((r) => r.status === 'active' && String(r.id).startsWith('w:'))
-    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
-}
-
-const workoutsOn = (doc, day) => workouts(doc).filter((w) => w.day === day);
-
-function cardioOf(w) {
-  let minutes = 0;
-  let km = 0;
-  for (const e of w?.exercises ?? []) {
-    if (e.kind !== 'cardio') continue;
-    minutes += Number(e.minutes) || 0;
-    km += Number(e.km) || 0;
-  }
-  return { minutes: round1(minutes), km: Math.round(km * 100) / 100 };
-}
-
-// Every session with the lift in it, oldest first: its best estimated 1RM, that set, and the
-// working sets (when kept).
-function liftSessions(doc, lift) {
-  const out = [];
-  for (const w of workouts(doc)) {
-    let top = null;
-    const sets = [];
-    for (const e of w.exercises ?? []) {
-      if (!sameLift(e.name, lift) || e.e1rm == null) continue;
-      if (!top || e.e1rm > top.e1rm) top = e;
-      if (Array.isArray(e.sets)) sets.push(...e.sets);
-    }
-    if (top) out.push({ day: w.day, hevyId: w.hevyId, e1rm: top.e1rm, best: top.best, sets });
-  }
-  return out;
-}
-
-// Each session marked with whether it beat every one before it (the first never does).
-function marked(sessions) {
-  let max = null;
-  return sessions.map((s) => {
-    const pr = max != null && s.e1rm > max;
-    max = max == null ? s.e1rm : Math.max(max, s.e1rm);
-    return { ...s, pr };
-  });
-}
-
-// '+1 rep' when the last session's best set beat the most reps done at that weight before.
-function repNote(sessions) {
-  if (sessions.length < 2) return null;
-  const last = sessions.at(-1);
-  const [kg, reps] = last.best;
-  let before = null;
-  for (const s of sessions.slice(0, -1)) {
-    for (const [w, r] of [...s.sets, s.best]) if (w === kg && (before == null || r > before)) before = r;
-  }
-  if (before == null || reps <= before) return null;
-  return `+${plural(reps - before, 'rep')}`;
-}
-
-// A straight line through the last 8 weeks' session bests: kg a week, and where it is today.
-function paceOf(sessions, today) {
-  const from = addDays(today, -PACE_DAYS);
-  const pts = sessions.filter((s) => s.day > from && s.day <= today).map((s) => [daysBetween(from, s.day), s.e1rm]);
-  if (pts.length < PACE_MIN) return null;
-  const mx = pts.reduce((a, [x]) => a + x, 0) / pts.length;
-  const my = pts.reduce((a, [, y]) => a + y, 0) / pts.length;
-  const sxx = pts.reduce((a, [x]) => a + (x - mx) ** 2, 0);
-  if (!sxx) return null;
-  const slope = pts.reduce((a, [x, y]) => a + (x - mx) * (y - my), 0) / sxx;
-  return { perWeek: round1(slope * 7), perDay: slope };
-}
-
-// '~late Oct': the part of the month a day falls in.
-function roughDate(day) {
-  const d = Number(day.slice(8, 10));
-  return `${d <= 10 ? 'early' : d <= 20 ? 'mid' : 'late'} ${MONTHS[Number(day.slice(5, 7)) - 1]}`;
-}
-
-function projectionOf(pace, target, current, today) {
-  if (!target) return null;
-  if (current >= target) return { reached: true };
-  if (!pace || !(pace.perDay > 0)) return null;
-  const days = Math.ceil((target - current) / pace.perDay);
-  if (days > 365) return null;
-  const day = addDays(today, days);
-  return { reached: false, day, label: roughDate(day) };
-}
-
-// Everything the Gym panel and Claude say about one key lift, or null before it's been done.
-function liftSummary(doc, lift, today, config = gymConfig(doc)) {
-  const sessions = marked(liftSessions(doc, lift).filter((s) => s.day <= today));
-  if (!sessions.length) return null;
-  const last = sessions.at(-1);
-  const lastPr = [...sessions].reverse().find((s) => s.pr) ?? null;
-  const pace = paceOf(sessions, today);
-  const key = Object.keys(config.liftTargets).find((k) => sameLift(k, lift));
-  const target = key ? config.liftTargets[key] : null;
-  return {
-    lift,
-    name: shortLift(lift),
-    e1rm: last.e1rm,
-    best: sessions.reduce((m, s) => Math.max(m, s.e1rm), 0),
-    pr: last.pr,
-    prDay: lastPr?.day ?? null,
-    last: { kg: last.best[0], reps: last.best[1], day: last.day },
-    repNote: repNote(sessions),
-    pace: pace?.perWeek ?? null,
-    target,
-    projection: projectionOf(pace, target, last.e1rm, today),
-    points: sessions.slice(-SPARK).map((s) => s.e1rm),
-    sessions: sessions.length,
-  };
-}
-
-// Whether a workout set a PR on a lift.
-function prIn(doc, lift, w) {
-  return marked(liftSessions(doc, lift)).find((s) => s.hevyId === w.hevyId)?.pr === true;
-}
-
-// ---- Weeks and days ----------------------------------------------------------------------------
-
-// Monday to Sunday of the week containing `today`: sessions, whether he lifted, cardio minutes.
-function weekStrip(doc, today) {
-  const start = weekStart(today);
-  const list = workouts(doc);
-  return Array.from({ length: 7 }, (_, i) => {
-    const day = addDays(start, i);
-    const ws = list.filter((w) => w.day === day);
-    return {
-      day,
-      future: day > today,
-      sessions: ws.length,
-      lifted: ws.some((w) => w.exercises.some((e) => e.kind === 'lift')),
-      cardio: round1(ws.reduce((m, w) => m + cardioOf(w).minutes, 0)),
-    };
-  });
-}
-
-// One session in a line: 'Legs A · 62 min · Squat 100 × 5 PR · 3 other exercises · Walking 15 min'.
-function sessionLine(doc, w, config = gymConfig(doc)) {
-  const parts = [`${w.title} · ${w.minutes} min`];
-  const used = new Set();
-  for (const lift of config.keyLifts) {
-    const ex = (w.exercises ?? []).filter((e) => sameLift(e.name, lift) && e.best);
-    if (!ex.length) continue;
-    ex.forEach((e) => used.add(e));
-    const top = ex.reduce((a, b) => (b.e1rm > a.e1rm ? b : a));
-    parts.push(`${shortLift(lift)} ${kgText(top.best[0])} × ${top.best[1]}${prIn(doc, lift, w) ? ' PR' : ''}`);
-  }
-  const others = (w.exercises ?? []).filter((e) => e.kind !== 'cardio' && !used.has(e)).length;
-  if (others) parts.push(plural(others, used.size ? 'other exercise' : 'exercise'));
-  for (const e of w.exercises ?? []) {
-    if (e.kind === 'cardio' && e.minutes) parts.push(`${e.name} ${Math.round(e.minutes)} min${e.km ? `, ${e.km} km` : ''}`);
-  }
-  return parts.join(' · ');
-}
-
-const dayLines = (doc, day) => workoutsOn(doc, day).map((w) => sessionLine(doc, w));
-
-// ---- Muscles and cardio over time (the Muscles and Cardio trend widgets) ----------------------
-
-// Broad groups, the way they're trained together, in the order the radar goes round (clockwise
-// from the top). Hevy's primary muscle for an exercise decides its group; forearms go with
-// biceps, traps with back, calves with quads. Cardio, full body and "other" count for none.
-const MUSCLE_GROUPS = Object.freeze([
-  { name: 'Chest', muscles: ['chest'] },
-  { name: 'Shoulders', muscles: ['shoulders', 'neck'] },
-  { name: 'Triceps', muscles: ['triceps'] },
-  { name: 'Biceps', muscles: ['biceps', 'forearms'] },
-  { name: 'Back', muscles: ['lats', 'upper_back', 'lower_back', 'traps'] },
-  { name: 'Core', muscles: ['abdominals'] },
-  { name: 'Glutes & hams', muscles: ['glutes', 'hamstrings', 'abductors', 'adductors'] },
-  { name: 'Quads', muscles: ['quadriceps', 'calves'] },
-].map((g) => Object.freeze({ name: g.name, muscles: Object.freeze(g.muscles) })));
-
-const GROUP_OF = new Map(MUSCLE_GROUPS.flatMap((g) => g.muscles.map((m) => [m, g.name])));
-const muscleGroupOf = (muscle) => GROUP_OF.get(norm(muscle)) ?? null;
-
-// Each non-cardio exercise done by `today` as [day, group, working sets]; exercises whose
-// template the app hasn't been sent, or whose muscle has no group, are left out.
-function groupSets(doc, today) {
-  const templates = templatesOf(doc);
-  const out = [];
-  for (const w of workouts(doc)) {
-    if (w.day > today) continue;
-    for (const e of w.exercises ?? []) {
-      if (e.kind === 'cardio') continue;
-      const group = muscleGroupOf(templates[e.tpl]?.[2]);
-      if (group && Number(e.n) > 0) out.push([w.day, group, Number(e.n)]);
-    }
-  }
-  return out;
-}
-
-// Working sets per group over the 7 days ending `today`, in MUSCLE_GROUPS order.
-function muscleWeek(doc, today) {
-  const from = addDays(today, -6);
-  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, 0]));
-  for (const [day, group, n] of groupSets(doc, today)) if (day >= from) sets.set(group, sets.get(group) + n);
-  return MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) }));
-}
-
-// The `count` groups longest since a working set: days since, or null for never (those first).
-function longestRested(doc, today, count = 3) {
-  const last = new Map();
-  for (const [day, group] of groupSets(doc, today)) if (!(last.get(group) >= day)) last.set(group, day);
-  const rest = MUSCLE_GROUPS.map((g, i) => ({ i, name: g.name, days: last.has(g.name) ? daysBetween(last.get(g.name), today) : null }));
-  rest.sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.i - b.i);
-  return rest.slice(0, count).map(({ name, days }) => ({ name, days }));
-}
-
-// Cardio minutes for each of the `count` weeks up to this one (so far), oldest first. With a
-// cardio target they're its weekly totals, as the Gym panel shows; without, Hevy's minutes.
-function cardioWeeks(doc, today, config = gymConfig(doc), count = 8) {
-  const quota = cardioQuotaId(doc, config);
-  const list = workouts(doc);
-  const thisWeek = weekStart(today);
-  const weeks = Array.from({ length: count }, (_, i) => {
-    const monday = addDays(thisWeek, 7 * (i - count + 1));
-    const last = monday === thisWeek ? today : addDays(monday, 6);
-    const minutes = quota
-      ? weekTotal(doc, quota, monday)
-      : list.filter((w) => w.day >= monday && w.day <= last).reduce((m, w) => m + cardioOf(w).minutes, 0);
-    return { monday, minutes: Math.round(minutes), current: monday === thisWeek };
-  });
-  return { weeks, target: quota ? Number(doc.items[quota].target) : null };
-}
-
-// ---- The long view (Gym opened big, js/ui/gym.js) ----------------------------------------------
-
-// Every lift he has done, with its best ever: estimated 1RM, the set behind it, and the day. The
-// ones he does most first (then the heavier), `limit` of them.
-function prBoard(doc, today, limit = 12) {
-  const byLift = new Map();
-  for (const w of workouts(doc)) {
-    if (w.day > today) continue;
-    const seen = new Set();
-    for (const e of w.exercises ?? []) {
-      if (e.kind !== 'lift' || e.e1rm == null || !Array.isArray(e.best)) continue;
-      const key = norm(e.name);
-      const row = byLift.get(key) ?? { name: e.name, sessions: 0, e1rm: 0, best: null, day: null, last: null };
-      if (!seen.has(key)) { row.sessions++; seen.add(key); }
-      if (e.e1rm > row.e1rm) Object.assign(row, { e1rm: e.e1rm, best: e.best, day: w.day });
-      row.last = w.day;
-      byLift.set(key, row);
-    }
-  }
-  return [...byLift.values()]
-    .sort((a, b) => b.sessions - a.sessions || b.e1rm - a.e1rm || a.name.localeCompare(b.name))
-    .slice(0, limit);
-}
-
-// The `weeks` weeks up to this one, Monday to Sunday, each day with whether he lifted, cardio
-// minutes and sessions — the year of training as a grid.
-function sessionDays(doc, today, weeks = 52) {
-  const first = addDays(weekStart(today), -7 * (weeks - 1));
-  const byDay = new Map();
-  for (const w of workouts(doc)) {
-    if (w.day < first || w.day > today) continue;
-    const d = byDay.get(w.day) ?? { sessions: 0, lifted: false, cardio: 0 };
-    d.sessions++;
-    d.lifted ||= (w.exercises ?? []).some((e) => e.kind === 'lift');
-    d.cardio = round1(d.cardio + cardioOf(w).minutes);
-    byDay.set(w.day, d);
-  }
-  return Array.from({ length: weeks * 7 }, (_, i) => {
-    const day = addDays(first, i);
-    return { day, future: day > today, ...(byDay.get(day) ?? { sessions: 0, lifted: false, cardio: 0 }) };
-  });
-}
-
-// Working sets per muscle group, week by week for the `count` weeks up to this one (so far):
-// { weeks: [monday…], groups: [{ name, sets: [n per week] }] }, groups in MUSCLE_GROUPS order.
-function groupWeeks(doc, today, count = 8) {
-  const thisWeek = weekStart(today);
-  const weeks = Array.from({ length: count }, (_, i) => addDays(thisWeek, 7 * (i - count + 1)));
-  const at = new Map(weeks.map((m, i) => [m, i]));
-  const sets = new Map(MUSCLE_GROUPS.map((g) => [g.name, weeks.map(() => 0)]));
-  for (const [day, group, n] of groupSets(doc, today)) {
-    const i = at.get(weekStart(day));
-    if (i != null) sets.get(group)[i] += n;
-  }
-  return { weeks, groups: MUSCLE_GROUPS.map((g) => ({ name: g.name, sets: sets.get(g.name) })) };
-}
-
-// A week's training in a line, for Claude's catch-up: sessions, cardio, key lifts.
-function trainingWeek(doc, day, config = gymConfig(doc)) {
-  const start = weekStart(day);
-  const end = addDays(start, 6);
-  const ws = workouts(doc).filter((w) => w.day >= start && w.day <= end && w.day <= day);
-  const parts = [plural(ws.length, 'session')];
-  const quota = cardioQuotaId(doc, config);
-  const minutes = Math.round(ws.reduce((m, w) => m + cardioOf(w).minutes, 0));
-  parts.push(quota
-    ? `cardio ${Math.round(weekTotal(doc, quota, day))} of ${doc.items[quota].target} min`
-    : `cardio ${minutes} min`);
-  for (const lift of config.keyLifts) {
-    const s = liftSummary(doc, lift, day, config);
-    if (!s) continue;
-    const pr = s.prDay && s.prDay >= start ? ` (PR ${shortWeekday(s.prDay)})` : '';
-    const pace = s.pace != null ? `, ${s.pace >= 0 ? '+' : ''}${s.pace} kg/wk` : '';
-    parts.push(`${s.name} est. 1RM ${kgText(s.e1rm)}${pr}${pace}`);
-  }
-  return parts.join('; ');
-}
-
-// The Hevy tick on an item for a day, as { from, at } ISO strings, or null.
-function hevyTick(doc, itemId, day) {
-  const log = values(doc?.logs).find((l) => l.status === 'active' && l.kind === 'done' && l.source === 'hevy'
-    && l.itemId === itemId && l.day === day);
-  return log ? { from: log.from ?? null, at: log.at ?? null } : null;
-}
-
-// The connection in a few lines, for ⚙ and Claude. `when` formats a moment.
-function gymStatusLines(doc, when = (iso) => iso) {
-  const s = gymStatus(doc);
-  if (!s) return ["Hevy isn't connected — the planner script needs the key as HEVY_KEY in its Script properties"];
-  const out = [`Hevy: last checked ${s.lastSync ? when(s.lastSync) : 'never'} · ${plural(Number(s.count) || 0, 'workout')}`];
-  if (s.backfillPage != null) out.push(`Still copying your Hevy history — page ${s.backfillPage} next`);
-  if (s.lastError) out.push(`Problem: ${s.lastError}`);
-  return out;
-}
-return { GYM_DEFAULTS, KEEP_SETS_DAYS, half, kgText, shortLift, e1rm, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, exerciseKind, workoutRecord, workouts, workoutsOn, cardioOf, liftSessions, roughDate, liftSummary, weekStrip, sessionLine, dayLines, MUSCLE_GROUPS, muscleGroupOf, muscleWeek, longestRested, cardioWeeks, prBoard, sessionDays, groupWeeks, trainingWeek, hevyTick, gymStatusLines };
 })();
 
 // ---- planner/hevy.js

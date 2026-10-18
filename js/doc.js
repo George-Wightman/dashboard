@@ -84,6 +84,8 @@ export function recordProblem(map, id, r) {
       || (a.add !== undefined && !amount(a.add))) return 'Invalid milestone rule';
   }
   if (map === 'items') {
+    if (r.session != null && !(isPlainObject(r.session) && string(r.session.name) && Array.isArray(r.session.exercises)
+      && r.session.exercises.every((e) => isPlainObject(e) && string(e.name) && finite(e.sets)))) return 'Invalid session';
     if (!['task', 'habit', 'quota'].includes(r.type)) return 'Invalid item type';
     if (r.type === 'task' && !day(r.date)) return 'A task needs a real date';
     if (r.type === 'quota' && !(finite(r.target) && r.target > 0)) return 'A quota needs a positive target';

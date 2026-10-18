@@ -91,7 +91,7 @@ export function exerciseKind(tpl, sets = []) {
   return 'other';
 }
 
-function exerciseRecord(ex, templates, keyLifts) {
+function exerciseRecord(ex, templates, keyLifts, allSets = false) {
   const all = Array.isArray(ex?.sets) ? ex.sets : [];
   const working = all.filter((s) => s?.type !== 'warmup');
   const tpl = String(ex?.exercise_template_id ?? '');
@@ -118,7 +118,9 @@ function exerciseRecord(ex, templates, keyLifts) {
     out.e1rm = round1(best.e);
   }
   if (volume) out.volume = Math.round(volume);
-  if (keyLifts.some((l) => sameLift(l, name))) {
+  // Sets are kept for the key lifts, and for every lift of a workout from a routine (the coach's
+  // sessions are routines; js/coach.js readyMarks reads them).
+  if ((kind === 'lift' && allSets) || keyLifts.some((l) => sameLift(l, name))) {
     out.sets = working.map((s) => [Number(s?.weight_kg) || 0, Number(s?.reps) || 0, s?.rpe ?? null]);
   }
   return out;
@@ -139,7 +141,8 @@ export function workoutRecord(w, templates = {}, keyLifts = GYM_DEFAULTS.keyLift
     start: new Date(start).toISOString(),
     end: new Date(finish).toISOString(),
     minutes: Math.round((finish - start) / 60000),
-    exercises: w.exercises.map((ex) => exerciseRecord(ex, templates, keyLifts)),
+    routineId: typeof w.routine_id === 'string' && w.routine_id ? w.routine_id : null,
+    exercises: w.exercises.map((ex) => exerciseRecord(ex, templates, keyLifts, !!w.routine_id)),
   };
 }
 
