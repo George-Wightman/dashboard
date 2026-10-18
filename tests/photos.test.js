@@ -94,3 +94,62 @@ test('without sync set up the photo stays on the device after the estimate', asy
   assert.equal(uploads.length, 0);
   assert.equal(photos.map.has(meal.id), true);
 });
+
+test('review: Gemini down or a bad key waits untried; only replies that make no sense spend tries, and three stop them', async () => {
+  for (const code of ['failed', 'badkey']) {
+    const s = setup({ reply: new GeminiError(code) });
+    await runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+    assert.deepEqual([s.store.doc().meals[s.meal.id].state, s.store.doc().meals[s.meal.id].tries], ['pending', 0], code);
+  }
+  const s = setup({ reply: { data: { nope: true } } });
+  for (let i = 0; i < 5; i++) await runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+  assert.deepEqual([s.store.doc().meals[s.meal.id].state, s.store.doc().meals[s.meal.id].tries], ['failed', 3]);
+  assert.equal(s.asked.length, 3);
+});
+
+test('review: background writes wait until nothing is being typed', async () => {
+  const s = setup();
+  let release;
+  s.ctx.whenIdle = () => new Promise((r) => { release = r; });
+  const pass = runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(s.store.doc().meals[s.meal.id].state, 'pending', 'nothing written while typing');
+  release();
+  await new Promise((r) => setTimeout(r, 20));
+  release?.();
+  await pass;
+  assert.equal(s.store.doc().meals[s.meal.id].state, 'estimated');
+});
+
+test('review: a meal snapped while a pass is running is estimated by a second round of that pass', async () => {
+  const s = setup();
+  let first = true;
+  const ask = s.ctx.gemini.ask;
+  s.ctx.gemini.ask = async (req) => { if (first) { first = false; await new Promise((r) => setTimeout(r, 30)); } return ask(req); };
+  const pass = runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+  await new Promise((r) => setTimeout(r, 5));
+  const late = s.store.addMeal({ at: new Date(2026, 8, 10, 13, 0), text: 'apple', hasPhoto: false });
+  const again = runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+  await Promise.all([pass, again]);
+  assert.equal(s.store.doc().meals[late.id].state, 'estimated');
+});
+
+test('review: a photo is only let go once its meal is done with it, never for a meal this tab has not seen', async () => {
+  const s = setup({ reply: { data: { nope: true } } });
+  await s.photos.put('meal:from-another-tab', { big: 'B', small: 'S' });
+  await runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+  assert.equal(s.photos.map.has('meal:from-another-tab'), true, 'unknown meal: kept');
+  s.store.updateMeal(s.meal.id, { state: 'failed', tries: 3 });
+  await runMealPass({ ctx: s.ctx, photos: s.photos, upload: s.upload, online: () => true });
+  assert.equal(s.store.doc().meals[s.meal.id].photoState, 'uploaded');
+  assert.equal(s.photos.map.has(s.meal.id), false, 'given up and uploaded: let go');
+});
+
+test('review: if the photo cannot be kept on the device, the meal is estimated from its words instead', async () => {
+  const { keepPhoto } = await import('../js/photos.js');
+  const s = setup();
+  const broken = { ...fakePhotos(), put: async () => { throw new Error('QuotaExceededError'); } };
+  assert.equal(await keepPhoto(s.store, broken, s.meal.id, { big: 'B', small: 'S' }), false);
+  assert.equal(s.store.doc().meals[s.meal.id].photoState, null);
+  assert.equal(await keepPhoto(s.store, fakePhotos(), s.meal.id, { big: 'B', small: 'S' }), true);
+});

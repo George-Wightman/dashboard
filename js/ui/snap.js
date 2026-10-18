@@ -6,9 +6,9 @@
 // meal pass writes it.
 
 import { h } from './dom.js';
-import { usualMeals, slotFor, slotName, finalFor, dayProtein, fuelSettings, PORTIONS } from '../food.js';
+import { usualMeals, slotFor, slotName, finalFor, dayProtein, fuelSettings, snapTime, PORTIONS } from '../food.js';
 import { clockLabel } from '../calendar.js';
-import { shrink, localPhotos } from '../photos.js';
+import { shrink, localPhotos, keepPhoto } from '../photos.js';
 import { micButton, stopListening, grow } from './mic.js';
 
 const BIG = 768;
@@ -16,10 +16,11 @@ const SMALL = 480;
 const PORTION_LABELS = { lighter: 'lighter', right: 'about right', bigger: 'bigger' };
 const pad = (n) => String(n).padStart(2, '0');
 
-export function openSnap(ctx) {
+// `marker` ({ slot, start }) when opened from a breakfast, lunch or dinner marker on the timeline.
+export function openSnap(ctx, marker = null) {
   const dlg = document.getElementById('snap');
   if (!dlg) return;
-  ctx.ui.snap = { step: 'pick', text: '', mealId: null, preview: null, usual: false, error: '' };
+  ctx.ui.snap = { step: 'pick', text: '', mealId: null, preview: null, usual: false, error: '', marker };
   dlg.onclose = () => { stopListening(); ctx.ui.snap = null; };
   paintSnap(ctx);
   if (!dlg.open) dlg.showModal();
@@ -42,9 +43,10 @@ async function takePhoto(ctx, file) {
     paintSnap(ctx);
     return;
   }
-  const meal = ctx.store.addMeal({ at: new Date(), text: s.text, hasPhoto: true });
-  await localPhotos.put(meal.id, { big: big.base64, small: small.base64 });
-  Object.assign(s, { mealId: meal.id, preview: `data:image/jpeg;base64,${small.base64}` });
+  const meal = ctx.store.addMeal({ at: snapTime(new Date(), s.marker), text: s.text, hasPhoto: true });
+  const kept = await keepPhoto(ctx.store, localPhotos, meal.id, { big: big.base64, small: small.base64 });
+  Object.assign(s, { mealId: meal.id, preview: `data:image/jpeg;base64,${small.base64}`,
+    error: kept ? '' : 'The photo couldn’t be kept on this device, so it’ll be estimated from your words.' });
   paintSnap(ctx);
   await ctx.mealPass();
   if (ctx.ui.snap === s) { s.step = 'result'; paintSnap(ctx); }
@@ -54,7 +56,7 @@ async function justWords(ctx) {
   const s = ctx.ui.snap;
   if (!s?.text.trim()) return;
   stopListening();
-  const meal = ctx.store.addMeal({ at: new Date(), text: s.text, hasPhoto: false });
+  const meal = ctx.store.addMeal({ at: snapTime(new Date(), s.marker), text: s.text, hasPhoto: false });
   Object.assign(s, { step: 'working', mealId: meal.id });
   paintSnap(ctx);
   await ctx.mealPass();
@@ -62,7 +64,7 @@ async function justWords(ctx) {
 }
 
 function logUsual(ctx, usual) {
-  const meal = ctx.store.addMeal({ at: new Date(), usualId: usual.id });
+  const meal = ctx.store.addMeal({ at: snapTime(new Date(), ctx.ui.snap.marker), usualId: usual.id });
   Object.assign(ctx.ui.snap, { step: 'result', mealId: meal.id });
   paintSnap(ctx);
 }
@@ -75,7 +77,7 @@ function fileButton(ctx, label, capture) {
 
 function pickStep(ctx) {
   const s = ctx.ui.snap;
-  const now = new Date();
+  const now = snapTime(new Date(), s.marker);
   const box = h('textarea', {
     rows: 1, maxlength: 400, 'data-focus': 'snap-text', 'aria-label': 'What’s in it (optional)', placeholder: 'Add a line if you like: what’s in it',
     oninput: (e) => { s.text = e.target.value; grow(e.target); paintButtons(); },

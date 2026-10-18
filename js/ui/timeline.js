@@ -67,7 +67,7 @@ export function renderTimeline(ctx) {
     if (i === model.nowIndex) timed.push(nowLine());
     if (e.kind === 'meal') {
       timed.push(h('li', { class: 'tl-meal' }, clock(e.start), h('span', { class: 'tl-meal-mark', 'aria-hidden': 'true' }),
-        h('button', { class: 'tl-meal-btn', type: 'button', onclick: () => openSnap(ctx) }, `${slotName(e.slot)}: snap it`)));
+        h('button', { class: 'tl-meal-btn', type: 'button', onclick: () => openSnap(ctx, { slot: e.slot, start: e.start }) }, `${slotName(e.slot)}: snap it`)));
       return;
     }
     if (e.kind === 'commitment') {

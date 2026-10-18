@@ -38,7 +38,7 @@ function thumb(ctx, meal) {
   const known = thumbs[meal.id];
   if (!known || (!known.src && Date.now() - known.at > RETRY_MS)) {
     thumbs[meal.id] = { src: null, at: Date.now() };
-    localPhotos.get(meal.id).then((p) => { if (p?.small) { thumbs[meal.id] = { src: `data:image/jpeg;base64,${p.small}`, at: Date.now() }; ctx.render(); } });
+    localPhotos.get(meal.id).then((p) => { if (p?.small) { thumbs[meal.id] = { src: `data:image/jpeg;base64,${p.small}`, at: Date.now() }; (ctx.whenIdle?.() ?? Promise.resolve()).then(ctx.render); } });
   }
   return thumbs[meal.id].src
     ? h('img', { class: 'fuel-thumb', src: thumbs[meal.id].src, alt: '' })

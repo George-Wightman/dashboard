@@ -24,6 +24,14 @@ export function slotFor(date) {
   return 'snack';
 }
 
+// When a snapped meal was eaten: now, unless it was opened from a breakfast, lunch or dinner marker
+// whose time has passed (he's logging a meal he forgot), when it's that meal at its usual time.
+export function snapTime(now, marker) {
+  if (!marker?.start) return now;
+  const at = new Date(marker.start);
+  return at <= now ? at : now;
+}
+
 export const MEAL_SYSTEM = [
   'You estimate the protein and calories in a meal, from a photo of it, a few words about it, or both.',
   'Assume typical UK portions unless the words say otherwise. Be honest about uncertainty: give a low, a middle and a high value.',
@@ -35,7 +43,7 @@ export function mealPrompt({ text, at, hasPhoto }) {
   const words = String(text ?? '').trim();
   return [
     hasPhoto ? 'The photo is the meal.' : 'There is no photo; go by the words.',
-    words ? `What George says about it: ${words}` : 'George added no words.',
+    words ? `What he says about it: ${words}` : 'He added no words.',
     `Eaten at ${pad(at.getHours())}:${pad(at.getMinutes())}.`,
   ].join('\n');
 }

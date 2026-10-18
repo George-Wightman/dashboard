@@ -93,3 +93,19 @@ test('the prompt carries the words and the time, and the system asks for JSON on
   assert.match(MEAL_SYSTEM, /JSON/);
   assert.match(mealPrompt({ text: '', at: new Date(2026, 9, 20, 12, 34), hasPhoto: true }), /photo/i);
 });
+
+test("review: the prompt doesn't name him", () => {
+  const p = mealPrompt({ text: 'wrap', at: new Date(2026, 9, 20, 12, 34), hasPhoto: true });
+  assert.doesNotMatch(p + MEAL_SYSTEM, /George/);
+});
+
+test('review: a marker logs the meal it names, at its time, once that time has passed', async () => {
+  const { snapTime } = await import('../js/food.js');
+  const now = new Date(2026, 9, 20, 14, 0);
+  const breakfast = { slot: 'breakfast', start: new Date(2026, 9, 20, 8, 0).toISOString() };
+  const dinner = { slot: 'dinner', start: new Date(2026, 9, 20, 19, 0).toISOString() };
+  assert.equal(snapTime(now, breakfast).getHours(), 8);
+  assert.equal(slotFor(snapTime(now, breakfast)), 'breakfast');
+  assert.equal(snapTime(now, dinner).getTime(), now.getTime(), 'a marker still ahead: now');
+  assert.equal(snapTime(now, null).getTime(), now.getTime());
+});
