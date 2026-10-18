@@ -124,7 +124,7 @@ test('opening big is wired in: the three widgets with a big view, the window and
   const big = WIDGETS.filter((w) => w.big).map((w) => w.id);
   assert.deepEqual(big, ['history', 'hebrew', 'gym']);
   assert.match(read('index.html'), /<dialog id="widget-sheet" class="sheet widget-sheet"/);
-  assert.match(read('js/app.js'), /renderSide\(ctx\);\s*paintBig\(ctx\);/);
+  assert.match(read('js/app.js'), /renderSide\(ctx\);\s*\}\s*paintBig\(ctx\);/);
   assert.match(read('sw.js'), /'js\/ui\/big\.js'/);
   // the heading is the way in, only outside Arrange mode
   assert.match(read('js/ui/widgets.js'), /if \(open && !ctx\.ui\.arranging\) makeOpener\(/);

@@ -91,7 +91,8 @@
 :root[data-screen="daylight"] .top,
 :root[data-screen="daylight"] #planner-notes,
 :root[data-screen="daylight"] main.layout { display: none; }
-:root[data-screen="daylight"] #daylight { display: block; }
+.dl { display: none; }
+:root[data-screen="daylight"] .dl { display: block; }
 
 .dl-main {
   max-width: 1360px; margin: 0 auto; padding: 24px 48px 56px; box-sizing: border-box;
@@ -117,3 +118,156 @@
 }
 :root[data-screen="daylight"] dialog::backdrop { background: rgba(20, 18, 43, 0.35); }
 :root[data-screen="daylight"] .btn.primary { background: var(--dl-ink); color: var(--dl-ground); border-radius: 999px; }
+
+/* ---- The sky ------------------------------------------------------------------------------------ */
+
+.dl-sky { position: relative; min-height: 300px; overflow: hidden; --s1: #B9D7F7; --s2: #CFE4FB; --s3: #E6F1FF; --hz: #FFF1DE; --sky-ink: #1D1A2B; color: var(--sky-ink); }
+.dl-sky[data-phase="dawn"] { --s1: #FFBF94; --s2: #FFD3AE; --s3: #FFF3E3; --hz: #FFE9D2; }
+.dl-sky[data-phase="morning"] { --s1: #B9D7F7; --s2: #CFE4FB; --s3: #E6F1FF; --hz: #FFF1DE; }
+.dl-sky[data-phase="midday"] { --s1: #9CC8F2; --s2: #BCDBF7; --s3: #DDEEFF; --hz: #FFF4E4; }
+.dl-sky[data-phase="afternoon"] { --s1: #A9CDEF; --s2: #C9DFF5; --s3: #E9F2FB; --hz: #FFEFD9; }
+.dl-sky[data-phase="golden"] { --s1: #FFB27A; --s2: #FFCB98; --s3: #FFE6C7; --hz: #FFDDB8; }
+.dl-sky[data-phase="dusk"] { --s1: #5E4B8F; --s2: #8E6BA0; --s3: #D99A92; --hz: #3A2E5E; --sky-ink: #FFF4EA; }
+.dl-sky[data-phase="night"] { --s1: #1B1840; --s2: #221E4E; --s3: #2A2560; --hz: #14122B; --sky-ink: #EDEAF7; }
+.dl-bands { position: absolute; inset: 0; width: 100%; height: 100%; }
+.dl-bands .b1 { fill: var(--s1); }
+.dl-bands .b2 { fill: var(--s2); }
+.dl-bands .b3 { fill: var(--s3); }
+.dl-bands .horizon { fill: var(--hz); }
+.dl-bands .arc { stroke: currentColor; stroke-opacity: .22; stroke-width: 2; stroke-dasharray: 2 8; stroke-linecap: round; }
+
+.dl-sun, .dl-dot { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; }
+.dl-sun { width: 46px; height: 46px; background: #FFAA3C; animation: dl-sun 4s ease-in-out infinite; }
+.dl-moon { position: absolute; right: 9%; top: 22%; width: 34px; height: 34px; border-radius: 50%; box-shadow: inset -9px -4px 0 0 #F4EBC9; transform: rotate(-20deg); }
+.dl-dot { width: 14px; height: 14px; border: 3px solid var(--dl-ground); background: var(--dl-card); box-shadow: 0 0 0 2px var(--dl-ink); }
+.dl-dot[data-area="Hebrew"] { background: var(--dl-hebrew); box-shadow: none; }
+.dl-dot[data-area="Health"], .dl-dot[data-area="Gym"] { background: var(--dl-body); box-shadow: none; }
+.dl-dot.done { background: var(--dl-gold); box-shadow: none; }
+@keyframes dl-sun {
+  0%, 100% { box-shadow: 0 0 0 12px rgba(255, 170, 60, .28), 0 0 0 26px rgba(255, 170, 60, .12); }
+  50% { box-shadow: 0 0 0 16px rgba(255, 170, 60, .32), 0 0 0 34px rgba(255, 170, 60, .1); }
+}
+
+.dl-sky-words { position: relative; max-width: 1360px; min-height: 300px; margin: 0 auto; padding: 22px 48px 40px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; }
+.dl-sky-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.dl-date { font-weight: 600; }
+.dl-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.dl-pill, .dl-round { min-height: 40px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .66); color: #1D1A2B; cursor: pointer; font: inherit; }
+.dl-pill { padding: 0 14px; }
+.dl-round { width: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.dl-round.waiting { background: #3F3A9E; color: #FFFFFF; }
+.dl-pill.failing { background: #FFE2C2; color: #9A4A00; }
+.dl-update { background: #1D1A2B; color: #FFF8EF; }
+.dl-sky-bottom { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 24px; }
+.dl-hello { display: flex; flex-direction: column; gap: 10px; }
+.dl-hello h1 { margin: 0; font: 800 68px/0.95 var(--dl-display); letter-spacing: -0.03em; }
+.dl-progress { display: inline-flex; align-items: center; gap: 8px; }
+.dl-segs { display: inline-flex; gap: 3px; }
+.dl-segs i { width: 22px; height: 6px; border-radius: 3px; background: currentColor; opacity: .18; }
+.dl-segs i.on { background: var(--dl-gold); opacity: 1; }
+.dl-notes { display: flex; flex-direction: column; gap: 6px; max-width: 460px; }
+.dl-chip { margin: 0; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px 10px 16px; border-radius: 18px; background: rgba(255, 255, 255, .8); color: #1D1A2B; font-size: 15px; }
+.dl-chip > span { flex: 1; }
+.dl-chip .src { flex: none; display: inline-flex; margin-top: 2px; color: inherit; }
+.dl-chip .src svg { width: 16px; height: 16px; }
+.dl-brief { font-size: 17px; }
+.dl-chip-x { border: 0; background: none; color: #5E5872; font-size: 18px; line-height: 1; width: 28px; height: 28px; cursor: pointer; }
+.dl-warning { background: #FFE2C2; color: #9A4A00; }
+.dl-sky[data-phase="night"] .dl-chip, .dl-sky[data-phase="dusk"] .dl-chip,
+.dl-sky[data-phase="night"] .dl-pill, .dl-sky[data-phase="dusk"] .dl-pill,
+.dl-sky[data-phase="night"] .dl-round, .dl-sky[data-phase="dusk"] .dl-round { background: rgba(31, 28, 58, .82); color: #EDEAF7; }
+.dl-sky[data-phase="night"] .dl-chip-x, .dl-sky[data-phase="dusk"] .dl-chip-x { color: #A7A2C4; }
+
+@media (max-width: 759px) {
+  .dl-sky, .dl-sky-words { min-height: 220px; }
+  .dl-sky-words { padding: 16px 16px 22px; }
+  .dl-hello h1 { font-size: 36px; }
+  .dl-notes { max-width: none; }
+  .dl-date { font-size: 13px; }
+}
+
+/* ---- The timeline ------------------------------------------------------------------------------- */
+
+#timeline { display: flex; flex-direction: column; gap: 12px; }
+#timeline ol, #timeline ul { list-style: none; margin: 0; padding: 0; }
+.tl { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.tl::before { content: ""; position: absolute; left: 75px; top: 8px; bottom: 8px; width: 2px; background: var(--dl-line); }
+.tl-time { font-size: 13px; color: var(--dl-muted); font-variant-numeric: tabular-nums; }
+
+/* A row from the classic list, laid out on the spine: time, tick, card. */
+:root[data-screen="daylight"] #timeline li.row {
+  position: relative; display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 0;
+  padding: 0; border: 0; background: none; min-height: 48px;
+}
+:root[data-screen="daylight"] #timeline li.row.tl-entry { grid-template-columns: 56px 40px 1fr; }
+/* The classic rules place the first child in column 1 and the card from column 2; on the spine the
+   time comes first, so every part gets its column here. */
+:root[data-screen="daylight"] #timeline li.row.tl-entry > .tl-time { grid-column: 1; justify-self: start; }
+:root[data-screen="daylight"] #timeline li.row.tl-entry > input[type=checkbox] { grid-column: 2; }
+:root[data-screen="daylight"] #timeline li.row.tl-entry > .main { grid-column: 3; }
+:root[data-screen="daylight"] #timeline li.row > .main { grid-column: 2; }
+:root[data-screen="daylight"] #timeline li.row > input[type=checkbox] { justify-self: center; width: 24px; height: 24px; margin: 0; accent-color: var(--dl-ink); position: relative; z-index: 1; }
+:root[data-screen="daylight"] #timeline li.row.done > input[type=checkbox] { accent-color: var(--dl-gold); }
+:root[data-screen="daylight"] #timeline li.row > .main {
+  display: flex; align-items: center; gap: 10px; min-width: 0; padding: 12px 14px; border-radius: 16px;
+  background: var(--dl-card); box-shadow: 0 2px 0 var(--dl-shadow);
+}
+:root[data-screen="daylight"] #timeline li.row[data-area="Hebrew"] > .main { background: var(--dl-hebrew-soft); box-shadow: none; }
+:root[data-screen="daylight"] #timeline li.row[data-area="Health"] > .main,
+:root[data-screen="daylight"] #timeline li.row[data-area="Gym"] > .main { background: var(--dl-body-soft); box-shadow: none; }
+:root[data-screen="daylight"] #timeline li.row.done { opacity: .72; }
+:root[data-screen="daylight"] #timeline li.row.done .title { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--dl-ink) 40%, transparent); }
+:root[data-screen="daylight"] #timeline .carry { background: var(--dl-carry); color: var(--dl-carry-ink); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; }
+:root[data-screen="daylight"] #timeline li.row.suggested { grid-template-columns: 44px 1fr 44px; }
+:root[data-screen="daylight"] #timeline li.row.suggested > .act { grid-column: 3; justify-self: center; }
+:root[data-screen="daylight"] #timeline li.row.suggested > .main { background: transparent; box-shadow: none; border: 2px dashed color-mix(in srgb, var(--dl-muted) 55%, transparent); }
+:root[data-screen="daylight"] #timeline li.row .tag { background: transparent; color: var(--dl-muted); }
+.tl-sub { margin-left: 96px; padding: 4px 14px; font-size: 14px; color: var(--dl-muted); }
+.tl-any .tl-sub { margin-left: 40px; }
+
+.tl-now { display: grid; grid-template-columns: 56px 40px 1fr; align-items: center; margin: 2px 0; }
+.tl-now .tl-time { color: var(--dl-ink); font-weight: 700; animation: dl-blink 2s ease-in-out infinite; }
+.tl-now-dot { justify-self: center; width: 14px; height: 14px; border-radius: 50%; background: #FFAA3C; box-shadow: 0 0 0 5px rgba(255, 170, 60, .25); position: relative; z-index: 1; }
+.tl-now-line { height: 2px; border-radius: 1px; background: #FFAA3C; }
+@keyframes dl-blink { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+.tl-busy { display: grid; grid-template-columns: 56px 40px 1fr; align-items: center; }
+.tl-busy-mark { justify-self: center; width: 12px; height: 12px; border-radius: 3px; background: var(--dl-muted); opacity: .5; position: relative; z-index: 1; }
+.tl-busy-card { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 10px 14px; border-radius: 16px; color: var(--dl-muted);
+  background: repeating-linear-gradient(135deg, var(--dl-busy-1), var(--dl-busy-1) 8px, var(--dl-busy-2) 8px, var(--dl-busy-2) 16px); }
+.tl-busy-when { font-size: 13px; }
+
+.tl-any-h { margin: 6px 0 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--dl-muted); }
+.tl-any { display: flex; flex-direction: column; gap: 8px; }
+.tl-empty { margin: 0; padding: 18px 20px; border-radius: 20px; background: var(--dl-card); color: var(--dl-muted); box-shadow: 0 2px 0 var(--dl-shadow); }
+.tl-tomorrow { margin: 4px 0 0; font-size: 14px; color: var(--dl-muted); }
+
+/* The check-in, as a card at the top. */
+:root[data-screen="daylight"] .tl-checkin li.checkin { background: var(--dl-card); border: 0; border-radius: 22px; padding: 16px 18px; box-shadow: 0 3px 0 var(--dl-shadow); }
+:root[data-screen="daylight"] .tl-checkin .checkin-q { font-weight: 700; font-size: 16px; }
+:root[data-screen="daylight"] .tl-checkin textarea { border: 0; border-radius: 14px; background: var(--dl-soft); color: var(--dl-ink); }
+
+/* Tell Claude, a pill under the day (fixed to the bottom on a phone). */
+:root[data-screen="daylight"] .dl-note { background: var(--dl-card); border: 0; border-radius: 26px; padding: 10px 12px 10px 18px; box-shadow: 0 2px 0 var(--dl-shadow); }
+:root[data-screen="daylight"] .dl-note h2 { font: 700 15px/1.2 var(--dl-display); letter-spacing: 0; text-transform: none; color: var(--dl-ink); }
+@media (max-width: 759px) {
+  :root[data-screen="daylight"] .dl-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 5; box-shadow: 0 6px 24px rgba(29, 26, 43, .18); }
+  :root[data-screen="daylight"] .dl-note h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  :root[data-screen="daylight"] .dl-note textarea { min-height: 44px; max-height: 96px; }
+  .dl-sun { width: 30px; height: 30px; }
+  .tl::before { left: 63px; }
+  :root[data-screen="daylight"] #timeline li.row.tl-entry, .tl-now, .tl-busy { grid-template-columns: 44px 40px 1fr; }
+  .tl-sub { margin-left: 84px; }
+}
+
+/* A tick: a short gold burst. */
+:root[data-screen="daylight"] #timeline li.row.just-done > input[type=checkbox] { animation: dl-burst .6s ease-out; }
+@keyframes dl-burst {
+  0% { box-shadow: 0 0 0 0 rgba(226, 164, 0, .7); transform: scale(1); }
+  50% { transform: scale(1.25); }
+  100% { box-shadow: 0 0 0 16px rgba(226, 164, 0, 0); transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-screen="daylight"] * { animation: none !important; transition: none !important; }
+}

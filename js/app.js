@@ -23,7 +23,10 @@ import { createUpdater, runningBuild, IDLE_CHECK_GAP } from './version.js';
 import { h } from './ui/dom.js';
 import { plannerNotes, staleSince, visibleNotes, briefFor, offLine } from './calendar.js';
 import { LOGOS } from './ui/sources.js';
-import { syncLabel } from './header.js';
+import { syncLabel, headerModel } from './header.js';
+import { placeFor } from './sky.js';
+import { renderSky } from './ui/sky.js';
+import { renderTimeline } from './ui/timeline.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -74,6 +77,16 @@ const ctx = {
   openSettings: () => openSettings(ctx),
   syncNow: () => scheduler.now(),
   syncProblem: () => (sync.state === 'failing' ? sync.error : ''),
+  // For Daylight's sky (js/ui/sky.js): the sync state, the header's words, whether flags are
+  // waiting, hiding a line for today, and where the sun is reckoned from.
+  syncState: () => sync,
+  headerModel: () => headerModel({
+    doc: store.doc(), today: store.today(), now: new Date(), hiddenNotes: hiddenNotes(),
+    saveProblem: store.saveError() ? "Couldn't save on this device. Export a backup from settings." : store.loadError(),
+  }),
+  flagWaiting: () => ctx.syncOn() && waitingFlags(store.doc(), ctx.lastSynced()).length > 0,
+  hideNote: (day, text) => hideNote(day, text),
+  place: () => placeFor(Intl.DateTimeFormat().resolvedOptions().timeZone, store.settings().place),
   hebrewSyncNow: () => scheduler.now(),
   hebrewSyncProblem: () => (hebrew.state === 'failing' ? hebrew.error : ''),
   hebrewStatus: () => ({ words: hebrew.words, at: hebrew.at }),
@@ -141,7 +154,12 @@ function hideNote(day, text) {
   renderHeader();
 }
 
+// Which screen is showing (index.html's <head> script and applyLook keep data-screen right).
+const daylight = () => document.documentElement.dataset.screen === 'daylight';
+
 function renderHeader() {
+  // In Daylight the sky is the header: every caller that refreshes the header (sync, updates) redraws it.
+  if (daylight()) { renderSky(ctx); return; }
   const today = store.today();
   document.getElementById('date').textContent = longDate(today);
   const { done, total, pushed } = dayScore(store.doc(), today);
@@ -219,9 +237,14 @@ function applyLook() {
 }
 
 function render() {
-  renderHeader();
-  renderToday(ctx);
-  renderSide(ctx);
+  if (daylight()) {
+    renderSky(ctx);
+    renderTimeline(ctx);
+  } else {
+    renderHeader();
+    renderToday(ctx);
+    renderSide(ctx);
+  }
   paintBig(ctx);
   if (!ui.openedLinkedTask && params.has('task') && store.doc().items[params.get('task')]) {
     ui.openedLinkedTask = true;
@@ -288,7 +311,7 @@ async function runHebrewSync() {
 function typing() {
   const el = document.activeElement;
   return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
-    && !!el.closest('#list, #under, #side');
+    && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky');
 }
 
 function canRun() {
@@ -345,6 +368,8 @@ function lockDay() {
 
 store.subscribe((reason) => {
   queueMicrotask(lockDay);
+  // A change of screen or look applies before the redraw, so the right screen is drawn.
+  if (reason === 'settings') applyLook();
   // A request may have started before typing began. Gate the redraw when it
   // finishes too; the saved data can safely advance while an input stays put.
   if (reason === 'sync' && !canRun()) { renderHeader(); whenIdle().then(render); }
@@ -423,6 +448,8 @@ window.addEventListener('storage', (e) => {
 setInterval(() => {
   applyLook();
   checkRollover();
+  // The sun and the now line move: Daylight's sky redraws each minute, never over typing.
+  if (daylight() && canRun()) { renderSky(ctx); renderTimeline(ctx); }
   lockDay();
   if (!document.hidden) updater.check({ gap: IDLE_CHECK_GAP });
   scheduler.poll().catch(() => {});

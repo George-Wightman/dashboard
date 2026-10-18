@@ -96,7 +96,7 @@ function noteMark(item, ctx) {
 }
 
 // `via` is a Hevy workout's tick ({ from, at }): the row says when he trained.
-function renderRow(row, ctx, slot = null, star = false, via = null) {
+export function renderRow(row, ctx, slot = null, star = false, via = null) {
   if (row.suggested) return renderSuggestion(row, ctx);
   const { store } = ctx;
   const { item } = row;
@@ -121,8 +121,9 @@ function renderRow(row, ctx, slot = null, star = false, via = null) {
     sourceMark(item.source, 'added'), item.area, progressCell(row, ctx)));
 }
 
-// Dragging reorders within a row's own group: done or not.
-function enableDrag(li, row, ctx) {
+// Dragging reorders within a row's own group (done or not), inside whichever list the row is in:
+// Today's list on the classic screen, "Any time today" in Daylight's timeline.
+export function enableDrag(li, row, ctx) {
   li.draggable = true;
   li.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', row.item.id);
@@ -137,10 +138,11 @@ function enableDrag(li, row, ctx) {
     li.classList.remove('drop-before');
     const dragged = e.dataTransfer.getData('text/plain');
     if (!dragged || dragged === row.item.id) return;
-    const draggedEl = [...document.querySelectorAll('#list li.row')].find((el) => el.dataset.id === dragged);
+    const listEl = li.closest('ol, ul');
+    const draggedEl = [...listEl.querySelectorAll('li.row')].find((el) => el.dataset.id === dragged);
     if (!draggedEl) return;
     const group = (el) => el.classList.contains('done');
-    const groupIds = [...document.querySelectorAll('#list li.row[draggable="true"]')]
+    const groupIds = [...listEl.querySelectorAll('li.row[draggable="true"]')]
       .filter((el) => group(el) === group(draggedEl))
       .map((el) => el.dataset.id);
     ctx.store.moveBefore(dragged, row.item.id, groupIds);
