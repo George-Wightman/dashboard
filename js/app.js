@@ -249,9 +249,9 @@ function applyLook() {
   const look = resolveLook(new Date(), store.settings());
   const root = document.documentElement;
   if (root.dataset.theme !== look) root.dataset.theme = look;
-  // Daylight or the classic screen: ⚙ → Look → Screen, or ?daylight for this visit (index.html's
+  // Daylight or the classic screen: ⚙ → Look → Screen, or ?daylight / ?classic for this visit (index.html's
   // <head> script made the same choice before the first paint).
-  const screen = params.has('daylight') || store.settings().screen === 'daylight' ? 'daylight' : 'classic';
+  const screen = params.has('classic') ? 'classic' : params.has('daylight') || store.settings().screen !== 'classic' ? 'daylight' : 'classic';
   if (root.dataset.screen !== screen) {
     root.dataset.screen = screen;
     clearOtherScreen(screen);

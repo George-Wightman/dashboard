@@ -15,8 +15,8 @@ test('the Daylight root sits beside the classic screen, which keeps its ids', ()
   assert.doesNotMatch(html + read('styles/daylight.css'), /fonts\.googleapis\.com/);
 });
 
-test('the screen and place settings default to classic and auto', () => {
-  assert.equal(DEFAULT_SETTINGS.screen, 'classic');
+test('the screen and place settings default to daylight and auto', () => {
+  assert.equal(DEFAULT_SETTINGS.screen, 'daylight');
   assert.equal(DEFAULT_SETTINGS.place, 'auto');
 });
 

@@ -12,7 +12,7 @@ import { claudePanel, claudeSummary } from './claude.js';
 import { pushState, turnOn, turnOff } from '../push-client.js';
 
 // Daylight or the classic screen, and where Daylight's sky reckons the sun from.
-const SCREEN_CHOICES = [['classic', 'Classic'], ['daylight', 'Daylight']];
+const SCREEN_CHOICES = [['daylight', 'Daylight'], ['classic', 'Classic']];
 const PLACE_CHOICES = [['auto', 'Follow the time zone'], ['london', 'London'], ['salzburg', 'Salzburg']];
 
 // The Version section: filled in once the site and GitHub have answered. Asked fresh every time
@@ -112,7 +112,7 @@ export function openSettings(ctx) {
     LOOK_CHOICES.map(([value, label]) => h('option', { value, selected: s.look === value }, label)));
   // Daylight or the classic screen, while both exist (docs/superpowers/specs/2026-10-18-daylight-health-design.md).
   const screen = h('select', { name: 'screen' },
-    SCREEN_CHOICES.map(([value, label]) => h('option', { value, selected: (s.screen ?? 'classic') === value }, label)));
+    SCREEN_CHOICES.map(([value, label]) => h('option', { value, selected: (s.screen ?? 'daylight') === value }, label)));
   // Where Daylight's sky takes its sunrise and sunset from (js/sky.js).
   const place = h('select', { name: 'place' },
     PLACE_CHOICES.map(([value, label]) => h('option', { value, selected: (s.place ?? 'auto') === value }, label)));
@@ -178,7 +178,7 @@ export function openSettings(ctx) {
       repo: repoValue, token: token.value.trim(), dayStartHour: hour,
       geminiKey: geminiKey.value.trim(), checkinHour: checkin,
       look: LOOKS.includes(look.value) ? look.value : 'auto',
-      screen: screen.value === 'daylight' ? 'daylight' : 'classic',
+      screen: screen.value === 'classic' ? 'classic' : 'daylight',
       place: PLACE_CHOICES.some(([value]) => value === place.value) ? place.value : 'auto',
       hebrewRepo: hebrewRepoValue, hebrewToken: hebrewToken.value.trim(),
     });
@@ -229,7 +229,7 @@ export function openSettings(ctx) {
       h('p', { class: 'note' }, "Gemini tidies what you say in a check-in into a short note for Claude. It's sent your answer and the task's name; on Google's free tier they may use it to improve their products. Without a key your words are kept as they are."),
       h('p', { class: 'note' }, "Snapping a meal sends Gemini the photo, your line about it and the time, to estimate protein and calories; the same free-tier terms apply. Your watch data is never sent.")),
     notificationsGroup(ctx),
-    group('Look', `${s.screen === 'daylight' ? 'Daylight' : 'Classic'} screen, ${lookName}, evening from ${hourLabel(s.checkinHour)}`, false,
+    group('Look', `${s.screen === 'classic' ? 'Classic' : 'Daylight'} screen, ${lookName}, evening from ${hourLabel(s.checkinHour)}`, false,
       h('label', { class: 'field' }, h('span', {}, 'Screen'), screen),
       h('label', { class: 'field' }, h('span', {}, 'Look'), look),
       h('label', { class: 'field' }, h('span', {}, 'Evening from (hour, 12–23)'), checkinHour),

@@ -16,10 +16,12 @@
       var look = s.look === 'paper' || s.look === 'night' ? s.look : (h >= s.checkinHour || h < s.dayStartHour ? 'night' : 'paper');
       document.documentElement.dataset.theme = look;
       document.querySelector('meta[name="theme-color"]').content = look === 'night' ? '#1c232b' : '#f5f0e7';
-      // Daylight or the classic screen (⚙ → Look → Screen), or Daylight for one visit with ?daylight.
-      var screen = 'classic';
-      try { if (saved && saved.screen === 'daylight') screen = 'daylight'; } catch (e) {}
-      if (typeof location !== 'undefined' && /[?&]daylight/.test(location.search)) screen = 'daylight';
+      // Daylight, or the classic screen when chosen in Look → Screen since Daylight became the
+      // default (screenV 2; js/data.js); ?daylight or ?classic for one visit.
+      var screen = 'daylight';
+      try { if (saved && saved.screen === 'classic' && saved.screenV === 2) screen = 'classic'; } catch (e) {}
+      if (typeof location !== 'undefined' && /[?&]daylight/.test(location.search)) screen = 'daylight';
+      if (typeof location !== 'undefined' && /[?&]classic/.test(location.search)) screen = 'classic';
       document.documentElement.dataset.screen = screen;
     })();
   </script>

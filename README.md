@@ -52,10 +52,10 @@ load — the theme is set before the page even paints.
 
 ## Daylight
 
-A second screen, built beside the classic one while you try it
+The default screen since 19 Oct 2026
 ([`docs/superpowers/specs/2026-10-18-daylight-health-design.md`](docs/superpowers/specs/2026-10-18-daylight-health-design.md)).
-Turn it on in ⚙ → **Look → Screen: Daylight**, or for one visit add `?daylight` to the address.
-Classic stays the default until Daylight replaces it.
+The classic screen is still there: ⚙ → **Look → Screen: Classic**, or for one visit add `?classic` to the
+address.
 
 - **The sky: how today is going.** The header is the sky for this moment: dawn, morning, midday,
   afternoon, golden hour, dusk or night. The sun sits on its arc at the time, worked out on the

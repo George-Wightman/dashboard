@@ -19,8 +19,13 @@ export const CORRUPT_KEY = 'dash_data_corrupt';
 export const BACKUP_KEY = 'dash_data_previous';
 export const DEFAULT_SETTINGS = {
   token: '', repo: '', dayStartHour: 4, geminiKey: '', checkinHour: 18, look: 'auto', hebrewRepo: '', hebrewToken: '',
-  screen: 'classic', place: 'auto',
+  screen: 'daylight', place: 'auto',
 };
+
+// Daylight became the default screen on 19 Oct 2026. A screen saved before then (`screenV` unset) was
+// Classic by default, not by choice, so it reads as Daylight; one chosen since is kept.
+const SCREEN_V = 2;
+const withScreen = (s) => (s.screenV === SCREEN_V ? s : { ...s, screen: 'daylight' });
 
 const ITEM_TYPES = ['task', 'habit', 'quota'];
 
@@ -82,7 +87,7 @@ function requireTitle(title, what) {
 export function createStore({ storage, now = () => new Date(), newId = () => crypto.randomUUID() }) {
   const loaded = loadDoc(storage);
   let doc = loaded.doc;
-  let settings = { ...DEFAULT_SETTINGS, ...(readJson(storage, SETTINGS_KEY) ?? {}) };
+  let settings = withScreen({ ...DEFAULT_SETTINGS, ...(readJson(storage, SETTINGS_KEY) ?? {}) });
   const loadError = loaded.error;
   const saveErrors = new Map();
   const listeners = new Set();
@@ -698,7 +703,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   }
 
   function updateSettings(changes) {
-    settings = { ...settings, ...changes };
+    settings = { ...settings, ...changes, ...(Object.hasOwn(changes, 'screen') ? { screenV: SCREEN_V } : {}) };
     save(SETTINGS_KEY, settings);
     notify('settings');
   }
