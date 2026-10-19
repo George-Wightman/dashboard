@@ -260,8 +260,8 @@
 :root[data-screen="daylight"] .dl-note { background: var(--dl-card); border: 0; border-radius: 26px; padding: 10px 12px 10px 18px; box-shadow: 0 2px 0 var(--dl-shadow); }
 :root[data-screen="daylight"] .dl-note h2 { font: 700 15px/1.2 var(--dl-display); letter-spacing: 0; text-transform: none; color: var(--dl-ink); }
 @media (max-width: 759px) {
-  :root[data-screen="daylight"] #timeline .dl-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 5; box-shadow: 0 6px 24px rgba(29, 26, 43, .18); }
-  :root[data-screen="daylight"] #timeline .dl-note h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  :root[data-screen="daylight"] #dl-note-day .dl-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 5; box-shadow: 0 6px 24px rgba(29, 26, 43, .18); }
+  :root[data-screen="daylight"] #dl-note-day .dl-note h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   :root[data-screen="daylight"] .dl-note textarea { min-height: 44px; max-height: 96px; }
   .dl-sun { width: 30px; height: 30px; }
   .tl::before { left: 63px; }
@@ -499,3 +499,5 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 }
 :root[data-screen="daylight"] dialog.snap, :root[data-screen="daylight"] dialog.hebrew-log { height: fit-content; max-height: min(92vh, 60rem); }
 :root[data-screen="daylight"] dialog.snap .sheet-body, :root[data-screen="daylight"] dialog.hebrew-log .sheet-body { height: auto; }
+
+.dl-note-day:empty { display: none; }

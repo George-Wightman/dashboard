@@ -35,7 +35,7 @@ test('styles.css and js/app.js agree on the page width and the columns', () => {
 test('the widget area keeps its id, so typing protection and focus restore still find it', () => {
   assert.match(read('index.html'), /<aside id="side" class="side" aria-label="Widgets"><\/aside>/);
   assert.match(read('index.html'), /<ul id="list" class="list"><\/ul>\s*<div id="under" class="under" aria-label="Widgets under the list" hidden><\/div>/);
-  assert.match(read('js/app.js'), /closest\('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top'\)/);
+  assert.match(read('js/app.js'), /closest\('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top, #dl-note-day'\)/);
   assert.match(read('js/ui/checkin.js'), /'data-focus': `checkin-\$\{rec\.id\}`/);
   assert.match(read('js/ui/widgets.js'), /keptFocus\(side\) \?\? keptFocus\(under\)[\s\S]*restoreFocus\(side, kept\);\s*restoreFocus\(under, kept\);/);
 });

@@ -31,13 +31,19 @@ try {
   await context.route('**/*', (route) => route.request().url().startsWith(origin) ? route.continue() : route.abort());
   const page = await context.newPage();
   const errors = [];
+  // Tasks come from Claude now (there is no add box): seed one the way the tool does, through the
+  // store on this origin, then let the page see it (a reload, or the storage event in other tabs).
+  const addTask = (p, title) => p.evaluate(async (t) => {
+    const { createStore } = await import('./js/data.js');
+    createStore({ storage: localStorage }).addItem({ type: 'task', title: t });
+  }, title);
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(origin + '/?fakegemini=nokey&classic');
   await page.waitForFunction(() => document.querySelector('#list')?.textContent.includes('Nothing on today'));
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   await page.reload();
-  await page.locator('#add-title').fill('Browser regression task');
-  await page.locator('#add-title').press('Enter');
+  await addTask(page, 'Browser regression task');
+  await page.reload();
   await page.locator('#list').getByText('Browser regression task', { exact: true }).waitFor();
   await page.locator('#list').getByText('Browser regression task', { exact: true }).click();
   await page.locator('#editor').getByLabel('Title', { exact: true }).fill('Edited without losing my draft');
@@ -48,8 +54,8 @@ try {
   await other.locator('#editor').getByLabel('Date', { exact: true }).fill('2026-09-01');
   await other.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();
   for (const title of ['From another tab A', 'From another tab B']) {
-    await other.locator('#add-title').fill(title);
-    await other.locator('#add-title').press('Enter');
+    await addTask(other, title);
+    await other.reload();
     await other.locator('#list').getByText(title, { exact: true }).waitFor();
   }
   assert.equal(await page.locator('#editor').getByLabel('Title', { exact: true }).inputValue(), 'Edited without losing my draft');
@@ -71,8 +77,7 @@ try {
   await context.setOffline(true);
   await page.reload();
   await page.locator('#list').getByText('Edited without losing my draft', { exact: true }).waitFor();
-  await page.locator('#add-title').fill('Saved while offline');
-  await page.locator('#add-title').press('Enter');
+  await addTask(page, 'Saved while offline');
   await page.reload();
   await page.locator('#list').getByText('Saved while offline', { exact: true }).waitFor();
   await page.evaluate(() => {
@@ -147,7 +152,7 @@ try {
   await page.keyboard.press('Escape');
   await page.locator('#dl-sky').getByRole('button', { name: 'Arrange', exact: true }).click();
   await page.locator('.note-place').getByRole('button', { name: 'Under the day', exact: true }).click();
-  await page.locator('#timeline .dl-note textarea').waitFor();
+  await page.locator('#dl-note-day .dl-note textarea').waitFor();
   await page.locator('.note-place').getByRole('button', { name: 'Top', exact: true }).click();
   await page.locator('#dl-sky').getByRole('button', { name: 'Done', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });

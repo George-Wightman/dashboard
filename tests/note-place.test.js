@@ -20,13 +20,17 @@ test('the note for Claude sits at the top by default, and can move under the day
 test('each place draws the note, and Arrange offers the three places', () => {
   const html = read('index.html');
   assert.match(html, /<header id="dl-sky" class="dl-sky"><\/header>\s*<div id="dl-note-top" class="dl-note-top"><\/div>/);
-  assert.match(read('js/ui/timeline.js'), /ctx\.notePlace\(\) === 'day'/);
+  // Under the day, it sits beside the timeline, not in it: Arrange freezes the timeline, and the note's
+  // place buttons must still work there.
+  assert.match(html, /<div id="timeline"><\/div>\s*<div id="dl-note-day" class="dl-note-day"><\/div>/);
+  assert.doesNotMatch(read('js/ui/timeline.js'), /noteBlock/);
+  assert.match(read('js/ui/noteslot.js'), /dl-note-day/);
   assert.match(read('js/ui/tiles.js'), /ctx\.notePlace\(\) === 'tiles'/);
   const slot = read('js/ui/noteslot.js');
-  assert.match(slot, /ctx\.notePlace\(\) === 'top'/);
+  assert.match(slot, /\['dl-note-top', 'top'\], \['dl-note-day', 'day'\]/);
   assert.match(slot, /Top/);
   assert.match(slot, /Under the day/);
   assert.match(slot, /With the tiles/);
-  assert.match(read('js/app.js'), /closest\('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top'\)/);
+  assert.match(read('js/app.js'), /closest\('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top, #dl-note-day'\)/);
   assert.ok(read('sw.js').includes("'js/ui/noteslot.js'"));
 });

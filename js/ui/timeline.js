@@ -13,7 +13,6 @@ import { scheduleView } from '../plan-state.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { renderRow, enableDrag, listRows } from './today.js';
 import { renderCheckin } from './checkin.js';
-import { noteBlock } from './noteslot.js';
 import { renderBackRow, sessionExtras } from './coach.js';
 import { keptFocus, restoreFocus } from './side.js';
 
@@ -95,8 +94,6 @@ export function renderTimeline(ctx) {
   const back = renderBackRow(ctx);
   const checkin = renderCheckin(ctx);
   const tomorrow = tomorrowLine(doc, today);
-  // The note for Claude, when it lives under the day (js/ui/noteslot.js).
-  const note = ctx.notePlace() === 'day' ? noteBlock(ctx) : null;
   root.replaceChildren(...[
     back ? h('ul', { class: 'tl-checkin tl-backq' }, back) : null,
     checkin ? h('ul', { class: 'tl-checkin' }, checkin) : null,
@@ -107,7 +104,6 @@ export function renderTimeline(ctx) {
     anytime.length ? h('h3', { class: 'tl-any-h' }, 'Any time today') : null,
     anytime.length ? h('ul', { class: 'tl-any' }, anytime) : null,
     tomorrow ? h('p', { class: 'tl-tomorrow' }, `Tomorrow: ${tomorrow}`) : null,
-    note,
   ].filter(Boolean));
   restoreFocus(root, kept);
 }

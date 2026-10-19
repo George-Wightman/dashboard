@@ -522,8 +522,12 @@ releases. CI runs `npm test` on pushes and pull requests, including generated-fi
 
 For browser checks, make Playwright available (or set `PLAYWRIGHT_MODULE` to its installed package
 directory), then run `npm run test:browser`. Set `BROWSER_CHANNEL=msedge` to use installed Edge;
-otherwise it uses Playwright's Chromium. This creates an isolated local server and browser profile,
-blocks external requests, and checks editing, cross-tab updates, offline saves and recovery.
+otherwise it uses Playwright's Chromium. With installed Chrome and no browser download:
+`npm install --no-save playwright-core`, then `PLAYWRIGHT_MODULE=playwright-core BROWSER_CHANNEL=chrome
+npm run test:browser`. This creates an isolated local server and browser profile, blocks external
+requests, and checks editing, cross-tab updates, offline saves and recovery on the classic screen,
+then Daylight: the sky, the note for Claude (and moving it in Arrange), the tiles, a big view, the
+snap sheet, the Log Hebrew time shortcut and phone width.
 
 ## How it's built
 

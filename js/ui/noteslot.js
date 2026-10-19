@@ -24,11 +24,14 @@ export function noteBlock(ctx) {
   return note;
 }
 
-// The top slot: the note when it lives there, nothing otherwise.
+// The top slot and the one under the day (beside the timeline, not in it: Arrange freezes the
+// timeline, and the note's place buttons must work there): the note where it lives, nothing in the other.
 export function renderNoteSlot(ctx) {
-  const root = document.getElementById('dl-note-top');
-  if (!root) return;
-  const kept = keptFocus(root);
-  root.replaceChildren(...(ctx.notePlace() === 'top' ? [noteBlock(ctx)] : []));
-  restoreFocus(root, kept);
+  for (const [id, place] of [['dl-note-top', 'top'], ['dl-note-day', 'day']]) {
+    const root = document.getElementById(id);
+    if (!root) continue;
+    const kept = keptFocus(root);
+    root.replaceChildren(...(ctx.notePlace() === place ? [noteBlock(ctx)] : []));
+    restoreFocus(root, kept);
+  }
 }

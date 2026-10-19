@@ -350,7 +350,7 @@ async function runHebrewSync() {
 function typing() {
   const el = document.activeElement;
   return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
-    && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top');
+    && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top, #dl-note-day');
 }
 
 // The minute redraw moves the now line, but never under a focused row or a drag in progress.
