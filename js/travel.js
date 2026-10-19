@@ -40,3 +40,20 @@ export function zoneWarning({ plannerZone, deviceZone: here, at = new Date() }) 
   return `The planner books your calendar in ${zoneName(plannerZone)}, but you're on ${zoneName(here)}, so every block lands ${gap} ${b > a ? 'late' : 'early'}. `
     + `To fix it, open the Dashboard planner script → ⚙ Project Settings → Time zone → ${setting}.`;
 }
+
+// For Claude, at the top of every read when George's phone and the planner are in different zones:
+// where he is, and how to turn a time he says into the planner's. Not a problem to fix — his phone
+// shows every block in his own time — just something to book by.
+export function zoneNote({ plannerZone, deviceZone: here, at = new Date() }) {
+  if (!plannerZone || !here) return null;
+  const a = zoneOffset(plannerZone, at);
+  const b = zoneOffset(here, at);
+  if (a == null || b == null || a === b) return null;
+  const diff = (b - a) / 60;
+  const hrs = Math.abs(diff) === 1 ? 'an hour' : `${Math.abs(diff)} hours`;
+  const pad = (n) => String(n).padStart(2, '0');
+  const example = ((17 * 60 - (b - a)) % 1440 + 1440) % 1440;
+  return `George is on ${zoneName(here)} (his phone says ${here}); the planner books in ${zoneName(plannerZone)}, ${hrs} ${diff > 0 ? 'behind' : 'ahead'}. `
+    + `A time he gives you is his local time: ${diff > 0 ? 'take' : 'add'} ${hrs} ${diff > 0 ? 'off' : 'on'} for \`time\` (his 17:00 is "${pad(Math.floor(example / 60))}:${pad(example % 60)}"). `
+    + 'His phone shows every block in his own time.';
+}

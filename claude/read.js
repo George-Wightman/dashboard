@@ -13,6 +13,7 @@ import {
   readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText, countdowns, daysLeft,
 } from '../js/calendar.js';
 import { attention } from '../js/attention.js';
+import { zoneNote, deviceZone } from '../js/travel.js';
 import {
   gymConfig, gymStatus, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
 } from '../js/gym.js';
@@ -36,7 +37,9 @@ const live = (doc) => values(doc.items).filter((i) => i.status === 'active').sor
 
 export function header(doc, today) {
   const { done, total, pushed } = dayScore(doc, today);
-  return `Today is ${longDate(today)} (${today}) · ${done} of ${total} done${pushed.length ? ` · ${pushed.length} pushed` : ''}`;
+  const zone = zoneNote({ plannerZone: plannerStatus(doc)?.timeZone, deviceZone: deviceZone(doc), at: new Date(`${today}T12:00:00Z`) });
+  return `Today is ${longDate(today)} (${today}) · ${done} of ${total} done${pushed.length ? ` · ${pushed.length} pushed` : ''}${zone ? `
+${zone}` : ''}`;
 }
 
 function rowLine(doc, row, today, idx) {

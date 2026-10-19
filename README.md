@@ -399,11 +399,10 @@ Tapping one opens the thing to do. Tell Claude to turn them off (`nudges: false`
 
 ### Moving between London and Salzburg
 
-The app follows your device's clock, and the sky follows its time zone (anywhere on Central European
-time is Salzburg). The planner books your calendar in its Apps Script project's time zone, which only
-you can change. When your device and the planner disagree, **Needs you** (and Claude) say so:
-open the *Dashboard planner* script → ⚙ Project Settings → *Time zone* → (GMT+01:00) Vienna, and back
-to London when you return. Until then every block lands an hour out.
+The planner keeps booking in London time, and your phone shows every block in its own time, so
+nothing needs changing when you travel. Each device notes the time zone it's in, and Claude's reads
+start by saying where you are, so a time you give Claude in Salzburg ("the gym at 17:00") is booked as
+your 17:00. The sky follows your device too (anywhere on Central European time is Salzburg).
 
 ## Hevy
 

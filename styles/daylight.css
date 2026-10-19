@@ -425,7 +425,6 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .hebrew-log .sheet-head h2 { margin: 0; font: 800 22px/1.1 var(--dl-display, inherit); }
 .hebrew-log-choices, .hebrew-log-other { display: flex; flex-wrap: wrap; gap: 8px; }
 .hebrew-log-other input { flex: 1; min-width: 0; min-height: 44px; border: 0; border-radius: 16px; padding: 0 14px; background: var(--dl-soft, #FFF3E3); color: inherit; font: inherit; }
-.needs-zone { font-weight: 600; }
 
 /* The week in review (Saturday to Monday). */
 .tile[data-area="review"] { --tile-bg: var(--dl-review); --tile-ink: var(--dl-on-review); box-shadow: none; }

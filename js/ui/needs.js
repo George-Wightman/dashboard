@@ -5,21 +5,16 @@
 import { h } from './dom.js';
 import { needsEntries, needsCopy } from '../needs.js';
 import { resolveConflict, openTaskCard } from './agenda.js';
-import { zoneWarning } from '../travel.js';
-import { plannerStatus } from '../calendar.js';
 
 const SHOWN = 5;
 
 export function renderNeeds(ctx) {
   const doc = ctx.store.doc();
   const needs = needsEntries(doc, ctx.store.today());
-  // The planner booking in another time zone from this device's (after a move): every block is out.
-  const zone = zoneWarning({ plannerZone: plannerStatus(doc)?.timeZone, deviceZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
-  if (!needs.length && !ctx.ui.needsError && !zone) return null;
+  if (!needs.length && !ctx.ui.needsError) return null;
   const shown = ctx.ui.needsExpanded ? needs : needs.slice(0, SHOWN);
   return h('div', { class: 'needs' },
     ctx.ui.needsError ? h('p', { class: 'error', role: 'status' }, ctx.ui.needsError) : null,
-    zone ? h('p', { class: 'needs-text needs-zone', role: 'status' }, zone) : null,
     shown.map((e) => {
       const { text, choices } = needsCopy(e, doc);
       return h('div', { class: 'needs-entry', 'data-task': e.item.id },
