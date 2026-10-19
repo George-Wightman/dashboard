@@ -9,7 +9,8 @@ import { weekTotal } from './schedule.js';
 import { cardioQuotaId } from './gym.js';
 
 export const TILES_KEY = 'dash_tiles';
-export const TILE_IDS = ['needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'week'];
+// `review` (the week in review) only shows Saturday to Monday, at the top.
+export const TILE_IDS = ['review', 'needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'week'];
 export const DEFAULT_TILES = Object.freeze({ v: 1, order: Object.freeze([...TILE_IDS]), hidden: Object.freeze([]) });
 
 // The classic widgets with a tile. Note for Claude moved into the timeline; Muscles and Cardio
@@ -26,7 +27,8 @@ export function fromClassic(layout) {
   const mapped = (ids) => unique(ids.map((id) => CLASSIC_TO_TILE[id]).filter(Boolean));
   const order = mapped(reading);
   const hidden = mapped(list(layout?.hidden));
-  return { v: 1, order: [...order, ...TILE_IDS.filter((id) => !order.includes(id))], hidden };
+  const rest = TILE_IDS.filter((id) => !order.includes(id) && id !== 'review');
+  return { v: 1, order: ['review', ...order, ...rest], hidden };
 }
 
 export function normalizeTiles(saved, known = TILE_IDS) {
@@ -34,9 +36,11 @@ export function normalizeTiles(saved, known = TILE_IDS) {
     return { v: 1, order: [...DEFAULT_TILES.order], hidden: [] };
   }
   const order = unique(saved.order.filter((id) => known.includes(id)));
+  // A tile new since the arrangement was saved goes at the end, except the review, which leads.
+  const missing = known.filter((id) => !order.includes(id));
   return {
     v: 1,
-    order: [...order, ...known.filter((id) => !order.includes(id))],
+    order: [...missing.filter((id) => id === 'review'), ...order, ...missing.filter((id) => id !== 'review')],
     hidden: unique(list(saved.hidden).filter((id) => known.includes(id))),
   };
 }

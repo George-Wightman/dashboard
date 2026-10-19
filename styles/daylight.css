@@ -27,6 +27,8 @@
   --dl-hebrew-soft: #EEEDF8;
   --dl-needs: #FFD36B;
   --dl-on-needs: #1D1A2B;
+  --dl-review: #CDE8F6;
+  --dl-on-review: #1D1A2B;
   --dl-goals: #FFE9D2;
   --dl-gold: #E2A400;
   --dl-gold-1: #FBEFD2;
@@ -77,6 +79,8 @@
   --dl-hebrew-soft: #23214A;
   --dl-needs: #4A3D12;
   --dl-on-needs: #FFE7A3;
+  --dl-review: #12324A;
+  --dl-on-review: #CFE9F7;
   --dl-goals: #2B2440;
   --dl-gold: #F2C94C;
   --dl-gold-1: #3A3320;
@@ -422,3 +426,12 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .hebrew-log-choices, .hebrew-log-other { display: flex; flex-wrap: wrap; gap: 8px; }
 .hebrew-log-other input { flex: 1; min-width: 0; min-height: 44px; border: 0; border-radius: 16px; padding: 0 14px; background: var(--dl-soft, #FFF3E3); color: inherit; font: inherit; }
 .needs-zone { font-weight: 600; }
+
+/* The week in review (Saturday to Monday). */
+.tile[data-area="review"] { --tile-bg: var(--dl-review); --tile-ink: var(--dl-on-review); box-shadow: none; }
+.review { display: flex; flex-direction: column; gap: 10px; }
+.review-misses, .review-pushed { margin: 0; font-size: 15px; line-height: 1.4; }
+.review-stats { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.review-stats li { padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: color-mix(in srgb, var(--tile-ink, var(--dl-ink)) 10%, transparent); }
+.review-plan { align-self: flex-start; display: inline-flex; align-items: center; text-decoration: none; }
+.tile[data-area="review"] .review-plan { background: var(--dl-on-review); color: var(--dl-review); }

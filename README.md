@@ -378,6 +378,13 @@ change by asking Claude.
 `pause`, `resume` and `removeAll` (every future block it made, then pause) run the same way. Updates
 arrive by themselves: the script loads the planner from this site each time it runs.
 
+### Week in review
+
+From Saturday to Monday the first tile is the week: done against planned (day by day, as the day
+score counts), every miss named with its day, anything pushed after the lock, the weekly targets with
+numbers (Hebrew, cardio, protein days, sessions, sore mornings), and **Plan next week with Claude**,
+which opens a chat that starts with the catch-up. Opened big: the week day by day.
+
 ### Nudges
 
 A push before a miss, not after it, on every device with notifications on (the same ones check-ins

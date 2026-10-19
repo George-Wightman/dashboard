@@ -15,6 +15,7 @@ import { renderCountdown } from './countdown.js';
 import { renderFuel, renderFuelBig } from './fuel.js';
 import { renderCoach, renderCoachBig } from './coach.js';
 import { openHebrewLog } from './hebrewlog.js';
+import { renderReview, renderReviewBig } from './review.js';
 import { hebrewMinutesId } from '../tiles.js';
 import { openBig } from './big.js';
 
@@ -33,6 +34,7 @@ const withHero = (hero, content) => {
 };
 
 export const TILES = [
+  { id: 'review', title: 'Week in review', area: 'review', render: renderReview, big: renderReviewBig },
   { id: 'needs', title: 'Needs you', area: 'needs', render: renderNeeds },
   {
     id: 'body', title: 'Body', area: 'body',

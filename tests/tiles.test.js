@@ -8,26 +8,26 @@ import { MemoryStorage, fixture } from './helpers.js';
 
 test('a classic arrangement becomes tiles in the same reading order', () => {
   const classic = { v: 4, under: ['goals', 'agenda'], columns: [['note', 'countdown', 'gym'], ['history', 'hebrew', 'muscles']], hidden: ['week', 'cardio'] };
-  assert.deepEqual(fromClassic(classic), { v: 1, order: ['goals', 'needs', 'countdown', 'body', 'weeks', 'hebrew', 'fuel', 'week'], hidden: ['week'] });
+  assert.deepEqual(fromClassic(classic), { v: 1, order: ['review', 'goals', 'needs', 'countdown', 'body', 'weeks', 'hebrew', 'fuel', 'week'], hidden: ['week'] });
 });
 
 test('Fuel is a tile after Body, and a saved arrangement from before it gains it at the end', () => {
-  assert.deepEqual(TILE_IDS.slice(1, 3), ['body', 'fuel']);
+  assert.deepEqual(TILE_IDS.slice(2, 4), ['body', 'fuel']);
   const old = { v: 1, order: ['needs', 'body', 'hebrew', 'goals', 'weeks', 'countdown', 'week'], hidden: [] };
   assert.equal(normalizeTiles(old).order.at(-1), 'fuel');
 });
 
 test('normalising drops strangers and repeats, adds the missing, and rejects junk', () => {
-  assert.deepEqual(normalizeTiles({ v: 1, order: ['body', 'body', 'nope'], hidden: [] }).order, ['body', ...TILE_IDS.filter((id) => id !== 'body')]);
+  assert.deepEqual(normalizeTiles({ v: 1, order: ['body', 'body', 'nope'], hidden: [] }).order, ['review', 'body', ...TILE_IDS.filter((id) => id !== 'body' && id !== 'review')]);
   assert.deepEqual(normalizeTiles('junk'), DEFAULT_TILES);
 });
 
 test('moving, nudging, hiding and showing', () => {
   let t = DEFAULT_TILES;
   t = moveTile(t, 'weeks', 'needs');
-  assert.equal(t.order[0], 'weeks');
+  assert.deepEqual(t.order.slice(0, 2), ['review', 'weeks']);
   t = nudgeTile(t, 'weeks', 1);
-  assert.deepEqual(t.order.slice(0, 2), ['needs', 'weeks']);
+  assert.deepEqual(t.order.slice(1, 3), ['needs', 'weeks']);
   t = hideTile(t, 'goals');
   assert.ok(t.hidden.includes('goals'));
   t = showTile(t, 'goals');
@@ -38,7 +38,7 @@ test('moving, nudging, hiding and showing', () => {
 test('loading prefers the saved tiles, and otherwise starts from the classic layout', () => {
   const storage = new MemoryStorage();
   const classic = { v: 4, under: [], columns: [['gym'], []], hidden: [] };
-  assert.equal(loadTiles(storage, classic).order[0], 'body');
+  assert.deepEqual(loadTiles(storage, classic).order.slice(0, 2), ['review', 'body']);
   saveTiles(storage, { v: 1, order: ['hebrew', ...TILE_IDS.filter((id) => id !== 'hebrew')], hidden: [] });
   assert.equal(JSON.parse(storage.getItem(TILES_KEY)).order[0], 'hebrew');
   assert.equal(loadTiles(storage, classic).order[0], 'hebrew');

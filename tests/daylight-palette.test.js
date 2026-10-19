@@ -16,7 +16,7 @@ const lum = (hex) => {
 };
 const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 const PAIRS = [['--dl-ink', '--dl-ground'], ['--dl-muted', '--dl-ground'], ['--dl-ink', '--dl-card'], ['--dl-muted', '--dl-card'],
-  ['--dl-on-body', '--dl-body'], ['--dl-on-fuel', '--dl-fuel'], ['--dl-on-hebrew', '--dl-hebrew'], ['--dl-on-needs', '--dl-needs'], ['--dl-carry-ink', '--dl-carry']];
+  ['--dl-on-body', '--dl-body'], ['--dl-on-fuel', '--dl-fuel'], ['--dl-on-hebrew', '--dl-hebrew'], ['--dl-on-needs', '--dl-needs'], ['--dl-carry-ink', '--dl-carry'], ['--dl-on-review', '--dl-review']];
 const DAY = ':root\\[data-screen="daylight"\\]';
 const NIGHT = ':root\\[data-screen="daylight"\\]\\[data-theme="night"\\]';
 
