@@ -2,15 +2,17 @@
 // of the day it is, and where on the arc the sun (and each of today's blocks) sits. Pure, and worked
 // out on the device with no network, so it draws offline too.
 
-// The places the dashboard knows. A device in Austria is in Salzburg; anywhere else is London,
-// unless ⚙ → The day pins one.
+// The places the dashboard knows. A device on Central European time is in Salzburg; anywhere else
+// is London, unless ⚙ → The day pins one.
+import { CENTRAL } from './travel.js';
+
 export const PLACES = {
   london: { name: 'London', lat: 51.5074, lon: -0.1278 },
   salzburg: { name: 'Salzburg', lat: 47.8095, lon: 13.055 },
 };
 
 export function placeFor(timeZone, setting = 'auto') {
-  const key = PLACES[setting] ? setting : timeZone === 'Europe/Vienna' ? 'salzburg' : 'london';
+  const key = PLACES[setting] ? setting : CENTRAL.test(timeZone ?? '') ? 'salzburg' : 'london';
   return { key, ...PLACES[key] };
 }
 

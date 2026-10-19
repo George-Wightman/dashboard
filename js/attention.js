@@ -4,7 +4,8 @@
 
 import { doneIndex, doneDays, weekTotal } from './schedule.js';
 import { addDays, weekday, shortWeekday, shortDate } from './dates.js';
-import { readPlannerConfig, plannerNotes, excused } from './calendar.js';
+import { readPlannerConfig, plannerNotes, excused, plannerStatus } from './calendar.js';
+import { zoneWarning, deviceZone } from './travel.js';
 import { formatProgress } from './parse.js';
 import { blockers } from './workflow.js';
 
@@ -46,5 +47,7 @@ export function attention(doc, today) {
   for (const item of items.filter((i) => open(i) && i.date <= today && blockers(doc, i, today).length).slice(0, 5)) lines.push(`${quote(item.title)}: ${blockers(doc, item, today).join('; ')}`);
   for (const run of Object.values(doc.workflowRuns ?? {}).filter((r) => r.result === 'failed').sort((a, b) => b.updated.localeCompare(a.updated)).slice(0, 3)) lines.push(`Rule needs attention: ${doc.rules?.[run.ruleId]?.title ?? run.ruleId} — ${run.error}`);
   for (const n of plannerNotes(doc, today)) if (!n.startsWith('Moved ')) lines.push(`Planner: ${n}`);
+  const zone = zoneWarning({ plannerZone: plannerStatus(doc)?.timeZone, deviceZone: deviceZone(doc), at: new Date(`${today}T12:00:00Z`) });
+  if (zone) lines.push(zone);
   return lines;
 }

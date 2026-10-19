@@ -378,6 +378,14 @@ change by asking Claude.
 `pause`, `resume` and `removeAll` (every future block it made, then pause) run the same way. Updates
 arrive by themselves: the script loads the planner from this site each time it runs.
 
+### Moving between London and Salzburg
+
+The app follows your device's clock, and the sky follows its time zone (anywhere on Central European
+time is Salzburg). The planner books your calendar in its Apps Script project's time zone, which only
+you can change. When your device and the planner disagree, **Needs you** (and Claude) say so:
+open the *Dashboard planner* script → ⚙ Project Settings → *Time zone* → (GMT+01:00) Vienna, and back
+to London when you return. Until then every block lands an hour out.
+
 ## Hevy
 
 The same script reads your Hevy workouts (Hevy Pro's API) every 10 minutes. The only thing it ever

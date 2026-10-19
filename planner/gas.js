@@ -248,7 +248,13 @@ export function createPlanner({
     const due = !prev || !prev.lastRun || prev.lastError !== lastError || prev.version !== version || prev.paused
       || (prev.takenColors ?? []).join() !== takenColors.join() || !same
       || t.getTime() - Date.parse(prev.lastRun) > HEARTBEAT_MS;
-    if (due) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars });
+    // Its time zone too: the app warns when George's device is in another (js/travel.js).
+    // Apps Script's own word for the project's zone first; plain JavaScript's where it has none (tests).
+    let timeZone = null;
+    try { timeZone = globalThis.Session?.getScriptTimeZone?.() || null; } catch { /* not in Apps Script */ }
+    timeZone ??= Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const moved = prev?.timeZone !== timeZone;
+    if (due || moved) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars, timeZone });
   }
 
   // How long the planner's runs have taken today, so ⚙ → Claude can show it against Apps Script's

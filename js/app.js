@@ -31,6 +31,7 @@ import { renderTimeline } from './ui/timeline.js';
 import { renderTiles } from './ui/tiles.js';
 import { paintSnap, openSnap } from './ui/snap.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
+import { deviceZone } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
 
 const store = createStore({ storage: localStorage });
@@ -391,9 +392,19 @@ function checkRollover() {
   }
 }
 
+// The time zone this device is in, written down when it changes, so Claude's attention list can
+// warn when the planner books in another (js/travel.js).
+function reportZone() {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (zone && deviceZone(store.doc()) !== zone) store.putCalendar('device-zone', { zone }, 'me');
+  } catch { /* no zone to report */ }
+}
+
 function wake() {
   applyLook();
   checkRollover();
+  reportZone();
   scheduler.now();
   updater.check();
 }
@@ -538,4 +549,5 @@ if (params.has('do')) {
     document.querySelector('.tl-back')?.scrollIntoView({ block: 'center' });
   }
 }
+reportZone();
 updater.check();
