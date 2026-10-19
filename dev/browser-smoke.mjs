@@ -32,7 +32,7 @@ try {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(origin + '/?fakegemini=nokey');
+  await page.goto(origin + '/?fakegemini=nokey&classic');
   await page.waitForFunction(() => document.querySelector('#list')?.textContent.includes('Nothing on today'));
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   await page.reload();
@@ -43,7 +43,7 @@ try {
   await page.locator('#editor').getByLabel('Title', { exact: true }).fill('Edited without losing my draft');
   const other = await context.newPage();
   other.on('pageerror', (e) => errors.push(e.message));
-  await other.goto(origin + '/?fakegemini=nokey');
+  await other.goto(origin + '/?fakegemini=nokey&classic');
   await other.locator('#list').getByText('Browser regression task', { exact: true }).click();
   await other.locator('#editor').getByLabel('Date', { exact: true }).fill('2026-09-01');
   await other.locator('#editor').getByRole('button', { name: 'Save', exact: true }).click();
@@ -124,8 +124,36 @@ try {
   await page.getByText('Queued for the planner. Its Gemini key must be configured.', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Review progress with AI' }).isDisabled(), true);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+  // Daylight, the default screen: the sky, the note for Claude at the top (and moved in Arrange),
+  // the tiles, a big view, the snap sheet, and the Log Hebrew time shortcut.
+  await context.setOffline(false);
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await page.evaluate(async () => {
+    const { createStore } = await import('./js/data.js');
+    createStore({ storage: localStorage }).addItem({ id: 'hebrew-minutes', type: 'quota', title: 'Hebrew learning time', unit: 'minutes', target: 420 });
+  });
+  await page.goto(origin + '/?fakegemini=meal&do=hebrew');
+  await page.waitForFunction(() => document.documentElement.dataset.screen === 'daylight' && document.querySelector('#dl-sky')?.children.length > 0);
+  await page.locator('#hebrew-log').getByRole('button', { name: '30 min', exact: true }).click();
+  assert.equal(await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('dash_data')).logs).some((l) => l.itemId === 'hebrew-minutes' && l.amount === 30 && l.status === 'active')), true);
+  assert.equal(await page.evaluate(() => location.search.includes('do=')), false, 'the shortcut tidies the address');
+  await page.locator('#dl-note-top textarea').waitFor();
+  assert.ok(await page.locator('#tiles .tile').count() >= 3, 'the tiles draw');
+  await page.locator('#tiles .tile[data-tile="weeks"] .tile-open').click();
+  await page.locator('#widget-sheet[open]').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('#tiles').getByRole('button', { name: 'Snap a meal', exact: true }).click();
+  await page.locator('#snap[open]').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('#dl-sky').getByRole('button', { name: 'Arrange', exact: true }).click();
+  await page.locator('.note-place').getByRole('button', { name: 'Under the day', exact: true }).click();
+  await page.locator('#timeline .dl-note textarea').waitFor();
+  await page.locator('.note-place').getByRole('button', { name: 'Top', exact: true }).click();
+  await page.locator('#dl-sky').getByRole('button', { name: 'Done', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Daylight fits a phone');
   assert.deepEqual(errors, []);
-  console.log('Browser checks passed: startup, concurrent editing, offline recovery, mobile layout, advanced details, outcome completion, dependency unlocking and queued goal review.');
+  console.log('Browser checks passed: startup, concurrent editing, offline recovery, mobile layout, advanced details, outcome completion, dependency unlocking, queued goal review, and Daylight (sky, note, tiles, big view, snap, the Hebrew shortcut, Arrange, phone width).');
 } finally {
   await browser?.close();
   await new Promise((r) => server.close(r));
