@@ -32,7 +32,8 @@ import { renderTiles } from './ui/tiles.js';
 import { paintSnap, openSnap } from './ui/snap.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
 import { deviceZone } from './travel.js';
-import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
+import { TILES_KEY, loadTiles, saveTiles, normalizeTiles, loadNotePlace, saveNotePlace } from './tiles.js';
+import { renderNoteSlot } from './ui/noteslot.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -58,6 +59,7 @@ const WIDE = matchMedia('(min-width: 1500px)');
 let layout = loadLayout(localStorage, WIDGET_IDS);
 // Daylight's tiles (js/tiles.js): this device's own too, started from the arrangement above.
 let tiles = loadTiles(localStorage, layout);
+let notePlace = loadNotePlace(localStorage);
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
 // fake mode the real keys are never read, and dev/fake-gemini.js answers instead of Google (the
@@ -130,6 +132,13 @@ const ctx = {
   layout: () => layout,
   columnCount: () => (WIDE.matches ? 2 : 1),
   tiles: () => tiles,
+  // Where the note for Claude sits on Daylight (js/ui/noteslot.js).
+  notePlace: () => notePlace,
+  setNotePlace(next) {
+    saveNotePlace(localStorage, next);
+    notePlace = loadNotePlace(localStorage);
+    render();
+  },
   setTiles(next) {
     tiles = normalizeTiles(next);
     saveTiles(localStorage, tiles);
@@ -266,6 +275,7 @@ function applyLook() {
 function render() {
   if (daylight()) {
     renderSky(ctx);
+    renderNoteSlot(ctx);
     renderTimeline(ctx);
     renderTiles(ctx);
   } else {
@@ -340,7 +350,7 @@ async function runHebrewSync() {
 function typing() {
   const el = document.activeElement;
   return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
-    && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky');
+    && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top');
 }
 
 // The minute redraw moves the now line, but never under a focused row or a drag in progress.

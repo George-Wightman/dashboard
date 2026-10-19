@@ -33,7 +33,7 @@ test('the head script picks the screen before paint, from the setting or ?daylig
 });
 
 test('typing protection and focus restore cover the Daylight areas', () => {
-  assert.match(read('js/app.js'), /closest\('#list, #under, #side, #timeline, #tiles, #dl-sky'\)/);
+  assert.match(read('js/app.js'), /closest\('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top'\)/);
   assert.match(read('js/ui/timeline.js'), /keptFocus\(root\)[\s\S]*restoreFocus\(root, kept\)/);
 });
 

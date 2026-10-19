@@ -260,8 +260,8 @@
 :root[data-screen="daylight"] .dl-note { background: var(--dl-card); border: 0; border-radius: 26px; padding: 10px 12px 10px 18px; box-shadow: 0 2px 0 var(--dl-shadow); }
 :root[data-screen="daylight"] .dl-note h2 { font: 700 15px/1.2 var(--dl-display); letter-spacing: 0; text-transform: none; color: var(--dl-ink); }
 @media (max-width: 759px) {
-  :root[data-screen="daylight"] .dl-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 5; box-shadow: 0 6px 24px rgba(29, 26, 43, .18); }
-  :root[data-screen="daylight"] .dl-note h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  :root[data-screen="daylight"] #timeline .dl-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 5; box-shadow: 0 6px 24px rgba(29, 26, 43, .18); }
+  :root[data-screen="daylight"] #timeline .dl-note h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   :root[data-screen="daylight"] .dl-note textarea { min-height: 44px; max-height: 96px; }
   .dl-sun { width: 30px; height: 30px; }
   .tl::before { left: 63px; }
@@ -439,3 +439,45 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .heb-growth { margin: 0; font-size: 14px; font-weight: 600; }
 .heb-trend { display: flex; align-items: flex-end; gap: 6px; height: 80px; }
 .heb-trend-bar { flex: 1; max-width: 36px; border-radius: 6px 6px 2px 2px; background: var(--dl-hebrew, var(--accent)); }
+
+/* ---- Glance tiles: the key numbers on one screen; the detail behind ⤢ ------------------------------
+   Tiles flow down two columns (three on a wide window), so a short one never waits beside a tall one,
+   and each shows only what matters at a glance. Their big views (in the sheet, not inside .tile) keep
+   everything. */
+.dl-tiles { display: block; columns: 2 280px; column-gap: 16px; }
+.dl-tiles > .tile, .dl-tiles > .tile-drop, .dl-tiles > .tile-add { break-inside: avoid; margin: 0 0 16px; }
+.dl-tiles > .tile-drop, .dl-tiles > .tile-add { column-span: all; }
+.tile { padding: 14px 16px 16px; border-radius: 22px; gap: 8px; }
+.tile-head h2 { font-size: 17px; }
+.tile-head h2 button { all: unset; cursor: pointer; }
+.tile-head h2 button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 4px; }
+.tile-open { width: 30px; height: 30px; font-size: 14px; }
+.tile-num { font-size: 40px; }
+.tile-cap { font-size: 13px; }
+.tile-stack, .tile-parts { gap: 8px; }
+/* Body: the cardio number, the next session's name, the week and the back mornings. */
+.tile .gym-lifts, .tile .gym-today, .tile .gym > .gym-note, .tile .gym .bar-row { display: none; }
+.tile .coach-line { display: none; }
+.tile .coach-name { font-size: 14px; }
+/* Hebrew: the hours, the week's days and this week's growth. */
+.tile .heb-stats, .tile .heb-bands, .tile .heb-rung, .tile .heb-words { display: none; }
+/* Fuel: the protein plate, smaller, and the button. */
+.tile .fuel-meals, .tile .fuel-none, .tile .fuel-week { display: none; }
+.tile .fuel-plate { width: 96px; height: 96px; }
+.tile .fuel-plate-num { font-size: 22px; }
+.tile .fuel-snap { min-height: 44px; font-size: 15px; }
+/* Week in review: the number, the misses in two lines, the chips, the hand-over. */
+.tile .review-misses { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; }
+.tile .review-pushed { display: none; }
+/* Needs you: at most three, compact. */
+.tile .needs-entry:nth-of-type(n+4) { display: none; }
+@media (min-width: 1500px) { .dl-tiles { columns: 3 240px; } }
+
+/* The note for Claude at the top, centred under the sky (its default place). */
+.dl-note-top { position: relative; z-index: 1; max-width: 760px; margin: -34px auto 0; padding: 0 48px; box-sizing: border-box; }
+.dl-note-top .dl-note { padding: 8px 10px 8px 16px; box-shadow: 0 4px 18px rgba(29, 26, 43, .10); }
+.dl-note-top .dl-note h2 { font-size: 13px; }
+.dl-note-top:empty { display: none; }
+.dl-tiles > .dl-note { break-inside: avoid; margin: 0 0 16px; }
+.note-place { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+@media (max-width: 759px) { .dl-note-top { padding: 0 16px; margin-top: -18px; } }

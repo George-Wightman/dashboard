@@ -16,6 +16,7 @@ import { renderFuel, renderFuelBig } from './fuel.js';
 import { renderCoach, renderCoachBig } from './coach.js';
 import { openHebrewLog } from './hebrewlog.js';
 import { renderReview, renderReviewBig } from './review.js';
+import { noteBlock } from './noteslot.js';
 import { hebrewMinutesId } from '../tiles.js';
 import { openBig } from './big.js';
 
@@ -63,7 +64,8 @@ const useNudge = () => (typeof matchMedia === 'function' && matchMedia('(pointer
 
 function tileEl(ctx, tile, content, arranging) {
   const head = h('div', { class: 'tile-head' },
-    h('h2', {}, tile.title),
+    // The title opens the big view too, a bigger target than ⤢.
+    h('h2', {}, tile.big && !arranging ? h('button', { type: 'button', onclick: () => openBig(ctx, tile) }, tile.title) : tile.title),
     tile.big && !arranging ? h('button', { class: 'tile-open', type: 'button', title: `Open ${tile.title} big`, 'aria-label': `Open ${tile.title} big`, onclick: () => openBig(ctx, tile) }, '⤢') : null);
   return h('section', { class: 'tile', 'data-tile': tile.id, 'data-area': tile.area, 'aria-label': tile.title }, head, content);
 }
@@ -102,6 +104,8 @@ export function renderTiles(ctx) {
   const arranging = ctx.ui.arranging;
   const tiles = ctx.tiles();
   const els = [];
+  // The note for Claude, when it lives with the tiles (js/ui/noteslot.js): first.
+  if (ctx.notePlace() === 'tiles') els.push(noteBlock(ctx));
   for (const id of tiles.order) {
     if (tiles.hidden.includes(id)) continue;
     const tile = BY_ID.get(id);

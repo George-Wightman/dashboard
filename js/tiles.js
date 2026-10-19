@@ -9,6 +9,21 @@ import { weekTotal } from './schedule.js';
 import { cardioQuotaId } from './gym.js';
 
 export const TILES_KEY = 'dash_tiles';
+
+// Where the note for Claude sits on Daylight (js/ui/noteslot.js), this device's own choice.
+export const NOTE_KEY = 'dash_note';
+export const NOTE_PLACES = ['top', 'day', 'tiles'];
+export function loadNotePlace(storage) {
+  try {
+    const v = storage.getItem(NOTE_KEY);
+    return NOTE_PLACES.includes(v) ? v : 'top';
+  } catch {
+    return 'top';
+  }
+}
+export function saveNotePlace(storage, place) {
+  try { storage.setItem(NOTE_KEY, NOTE_PLACES.includes(place) ? place : 'top'); } catch { /* this device only */ }
+}
 // `review` (the week in review) only shows Saturday to Monday, at the top.
 export const TILE_IDS = ['review', 'needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'week'];
 export const DEFAULT_TILES = Object.freeze({ v: 1, order: Object.freeze([...TILE_IDS]), hidden: Object.freeze([]) });

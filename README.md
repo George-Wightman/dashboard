@@ -57,6 +57,10 @@ The default screen since 19 Oct 2026
 The classic screen is still there: ⚙ → **Look → Screen: Classic**, or for one visit add `?classic` to the
 address.
 
+- **One screen.** The tiles flow down two columns (three on a wide window) and each shows its key
+  numbers; tap a tile's title or ⤢ for everything behind them.
+- **The note for Claude** sits at the top, centred under the sky. In **Arrange** it can move under the
+  day or in with the tiles.
 - **The sky: how today is going.** The header is the sky for this moment: dawn, morning, midday,
   afternoon, golden hour, dusk or night. The sun sits on its arc at the time, worked out on the
   device from sunrise and sunset where you are, and the moon shows at night. Each of today's timed
