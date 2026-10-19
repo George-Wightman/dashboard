@@ -31,7 +31,7 @@ import { renderTimeline } from './ui/timeline.js';
 import { renderTiles } from './ui/tiles.js';
 import { paintSnap, openSnap } from './ui/snap.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
-import { deviceZone } from './travel.js';
+import { chooseZoneRecord } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles, loadNotePlace, saveNotePlace } from './tiles.js';
 import { renderNoteSlot } from './ui/noteslot.js';
 
@@ -397,8 +397,9 @@ function checkRollover() {
   if (day !== shownDay) {
     shownDay = day;
     ui.historyDay = null;
-    // A new day: yesterday's check-in drafts no longer apply.
+    // A new day: yesterday's check-in drafts no longer apply, nor a back question asked for yesterday.
     ui.checkin = checkinState();
+    ui.backAsk = false;
     render();
   }
 }
@@ -408,7 +409,9 @@ function checkRollover() {
 function reportZone() {
   try {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (zone && deviceZone(store.doc()) !== zone) store.putCalendar('device-zone', { zone }, 'me');
+    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    const next = chooseZoneRecord(store.doc().calendar?.['device-zone'], { zone, touch }, new Date());
+    if (next) store.putCalendar('device-zone', next, 'me');
   } catch { /* no zone to report */ }
 }
 

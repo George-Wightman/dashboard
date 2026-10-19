@@ -6,7 +6,9 @@ import { gymStatus } from './gym.js';
 import { routinesOf } from './coach.js';
 import { CHECKIN_STATUS } from './checkins.js';
 
-const QUIET_MIN = 30;
+// The planner rewrites its status at least hourly (planner/gas.js heartbeat), so 70 minutes without
+// one means it has stopped, as js/calendar.js's staleSince also reckons.
+const QUIET_MIN = 70;
 const minutesSince = (iso, now) => (now.getTime() - Date.parse(iso)) / 60000;
 
 export function jobLines(doc, now = new Date()) {
@@ -31,7 +33,11 @@ export function jobLines(doc, now = new Date()) {
   }
   const checkins = doc?.calendar?.[CHECKIN_STATUS];
   if (checkins?.status === 'active' && checkins.lastRun) {
-    out.push({ name: 'Check-ins and nudges', ok: !checkins.lastError, line: checkins.lastError ?? `ran at ${when(checkins.lastRun)}` });
+    out.push({ name: 'Check-ins', ok: !checkins.lastError, line: checkins.lastError ?? `ran at ${when(checkins.lastRun)}` });
+  }
+  const nudges = doc?.calendar?.['nudges:status'];
+  if (nudges?.status === 'active' && nudges.lastRun) {
+    out.push({ name: 'Nudges', ok: !nudges.lastError, line: nudges.lastError ?? `${nudges.sent ?? 0} sent today, last at ${when(nudges.lastRun)}` });
   }
   const reviews = doc?.calendar?.['review-status'];
   if (reviews?.status === 'active') out.push({ name: 'Goal reviews', ok: !reviews.lastError, line: reviews.lastError ?? 'working' });

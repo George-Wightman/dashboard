@@ -46,7 +46,7 @@ test("the Hebrew nudge: at 20:00 if today's minutes are short of a seventh of th
   store.logAmount({ itemId: heb.id, amount: 40, day: DAY });
   const [n] = dueNudges(store.doc(), at(20, 5), 4);
   assert.equal(n.id, `hebrew:${DAY}`);
-  assert.equal(n.body, 'Hebrew: 40 of 60 minutes today. 20 to go.');
+  assert.equal(n.body, 'Hebrew logged so far today: 40 of 60 minutes.');
   assert.equal(n.url, './?do=hebrew');
   store.logAmount({ itemId: heb.id, amount: 20, day: DAY });
   assert.deepEqual(ids(store.doc(), at(20, 5)), []);

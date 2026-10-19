@@ -3,27 +3,34 @@
 // The back question in the morning, an unlogged lunch, Hebrew short of the day's share in the
 // evening, and a coach's session half an hour ahead. Pure: a document and a moment in.
 
-import { logicalDay } from './dates.js';
+import { addDays } from './dates.js';
+import { wallClock, deviceZone } from './travel.js';
 import { mealsOn } from './food.js';
 import { readPlannerConfig, dayRecord } from './calendar.js';
 import { sessionTasks, routineFor } from './coach.js';
 
 export const NUDGES_PER_DAY = 4;
 const SESSION_AHEAD_MIN = 35;
-const minuteOf = (t) => t.getHours() * 60 + t.getMinutes();
-const between = (t, from, to) => minuteOf(t) >= from && minuteOf(t) < to;
-const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+// Times are George's, where he is (the zone his phone last reported), not the planner's clock.
+const between = (clk, from, to) => clk.minutes >= from && clk.minutes < to;
+export const QUIET = [22 * 60 + 30, 7 * 60];
+
+// The quiet hours (22:30 to 07:00) in his own time.
+export function quietAt(t, zone) {
+  const m = wallClock(t, zone).minutes;
+  return m >= QUIET[0] || m < QUIET[1];
+}
 const done = (doc, id) => Object.values(doc.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === id);
 
-function backNudge(doc, t, day) {
-  if (!between(t, 7 * 60 + 30, 11 * 60)) return null;
+function backNudge(doc, t, day, clk) {
+  if (!between(clk, 7 * 60 + 30, 11 * 60)) return null;
   const r = doc.gym?.[`back:${day}`];
   if (r && r.status === 'active') return null;
   return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
 }
 
-function lunchNudge(doc, t, day) {
-  if (!between(t, 14 * 60, 17 * 60)) return null;
+function lunchNudge(doc, t, day, clk) {
+  if (!between(clk, 14 * 60, 17 * 60)) return null;
   if (mealsOn(doc, day).some((m) => m.slot === 'lunch')) return null;
   // Only once he snaps meals at all (any in the last week): never a nag about something he doesn't use.
   const since = new Date(t.getTime() - 7 * 86400000).toISOString();
@@ -31,8 +38,8 @@ function lunchNudge(doc, t, day) {
   return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
 }
 
-function hebrewNudge(doc, t, day) {
-  if (!between(t, 20 * 60, 22 * 60 + 30)) return null;
+function hebrewNudge(doc, t, day, clk) {
+  if (!between(clk, 20 * 60, 22 * 60 + 30)) return null;
   const q = doc.items?.['hebrew-minutes'];
   if (!q || q.status !== 'active' || q.type !== 'quota' || !(q.target > 0)) return null;
   const share = Math.round(q.target / 7);
@@ -40,10 +47,11 @@ function hebrewNudge(doc, t, day) {
     .filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === q.id && l.day === day)
     .reduce((n, l) => n + (Number(l.amount) || 0), 0));
   if (minutes >= share) return null;
-  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew: ${minutes} of ${share} minutes today. ${share - minutes} to go.`, url: './?do=hebrew' };
+  // "Logged so far": the Hebrew Reader's minutes arrive when the dashboard syncs on one of his devices.
+  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.`, url: './?do=hebrew' };
 }
 
-function sessionNudges(doc, t, day) {
+function sessionNudges(doc, t, day, zone) {
   const blocks = dayRecord(doc, day)?.blocks ?? [];
   const out = [];
   for (const task of sessionTasks(doc, day, day)) {
@@ -54,7 +62,7 @@ function sessionNudges(doc, t, day) {
     const ahead = (start.getTime() - t.getTime()) / 60000;
     if (ahead <= 0 || ahead > SESSION_AHEAD_MIN) continue;
     out.push({
-      id: `session:${task.id}:${day}`, title: `${task.session.name} at ${hhmm(start)}`,
+      id: `session:${task.id}:${day}`, title: `${task.session.name} at ${wallClock(start, zone).hhmm}`,
       body: routineFor(doc, task) ? "The routine's in Hevy, with the weights filled in." : 'Your session is on the dashboard.', url: './',
     });
   }
@@ -64,6 +72,8 @@ function sessionNudges(doc, t, day) {
 // The nudges due at `t`, whether or not they've been sent (the sender remembers that).
 export function dueNudges(doc, t, dayStartHour = 4) {
   if (readPlannerConfig(doc).config.nudges === false) return [];
-  const day = logicalDay(t, dayStartHour);
-  return [backNudge(doc, t, day), lunchNudge(doc, t, day), hebrewNudge(doc, t, day), ...sessionNudges(doc, t, day)].filter(Boolean);
+  const zone = deviceZone(doc);
+  const clk = wallClock(t, zone);
+  const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
+  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), hebrewNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
 }

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '2cd57d78';
+var PLANNER_BUILD = 'f1dec9d8';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -6450,6 +6450,199 @@ function gasCrypto(Utilities) {
 return { TTL_SECONDS, JWT_HOURS, b64url, fromB64url, hkdf, encryptPayload, vapidAuthorization, pushRequest, makeVapidKeys, gasCrypto };
 })();
 
+// ---- js/travel.js
+const __js_travel = (() => {
+// Moving between London and Salzburg. The app follows the device's own clock, but the planner books
+// the calendar in its Apps Script project's time zone, which only George can change. When the two
+// disagree every block lands an hour out, so the dashboard says so and how to fix it. Pure.
+
+// Central Europe: one hour ahead of London all year (both change clocks on the same days).
+const CENTRAL = /^Europe\/(Vienna|Berlin|Zurich|Prague|Budapest|Bratislava|Ljubljana|Zagreb|Belgrade|Rome|Vatican|San_Marino|Malta|Paris|Monaco|Andorra|Madrid|Brussels|Amsterdam|Luxembourg|Copenhagen|Oslo|Stockholm|Warsaw|Vaduz|Busingen|Gibraltar|Tirane|Podgorica|Sarajevo|Skopje)$/;
+
+// Minutes ahead of UTC in `zone` at the moment `at`, or null for a zone this device doesn't know.
+function zoneOffset(zone, at = new Date()) {
+  try {
+    const name = new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'longOffset' })
+      .formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? '';
+    const m = /GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?/.exec(name);
+    if (!m) return null;
+    return m[1] ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0)) : 0;
+  } catch {
+    return null;
+  }
+}
+
+const zoneName = (zone) => (zone === 'Europe/London' ? 'London time' : CENTRAL.test(zone) ? 'Central European time' : zone);
+const SETTING = { 0: '(GMT+00:00) London', 60: '(GMT+01:00) Vienna' };
+
+// The zone a device last reported (js/app.js writes it when it changes).
+function deviceZone(doc) {
+  const r = doc?.calendar?.['device-zone'];
+  return r && r.status === 'active' && typeof r.zone === 'string' ? r.zone : null;
+}
+
+// What to tell George when the planner books in a different zone from the one he's in, or null.
+function zoneWarning({ plannerZone, deviceZone: here, at = new Date() }) {
+  if (!plannerZone || !here) return null;
+  const a = zoneOffset(plannerZone, at);
+  const b = zoneOffset(here, at);
+  if (a == null || b == null || a === b) return null;
+  const hours = Math.abs(b - a) / 60;
+  const gap = hours === 1 ? 'an hour' : `${hours} hours`;
+  const winter = zoneOffset(here, new Date(Date.UTC(at.getUTCFullYear(), 0, 15)));
+  const setting = SETTING[winter] ?? here;
+  return `The planner books your calendar in ${zoneName(plannerZone)}, but you're on ${zoneName(here)}, so every block lands ${gap} ${b > a ? 'late' : 'early'}. `
+    + `To fix it, open the Dashboard planner script → ⚙ Project Settings → Time zone → ${setting}.`;
+}
+
+// For Claude, at the top of every read when George's phone and the planner are in different zones:
+// where he is, and how to turn a time he says into the planner's. Not a problem to fix — his phone
+// shows every block in his own time — just something to book by.
+function zoneNote({ plannerZone, deviceZone: here, at = new Date() }) {
+  if (!plannerZone || !here) return null;
+  const a = zoneOffset(plannerZone, at);
+  const b = zoneOffset(here, at);
+  if (a == null || b == null || a === b) return null;
+  const diff = (b - a) / 60;
+  const hrs = Math.abs(diff) === 1 ? 'an hour' : `${Math.abs(diff)} hours`;
+  const pad = (n) => String(n).padStart(2, '0');
+  const example = ((17 * 60 - (b - a)) % 1440 + 1440) % 1440;
+  return `George is on ${zoneName(here)} (his phone says ${here}); the planner books in ${zoneName(plannerZone)}, ${hrs} ${diff > 0 ? 'behind' : 'ahead'}. `
+    + `A time he gives you is his local time: ${diff > 0 ? 'take' : 'add'} ${hrs} ${diff > 0 ? 'off' : 'on'} for \`time\` (his 17:00 is "${pad(Math.floor(example / 60))}:${pad(example % 60)}"), and the same for dayHours and off hours; near midnight the date moves too. `
+    + `Times in these reads are ${zoneName(plannerZone)}: ${diff > 0 ? 'add' : 'take'} ${hrs} ${diff > 0 ? '' : 'off '}when you tell him one. `
+    + 'His phone shows every block in his own time.';
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// The wall clock in `zone` at `t`: its date, minutes since midnight and HH:MM. A zone this device
+// doesn't know (or none) gives the device's own clock.
+function wallClock(t, zone) {
+  let parts = null;
+  try {
+    if (zone) {
+      parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+        .formatToParts(t).map((p) => [p.type, p.value]));
+    }
+  } catch { parts = null; }
+  const [y, mo, d, h, mi] = parts
+    ? [parts.year, parts.month, parts.day, Number(parts.hour), Number(parts.minute)]
+    : [String(t.getFullYear()), pad2(t.getMonth() + 1), pad2(t.getDate()), t.getHours(), t.getMinutes()];
+  return { date: `${y}-${mo}-${d}`, minutes: h * 60 + mi, hhmm: `${pad2(h)}:${pad2(mi)}` };
+}
+
+// An HH:MM in one zone as the same moment's HH:MM in another, on `day` (the offsets of that day).
+// Unknown zones, or an empty time, leave it as it is.
+function shiftClock(hhmm, fromZone, toZone, day) {
+  if (!hhmm || !/^\d\d:\d\d$/.test(hhmm) || !fromZone || !toZone || fromZone === toZone) return hhmm;
+  const at = new Date(`${day}T12:00:00Z`);
+  const a = zoneOffset(fromZone, at);
+  const b = zoneOffset(toZone, at);
+  if (a == null || b == null || a === b) return hhmm;
+  const m = ((Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3)) + (b - a)) % 1440 + 1440) % 1440;
+  return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+}
+
+const ZONE_FRESH_DAYS = 3;
+
+// What a device writes as `device-zone`, or null to leave the record alone. A phone (touch) goes where
+// George goes, so it wins; a laptop (often pinned to one zone) reports only when no phone has in the
+// last few days. A phone refreshes its record once a day so that "lately" stays true.
+function chooseZoneRecord(rec, { zone, touch }, now = new Date()) {
+  if (!zone) return null;
+  const live = rec && rec.status !== 'archived' && rec.zone;
+  const age = live && rec.at ? (now.getTime() - Date.parse(rec.at)) / 86400000 : Infinity;
+  if (live && rec.touch && !touch && age < ZONE_FRESH_DAYS) return null;
+  if (live && rec.zone === zone && !!rec.touch === !!touch && age < 1) return null;
+  return { zone, touch: !!touch, at: now.toISOString() };
+}
+return { CENTRAL, zoneOffset, deviceZone, zoneWarning, zoneNote, wallClock, shiftClock, chooseZoneRecord };
+})();
+
+// ---- js/nudges.js
+const __js_nudges = (() => {
+// Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
+// sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
+// The back question in the morning, an unlogged lunch, Hebrew short of the day's share in the
+// evening, and a coach's session half an hour ahead. Pure: a document and a moment in.
+
+const { addDays } = __js_dates;
+const { wallClock, deviceZone } = __js_travel;
+const { mealsOn } = __js_food;
+const { readPlannerConfig, dayRecord } = __js_calendar;
+const { sessionTasks, routineFor } = __js_coach;
+
+const NUDGES_PER_DAY = 4;
+const SESSION_AHEAD_MIN = 35;
+// Times are George's, where he is (the zone his phone last reported), not the planner's clock.
+const between = (clk, from, to) => clk.minutes >= from && clk.minutes < to;
+const QUIET = [22 * 60 + 30, 7 * 60];
+
+// The quiet hours (22:30 to 07:00) in his own time.
+function quietAt(t, zone) {
+  const m = wallClock(t, zone).minutes;
+  return m >= QUIET[0] || m < QUIET[1];
+}
+const done = (doc, id) => Object.values(doc.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === id);
+
+function backNudge(doc, t, day, clk) {
+  if (!between(clk, 7 * 60 + 30, 11 * 60)) return null;
+  const r = doc.gym?.[`back:${day}`];
+  if (r && r.status === 'active') return null;
+  return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
+}
+
+function lunchNudge(doc, t, day, clk) {
+  if (!between(clk, 14 * 60, 17 * 60)) return null;
+  if (mealsOn(doc, day).some((m) => m.slot === 'lunch')) return null;
+  // Only once he snaps meals at all (any in the last week): never a nag about something he doesn't use.
+  const since = new Date(t.getTime() - 7 * 86400000).toISOString();
+  if (!Object.values(doc.meals ?? {}).some((m) => m.kind === 'meal' && m.status === 'active' && String(m.at) >= since)) return null;
+  return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
+}
+
+function hebrewNudge(doc, t, day, clk) {
+  if (!between(clk, 20 * 60, 22 * 60 + 30)) return null;
+  const q = doc.items?.['hebrew-minutes'];
+  if (!q || q.status !== 'active' || q.type !== 'quota' || !(q.target > 0)) return null;
+  const share = Math.round(q.target / 7);
+  const minutes = Math.round(Object.values(doc.logs ?? {})
+    .filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === q.id && l.day === day)
+    .reduce((n, l) => n + (Number(l.amount) || 0), 0));
+  if (minutes >= share) return null;
+  // "Logged so far": the Hebrew Reader's minutes arrive when the dashboard syncs on one of his devices.
+  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.`, url: './?do=hebrew' };
+}
+
+function sessionNudges(doc, t, day, zone) {
+  const blocks = dayRecord(doc, day)?.blocks ?? [];
+  const out = [];
+  for (const task of sessionTasks(doc, day, day)) {
+    if (done(doc, task.id)) continue;
+    const block = blocks.find((b) => (b.items ?? []).includes(task.id) && b.state !== 'rough');
+    if (!block) continue;
+    const start = new Date(block.start);
+    const ahead = (start.getTime() - t.getTime()) / 60000;
+    if (ahead <= 0 || ahead > SESSION_AHEAD_MIN) continue;
+    out.push({
+      id: `session:${task.id}:${day}`, title: `${task.session.name} at ${wallClock(start, zone).hhmm}`,
+      body: routineFor(doc, task) ? "The routine's in Hevy, with the weights filled in." : 'Your session is on the dashboard.', url: './',
+    });
+  }
+  return out;
+}
+
+// The nudges due at `t`, whether or not they've been sent (the sender remembers that).
+function dueNudges(doc, t, dayStartHour = 4) {
+  if (readPlannerConfig(doc).config.nudges === false) return [];
+  const zone = deviceZone(doc);
+  const clk = wallClock(t, zone);
+  const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
+  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), hebrewNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
+}
+return { NUDGES_PER_DAY, QUIET, quietAt, dueNudges };
+})();
+
 // ---- planner/checkins.js
 const __planner_checkins = (() => {
 // Check-ins from the planner (docs/superpowers/specs/2026-09-26-checkins-design.md). ask(), before
@@ -6462,6 +6655,8 @@ const { logicalDay } = __js_dates;
 const { missedTasks, questionFor, CHECKIN_STATUS } = __js_checkins;
 const { pushRequest, makeVapidKeys, gasCrypto, vapidAuthorization, fromB64url } = __planner_webpush;
 const { bytesToBig } = __planner_p256;
+const { quietAt } = __js_nudges;
+const { deviceZone } = __js_travel;
 
 const PINGS_PER_DAY = 4;
 const QUIET_FROM = '22:30';
@@ -6577,7 +6772,8 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
     const keys = tools ? vapid(null) : null;
     let sent = 0;
     const gone = new Set();
-    if (pending.length && subs.length && keys && !isQuiet(t)) {
+    // Quiet hours in George's own time, where he is.
+    if (pending.length && subs.length && keys && !quietAt(t, deviceZone(doc))) {
       const push = makePusher({ UrlFetchApp, Utilities, tools, keys, t });
       for (const rec of pending) {
         if (left <= 0) break;
@@ -6610,80 +6806,6 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
 return { PINGS_PER_DAY, QUIET_FROM, QUIET_UNTIL, PUSH_MAX_AGE_HOURS, VAPID_SUBJECT, isQuiet, pushSubscriptions, makePusher, createCheckins };
 })();
 
-// ---- js/nudges.js
-const __js_nudges = (() => {
-// Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
-// sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
-// The back question in the morning, an unlogged lunch, Hebrew short of the day's share in the
-// evening, and a coach's session half an hour ahead. Pure: a document and a moment in.
-
-const { logicalDay } = __js_dates;
-const { mealsOn } = __js_food;
-const { readPlannerConfig, dayRecord } = __js_calendar;
-const { sessionTasks, routineFor } = __js_coach;
-
-const NUDGES_PER_DAY = 4;
-const SESSION_AHEAD_MIN = 35;
-const minuteOf = (t) => t.getHours() * 60 + t.getMinutes();
-const between = (t, from, to) => minuteOf(t) >= from && minuteOf(t) < to;
-const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-const done = (doc, id) => Object.values(doc.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === id);
-
-function backNudge(doc, t, day) {
-  if (!between(t, 7 * 60 + 30, 11 * 60)) return null;
-  const r = doc.gym?.[`back:${day}`];
-  if (r && r.status === 'active') return null;
-  return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
-}
-
-function lunchNudge(doc, t, day) {
-  if (!between(t, 14 * 60, 17 * 60)) return null;
-  if (mealsOn(doc, day).some((m) => m.slot === 'lunch')) return null;
-  // Only once he snaps meals at all (any in the last week): never a nag about something he doesn't use.
-  const since = new Date(t.getTime() - 7 * 86400000).toISOString();
-  if (!Object.values(doc.meals ?? {}).some((m) => m.kind === 'meal' && m.status === 'active' && String(m.at) >= since)) return null;
-  return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
-}
-
-function hebrewNudge(doc, t, day) {
-  if (!between(t, 20 * 60, 22 * 60 + 30)) return null;
-  const q = doc.items?.['hebrew-minutes'];
-  if (!q || q.status !== 'active' || q.type !== 'quota' || !(q.target > 0)) return null;
-  const share = Math.round(q.target / 7);
-  const minutes = Math.round(Object.values(doc.logs ?? {})
-    .filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === q.id && l.day === day)
-    .reduce((n, l) => n + (Number(l.amount) || 0), 0));
-  if (minutes >= share) return null;
-  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew: ${minutes} of ${share} minutes today. ${share - minutes} to go.`, url: './?do=hebrew' };
-}
-
-function sessionNudges(doc, t, day) {
-  const blocks = dayRecord(doc, day)?.blocks ?? [];
-  const out = [];
-  for (const task of sessionTasks(doc, day, day)) {
-    if (done(doc, task.id)) continue;
-    const block = blocks.find((b) => (b.items ?? []).includes(task.id) && b.state !== 'rough');
-    if (!block) continue;
-    const start = new Date(block.start);
-    const ahead = (start.getTime() - t.getTime()) / 60000;
-    if (ahead <= 0 || ahead > SESSION_AHEAD_MIN) continue;
-    out.push({
-      id: `session:${task.id}:${day}`, title: `${task.session.name} at ${hhmm(start)}`,
-      body: routineFor(doc, task) ? "The routine's in Hevy, with the weights filled in." : 'Your session is on the dashboard.', url: './',
-    });
-  }
-  return out;
-}
-
-// The nudges due at `t`, whether or not they've been sent (the sender remembers that).
-function dueNudges(doc, t, dayStartHour = 4) {
-  if (readPlannerConfig(doc).config.nudges === false) return [];
-  const day = logicalDay(t, dayStartHour);
-  return [backNudge(doc, t, day), lunchNudge(doc, t, day), hebrewNudge(doc, t, day), ...sessionNudges(doc, t, day)].filter(Boolean);
-}
-return { NUDGES_PER_DAY, dueNudges };
-})();
-
 // ---- planner/nudges.js
 const __planner_nudges = (() => {
 // Nudges from the planner (js/nudges.js has the rules): each due one is pushed to George's devices
@@ -6692,8 +6814,9 @@ const __planner_nudges = (() => {
 // the planner.
 
 const { logicalDay } = __js_dates;
-const { dueNudges, NUDGES_PER_DAY } = __js_nudges;
-const { pushSubscriptions, isQuiet, makePusher } = __planner_checkins;
+const { dueNudges, quietAt, NUDGES_PER_DAY } = __js_nudges;
+const { deviceZone } = __js_travel;
+const { pushSubscriptions, makePusher } = __planner_checkins;
 const { gasCrypto } = __planner_webpush;
 
 function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
@@ -6709,12 +6832,13 @@ function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, no
     const privateKey = props.get('VAPID_PRIVATE');
     const publicKey = props.get('VAPID_PUBLIC');
     const subs = pushSubscriptions(store.doc());
-    if (isQuiet(t) || !tools || !privateKey || !publicKey || !subs.length) return { changed: false, sent: 0 };
+    if (quietAt(t, deviceZone(store.doc())) || !tools || !privateKey || !publicKey || !subs.length) return { changed: false, sent: 0 };
     const due = dueNudges(store.doc(), t, dayStartHour).filter((n) => !state.sent.includes(n.id))
       .slice(0, Math.max(0, NUDGES_PER_DAY - state.sent.length));
     if (!due.length) return { changed: false, sent: 0 };
     const push = makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t });
     const gone = new Set();
+    const problems = [];
     let sent = 0;
     for (const n of due) {
       const devices = subs.filter((s) => !gone.has(s.id));
@@ -6722,9 +6846,10 @@ function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, no
       try {
         const r = push(devices, { title: n.title, body: n.body.slice(0, 140), url: n.url, tag: n.id });
         r.gone.forEach((id) => gone.add(id));
-        r.failed.forEach((f) => log(`Nudges: ${f}`));
+        r.failed.forEach((f) => { problems.push(f); log(`Nudges: ${f}`); });
         if (r.ok) sent++;
       } catch (e) {
+        problems.push(`Couldn't send a nudge (${e?.message ?? e})`);
         log(`Nudges: couldn't send (${e?.message ?? e})`);
         break;
       }
@@ -6733,7 +6858,11 @@ function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, no
     }
     props.put('NUDGES', JSON.stringify(state));
     for (const id of gone) store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner');
-    return { changed: gone.size > 0, sent };
+    // For ⚙ → Claude's jobs: what was sent today, and the last problem (written only when tried).
+    const prev = store.doc().calendar?.['nudges:status'];
+    const sentToday = (prev?.status === 'active' && prev.day === today ? prev.sent ?? 0 : 0) + sent;
+    store.putCalendar('nudges:status', { day: today, lastRun: t.toISOString(), sent: sentToday, lastError: problems.length ? problems.join('; ').slice(0, 300) : null }, 'planner');
+    return { changed: true, sent };
   }
 
   return { send };

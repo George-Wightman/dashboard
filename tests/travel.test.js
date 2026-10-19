@@ -45,7 +45,7 @@ test("every read tells Claude where George is and how to turn his times into the
   doc.calendar['device-zone'] = { id: 'device-zone', status: 'active', zone: 'Europe/Vienna' };
   assert.equal(deviceZone(doc), 'Europe/Vienna');
   assert.equal(zoneNote({ plannerZone: 'Europe/London', deviceZone: 'Europe/Vienna', at: NOV }),
-    "George is on Central European time (his phone says Europe/Vienna); the planner books in London time, an hour behind. A time he gives you is his local time: take an hour off for `time` (his 17:00 is \"16:00\"). His phone shows every block in his own time.");
+    "George is on Central European time (his phone says Europe/Vienna); the planner books in London time, an hour behind. A time he gives you is his local time: take an hour off for `time` (his 17:00 is \"16:00\"), and the same for dayHours and off hours; near midnight the date moves too. Times in these reads are London time: add an hour when you tell him one. His phone shows every block in his own time.");
   assert.match(header(doc, '2026-11-10'), /\nGeorge is on Central European time/);
   assert.doesNotMatch(header(fixture(), '2026-11-10'), /George is on/);
   assert.ok(!attention(doc, '2026-11-10').some((l) => /lands an hour/.test(l)), 'no warning: it is not a problem to fix');

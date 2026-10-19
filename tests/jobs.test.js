@@ -18,7 +18,7 @@ test('each background job says when it last worked, and what is wrong', () => {
   doc.calendar['review-status'] = { id: 'review-status', status: 'active', lastError: 'Goal reviews could not run' };
   const jobs = jobLines(doc, NOW);
   assert.deepEqual(jobs.map((j) => [j.name, j.ok]), [
-    ['Calendar planner', true], ['Reading Hevy', true], ['Sessions into Hevy', false], ['Check-ins and nudges', true], ['Goal reviews', false],
+    ['Calendar planner', true], ['Reading Hevy', true], ['Sessions into Hevy', false], ['Check-ins', true], ['Goal reviews', false],
   ]);
   assert.match(jobs[0].line, /^ran at \d\d:\d\d$/);
   assert.match(jobs[2].line, /Hevy wouldn't take the routine/);

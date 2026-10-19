@@ -469,8 +469,6 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 /* Week in review: the number, the misses in two lines, the chips, the hand-over. */
 .tile .review-misses { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; }
 .tile .review-pushed { display: none; }
-/* Needs you: at most three, compact. */
-.tile .needs-entry:nth-of-type(n+4) { display: none; }
 @media (min-width: 1500px) { .dl-tiles { columns: 3 240px; } }
 
 /* The note for Claude at the top, centred under the sky (its default place). */

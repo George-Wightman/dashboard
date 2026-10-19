@@ -8,6 +8,8 @@ import { logicalDay } from '../js/dates.js';
 import { missedTasks, questionFor, CHECKIN_STATUS } from '../js/checkins.js';
 import { pushRequest, makeVapidKeys, gasCrypto, vapidAuthorization, fromB64url } from './webpush.js';
 import { bytesToBig } from './p256.js';
+import { quietAt } from '../js/nudges.js';
+import { deviceZone } from '../js/travel.js';
 
 export const PINGS_PER_DAY = 4;
 export const QUIET_FROM = '22:30';
@@ -123,7 +125,8 @@ export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () 
     const keys = tools ? vapid(null) : null;
     let sent = 0;
     const gone = new Set();
-    if (pending.length && subs.length && keys && !isQuiet(t)) {
+    // Quiet hours in George's own time, where he is.
+    if (pending.length && subs.length && keys && !quietAt(t, deviceZone(doc))) {
       const push = makePusher({ UrlFetchApp, Utilities, tools, keys, t });
       for (const rec of pending) {
         if (left <= 0) break;

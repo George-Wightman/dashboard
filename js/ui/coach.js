@@ -7,6 +7,11 @@ import { BACK, backRowState, backScores, backFlag, nextSession, sessionLines, se
 import { liftSessions, kgText } from '../gym.js';
 import { addDays, shortWeekday, shortDate } from '../dates.js';
 import { bigSection } from './big.js';
+import { shiftClock } from '../travel.js';
+import { plannerStatus } from '../calendar.js';
+
+// A task's time (the planner's clock) in George's own (js/travel.js).
+const localTime = (doc, t) => shiftClock(t.time, plannerStatus(doc)?.timeZone ?? null, Intl.DateTimeFormat().resolvedOptions().timeZone, t.date);
 
 const dayWord = (day, today) => (day === today ? 'Today' : day === addDays(today, 1) ? 'Tomorrow' : `${shortWeekday(day)} ${shortDate(day)}`);
 
@@ -80,7 +85,7 @@ export function renderCoach(ctx) {
   if (!next && !anyBack) return null;
   return h('div', { class: 'coach' },
     next ? h('div', { class: 'coach-next' },
-      h('p', { class: 'coach-name' }, h('strong', {}, next.session.name), ` · ${dayWord(next.date, today)}${next.time ? ` ${next.time}` : ''}`),
+      h('p', { class: 'coach-name' }, h('strong', {}, next.session.name), ` · ${dayWord(next.date, today)}${next.time ? ` ${localTime(doc, next)}` : ''}`),
       sessionLines(next.session).filter((l) => l !== next.session.note).slice(0, 3).map((l) => h('p', { class: 'coach-line' }, l))) : null,
     anyBack ? h('div', { class: 'coach-back' }, h('span', { class: 'coach-label' }, 'Back'), backCells(doc, today, 7)) : null);
 }
@@ -103,7 +108,7 @@ export function renderCoachBig(ctx) {
   if (!coming.length && !ready.length && !scores.length) return null;
   return h('div', { class: 'big coach' },
     coming.length ? bigSection('Coming sessions', coming.map((t) => h('div', { class: 'coach-next' },
-      h('p', { class: 'coach-name' }, h('strong', {}, t.session.name), ` · ${dayWord(t.date, today)}${t.time ? ` ${t.time}` : ''}`),
+      h('p', { class: 'coach-name' }, h('strong', {}, t.session.name), ` · ${dayWord(t.date, today)}${t.time ? ` ${localTime(doc, t)}` : ''}`),
       sessionLines(t.session).map((l) => h('p', { class: 'coach-line' }, l))))) : null,
     ready.length ? bigSection('Ready for more weight', h('ul', { class: 'coach-ready' }, ready)) : null,
     scores.length ? bigSection('Back, the last 90 mornings', backCells(doc, today, 90),

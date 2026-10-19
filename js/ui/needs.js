@@ -6,7 +6,7 @@ import { h } from './dom.js';
 import { needsEntries, needsCopy } from '../needs.js';
 import { resolveConflict, openTaskCard } from './agenda.js';
 
-const SHOWN = 5;
+const SHOWN = 3;
 
 export function renderNeeds(ctx) {
   const doc = ctx.store.doc();

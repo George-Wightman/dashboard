@@ -406,7 +406,8 @@ Tapping one opens the thing to do. Tell Claude to turn them off (`nudges: false`
 The planner keeps booking in London time, and your phone shows every block in its own time, so
 nothing needs changing when you travel. Each device notes the time zone it's in, and Claude's reads
 start by saying where you are, so a time you give Claude in Salzburg ("the gym at 17:00") is booked as
-your 17:00. The sky follows your device too (anywhere on Central European time is Salzburg).
+your 17:00. A time you type in the app is your time too, and nudges and quiet hours follow your
+phone's clock. The sky follows your device too (anywhere on Central European time is Salzburg).
 
 ## Hevy
 

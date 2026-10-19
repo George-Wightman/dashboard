@@ -1,5 +1,7 @@
 // The edit panel: add or edit an item (task, habit, weekly target) or a goal. Archive, never delete.
 
+import { shiftClock } from '../travel.js';
+import { plannerStatus } from '../calendar.js';
 import { h } from './dom.js';
 import { weekday } from '../dates.js';
 import { parseLength, formatAmount } from '../parse.js';
@@ -48,6 +50,10 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
   draft.repeat ??= { kind: 'daily' };
   draft.minutesText ??= draft.minutes ? formatAmount(draft.minutes, 'minutes') : '';
   draft.time ??= '';
+  // A time is the planner's wall clock (its zone); George types and reads it in his own (js/travel.js).
+  const plannerZone = plannerStatus(store.doc())?.timeZone ?? null;
+  const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (existing?.time) draft.time = shiftClock(existing.time, plannerZone, here, existing.date ?? today);
   let measure = map === 'goals' && draft.target > 0 ? 'number' : 'milestones';
   let errorEl = null;
 
@@ -253,7 +259,7 @@ export function openEditor(ctx, { map = 'items', id = null, type = 'task' } = {}
       if (text && minutes == null) throw new Error('Length: try 45m, 2h or 1h30 (5 minutes to 12 hours).');
       fields.minutes = minutes;
     }
-    if (draft.type === 'task' || draft.type === 'habit') fields.time = draft.time || null;
+    if (draft.type === 'task' || draft.type === 'habit') fields.time = draft.time ? shiftClock(draft.time, here, plannerZone, draft.date ?? today) : null;
     fields.notes = String(draft.notes ?? '').trim();
     if (fields.notes.length > 1000) throw new Error('Notes can be at most 1000 characters.');
     return fields;
