@@ -1,1 +1,6 @@
-* -text
+# Every text file is LF, on every machine (Windows included). Binary files are left alone.
+* text=auto eol=lf
+*.woff2 binary
+*.png binary
+*.jpg binary
+*.ico binary
