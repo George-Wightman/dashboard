@@ -435,3 +435,8 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .review-stats li { padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: color-mix(in srgb, var(--tile-ink, var(--dl-ink)) 10%, transparent); }
 .review-plan { align-self: flex-start; display: inline-flex; align-items: center; text-decoration: none; }
 .tile[data-area="review"] .review-plan { background: var(--dl-on-review); color: var(--dl-review); }
+
+/* Hebrew growth. */
+.heb-growth { margin: 0; font-size: 14px; font-weight: 600; }
+.heb-trend { display: flex; align-items: flex-end; gap: 6px; height: 80px; }
+.heb-trend-bar { flex: 1; max-width: 36px; border-radius: 6px 6px 2px 2px; background: var(--dl-hebrew, var(--accent)); }

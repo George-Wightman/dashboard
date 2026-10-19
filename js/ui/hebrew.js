@@ -123,6 +123,31 @@ function recentWords(now) {
     h('span', { class: 'heb-said', lang: 'he', dir: 'rtl' }, words.join(' · ')));
 }
 
+// Strong words now, how many more than a week ago (null with no week before to compare), and words
+// said live this week: progress, not just time spent.
+export function hebrewGrowth(now) {
+  if (!now) return null;
+  const weeks = now.strongWeeks ?? [];
+  const before = weeks.at(-2);
+  return { strong: now.strong ?? 0, gained: before == null ? null : (now.strong ?? 0) - before, liveWeek: now.liveWeek ?? 0 };
+}
+
+function growthLine(now) {
+  const g = hebrewGrowth(now);
+  if (!g || (!g.strong && !g.liveWeek)) return null;
+  const parts = [`${g.strong} strong words${g.gained ? ` (${g.gained > 0 ? '+' : ''}${g.gained} this week)` : ''}`, `${g.liveWeek} said live this week`];
+  return h('p', { class: 'heb-growth' }, parts.join(' · '));
+}
+
+// The last 8 weeks of strong words, as bars, for the big view.
+function strongTrend(now) {
+  const weeks = (now?.strongWeeks ?? []).filter((n) => n != null);
+  if (weeks.length < 2) return null;
+  const top = Math.max(...weeks, 1);
+  return h('div', { class: 'heb-trend', role: 'img', 'aria-label': `Strong words over the last ${weeks.length} weeks: ${weeks.join(', ')}` },
+    weeks.map((n) => h('span', { class: 'heb-trend-bar', style: `height:${Math.max(4, Math.round((n / top) * 100))}%`, title: `${n} strong` })));
+}
+
 export function renderHebrew(ctx) {
   const doc = ctx.store.doc();
   const goal = doc.goals[HEBREW_IDS.goal];
@@ -141,6 +166,7 @@ export function renderHebrew(ctx) {
     h('h2', {}, 'Hebrew', s && s.current > 1 ? h('span', { class: 'streak', title: `Best: ${s.best}` }, `${s.current}-day streak`) : null),
     weekCells(doc, today),
     stats.length ? h('div', { class: 'heb-stats' }, stats) : null,
+    growthLine(now),
     bands(now),
     rung(doc),
     recentWords(now));
@@ -199,6 +225,7 @@ export function renderHebrewBig(ctx) {
   base.querySelector('h2')?.remove();
   return h('div', { class: 'big hebrew' },
     bigSection('This week', base),
+    strongTrend(ctx.store.doc().goals[HEBREW_IDS.goal]?.hebrewNow) ? bigSection('Strong words, the last 8 weeks', strongTrend(ctx.store.doc().goals[HEBREW_IDS.goal]?.hebrewNow)) : null,
     bigSection('The ladder to a 10-minute conversation', ladderList(ctx)),
     bigSection('The last two weeks', daysTable(ctx.store.doc(), ctx.store.today())));
 }

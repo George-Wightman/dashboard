@@ -287,7 +287,20 @@ export function hebrewSummary({ stats, landed }, metrics, today) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, RECENT_WORDS)
     .map(([word, ts]) => ({ word: word.trim().slice(0, 40), day: localDay(ts) }));
-  return { ...metrics, bands, daily, recent };
+  // Growth: strong words at the end of each of the last 8 weeks (oldest first; null before the
+  // stats begin), and words said live in the last 7 days.
+  const strongBy = (day) => {
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (days[i] > day) continue;
+      const n = stats[days[i]]?.bands?.strong;
+      if (typeof n === 'number') return Math.round(n);
+    }
+    return null;
+  };
+  const strongWeeks = Array.from({ length: 8 }, (_, i) => strongBy(addDays(today, -7 * (7 - i))));
+  const weekFrom = addDays(today, -6);
+  const liveWeek = Object.values(landed).filter((ts) => typeof ts === 'number' && localDay(ts) && localDay(ts) >= weekFrom && localDay(ts) <= today).length;
+  return { ...metrics, bands, daily, recent, strongWeeks, liveWeek };
 }
 
 // Only the named keys that hold a finite number, as whole numbers.

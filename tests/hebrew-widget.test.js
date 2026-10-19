@@ -38,10 +38,11 @@ test('hebrewSummary: the ladder numbers, the latest bands, two weeks of days and
       '2026-09-09': { sec: 1200, spoken: 20, spokenOk: 19 },
     },
     recent: [{ word: 'תודה', day: '2026-09-09' }, { word: 'שלום', day: '2026-09-09' }, { word: 'בוקר', day: '2026-09-01' }],
+    strongWeeks: [null, null, 1, 1, 1, 1, 1, 79], liveWeek: 2,
   });
   assert.equal(RECENT_DAYS, 14);
   assert.deepEqual(hebrewSummary({ stats: {}, landed: {} }, { strong: 0, live: 0, gold: 0, days: 0 }, TODAY),
-    { strong: 0, live: 0, gold: 0, days: 0, bands: null, daily: {}, recent: [] });
+    { strong: 0, live: 0, gold: 0, days: 0, bands: null, daily: {}, recent: [], strongWeeks: [null, null, null, null, null, null, null, null], liveWeek: 0 });
 });
 
 test('a sync keeps the summary on the goal, and a sync that finds nothing new writes nothing', async () => {
@@ -104,4 +105,14 @@ test('the panel is wired in: registered, offline-shelled, and styled from the pa
   for (const sel of ['.heb-week', '.heb-cell.lvl4', '.heb-stats', '.heb-band-bar', '.band.strong', '.heb-said']) assert.ok(css.includes(sel), sel);
   // the words said live are Hebrew, right to left
   assert.match(read('js/ui/hebrew.js'), /lang: 'he', dir: 'rtl'/);
+});
+
+test('growth: strong words at the end of each of the last 8 weeks, and words said live this week', async () => {
+  const s = hebrewSummary({ stats: STATS, landed: LANDED }, { strong: 79, live: 3, gold: 2, days: 3 }, TODAY);
+  // Weeks ending 23 Jul … 10 Sep: nothing known before 1 Aug (23 and 30 Jul), then 1, then 79 by the 10th.
+  assert.deepEqual(s.strongWeeks, [null, null, 1, 1, 1, 1, 1, 79]);
+  assert.equal(s.liveWeek, 2);
+  const { hebrewGrowth } = await import('../js/ui/hebrew.js');
+  assert.deepEqual(hebrewGrowth(s), { strong: 79, gained: 78, liveWeek: 2 });
+  assert.equal(hebrewGrowth({ strong: 5, strongWeeks: [null, null, null, null, null, null, null, 5], liveWeek: 0 }).gained, null, 'no week before to compare with');
 });
