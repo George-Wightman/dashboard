@@ -571,3 +571,6 @@ button.link.update-ready { color: var(--accent); }
 .agenda .agenda-entry { padding: .45rem 0; border-bottom: 0; border-top: 1px solid var(--border); }
 .agenda-line { display: flex; justify-content: space-between; align-items: baseline; gap: .6rem; }
 .agenda .agenda-entry p { margin: .1rem 0 0; font-size: .8rem; }
+.jobs .job { display: flex; gap: .4rem; align-items: baseline; }
+.job-mark { font-weight: 700; width: 1rem; flex: none; }
+.job.bad .job-mark { color: var(--bad); }

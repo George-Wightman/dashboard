@@ -1,9 +1,9 @@
 {
-  "id": "ef8fdd1f3616d6cd4b12a19eb533b0d10df9fd67a80a486d82569b8c4af8692c",
+  "id": "2aadefd7f6f6df64cf7ce67976536b03572bd3c9cfaa6437a4072fadd2bf82fd",
   "files": {
     "./": "3b3a3b9f1952c8e8514d804e58156ecd3ba6d0a4b3fb10e7e7b0568b7ca82161",
     "index.html": "3b3a3b9f1952c8e8514d804e58156ecd3ba6d0a4b3fb10e7e7b0568b7ca82161",
-    "styles.css": "e100f6376f7d577d902b54283d1c01111829aaefb1db4294ace704ce85a09834",
+    "styles.css": "cdf690ab110e5033e13a7864df0f81a933392f0b2519ae259e0eab3a39643e81",
     "styles/daylight.css": "b932a18031fbd84126d38a98eaaef9ee708c6aae5c7d62d8d1f3c40d7af5c653",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
@@ -50,7 +50,7 @@
     "js/ui/widgets.js": "09d65ea105d5c693bae5afe254e96c4704e24c0baa80e290b23e9cffbef9cc48",
     "js/ui/flags.js": "2d94fb32ae5edf77ec93636a27e560bb781e011e9ccebbdd997690cd8bf015cf",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
-    "js/ui/claude.js": "89c3992e4d88bb98294a728f4acfa75675297e1d1ab9642112d0e43592c4e4e6",
+    "js/ui/claude.js": "f36e4559a9836fedc6dc330ea22ead04aea37198345c4697eea831c51e157984",
     "js/ui/sources.js": "1faf89ebe7fa9856d268c5406add111bac9632f25865f12ae9431ef7dcdfb22f",
     "js/ui/gym.js": "88f136c3578e6a15e5f4f98d95f721492ed47f311a5120cd5b747506717f71fa",
     "js/ui/hebrew.js": "7cb19648645f76be6a0fb9e24c8bd62c5350eaead2c6625c5e0c1ccdc9c29d2b",
@@ -77,6 +77,7 @@
     "js/nudges.js": "e14e8bf6431e39429b5b1137e6ea46f6a33c66388b73d75dd91ab56478cf3a6e",
     "js/review.js": "f8ab2449958bf945d99af808eb5568d7cde9d05027b1b33b8e163e1cb3ef5560",
     "js/ui/review.js": "681eccd930ee009f6b23948f6e3fb075511e85f20695c23faff831ff876d274f",
-    "js/ui/noteslot.js": "9fd36f0c87571db1f2bfc6f589aafd6ba14b575dfe26108c5c32905bf4b6feb9"
+    "js/ui/noteslot.js": "9fd36f0c87571db1f2bfc6f589aafd6ba14b575dfe26108c5c32905bf4b6feb9",
+    "js/jobs.js": "6484886b31dd49e245255c43beb8791da0daf9f62c9e40dfae02f4b1a49ec41e"
   }
 }

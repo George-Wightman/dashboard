@@ -10,6 +10,7 @@ import { attention } from '../attention.js';
 import { shortWeekday, shortDate } from '../dates.js';
 import { gymConfig, gymStatusLines, cardioQuotaId, shortLift, kgText } from '../gym.js';
 import { checkinsSince, CHECKIN_STATUS } from '../checkins.js';
+import { jobLines } from '../jobs.js';
 
 export const CLAUDE_CAN = [
   'Add, change, tick and archive anything on the dashboard — every change is listed below, with Undo',
@@ -63,7 +64,8 @@ export { offText };
 // The folded line: Claude's changes this week, and how much needs looking at.
 export function claudeSummary(doc, today, now) {
   const n = attention(doc, today).length;
-  return `${changeCountLine(doc, now)}${n ? ` · ${n} to look at` : ''}`;
+  const bad = jobLines(doc, now).filter((j) => !j.ok).length;
+  return `${changeCountLine(doc, now)}${n ? ` · ${n} to look at` : ''}${bad ? ` · ${bad} job${bad === 1 ? '' : 's'} need${bad === 1 ? 's' : ''} a look` : ''}`;
 }
 
 export function claudePanel(ctx) {
@@ -92,7 +94,10 @@ export function claudePanel(ctx) {
           ruleError.textContent = '';
         } catch (error) { e.target.checked = !e.target.checked; ruleError.textContent = error.message; }
       } }), rule.title)), ruleError) : null;
+  const jobs = jobLines(doc, new Date());
   return h('div', { class: 'claude-panel' },
+    jobs.length ? section('Background jobs', h('ul', { class: 'claude-lines jobs' }, jobs.map((j) => h('li', { class: j.ok ? 'job ok' : 'job bad' },
+      h('span', { class: 'job-mark', 'aria-hidden': 'true' }, j.ok ? '✓' : '!'), h('strong', {}, `${j.name}: `), j.line)))) : null,
     section("Today's brief",
       h('p', {}, briefFor(doc, today) ?? 'No brief for today yet.'),
       earlier.length
