@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { resolveLook, THEME_COLORS, LOOKS, LOOK_CHOICES } from '../js/look.js';
 import { DEFAULT_SETTINGS, SETTINGS_KEY } from '../js/data.js';
 import { MemoryStorage, makeStore } from './helpers.js';
+import { SKY_TOP } from '../js/sky.js';
 
 const at = (hour, minute = 0) => new Date(2026, 8, 12, hour, minute);
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -135,6 +136,7 @@ test('the inline script falls back to the defaults when storage cannot be read',
 
 test('the installed app starts Paper: manifest colours match Paper\'s --bg', () => {
   const manifest = JSON.parse(readFileSync(new URL('../manifest.webmanifest', import.meta.url), 'utf8'));
-  assert.equal(manifest.theme_color, THEME_COLORS.paper);
-  assert.equal(manifest.background_color, THEME_COLORS.paper);
+  // Daylight is the default screen: the title bar starts as the morning sky, the ground behind it.
+  assert.equal(manifest.theme_color, SKY_TOP.morning);
+  assert.equal(manifest.background_color, '#FFF8EF');
 });

@@ -11,6 +11,12 @@ export const PLACES = {
   salzburg: { name: 'Salzburg', lat: 47.8095, lon: 13.055 },
 };
 
+// The top of the sky in each phase (styles/daylight.css --s1), for the installed app's title bar, so
+// it reads as part of the sky rather than a strip above it.
+export const SKY_TOP = Object.freeze({
+  dawn: '#FFBF94', morning: '#B9D7F7', midday: '#9CC8F2', afternoon: '#A9CDEF', golden: '#FFB27A', dusk: '#3E3270', night: '#1B1840',
+});
+
 export function placeFor(timeZone, setting = 'auto') {
   const key = PLACES[setting] ? setting : CENTRAL.test(timeZone ?? '') ? 'salzburg' : 'london';
   return { key, ...PLACES[key] };

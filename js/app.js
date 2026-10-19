@@ -259,7 +259,8 @@ function applyLook() {
     clearOtherScreen(screen);
   }
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta && meta.getAttribute('content') !== THEME_COLORS[look]) meta.setAttribute('content', THEME_COLORS[look]);
+  // On Daylight the sky sets it (js/ui/sky.js), so the title bar is the sky's own colour.
+  if (meta && !daylight() && meta.getAttribute('content') !== THEME_COLORS[look]) meta.setAttribute('content', THEME_COLORS[look]);
 }
 
 function render() {
@@ -517,7 +518,10 @@ render();
 scheduler.now();
 ctx.mealPass();
 
-if ('serviceWorker' in navigator) {
+// ?nosw on localhost: no offline copy, so a check in the browser always runs the files on disk.
+const NO_SW = ['localhost', '127.0.0.1'].includes(location.hostname) && params.has('nosw');
+if (NO_SW && 'serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+if ('serviceWorker' in navigator && !NO_SW) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   // A tapped notification with the app already open: sw.js asks this page to show that check-in.
   navigator.serviceWorker.addEventListener('message', (e) => {

@@ -4,7 +4,7 @@
 // the actions the classic header has: sync, ⚑, Arrange, ⚙ and "Update ready".
 
 import { h } from './dom.js';
-import { sunTimes, skyPhase, sunAt, blockDots } from '../sky.js';
+import { sunTimes, skyPhase, sunAt, blockDots, SKY_TOP } from '../sky.js';
 import { syncLabel, progressText } from '../header.js';
 import { todaySlots } from '../calendar.js';
 import { todayRows } from '../schedule.js';
@@ -82,6 +82,9 @@ export function renderSky(ctx) {
   const phase = skyPhase(now, times);
   const sun = sunAt(now, times);
   root.dataset.phase = phase;
+  // The installed app's title bar takes the top of the sky, so it blends in.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && meta.getAttribute('content') !== SKY_TOP[phase]) meta.setAttribute('content', SKY_TOP[phase]);
   document.title = m.total ? `Today · ${m.done}/${m.total}` : 'Today';
 
   const [syncText, syncTitle] = syncLabel(ctx.syncState());
