@@ -282,7 +282,9 @@ name), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` â€
 start of its title, and the events that are its sessions), `priorityAreas` (areas booked first and
 starred), `areaColors` (`{"Assessment centre": "Grape"}` â€” Google's colour names: Lavender, Sage, Grape,
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
-take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`). `areaCalendars`,
+take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `nudges` (`false` turns off
+the pushes before a miss: the back question at 07:30, lunch at 14:00, Hebrew at 20:00, a session half an
+hour ahead; on by default, at most four a day). `areaCalendars`,
 `areaColors` and `dayHours` change one key at a time; `null` removes a key.
 
 ### `off`

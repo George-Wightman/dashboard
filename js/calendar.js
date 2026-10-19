@@ -16,6 +16,7 @@ export const CALENDAR_DEFAULTS = {
   priorityAreas: [],
   areaColors: {},
   dayHours: {},
+  nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
 };
 
 // Google Calendar's event colours, by the names George sees, and their ids in the API.
@@ -56,6 +57,10 @@ export const CONFIG_CHECKS = {
     return [v[0], v[1]];
   },
   gapMinutes: wholeNumber(0, 60),
+  nudges: (v, field) => {
+    if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
+    return v;
+  },
   defaultMinutes: wholeNumber(5, 240),
   maxBlockMinutes: wholeNumber(30, 480),
   days: wholeNumber(1, 14),

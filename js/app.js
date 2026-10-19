@@ -522,8 +522,9 @@ if ('serviceWorker' in navigator) {
   // A tapped notification with the app already open: sw.js asks this page to show that check-in.
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data?.type !== 'open-checkin') return;
-    const id = new URL(e.data.url, location.href).searchParams.get('checkin');
-    if (id) openCheckin(ctx, id);
+    const target = new URL(e.data.url, location.href).searchParams;
+    if (target.get('checkin')) openCheckin(ctx, target.get('checkin'));
+    else if (target.get('do')) runShortcut(target.get('do')); // a nudge (js/nudges.js)
   });
 }
 // Opened from a notification: straight to the check-in it was about, then tidy the address.
@@ -536,11 +537,8 @@ if (params.has('checkin')) {
 }
 // Opened from a home-screen shortcut (manifest.webmanifest): snap a meal, log Hebrew time, or the
 // morning back check (shown at any hour when asked for); then tidy the address.
-if (params.has('do')) {
-  const shortcut = params.get('do');
-  const url = new URL(location.href);
-  url.searchParams.delete('do');
-  history.replaceState(null, '', url.pathname + url.search + url.hash);
+// A nudge tapped while the app is open comes the same way (the service worker's message, above).
+function runShortcut(shortcut) {
   if (shortcut === 'snap') openSnap(ctx);
   else if (shortcut === 'hebrew') openHebrewLog(ctx);
   else if (shortcut === 'back') {
@@ -548,6 +546,13 @@ if (params.has('do')) {
     ctx.render();
     document.querySelector('.tl-back')?.scrollIntoView({ block: 'center' });
   }
+}
+if (params.has('do')) {
+  const shortcut = params.get('do');
+  const url = new URL(location.href);
+  url.searchParams.delete('do');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+  runShortcut(shortcut);
 }
 reportZone();
 updater.check();

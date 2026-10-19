@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '561c974f';
+var PLANNER_BUILD = '2cd57d78';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1248,6 +1248,7 @@ const CALENDAR_DEFAULTS = {
   priorityAreas: [],
   areaColors: {},
   dayHours: {},
+  nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
 };
 
 // Google Calendar's event colours, by the names George sees, and their ids in the API.
@@ -1288,6 +1289,10 @@ const CONFIG_CHECKS = {
     return [v[0], v[1]];
   },
   gapMinutes: wholeNumber(0, 60),
+  nudges: (v, field) => {
+    if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
+    return v;
+  },
   defaultMinutes: wholeNumber(5, 240),
   maxBlockMinutes: wholeNumber(30, 480),
   days: wholeNumber(1, 14),
@@ -6479,6 +6484,34 @@ function pushSubscriptions(doc) {
     && typeof r.endpoint === 'string' && typeof r.p256dh === 'string' && typeof r.auth === 'string');
 }
 
+// One push to each of `devices` (Web Push, signed with the planner's keys). Returns whether any
+// device took it, the subscriptions that have gone (404/410), and the other failures. Throws only
+// when the requests can't be made at all. Check-ins and nudges (planner/nudges.js) both send this way.
+function makePusher({ UrlFetchApp, Utilities = null, tools, keys, t }) {
+  const auth = new Map();
+  const authFor = (endpoint) => {
+    const origin = (/^(https:\/\/[^/]+)/.exec(endpoint) ?? [])[1] ?? endpoint;
+    if (!auth.has(origin)) {
+      auth.set(origin, vapidAuthorization({ ...tools, endpoint, now: t, subject: VAPID_SUBJECT,
+        privateKey: bytesToBig(fromB64url(keys.privateKey)), publicKey: fromB64url(keys.publicKey) }));
+    }
+    return auth.get(origin);
+  };
+  // A body of bytes goes as a Blob: a plain array could be taken for form fields.
+  const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
+  return (devices, message) => {
+    const responses = UrlFetchApp.fetchAll(devices.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
+    const out = { ok: false, gone: [], failed: [] };
+    responses.forEach((res, i) => {
+      const code = res.getResponseCode();
+      if (code >= 200 && code < 300) out.ok = true;
+      else if (code === 404 || code === 410) out.gone.push(devices[i].id);
+      else out.failed.push(`A ping to the ${devices[i].label ?? 'device'} failed (HTTP ${code})`);
+    });
+    return out;
+  };
+}
+
 function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
   const problems = [];
@@ -6545,36 +6578,22 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
     let sent = 0;
     const gone = new Set();
     if (pending.length && subs.length && keys && !isQuiet(t)) {
-      const auth = new Map();
-      const authFor = (endpoint) => {
-        const origin = (/^(https:\/\/[^/]+)/.exec(endpoint) ?? [])[1] ?? endpoint;
-        if (!auth.has(origin)) {
-          auth.set(origin, vapidAuthorization({ ...tools, endpoint, now: t, subject: VAPID_SUBJECT,
-            privateKey: bytesToBig(fromB64url(keys.privateKey)), publicKey: fromB64url(keys.publicKey) }));
-        }
-        return auth.get(origin);
-      };
+      const push = makePusher({ UrlFetchApp, Utilities, tools, keys, t });
       for (const rec of pending) {
         if (left <= 0) break;
         const devices = subs.filter((s) => !gone.has(s.id));
         if (!devices.length) break;
         const message = { title: 'Check-in', body: questionFor(rec.why, rec.title).slice(0, 140), url: `./?checkin=${encodeURIComponent(rec.id)}`, tag: rec.id };
-        let responses;
+        let result;
         try {
-          // A body of bytes goes as a Blob: a plain array could be taken for form fields.
-          const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
-          responses = UrlFetchApp.fetchAll(devices.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
+          result = push(devices, message);
         } catch (e) {
           note(`Couldn't send a ping: ${e?.message ?? e}`);
           break;
         }
-        let ok = false;
-        responses.forEach((res, i) => {
-          const code = res.getResponseCode();
-          if (code >= 200 && code < 300) ok = true;
-          else if (code === 404 || code === 410) gone.add(devices[i].id);
-          else note(`A ping to the ${devices[i].label ?? 'device'} failed (HTTP ${code})`);
-        });
+        const { ok } = result;
+        for (const id of result.gone) gone.add(id);
+        for (const f of result.failed) note(f);
         // Marked even when it failed: a question is pinged once, and it's waiting in the app anyway.
         store.updateJournal(rec.id, { pushedAt: t.toISOString() });
         if (ok) { sent++; left--; }
@@ -6588,7 +6607,138 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
 
   return { ask, ping, problems: () => [...problems] };
 }
-return { PINGS_PER_DAY, QUIET_FROM, QUIET_UNTIL, PUSH_MAX_AGE_HOURS, VAPID_SUBJECT, isQuiet, pushSubscriptions, createCheckins };
+return { PINGS_PER_DAY, QUIET_FROM, QUIET_UNTIL, PUSH_MAX_AGE_HOURS, VAPID_SUBJECT, isQuiet, pushSubscriptions, makePusher, createCheckins };
+})();
+
+// ---- js/nudges.js
+const __js_nudges = (() => {
+// Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
+// sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
+// The back question in the morning, an unlogged lunch, Hebrew short of the day's share in the
+// evening, and a coach's session half an hour ahead. Pure: a document and a moment in.
+
+const { logicalDay } = __js_dates;
+const { mealsOn } = __js_food;
+const { readPlannerConfig, dayRecord } = __js_calendar;
+const { sessionTasks, routineFor } = __js_coach;
+
+const NUDGES_PER_DAY = 4;
+const SESSION_AHEAD_MIN = 35;
+const minuteOf = (t) => t.getHours() * 60 + t.getMinutes();
+const between = (t, from, to) => minuteOf(t) >= from && minuteOf(t) < to;
+const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+const done = (doc, id) => Object.values(doc.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === id);
+
+function backNudge(doc, t, day) {
+  if (!between(t, 7 * 60 + 30, 11 * 60)) return null;
+  const r = doc.gym?.[`back:${day}`];
+  if (r && r.status === 'active') return null;
+  return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
+}
+
+function lunchNudge(doc, t, day) {
+  if (!between(t, 14 * 60, 17 * 60)) return null;
+  if (mealsOn(doc, day).some((m) => m.slot === 'lunch')) return null;
+  // Only once he snaps meals at all (any in the last week): never a nag about something he doesn't use.
+  const since = new Date(t.getTime() - 7 * 86400000).toISOString();
+  if (!Object.values(doc.meals ?? {}).some((m) => m.kind === 'meal' && m.status === 'active' && String(m.at) >= since)) return null;
+  return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
+}
+
+function hebrewNudge(doc, t, day) {
+  if (!between(t, 20 * 60, 22 * 60 + 30)) return null;
+  const q = doc.items?.['hebrew-minutes'];
+  if (!q || q.status !== 'active' || q.type !== 'quota' || !(q.target > 0)) return null;
+  const share = Math.round(q.target / 7);
+  const minutes = Math.round(Object.values(doc.logs ?? {})
+    .filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === q.id && l.day === day)
+    .reduce((n, l) => n + (Number(l.amount) || 0), 0));
+  if (minutes >= share) return null;
+  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew: ${minutes} of ${share} minutes today. ${share - minutes} to go.`, url: './?do=hebrew' };
+}
+
+function sessionNudges(doc, t, day) {
+  const blocks = dayRecord(doc, day)?.blocks ?? [];
+  const out = [];
+  for (const task of sessionTasks(doc, day, day)) {
+    if (done(doc, task.id)) continue;
+    const block = blocks.find((b) => (b.items ?? []).includes(task.id) && b.state !== 'rough');
+    if (!block) continue;
+    const start = new Date(block.start);
+    const ahead = (start.getTime() - t.getTime()) / 60000;
+    if (ahead <= 0 || ahead > SESSION_AHEAD_MIN) continue;
+    out.push({
+      id: `session:${task.id}:${day}`, title: `${task.session.name} at ${hhmm(start)}`,
+      body: routineFor(doc, task) ? "The routine's in Hevy, with the weights filled in." : 'Your session is on the dashboard.', url: './',
+    });
+  }
+  return out;
+}
+
+// The nudges due at `t`, whether or not they've been sent (the sender remembers that).
+function dueNudges(doc, t, dayStartHour = 4) {
+  if (readPlannerConfig(doc).config.nudges === false) return [];
+  const day = logicalDay(t, dayStartHour);
+  return [backNudge(doc, t, day), lunchNudge(doc, t, day), hebrewNudge(doc, t, day), ...sessionNudges(doc, t, day)].filter(Boolean);
+}
+return { NUDGES_PER_DAY, dueNudges };
+})();
+
+// ---- planner/nudges.js
+const __planner_nudges = (() => {
+// Nudges from the planner (js/nudges.js has the rules): each due one is pushed to George's devices
+// once, at most NUDGES_PER_DAY a day, none in the quiet hours. What was sent is kept in the script's
+// properties, so nothing is written to the dashboard but a retired device. Nothing here can stop
+// the planner.
+
+const { logicalDay } = __js_dates;
+const { dueNudges, NUDGES_PER_DAY } = __js_nudges;
+const { pushSubscriptions, isQuiet, makePusher } = __planner_checkins;
+const { gasCrypto } = __planner_webpush;
+
+function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
+  const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
+
+  // Returns { changed, sent }: changed when a device was retired (data.json needs saving).
+  function send(store) {
+    const t = now();
+    const today = logicalDay(t, dayStartHour);
+    let state = null;
+    try { state = JSON.parse(props.get('NUDGES') ?? 'null'); } catch { /* start the day afresh */ }
+    if (state?.day !== today || !Array.isArray(state.sent)) state = { day: today, sent: [] };
+    const privateKey = props.get('VAPID_PRIVATE');
+    const publicKey = props.get('VAPID_PUBLIC');
+    const subs = pushSubscriptions(store.doc());
+    if (isQuiet(t) || !tools || !privateKey || !publicKey || !subs.length) return { changed: false, sent: 0 };
+    const due = dueNudges(store.doc(), t, dayStartHour).filter((n) => !state.sent.includes(n.id))
+      .slice(0, Math.max(0, NUDGES_PER_DAY - state.sent.length));
+    if (!due.length) return { changed: false, sent: 0 };
+    const push = makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t });
+    const gone = new Set();
+    let sent = 0;
+    for (const n of due) {
+      const devices = subs.filter((s) => !gone.has(s.id));
+      if (!devices.length) break;
+      try {
+        const r = push(devices, { title: n.title, body: n.body.slice(0, 140), url: n.url, tag: n.id });
+        r.gone.forEach((id) => gone.add(id));
+        r.failed.forEach((f) => log(`Nudges: ${f}`));
+        if (r.ok) sent++;
+      } catch (e) {
+        log(`Nudges: couldn't send (${e?.message ?? e})`);
+        break;
+      }
+      // Kept as sent even when it failed: a nudge is tried once.
+      state.sent.push(n.id);
+    }
+    props.put('NUDGES', JSON.stringify(state));
+    for (const id of gone) store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner');
+    return { changed: gone.size > 0, sent };
+  }
+
+  return { send };
+}
+return { createNudges };
 })();
 
 // ---- planner/gas.js
@@ -6620,6 +6770,7 @@ const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner
 const { processWorkflows } = __js_workflow;
 const { runGoalReviews } = __planner_reviews;
 const { createCheckins } = __planner_checkins;
+const { createNudges } = __planner_nudges;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -6986,6 +7137,13 @@ function createPlanner({
         } catch (err) {
           log(clean(`Check-in pings failed: ${err?.message ?? err}`));
         }
+      }
+      // Nudges (planner/nudges.js): a push before a miss. Never stops the planner.
+      try {
+        const nudges = createNudges({ UrlFetchApp, Utilities, props: { get, put }, log, now, dayStartHour: dayStartHour(), crypto: pushCrypto });
+        if (nudges.send(store).changed) await syncOnce({ store, client: session.client });
+      } catch (err) {
+        log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';

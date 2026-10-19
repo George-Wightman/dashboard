@@ -30,6 +30,34 @@ export function pushSubscriptions(doc) {
     && typeof r.endpoint === 'string' && typeof r.p256dh === 'string' && typeof r.auth === 'string');
 }
 
+// One push to each of `devices` (Web Push, signed with the planner's keys). Returns whether any
+// device took it, the subscriptions that have gone (404/410), and the other failures. Throws only
+// when the requests can't be made at all. Check-ins and nudges (planner/nudges.js) both send this way.
+export function makePusher({ UrlFetchApp, Utilities = null, tools, keys, t }) {
+  const auth = new Map();
+  const authFor = (endpoint) => {
+    const origin = (/^(https:\/\/[^/]+)/.exec(endpoint) ?? [])[1] ?? endpoint;
+    if (!auth.has(origin)) {
+      auth.set(origin, vapidAuthorization({ ...tools, endpoint, now: t, subject: VAPID_SUBJECT,
+        privateKey: bytesToBig(fromB64url(keys.privateKey)), publicKey: fromB64url(keys.publicKey) }));
+    }
+    return auth.get(origin);
+  };
+  // A body of bytes goes as a Blob: a plain array could be taken for form fields.
+  const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
+  return (devices, message) => {
+    const responses = UrlFetchApp.fetchAll(devices.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
+    const out = { ok: false, gone: [], failed: [] };
+    responses.forEach((res, i) => {
+      const code = res.getResponseCode();
+      if (code >= 200 && code < 300) out.ok = true;
+      else if (code === 404 || code === 410) out.gone.push(devices[i].id);
+      else out.failed.push(`A ping to the ${devices[i].label ?? 'device'} failed (HTTP ${code})`);
+    });
+    return out;
+  };
+}
+
 export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
   const problems = [];
@@ -96,36 +124,22 @@ export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () 
     let sent = 0;
     const gone = new Set();
     if (pending.length && subs.length && keys && !isQuiet(t)) {
-      const auth = new Map();
-      const authFor = (endpoint) => {
-        const origin = (/^(https:\/\/[^/]+)/.exec(endpoint) ?? [])[1] ?? endpoint;
-        if (!auth.has(origin)) {
-          auth.set(origin, vapidAuthorization({ ...tools, endpoint, now: t, subject: VAPID_SUBJECT,
-            privateKey: bytesToBig(fromB64url(keys.privateKey)), publicKey: fromB64url(keys.publicKey) }));
-        }
-        return auth.get(origin);
-      };
+      const push = makePusher({ UrlFetchApp, Utilities, tools, keys, t });
       for (const rec of pending) {
         if (left <= 0) break;
         const devices = subs.filter((s) => !gone.has(s.id));
         if (!devices.length) break;
         const message = { title: 'Check-in', body: questionFor(rec.why, rec.title).slice(0, 140), url: `./?checkin=${encodeURIComponent(rec.id)}`, tag: rec.id };
-        let responses;
+        let result;
         try {
-          // A body of bytes goes as a Blob: a plain array could be taken for form fields.
-          const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
-          responses = UrlFetchApp.fetchAll(devices.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
+          result = push(devices, message);
         } catch (e) {
           note(`Couldn't send a ping: ${e?.message ?? e}`);
           break;
         }
-        let ok = false;
-        responses.forEach((res, i) => {
-          const code = res.getResponseCode();
-          if (code >= 200 && code < 300) ok = true;
-          else if (code === 404 || code === 410) gone.add(devices[i].id);
-          else note(`A ping to the ${devices[i].label ?? 'device'} failed (HTTP ${code})`);
-        });
+        const { ok } = result;
+        for (const id of result.gone) gone.add(id);
+        for (const f of result.failed) note(f);
         // Marked even when it failed: a question is pinged once, and it's waiting in the app anyway.
         store.updateJournal(rec.id, { pushedAt: t.toISOString() });
         if (ok) { sent++; left--; }

@@ -19,7 +19,7 @@ test('the app opens what a shortcut asks for, then tidies the address', () => {
   const app = read('js/app.js');
   assert.match(app, /params\.get\('do'\)/);
   // At the top level after the page is set up (not inside wake(), which runs on every return to the tab).
-  assert.match(app, /\nif \(params\.has\('checkin'\)\) \{[\s\S]*\n\}\n(\/\/[^\n]*\n)*if \(params\.has\('do'\)\) \{/);
+  assert.match(app, /\nif \(params\.has\('checkin'\)\) \{[\s\S]*\n\}\n(\/\/[^\n]*\n)*(function runShortcut[\s\S]*?\n\}\n)?if \(params\.has\('do'\)\) \{/);
   assert.match(app, /openSnap\(ctx/);
   assert.match(app, /openHebrewLog\(ctx\)/);
   assert.match(app, /ui\.backAsk = true/);

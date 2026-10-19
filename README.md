@@ -378,6 +378,18 @@ change by asking Claude.
 `pause`, `resume` and `removeAll` (every future block it made, then pause) run the same way. Updates
 arrive by themselves: the script loads the planner from this site each time it runs.
 
+### Nudges
+
+A push before a miss, not after it, on every device with notifications on (the same ones check-ins
+use). Fixed rules, at most four a day, none between 22:30 and 07:00, each once:
+
+- **07:30:** "How's your back?", until you answer the morning question.
+- **14:00:** lunch not logged yet (only once you snap meals at all).
+- **20:00:** Hebrew short of the day's share of the week's target (an hour a day for 7 h).
+- **Half an hour before a coach's session:** its time, and that the routine's in Hevy.
+
+Tapping one opens the thing to do. Tell Claude to turn them off (`nudges: false`).
+
 ### Moving between London and Salzburg
 
 The app follows your device's clock, and the sky follows its time zone (anywhere on Central European

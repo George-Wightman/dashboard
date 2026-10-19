@@ -25,6 +25,7 @@ import { readProperty, writeProperty, deleteProperty, propertyParts } from './pr
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
 import { createCheckins } from './checkins.js';
+import { createNudges } from './nudges.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -391,6 +392,13 @@ export function createPlanner({
         } catch (err) {
           log(clean(`Check-in pings failed: ${err?.message ?? err}`));
         }
+      }
+      // Nudges (planner/nudges.js): a push before a miss. Never stops the planner.
+      try {
+        const nudges = createNudges({ UrlFetchApp, Utilities, props: { get, put }, log, now, dayStartHour: dayStartHour(), crypto: pushCrypto });
+        if (nudges.send(store).changed) await syncOnce({ store, client: session.client });
+      } catch (err) {
+        log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
