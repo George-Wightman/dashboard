@@ -84,6 +84,16 @@ const minutesQuota = (doc, id) => {
   return q && q.type === 'quota' && q.status === 'active' && q.unit === 'minutes' ? q : null;
 };
 
+// The weekly Hebrew minutes target (the Hebrew Reader's sync fills it; time away from the app — a
+// conversation, a podcast — is logged by hand, from the home-screen shortcut or the Hebrew tile).
+export const hebrewMinutesId = (doc) => minutesQuota(doc, 'hebrew-minutes')?.id ?? null;
+
+export function logHebrewByHand(store, minutes) {
+  const id = hebrewMinutesId(store.doc());
+  if (!id) throw new Error('No weekly Hebrew target yet: ask Claude to set one');
+  return store.logAmount({ itemId: id, amount: minutes, note: 'logged by hand' });
+}
+
 export function bodyHero(doc, today) {
   const q = minutesQuota(doc, cardioQuotaId(doc));
   if (!q) return null;

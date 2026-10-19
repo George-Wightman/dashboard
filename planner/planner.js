@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'a829dc5d';
+var PLANNER_BUILD = 'f3ad2406';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2849,9 +2849,10 @@ function sessionWorkout(doc, item) {
 
 // What the timeline's first row is: the question from the day's start until 11:00, the answer after
 // it's given (until 11:00 too), else nothing.
-function backRowState(doc, today, now, dayStartHour = 4) {
+// `anyTime`: asked for (the home-screen shortcut, or Change), so shown at any hour.
+function backRowState(doc, today, now, dayStartHour = 4, { anyTime = false } = {}) {
   const hour = now.getHours();
-  if (hour < dayStartHour || hour >= BACK_UNTIL_HOUR) return null;
+  if (!anyTime && (hour < dayStartHour || hour >= BACK_UNTIL_HOUR)) return null;
   const r = doc?.gym?.[`back:${today}`];
   if (r && r.status === 'active' && isInt(r.score, 0, 3)) return { state: 'answered', score: r.score, word: BACK[r.score] };
   return { state: 'ask' };

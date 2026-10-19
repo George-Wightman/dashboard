@@ -233,9 +233,10 @@ export function sessionWorkout(doc, item) {
 
 // What the timeline's first row is: the question from the day's start until 11:00, the answer after
 // it's given (until 11:00 too), else nothing.
-export function backRowState(doc, today, now, dayStartHour = 4) {
+// `anyTime`: asked for (the home-screen shortcut, or Change), so shown at any hour.
+export function backRowState(doc, today, now, dayStartHour = 4, { anyTime = false } = {}) {
   const hour = now.getHours();
-  if (hour < dayStartHour || hour >= BACK_UNTIL_HOUR) return null;
+  if (!anyTime && (hour < dayStartHour || hour >= BACK_UNTIL_HOUR)) return null;
   const r = doc?.gym?.[`back:${today}`];
   if (r && r.status === 'active' && isInt(r.score, 0, 3)) return { state: 'answered', score: r.score, word: BACK[r.score] };
   return { state: 'ask' };

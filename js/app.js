@@ -29,7 +29,8 @@ import { runMealPass } from './photos.js';
 import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
 import { renderTiles } from './ui/tiles.js';
-import { paintSnap } from './ui/snap.js';
+import { paintSnap, openSnap } from './ui/snap.js';
+import { openHebrewLog } from './ui/hebrewlog.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
 
 const store = createStore({ storage: localStorage });
@@ -521,5 +522,20 @@ if (params.has('checkin')) {
   url.searchParams.delete('checkin');
   history.replaceState(null, '', url.pathname + url.search + url.hash);
   openCheckin(ctx, id);
+}
+// Opened from a home-screen shortcut (manifest.webmanifest): snap a meal, log Hebrew time, or the
+// morning back check (shown at any hour when asked for); then tidy the address.
+if (params.has('do')) {
+  const shortcut = params.get('do');
+  const url = new URL(location.href);
+  url.searchParams.delete('do');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+  if (shortcut === 'snap') openSnap(ctx);
+  else if (shortcut === 'hebrew') openHebrewLog(ctx);
+  else if (shortcut === 'back') {
+    ui.backAsk = true;
+    ctx.render();
+    document.querySelector('.tl-back')?.scrollIntoView({ block: 'center' });
+  }
 }
 updater.check();

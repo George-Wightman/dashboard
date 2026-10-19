@@ -32,7 +32,7 @@ function answer(ctx, score) {
 export function renderBackRow(ctx) {
   const doc = ctx.store.doc();
   const today = ctx.store.today();
-  const s = backRowState(doc, today, new Date(), ctx.store.settings().dayStartHour);
+  const s = backRowState(doc, today, new Date(), ctx.store.settings().dayStartHour, { anyTime: !!ctx.ui.backAsk });
   if (!s) return null;
   if (s.state === 'answered' && !ctx.ui.backAsk) {
     return h('li', { class: 'tl-back answered' },

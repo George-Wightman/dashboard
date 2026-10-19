@@ -14,6 +14,8 @@ import { renderGoals, renderHistory, renderHistoryBig, renderWeek, keptFocus, re
 import { renderCountdown } from './countdown.js';
 import { renderFuel, renderFuelBig } from './fuel.js';
 import { renderCoach, renderCoachBig } from './coach.js';
+import { openHebrewLog } from './hebrewlog.js';
+import { hebrewMinutesId } from '../tiles.js';
 import { openBig } from './big.js';
 
 // Parts of a tile one under the other, or nothing when none has anything to show.
@@ -40,7 +42,8 @@ export const TILES = [
   { id: 'fuel', title: 'Fuel', area: 'fuel', render: renderFuel, big: renderFuelBig },
   {
     id: 'hebrew', title: 'Hebrew', area: 'hebrew',
-    render: (ctx) => withHero(hebrewHero(ctx.store.doc(), ctx.store.today()), renderHebrew(ctx)),
+    render: (ctx) => withHero(hebrewHero(ctx.store.doc(), ctx.store.today()), stacked(renderHebrew(ctx),
+      hebrewMinutesId(ctx.store.doc()) ? h('button', { class: 'dl-btn', type: 'button', onclick: () => openHebrewLog(ctx) }, 'Log time away from the app') : null)),
     big: renderHebrewBig,
   },
   { id: 'goals', title: 'Goals', area: 'goals', render: renderGoals },

@@ -412,3 +412,12 @@ label.dl-btn { display: inline-flex; align-items: center; }
 @media (prefers-reduced-motion: reduce) {
   :root[data-screen="daylight"] * { animation: none !important; transition: none !important; }
 }
+
+/* Log Hebrew time. */
+dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin: auto; padding: 0; }
+.hebrew-log .sheet-body { height: auto; }
+.hebrew-log .sheet-body { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px 20px; }
+.hebrew-log .sheet-head { display: flex; justify-content: space-between; align-items: center; }
+.hebrew-log .sheet-head h2 { margin: 0; font: 800 22px/1.1 var(--dl-display, inherit); }
+.hebrew-log-choices, .hebrew-log-other { display: flex; flex-wrap: wrap; gap: 8px; }
+.hebrew-log-other input { flex: 1; min-width: 0; min-height: 44px; border: 0; border-radius: 16px; padding: 0 14px; background: var(--dl-soft, #FFF3E3); color: inherit; font: inherit; }
