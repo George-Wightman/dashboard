@@ -375,7 +375,7 @@ label.dl-btn { display: inline-flex; align-items: center; }
 .tl-back-q { font-weight: 700; font-size: 16px; }
 .tl-back-answers { display: flex; flex-wrap: wrap; gap: 8px; }
 .tl-back-answers .dl-btn[aria-pressed="true"] { background: var(--dl-ink); color: var(--dl-ground); }
-.tl-back.answered { justify-content: flex-start; padding: 8px 18px; background: transparent; box-shadow: none; color: var(--dl-muted); font-size: 14px; }
+.tl-back.answered { justify-content: flex-start; padding: 4px 0; background: transparent; box-shadow: none; color: var(--dl-muted); font-size: 14px; }
 .tl-back.answered .link { min-height: 44px; }
 .tl-session { color: var(--dl-ink); }
 .tl-warn { margin-top: 2px; margin-bottom: 2px; border-radius: 12px; background: var(--dl-carry); color: var(--dl-carry-ink); font-weight: 600; }
@@ -481,3 +481,23 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .dl-tiles > .dl-note { break-inside: avoid; margin: 0 0 16px; }
 .note-place { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 @media (max-width: 759px) { .dl-note-top { padding: 0 16px; margin-top: -18px; } }
+
+/* ---- Big views on a wide window: the sections side by side, so nothing sits in one narrow column
+   beside empty space. Each section's grid grows to fill its column. ------------------------------ */
+@media (min-width: 900px) {
+  .sheet .big, .sheet .tile-big, .sheet .fuel-big { display: block; columns: 2; column-gap: 36px; }
+  .sheet .tile-big > .big { display: contents; }
+  .sheet .big-section, .sheet .fuel-day, .sheet .big > .review-plan { break-inside: avoid; }
+  /* A year of weeks, or a wide table, reads across the whole sheet. */
+  .sheet .big-section:has(.year-grid), .sheet .big-section:has(.big-table.pr-board) { column-span: all; }
+}
+.history.big .grid { grid-template-columns: repeat(7, minmax(1.6rem, 2.6rem)); }
+.history.big .cell { aspect-ratio: 1; height: auto; }
+/* The big-view sheet fits what it shows, up to the same height as before, so a short view (a week
+   with few meals) isn't a big empty box. A phone keeps the whole screen. */
+@media (min-width: 760px) {
+  :root[data-screen="daylight"] #widget-sheet { height: fit-content; max-height: min(88vh, 60rem); }
+  :root[data-screen="daylight"] #widget-sheet .sheet-body { height: auto; max-height: calc(min(88vh, 60rem) - 2.5rem); }
+}
+:root[data-screen="daylight"] dialog.snap, :root[data-screen="daylight"] dialog.hebrew-log { height: fit-content; max-height: min(92vh, 60rem); }
+:root[data-screen="daylight"] dialog.snap .sheet-body, :root[data-screen="daylight"] dialog.hebrew-log .sheet-body { height: auto; }

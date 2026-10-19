@@ -143,3 +143,10 @@ test('dayMisses: a past day\'s misses by name, as its score counts them — a re
   store.toggleDone(cv.id, DAY);
   assert.deepEqual(dayMisses(store.doc(), DAY).map((m) => m.title), ['Email Sarah']);
 });
+
+test("QC: the year grid's month labels never crowd: a month starting under 3 weeks before the next has none", async () => {
+  const { monthLabels } = await import('../js/ui/gym.js');
+  assert.deepEqual(monthLabels(['2025-10-20', '2025-10-27', '2025-11-03', '2025-11-10', '2025-11-17', '2025-11-24', '2025-12-01']),
+    ['', '', 'Nov', '', '', '', 'Dec']);
+  assert.deepEqual(monthLabels(['2025-10-06', '2025-10-13', '2025-10-20', '2025-10-27', '2025-11-03']), ['Oct', '', '', '', 'Nov']);
+});

@@ -141,16 +141,24 @@ const dated = (day, today) => `${when(day, today)}${day.slice(0, 4) === today.sl
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+// The month over each week column (by its Monday): named over its first week, except a month that
+// starts less than 3 weeks before the next one is named (the first, partial one), whose label would
+// run into the next.
+export function monthLabels(mondays) {
+  const starts = mondays.map((m, i) => (!i || mondays[i - 1].slice(5, 7) !== m.slice(5, 7) ? i : -1)).filter((i) => i >= 0);
+  return mondays.map((m, i) => {
+    if (!starts.includes(i)) return '';
+    const next = starts.find((j) => j > i);
+    return next != null && next - i < 3 ? '' : MONTHS[Number(m.slice(5, 7)) - 1];
+  });
+}
+
 // The year of sessions: a column a week, Monday at the top; teal where he lifted, the pale teal
 // where he only did cardio. Each month is named over its first week.
 function yearGrid(doc, today) {
   const days = sessionDays(doc, today);
   const weeks = days.length / 7;
-  const months = Array.from({ length: weeks }, (_, i) => {
-    const monday = days[i * 7].day;
-    const prev = i ? days[(i - 1) * 7].day : null;
-    return !prev || prev.slice(5, 7) !== monday.slice(5, 7) ? MONTHS[Number(monday.slice(5, 7)) - 1] : '';
-  });
+  const months = monthLabels(Array.from({ length: weeks }, (_, i) => days[i * 7].day));
   const trained = days.filter((d) => d.sessions).length;
   return h('div', {},
     h('div', { class: 'year-months', style: `grid-template-columns: repeat(${weeks}, minmax(0, 1fr))` }, months.map((m) => h('span', {}, m))),

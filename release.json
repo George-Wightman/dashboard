@@ -1,10 +1,10 @@
 {
-  "id": "b3a1e8335bbf031f7fbacf77f4f5981c148edfdadfc9009384a8eab4b7c89cc8",
+  "id": "ef8fdd1f3616d6cd4b12a19eb533b0d10df9fd67a80a486d82569b8c4af8692c",
   "files": {
     "./": "3b3a3b9f1952c8e8514d804e58156ecd3ba6d0a4b3fb10e7e7b0568b7ca82161",
     "index.html": "3b3a3b9f1952c8e8514d804e58156ecd3ba6d0a4b3fb10e7e7b0568b7ca82161",
     "styles.css": "e100f6376f7d577d902b54283d1c01111829aaefb1db4294ace704ce85a09834",
-    "styles/daylight.css": "e7035ba21dd91d411a3cd7bb03bb3e84c60258ba9fb08b8a33d37a05a1f5c1f8",
+    "styles/daylight.css": "b932a18031fbd84126d38a98eaaef9ee708c6aae5c7d62d8d1f3c40d7af5c653",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
@@ -52,7 +52,7 @@
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
     "js/ui/claude.js": "89c3992e4d88bb98294a728f4acfa75675297e1d1ab9642112d0e43592c4e4e6",
     "js/ui/sources.js": "1faf89ebe7fa9856d268c5406add111bac9632f25865f12ae9431ef7dcdfb22f",
-    "js/ui/gym.js": "5d559a9b136f4c6c9bd2f7db888776e565ac1cd7b2a125692a18fa0c776bec3e",
+    "js/ui/gym.js": "88f136c3578e6a15e5f4f98d95f721492ed47f311a5120cd5b747506717f71fa",
     "js/ui/hebrew.js": "7cb19648645f76be6a0fb9e24c8bd62c5350eaead2c6625c5e0c1ccdc9c29d2b",
     "js/ui/countdown.js": "d8a480ec23006780a446995a67e0adb3e9043c09ab064dd117e9a4b27685df09",
     "js/ui/big.js": "8223f8b14bcb71845398ccacca7fe3ce3a75c2dd374defa9bff0760655368527",
