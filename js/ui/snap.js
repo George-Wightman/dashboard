@@ -121,6 +121,7 @@ function wordsBox(ctx, { placeholder, onChange }) {
   box.value = s.text;
   return h('div', { class: 'snap-line' }, box, micButton({
     key: 'snap-text',
+    hint: 'meal',
     getText: () => s.text,
     setText: (text) => { s.text = text; const live = document.querySelector('[data-focus="snap-text"]') ?? box; live.value = text; grow(live); onChange(); },
     onBlocked: (message) => { s.error = message; },

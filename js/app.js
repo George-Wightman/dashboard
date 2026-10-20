@@ -30,6 +30,7 @@ import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
 import { renderTiles } from './ui/tiles.js';
 import { paintSnap, openSnap } from './ui/snap.js';
+import { useTranscriber } from './ui/mic.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
 import { chooseZoneRecord } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles, loadNotePlace, saveNotePlace } from './tiles.js';
@@ -161,6 +162,9 @@ const ctx = {
     },
   },
 };
+
+// The mic writes down what's said with Gemini whenever there's a key (js/ui/mic.js).
+useTranscriber({ ask: (req) => ctx.gemini.ask(req), ready: () => ctx.gemini.keys().length > 0 && navigator.onLine !== false });
 
 let shownDay = store.today();
 

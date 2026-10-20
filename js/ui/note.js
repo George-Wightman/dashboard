@@ -48,6 +48,7 @@ export function renderNote(ctx) {
     h('div', { class: 'note-box' }, box, h('div', { class: 'note-actions' },
       micButton({
         key: 'note',
+        hint: 'note',
         getText: () => n.draft,
         setText: (text) => {
           n.draft = text;

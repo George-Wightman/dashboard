@@ -34,7 +34,8 @@ test('the bundle runs with none of the browser globals, as in Apps Script', asyn
   new vm.Script(code).runInContext(context);
   assert.equal(context.PLANNER_BUILD, build);
   assert.deepEqual(Object.keys(context.Planner), ['run', 'install', 'pause', 'resume', 'removeAll', 'relay']);
-  assert.equal(await context.Planner.run(), 'ok');
+  // As a calendar edit, so it runs whatever the hour (a timed run between 00:10 and 06:00 is 'night').
+  assert.equal(await context.Planner.run({ calendarId: 'primary' }), 'ok');
   assert.ok(cal.mine().length >= 1);
   assert.equal(repo.doc().calendar.status.version, build);
   // Check-ins ran inside the bundle too: the notification key made, nothing wrong, and no mind.json.

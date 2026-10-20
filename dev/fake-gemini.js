@@ -12,10 +12,12 @@
 //   ?fakegemini=nonsense a 200 whose text isn't JSON
 //   ?fakegemini=meal     a canned meal estimate (js/food.js's MEAL_SYSTEM); meal-slow after 5 s;
 //                        meal-nonsense a 200 that isn't an estimate
+// A recording to write down (js/voice.js's TRANSCRIBE_SYSTEM) gets a canned breakfast in any mode that answers.
 // Any other mode behaves like ok.
 
 import { SUMMARY_SYSTEM } from '../js/checkins.js';
 import { MEAL_SYSTEM } from '../js/food.js';
+import { TRANSCRIBE_SYSTEM } from '../js/voice.js';
 
 export const FAKE_MODES = ['ok', 'slow', 'nokey', 'quota', 'down', 'offline', 'badkey', 'nonsense', 'meal', 'meal-slow', 'meal-nonsense'];
 
@@ -44,6 +46,7 @@ function promptOf(init) {
 // The canned summary (js/checkins.js's SUMMARY_SYSTEM): his words, cut down.
 function answer(prompt) {
   if (prompt.includes(MEAL_SYSTEM)) return MEAL;
+  if (prompt.includes(TRANSCRIBE_SYSTEM)) return { text: 'six fried eggs, three wholemeal pittas and a quarter of a cucumber' };
   if (!prompt.includes(SUMMARY_SYSTEM)) return {};
   const said = prompt.split('What he said:\n')[1] ?? '';
   return { summary: `Fake summary: ${said.replace(/\s+/g, ' ').trim().slice(0, 160)}` };

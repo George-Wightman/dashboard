@@ -9,6 +9,7 @@ import { READS } from './read.js';
 import { OPS, UNLOGGED, runOp, readHandoff, fieldWarnings } from './ops.js';
 import { createFileStore } from './files.js';
 import { relayingFetch } from './relay.js';
+import { curlFetch } from './curl.js';
 import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
 import { scrubText, APP_VERSION } from '../js/flags.js';
 import { capabilities } from './capabilities.js';
@@ -128,7 +129,7 @@ export async function main({
     secrets = [config.token, config.relayKey].filter(Boolean);
     // GitHub first; the planner's relay when this sandbox's proxy refuses or can't reach it.
     const fetch = config.relayUrl
-      ? relayingFetch({ relayUrl: config.relayUrl, relayKey: config.relayKey, force: env.DASHBOARD_RELAY === '1', onSwitch: () => { relayed = true; } })
+      ? relayingFetch({ relayUrl: config.relayUrl, relayKey: config.relayKey, curl: curlFetch, force: env.DASHBOARD_RELAY === '1', onSwitch: () => { relayed = true; } })
       : undefined;
     const files = makeFiles({ token: config.token, repo: config.repo, ...(fetch ? { fetch } : {}) });
 

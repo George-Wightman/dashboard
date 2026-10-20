@@ -436,6 +436,12 @@ button.link.update-ready { color: var(--accent); }
 .checkin-box textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .checkin .btn.mic.on { background: var(--accent); color: var(--bg); animation: mic-pulse 1.2s ease-in-out infinite; }
 @keyframes mic-pulse { 50% { opacity: .6; } }
+/* The mic anywhere: red and counting while it records, quiet while Gemini writes it down. */
+.btn.mic { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; }
+.btn.mic.on { background: #C8372D; color: #FFFFFF; animation: mic-pulse 1.2s ease-in-out infinite; }
+.btn.mic.busy { opacity: .7; cursor: progress; }
+.mic-time { font: 600 .75rem/1 inherit; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .btn.mic.on { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .checkin .btn.mic.on { animation: none; } }
 .checkin .buttons { display: flex; align-items: center; gap: .75rem; margin-top: .45rem; }
 .checkin .error { min-height: 0; margin: .4rem 0 0; }

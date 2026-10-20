@@ -1,9 +1,9 @@
 {
-  "id": "20d1a9dd19c57920b5ee8320de3b08c6ac3cd75751d88de28e8e6703c5b44448",
+  "id": "8b0722fa9c2a436c39ca5009080ef02fb4327c87aa94e10b0865fcd9a2238a13",
   "files": {
     "./": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
     "index.html": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
-    "styles.css": "cdf690ab110e5033e13a7864df0f81a933392f0b2519ae259e0eab3a39643e81",
+    "styles.css": "ffd5b0b5e86b65835d3f2910fee074ded528313a4f73be952ea1edbbb94445d9",
     "styles/daylight.css": "8abf7937e4475b5aad4ac402d0bdb504c725a4bc121adb6a942d90332395d1df",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
@@ -12,7 +12,7 @@
     "icons/icon.svg": "ed047463e6d4922fd9c4f21dbedf11b9e4b5cdc3b471b5a4bffcd63dca624754",
     "icons/icon-192.png": "8e7e849913dea81b5333285f54b427c3be4d5de5a20fa90ca0cc99de7dd1db04",
     "icons/icon-512.png": "20842b1a050ea876ecb8cbf7e83fffb62fba540645a1430d4e59f1cf5defdd48",
-    "js/app.js": "f7480a0f908d0725d67ef1446bff4c05b27b6b64eaa383ecc27847008f6eb820",
+    "js/app.js": "7f408f3c0f44851e00214f63030b3e025fcb99d1194a5ab83c83dfe130ba2485",
     "js/commit.js": "a03407e778be6c3081eb9a4c8b7e25ef190810011b04dacd0beb71a4354e1453",
     "js/data.js": "5605f956c6e64053b8ea083440175e6903d88f07cd1ba204e770c66885f7ee8f",
     "js/doc.js": "6e080d92893d348de97c7982984e6db83e7e7d676d301a4235e87cfe1fcd53f7",
@@ -44,9 +44,9 @@
     "js/ui/side.js": "025e583ddc04ea78333ae357a697a1206d6f0b7c07663bd20e4a588102d02ff5",
     "js/ui/edit.js": "dd11c86c07d978352210f1e8afa9a800b760cdaf9b9b6d7eb3437be708e882e4",
     "js/ui/settings.js": "8708d8fd81d2732e29a3c4073779b03d1d8b78efe6ea79d6127879f9a82a1dc2",
-    "js/ui/checkin.js": "ba4f9b262875bbe484ed60f831d7e770759e8b5bfa83515b38487d01571ae49a",
-    "js/ui/mic.js": "35fefcd10b9394f14903a2ec94df193e7728c11fc5c0747292f140b09328974c",
-    "js/ui/note.js": "06962a3a2224b9eaa9b9ee0d29d01193047274e02ca10c9474a6a58574478645",
+    "js/ui/checkin.js": "eb6813cdca84fe870f87866f247fa08513ac87473ecd4ec78a37ef13895deb2c",
+    "js/ui/mic.js": "5256127262cd2903da75762e03503bc1c6ff6fc311b4ee781548fa141b6a7545",
+    "js/ui/note.js": "7a06410d1c6adea99114f26cbaa46101c5e4ecdf5ff47f324b898f252a0706e4",
     "js/ui/widgets.js": "09d65ea105d5c693bae5afe254e96c4704e24c0baa80e290b23e9cffbef9cc48",
     "js/ui/flags.js": "2d94fb32ae5edf77ec93636a27e560bb781e011e9ccebbdd997690cd8bf015cf",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
@@ -68,7 +68,7 @@
     "js/ui/needs.js": "e580c39b767fb952b817daff9aea903c77cfee150bb52d7f54e062da48a652cc",
     "js/food.js": "f3a04d63b1c50c3f5f10c3971ca3a95625543168e3a340f3ee46089e5348e30f",
     "js/photos.js": "8664dd5c14d7b9af2a7f4ef1dbe1153330b0bf69f8aec67087f0d21a7ee45b7d",
-    "js/ui/snap.js": "c115fcd3552de0892e23f32d3759436e9fa31f918fd4f3494cccff97f72d6ce7",
+    "js/ui/snap.js": "bde0448cbb90c83114c23f49de9afe292ac74b25d16e3b354a9b5ece8c5ef7a7",
     "js/ui/fuel.js": "0a6512a1ae45b598ada3a792117e1d4c87e5db0a82d87c5580dfd5f99f414aea",
     "js/coach.js": "70abc1b8fea10874b8c92d5dead1ea1c744b2a3de9baddca32ef51eb4140be8f",
     "js/ui/coach.js": "c3461d40d682447abd43ef3988cb66bad4c7c559fb92104e8992dd64ac375d3b",
@@ -78,6 +78,7 @@
     "js/review.js": "f8ab2449958bf945d99af808eb5568d7cde9d05027b1b33b8e163e1cb3ef5560",
     "js/ui/review.js": "681eccd930ee009f6b23948f6e3fb075511e85f20695c23faff831ff876d274f",
     "js/ui/noteslot.js": "39a25bfbafa3fbbba2fcbf3a16b780b5ca7dc1afaecda5f450a1391775a0497b",
-    "js/jobs.js": "db110fb89014eefb0ca7972841d7b98e0466add62addac46101bc27aec8e19aa"
+    "js/jobs.js": "db110fb89014eefb0ca7972841d7b98e0466add62addac46101bc27aec8e19aa",
+    "js/voice.js": "8a376f04698ffa55dbdd2fcbaef257b756622ef819d4111c6ebc10b35717d1f9"
   }
 }

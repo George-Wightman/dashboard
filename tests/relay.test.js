@@ -148,3 +148,52 @@ test('the planner\'s doPost answers a relay request with its own key, from Apps 
   const refused = JSON.parse(planner.relay({ postData: { contents: JSON.stringify({ key: 'z'.repeat(43), path: '/repos/o/r/contents/data.json' }) } }).text);
   assert.match(refused.error, /refused the key/);
 });
+
+test('a relay that blinks is tried again, then through curl; a refusal is never retried', async () => {
+  const sb = sandbox();
+  const noWait = async () => {};
+  // Two dropped connections, then an answer.
+  let drops = 2;
+  const flaky = async (url, opts) => {
+    if (url === URL && drops > 0) { drops--; throw new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }); }
+    return sb.fetch(url, opts);
+  };
+  const viaRetry = relayingFetch({ relayUrl: URL, relayKey: KEY, fetch: flaky, force: true, sleep: noWait });
+  assert.equal((await createFileStore({ token: 'C', repo: 'o/r', fetch: viaRetry }).read('data.json')).text, '{"items":{}}');
+
+  // Node's fetch can't reach it at all: curl gets the last try.
+  const dead = async (url, opts) => { if (url === URL) throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } }); return sb.fetch(url, opts); };
+  let curled = 0;
+  const curl = async (url, opts) => { curled++; return sb.fetch(url, opts); };
+  const viaCurl = relayingFetch({ relayUrl: URL, relayKey: KEY, fetch: dead, curl, force: true, sleep: noWait });
+  assert.equal((await createFileStore({ token: 'C', repo: 'o/r', fetch: viaCurl }).read('data.json')).text, '{"items":{}}');
+  assert.equal(curled, 1);
+
+  // Nothing gets through: the error says why.
+  const none = relayingFetch({ relayUrl: URL, relayKey: KEY, fetch: dead, force: true, sleep: noWait });
+  await assert.rejects(none('https://api.github.com/repos/o/r/contents/data.json'), /Couldn't reach the planner's relay after 3 tries \(fetch failed: ECONNREFUSED\)/);
+
+  // A wrong key is asked once.
+  let asked = 0;
+  const counting = async (url, opts) => { if (url === URL) asked++; return sb.fetch(url, opts); };
+  const wrong = relayingFetch({ relayUrl: URL, relayKey: 'w'.repeat(43), fetch: counting, curl, force: true, sleep: noWait });
+  await assert.rejects(wrong('https://api.github.com/repos/o/r/contents/data.json'), /refused the key/);
+  assert.equal(asked, 1);
+});
+
+test('curlFetch posts the body on stdin and reads the status curl appends', async () => {
+  const { curlFetch } = await import('../claude/curl.js');
+  let seen;
+  const run = (cmd, args, opts, done) => {
+    const stdin = { end: (body) => { seen = { cmd, args, body }; done(null, '{"status":200,"body":""}\n200', ''); } };
+    return { stdin };
+  };
+  const res = await curlFetch(URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{"key":"x"}' }, { run });
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '{"status":200,"body":""}');
+  assert.equal(seen.cmd, 'curl');
+  assert.equal(seen.body, '{"key":"x"}');
+  assert.ok(seen.args.includes('-L') && !seen.args.includes('-X'), 'follows the redirect as a GET');
+  const failing = (cmd, args, opts, done) => ({ stdin: { end: () => done(new Error('exit 6'), '', 'curl: (6) Could not resolve host') } });
+  await assert.rejects(curlFetch(URL, { body: '' }, { run: failing }), /curl failed: curl: \(6\) Could not resolve host/);
+});

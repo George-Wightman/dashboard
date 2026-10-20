@@ -82,6 +82,7 @@ export function renderCheckin(ctx) {
     h('p', { class: 'checkin-q' }, questionFor(rec.why, rec.title), count > 1 ? h('span', { class: 'muted' }, ` · 1 of ${count}`) : null),
     h('div', { class: 'checkin-box' }, box, micButton({
       key: `checkin-${rec.id}`,
+      hint: 'checkin',
       getText: () => c.drafts[rec.id] ?? '',
       setText: (text) => {
         c.drafts[rec.id] = text;
