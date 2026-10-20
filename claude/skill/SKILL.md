@@ -222,10 +222,18 @@ squat and bench, with his back first.
 
 - "Can't reach GitHub from this sandbox" → George should check claude.ai → Settings → Capabilities:
   code execution on, and network access allowed.
-- "The network this chat runs in is blocking George-Wightman/dashboard-sync" → the key is fine; this
-  chat's sandbox only lets public GitHub repos through. Don't tell George to replace the key, and
-  don't route around the proxy. Tell him the private sync repo has to be allowed for this chat's
-  environment, or to use a chat where the skill ran before.
+- **The relay.** When this chat's sandbox won't let the tool reach the private sync repo, the tool
+  sends the same requests through George's planner script instead (its web app) and ends its output
+  with *"(This sandbox can't reach GitHub, so this went through the planner's relay.)"*. That's
+  normal: carry on. Don't route around the proxy any other way.
+- "The network this chat runs in is blocking George-Wightman/dashboard-sync" with no relay → this
+  copy of the skill has no relay set up; George runs `node claude/relay-setup.mjs <web app address>`
+  on his laptop, then `npm run build-skill`, and uploads the new zip. Don't tell him to replace the key.
+- "The relay refused the key" / "The relay is switched off" → the key in this skill doesn't match
+  `relay.json` in the sync repo (or it's gone): George runs the relay setup again and re-uploads.
+- "The relay didn't answer with JSON" → the planner's web app isn't deployed for *Anyone*, or this
+  chat's network blocks `script.google.com`: claude.ai → Settings → Capabilities → network access
+  must allow `script.google.com` and `script.googleusercontent.com`.
 - "GitHub refused the access key" → the skill's key has expired or been revoked. George makes a new
   one, puts it in `~/.dashboard-skill/config.json` on his laptop, runs `npm run build-skill`, and
   uploads the new zip.

@@ -9,7 +9,7 @@ import { FakeGitHub, fixture, clock, ids } from './helpers.js';
 const good = { token: 'github_pat_TESTKEY0123456789abcdef', repo: 'George-Wightman/dashboard-sync' };
 
 test('readConfig fills the defaults and explains every mistake, without the key', () => {
-  assert.deepEqual(readConfig(JSON.stringify(good)), { ...good, dayStartHour: 4, timeZone: 'Europe/London' });
+  assert.deepEqual(readConfig(JSON.stringify(good)), { ...good, dayStartHour: 4, timeZone: 'Europe/London', relayUrl: null, relayKey: null });
   assert.equal(DEFAULT_ZONE, 'Europe/London');
   assert.equal(readConfig(JSON.stringify({ ...good, dayStartHour: 5, timeZone: 'Asia/Jerusalem' })).timeZone, 'Asia/Jerusalem');
   assert.equal(readConfig(JSON.stringify({ ...good, token: `  ${good.token}\n` })).token, good.token);

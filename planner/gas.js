@@ -26,6 +26,7 @@ import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
 import { createCheckins } from './checkins.js';
 import { createNudges } from './nudges.js';
+import { handleRelay } from './relay.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -42,7 +43,9 @@ class MemoryStorage {
 export function createPlanner({
   Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger = { log() {} },
   fetch = (...args) => globalThis.fetch(...args), now = () => new Date(), version = 'dev',
-  Utilities = null, pushCrypto = null, clockMs = () => Date.now(),
+  Utilities = null, pushCrypto = null, clockMs = () => Date.now(), ContentService = null,
+  sha256Hex = (text) => Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.newBlob(String(text)).getBytes())
+    .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
@@ -479,5 +482,25 @@ export function createPlanner({
     return `Removed ${n} planned block${n === 1 ? '' : 's'} and paused the planner. Run resume() to start again.`;
   }
 
-  return { run, install, pause, resume, removeAll };
+  // The web app's doPost (planner/relay.js): Claude's GitHub requests, made with this script's key.
+  // Never throws: whatever goes wrong comes back as { error }, with the keys scrubbed out of it.
+  function relay(e) {
+    const request = (url, init) => {
+      const res = UrlFetchApp.fetch(url, {
+        method: init.method.toLowerCase(), headers: init.headers, muteHttpExceptions: true,
+        ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}),
+      });
+      return { status: res.getResponseCode(), text: res.getContentText() };
+    };
+    let text;
+    try {
+      text = handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+    } catch (err) {
+      text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });
+    }
+    if (!ContentService) return text;
+    return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return { run, install, pause, resume, removeAll, relay };
 }

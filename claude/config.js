@@ -27,5 +27,15 @@ export function readConfig(text) {
   } catch {
     throw new Error(`The skill's config.json timeZone ${JSON.stringify(timeZone)} isn't a time zone Node knows`);
   }
-  return { token, repo, dayStartHour, timeZone };
+  // The planner's web app, for a sandbox that won't let the tool reach GitHub (claude/relay.js).
+  // Both or neither: written by `node claude/relay-setup.mjs <web app URL>` on the laptop.
+  const relayUrl = typeof c.relayUrl === 'string' ? c.relayUrl.trim() : '';
+  const relayKey = typeof c.relayKey === 'string' ? c.relayKey.trim() : '';
+  if (relayUrl && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(relayUrl)) {
+    throw new Error("The skill's config.json relayUrl should be the planner's web app address, https://script.google.com/macros/s/…/exec");
+  }
+  if (Boolean(relayUrl) !== Boolean(relayKey) || (relayKey && relayKey.length < 32)) {
+    throw new Error("The skill's config.json needs relayUrl and relayKey together — run node claude/relay-setup.mjs again");
+  }
+  return { token, repo, dayStartHour, timeZone, relayUrl: relayUrl || null, relayKey: relayKey || null };
 }

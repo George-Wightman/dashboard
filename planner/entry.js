@@ -7,7 +7,7 @@ import { createPlanner } from './gas.js';
 export const Planner = (() => {
   installShims(globalThis, { Utilities, UrlFetchApp });
   return createPlanner({
-    Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger, Utilities,
+    Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger, Utilities, ContentService: typeof ContentService === 'undefined' ? null : ContentService,
     fetch: (...args) => globalThis.fetch(...args),
     version: typeof PLANNER_BUILD === 'string' ? PLANNER_BUILD : 'dev',
   });

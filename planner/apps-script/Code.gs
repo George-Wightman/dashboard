@@ -22,3 +22,7 @@ function install() { return say_(load_().install()); }
 function pause() { return say_(load_().pause()); }
 function resume() { return say_(load_().resume()); }
 function removeAll() { return say_(load_().removeAll()); }
+
+// Claude's way in when its own sandbox can't reach GitHub: Deploy > New deployment > Web app,
+// execute as you, anyone can access. The key it checks lives in the sync repo (relay.json).
+function doPost(e) { return load_().relay(e); }

@@ -8,6 +8,7 @@ import { makeClient as githubClient } from './github.js';
 import { READS } from './read.js';
 import { OPS, UNLOGGED, runOp, readHandoff, fieldWarnings } from './ops.js';
 import { createFileStore } from './files.js';
+import { relayingFetch } from './relay.js';
 import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
 import { scrubText, APP_VERSION } from '../js/flags.js';
 import { capabilities } from './capabilities.js';
@@ -54,8 +55,12 @@ export async function main({
 }) {
   const out = [];
   let secrets = [];
+  let relayed = false;
   const say = (text) => out.push(scrubText(String(text), secrets));
-  const finish = (code) => ({ code, text: out.join('\n') });
+  const finish = (code) => {
+    if (relayed) say("(This sandbox can't reach GitHub, so this went through the planner's relay.)");
+    return { code, text: out.join('\n') };
+  };
 
   try {
     const args = [...argv];
@@ -120,8 +125,12 @@ export async function main({
       say(e.message);
       return finish(1);
     }
-    secrets = [config.token];
-    const files = makeFiles({ token: config.token, repo: config.repo });
+    secrets = [config.token, config.relayKey].filter(Boolean);
+    // GitHub first; the planner's relay when this sandbox's proxy refuses or can't reach it.
+    const fetch = config.relayUrl
+      ? relayingFetch({ relayUrl: config.relayUrl, relayKey: config.relayKey, force: env.DASHBOARD_RELAY === '1', onSwitch: () => { relayed = true; } })
+      : undefined;
+    const files = makeFiles({ token: config.token, repo: config.repo, ...(fetch ? { fetch } : {}) });
 
     // What the tool refused, kept in the repo. A weaker model can't be relied on to notice it should
     // report anything, so the tool records its own stumbles: four goes at an op that doesn't exist
@@ -174,7 +183,7 @@ export async function main({
     let session;
     try {
       session = await openSession({
-        client: makeClient({ token: config.token, repo: config.repo }),
+        client: makeClient({ token: config.token, repo: config.repo, ...(fetch ? { fetch } : {}) }),
         dayStartHour: config.dayStartHour, now, newId,
       });
     } catch (e) {

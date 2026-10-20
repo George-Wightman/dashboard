@@ -33,7 +33,7 @@ test('the bundle runs with none of the browser globals, as in Apps Script', asyn
   }
   new vm.Script(code).runInContext(context);
   assert.equal(context.PLANNER_BUILD, build);
-  assert.deepEqual(Object.keys(context.Planner), ['run', 'install', 'pause', 'resume', 'removeAll']);
+  assert.deepEqual(Object.keys(context.Planner), ['run', 'install', 'pause', 'resume', 'removeAll', 'relay']);
   assert.equal(await context.Planner.run(), 'ok');
   assert.ok(cal.mine().length >= 1);
   assert.equal(repo.doc().calendar.status.version, build);

@@ -331,6 +331,20 @@ requests time out rather than leaving the app permanently stuck on “syncing”
 3. `npm run build-skill` → `~/.dashboard-skill/dashboard-skill.zip`.
 4. Upload it at claude.ai → Settings → Capabilities → Skills, with code execution on.
 
+**The relay (for the phone).** claude.ai's chats and Claude Code on the web can read the private
+sync repo at best, never write it. So the planner script doubles as a relay: deployed as a web app,
+its `doPost` makes the tool's GitHub requests with the planner's own key, for the sync repo's files
+only. The tool tries GitHub first and switches to the relay the first time it's refused.
+
+1. Paste the new `planner/apps-script/Code.gs` into the Apps Script editor, then *Deploy → New
+   deployment → Web app*, execute as *Me*, access *Anyone*. Copy the web app address.
+2. `node claude/relay-setup.mjs <that address>` — a fresh random key into
+   `~/.dashboard-skill/config.json`, its SHA-256 into `relay.json` in the sync repo.
+3. `npm run build-skill` and upload the zip. In claude.ai → Settings → Capabilities, let code
+   execution reach `script.google.com` and `script.googleusercontent.com`.
+
+Delete `relay.json` from the sync repo to switch the relay off; run step 2 again for a new key.
+
 A new key (or a change to `SKILL.md` or `reference.md`) means building and uploading again. A change
 to the tool itself doesn't: the skill always runs the version on GitHub.
 
