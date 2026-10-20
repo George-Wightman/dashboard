@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '57ffb774';
+var PLANNER_BUILD = 'ef65f2ef';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1518,6 +1518,15 @@ function plannerStatus(doc) {
   return rec && rec.status === 'active' ? rec : null;
 }
 
+// When the planner last ran. Its status is only rewritten every so often, but each good run stamps
+// the agenda, so the newer of the two (a working planner once read as stalled, 20 Oct 2026).
+function plannerLastRun(doc) {
+  const s = plannerStatus(doc);
+  const synced = doc?.calendar?.agenda?.status === 'active' ? doc.calendar.agenda.syncedAt : null;
+  const times = [s?.lastRun, synced].filter((t) => t && Number.isFinite(Date.parse(t)));
+  return times.length ? times.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : null;
+}
+
 // Today's planned times by item, from today's exact, fixed, done and part-done blocks (rough ones
 // never show on the list). An item in two blocks (the rest of a part-done one) shows the later.
 function todaySlots(doc, today) {
@@ -1576,8 +1585,9 @@ function momentLabel(iso, now) {
 // has ever run, and while it's paused.
 function staleSince(doc, now, minutes = 70) {
   const s = plannerStatus(doc);
-  if (!s?.lastRun || s.paused) return null;
-  return now.getTime() - Date.parse(s.lastRun) > minutes * 60000 ? momentLabel(s.lastRun, now) : null;
+  const last = plannerLastRun(doc);
+  if (!last || s?.paused) return null;
+  return now.getTime() - Date.parse(last) > minutes * 60000 ? momentLabel(last, now) : null;
 }
 
 // Today's rows in the day's order: suggestions stay on top; then undone rows with a time, earliest
@@ -1599,12 +1609,13 @@ function plannerSummary(doc, now) {
   const lines = [`Plans ${config.hours[0]}–${config.hours[1]}, ${config.days} days ahead: ${exact}, rough after that.`];
   const s = plannerStatus(doc);
   if (!s) return { summary: 'not set up', lines: [...lines, "It hasn't run yet — the README says how to set it up."] };
-  lines.push(`Last ran ${momentLabel(s.lastRun, now)}${s.version ? ` · build ${s.version}` : ''}.`);
+  const last = plannerLastRun(doc);
+  lines.push(`Last ran ${momentLabel(last, now)}${s.version ? ` · build ${s.version}` : ''}.`);
   if (s.lastError) lines.push(`Last problem: ${s.lastError}`);
   lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
-  return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
+  return { summary: s.paused ? 'paused' : `last ran ${momentLabel(last, now)}`, lines };
 }
-return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, todaySlots, doingNow, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
+return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, plannerLastRun, todaySlots, doingNow, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
 })();
 
 // ---- js/checkins.js
@@ -4964,8 +4975,23 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     }
   }
 
+  // Tasks George has linked to one of his own events (dashboard:<id> in its description): that event
+  // is the task's time, so the planner books it nothing of its own — a task with a set time included
+  // (20 Oct 2026: "Research the Visa D" got a second event at 13:00 beside his).
+  const resolveRef = (ref) => {
+    if (items[ref]) return ref;
+    if (ref.length < 4) return null;
+    const hits = itemIds.filter((id) => id.startsWith(ref));
+    return hits.length === 1 ? hits[0] : null;
+  };
+  const linkedByGeorge = new Set();
+  for (const ev of timed.filter((e) => !e.mine)) {
+    if (links.some((l) => l.calendarId === ev.calendarId && norm(l.title) === norm(ev.title))) continue;
+    for (const id of linkedIds(ev.description).map(resolveRef).filter(Boolean)) linkedByGeorge.add(id);
+  }
+
   // ---- The planner's own events -----------------------------------------------------------------
-  const fixedAll = fixedTasks({ doc, days, config, links });
+  const fixedAll = fixedTasks({ doc, days, config, links }).filter((f) => !linkedByGeorge.has(f.itemId));
   const fixedWanted = new Map(fixedAll.map((f) => [f.key, f]));
   for (const ev of timed.filter((e) => e.mine)) {
     const key = ev.props[P.key] ?? '';
@@ -4987,7 +5013,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       record(kd, { key, eventId: ev.id, calendarId: ev.calendarId, title: ev.title, start, end, state: 'conflict', items: ids });
       continue;
     }
-    if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active')) {
+    if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active' || linkedByGeorge.has(id))) {
       actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }); fixedWanted.delete(key); continue;
     }
     const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
@@ -5114,12 +5140,6 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   }
 
   // ---- Everything else: fixed events, links to tasks, Hebrew and Gym ------------------------------
-  const resolveRef = (ref) => {
-    if (items[ref]) return ref;
-    if (ref.length < 4) return null;
-    const hits = itemIds.filter((id) => id.startsWith(ref));
-    return hits.length === 1 ? hits[0] : null;
-  };
   const movableHabits = [];
   for (const ev of timed.filter((e) => !e.mine)) {
     const start = ev.start.getTime();

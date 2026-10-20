@@ -286,6 +286,15 @@ export function plannerStatus(doc) {
   return rec && rec.status === 'active' ? rec : null;
 }
 
+// When the planner last ran. Its status is only rewritten every so often, but each good run stamps
+// the agenda, so the newer of the two (a working planner once read as stalled, 20 Oct 2026).
+export function plannerLastRun(doc) {
+  const s = plannerStatus(doc);
+  const synced = doc?.calendar?.agenda?.status === 'active' ? doc.calendar.agenda.syncedAt : null;
+  const times = [s?.lastRun, synced].filter((t) => t && Number.isFinite(Date.parse(t)));
+  return times.length ? times.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : null;
+}
+
 // Today's planned times by item, from today's exact, fixed, done and part-done blocks (rough ones
 // never show on the list). An item in two blocks (the rest of a part-done one) shows the later.
 export function todaySlots(doc, today) {
@@ -344,8 +353,9 @@ export function momentLabel(iso, now) {
 // has ever run, and while it's paused.
 export function staleSince(doc, now, minutes = 70) {
   const s = plannerStatus(doc);
-  if (!s?.lastRun || s.paused) return null;
-  return now.getTime() - Date.parse(s.lastRun) > minutes * 60000 ? momentLabel(s.lastRun, now) : null;
+  const last = plannerLastRun(doc);
+  if (!last || s?.paused) return null;
+  return now.getTime() - Date.parse(last) > minutes * 60000 ? momentLabel(last, now) : null;
 }
 
 // Today's rows in the day's order: suggestions stay on top; then undone rows with a time, earliest
@@ -367,8 +377,9 @@ export function plannerSummary(doc, now) {
   const lines = [`Plans ${config.hours[0]}–${config.hours[1]}, ${config.days} days ahead: ${exact}, rough after that.`];
   const s = plannerStatus(doc);
   if (!s) return { summary: 'not set up', lines: [...lines, "It hasn't run yet — the README says how to set it up."] };
-  lines.push(`Last ran ${momentLabel(s.lastRun, now)}${s.version ? ` · build ${s.version}` : ''}.`);
+  const last = plannerLastRun(doc);
+  lines.push(`Last ran ${momentLabel(last, now)}${s.version ? ` · build ${s.version}` : ''}.`);
   if (s.lastError) lines.push(`Last problem: ${s.lastError}`);
   lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
-  return { summary: s.paused ? 'paused' : `last ran ${momentLabel(s.lastRun, now)}`, lines };
+  return { summary: s.paused ? 'paused' : `last ran ${momentLabel(last, now)}`, lines };
 }

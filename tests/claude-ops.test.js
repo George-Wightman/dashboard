@@ -340,3 +340,14 @@ test("archive with released: George's reason is kept, so a committed task doesn'
 });
 
 const pickCountdown = (r) => ({ title: r.title, day: r.day, source: r.source });
+
+test('a task added or moved onto its area\'s day off says it won\'t be listed or booked', () => {
+  const store = fresh();
+  const today = store.today();
+  runOp(store, { op: 'habit', title: 'Cook for Maya', area: 'Home', repeat: { kind: 'daily' } });
+  runOp(store, { op: 'off', start: today, end: today, areas: ['Home'], reason: 'In the UK' });
+  assert.match(runOp(store, { op: 'task', title: 'Food shop', area: 'Home' }), /Note: that day is time off for "Home" .*In the UK.*won't be on the list or booked/s);
+  assert.doesNotMatch(runOp(store, { op: 'task', title: 'Email James', area: 'Job search' }), /time off/);
+  const id = Object.values(store.doc().items).find((i) => i.title === 'Email James').id;
+  assert.match(runOp(store, { op: 'edit', id, set: { area: 'Home' } }), /Note: that day is time off/);
+});

@@ -266,6 +266,7 @@ export async function main({
     if (command === 'preview') {
       lines.forEach(say);
       say('Preview only: nothing saved, no API calls or handoff files written. Conditional actions run later, after a matching report; this does not simulate future reports.');
+      say('Any new #ids above are only for this preview: apply makes its own, so use the ids apply prints.');
       return finish(0);
     }
     const result = await session.push();

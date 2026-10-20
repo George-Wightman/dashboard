@@ -6,7 +6,7 @@
 import { parseAmount, parseLength, parseClock, formatAmount, checkNotes } from '../js/parse.js';
 import { undoLine } from '../js/changes.js';
 import {
-  checkConfigField, readPlannerConfig, mergeSetting, MERGED_SETTINGS, plannerStatus, COLOR_NAMES, checkTimeOff, nextOffId, offText,
+  checkConfigField, readPlannerConfig, mergeSetting, MERGED_SETTINGS, plannerStatus, COLOR_NAMES, checkTimeOff, nextOffId, offText, timeOff, offCovers, excused,
   checkCountdown, nextCountdownId, daysLeft,
 } from '../js/calendar.js';
 import { daysBetween } from '../js/dates.js';
@@ -221,6 +221,16 @@ function seriesNote(store, id) {
   return out.length ? `\n${out.join('\n')}` : '';
 }
 
+// A task dated on a day its area has off is neither listed nor booked that day: say so, so a task
+// that seems added doesn't quietly vanish (20 Oct 2026: five Home tasks did).
+function offNote(store, id) {
+  const rec = store.doc().items[id];
+  if (rec?.type !== 'task' || !rec.date || !excused(store.doc(), rec, rec.date)) return '';
+  const off = timeOff(store.doc()).find((o) => offCovers(o, rec.date) && (!o.areas?.length || o.areas.some((a) => a.toLowerCase() === String(rec.area ?? '').toLowerCase())));
+  return `
+Note: that day is time off for ${rec.area ? `"${rec.area}"` : 'everything'} (${off ? offText(off) : 'time off'}), so this task won't be on the list or booked then — it moves to the first day after. Give it another area or day if it's needed sooner.`;
+}
+
 function task(store, op) {
   const today = store.today();
   const minutes = lengthOf(op.minutes);
@@ -235,7 +245,7 @@ function task(store, op) {
     ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
     ...(series ? { series } : {}),
   });
-  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}${rec.priority ? ' ★' : ''}`, rec.id) + seriesNote(store, rec.id);
+  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}${rec.priority ? ' ★' : ''}`, rec.id) + seriesNote(store, rec.id) + offNote(store, rec.id);
 }
 
 function habit(store, op) {
@@ -433,7 +443,8 @@ function edit(store, op) {
   update(id, changes);
   const what = Object.keys(changes).map((f) => `${f} → ${show(changes[f], f, store)}`).join(', ');
   const moved = map === 'items' && ['date', 'time', 'series', 'order'].some((f) => f in changes);
-  return `Edited ${noun(map, rec)} ${q(rec.title)}: ${what}${moved ? seriesNote(store, id) : ''}`;
+  const offMaybe = map === 'items' && ['date', 'area'].some((f) => f in changes) ? offNote(store, id) : '';
+  return `Edited ${noun(map, rec)} ${q(rec.title)}: ${what}${moved ? seriesNote(store, id) : ''}${offMaybe}`;
 }
 
 // ---- Archiving and suggestions ----------------------------------------------------------------

@@ -270,8 +270,23 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     }
   }
 
+  // Tasks George has linked to one of his own events (dashboard:<id> in its description): that event
+  // is the task's time, so the planner books it nothing of its own — a task with a set time included
+  // (20 Oct 2026: "Research the Visa D" got a second event at 13:00 beside his).
+  const resolveRef = (ref) => {
+    if (items[ref]) return ref;
+    if (ref.length < 4) return null;
+    const hits = itemIds.filter((id) => id.startsWith(ref));
+    return hits.length === 1 ? hits[0] : null;
+  };
+  const linkedByGeorge = new Set();
+  for (const ev of timed.filter((e) => !e.mine)) {
+    if (links.some((l) => l.calendarId === ev.calendarId && norm(l.title) === norm(ev.title))) continue;
+    for (const id of linkedIds(ev.description).map(resolveRef).filter(Boolean)) linkedByGeorge.add(id);
+  }
+
   // ---- The planner's own events -----------------------------------------------------------------
-  const fixedAll = fixedTasks({ doc, days, config, links });
+  const fixedAll = fixedTasks({ doc, days, config, links }).filter((f) => !linkedByGeorge.has(f.itemId));
   const fixedWanted = new Map(fixedAll.map((f) => [f.key, f]));
   for (const ev of timed.filter((e) => e.mine)) {
     const key = ev.props[P.key] ?? '';
@@ -293,7 +308,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       record(kd, { key, eventId: ev.id, calendarId: ev.calendarId, title: ev.title, start, end, state: 'conflict', items: ids });
       continue;
     }
-    if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active')) {
+    if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active' || linkedByGeorge.has(id))) {
       actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }); fixedWanted.delete(key); continue;
     }
     const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
@@ -420,12 +435,6 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   }
 
   // ---- Everything else: fixed events, links to tasks, Hebrew and Gym ------------------------------
-  const resolveRef = (ref) => {
-    if (items[ref]) return ref;
-    if (ref.length < 4) return null;
-    const hits = itemIds.filter((id) => id.startsWith(ref));
-    return hits.length === 1 ? hits[0] : null;
-  };
   const movableHabits = [];
   for (const ev of timed.filter((e) => !e.mine)) {
     const start = ev.start.getTime();

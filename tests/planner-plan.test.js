@@ -350,3 +350,18 @@ test('a daily habit that will not fit is missed, not carried into the next day',
   assert.equal(cal.mine().filter((e) => e.start.dateTime.startsWith(TUE)).length, 0, 'nothing fitted on Tuesday');
   assert.ok(r.days[TUE]?.notes?.some((n) => /Read ten pages/.test(n)), 'and it says so');
 });
+
+test('a task with a time that George has linked to his own event gets no event of its own', () => {
+  const doc = fixture({ items: [task('visa-d', 'Research the Visa D', 'Admin', TUE, { time: '13:00', minutes: 75 })] });
+  const cal = new FakeCalendar([ev(WORK, 'Visa D', TUE, '13:00', '14:15', { description: 'dashboard:visa-d' })]);
+  assert.deepEqual(step(cal, doc, now(TUE, '08:00')).actions, []);
+  // One the planner made before George linked his: taken away, his stays.
+  const doc2 = fixture({ items: [task('visa-d', 'Research the Visa D', 'Admin', TUE, { time: '13:00', minutes: 75 })] });
+  const cal2 = new FakeCalendar();
+  step(cal2, doc2, now(TUE, '08:00'));
+  assert.ok(cal2.byTitle('Research the Visa D'), 'booked while unlinked');
+  cal2.add(ev(WORK, 'Visa D', TUE, '13:00', '14:15', { description: 'dashboard:visa-d' }));
+  step(cal2, doc2, now(TUE, '08:10'));
+  assert.equal(cal2.byTitle('Research the Visa D'), undefined, 'the planner\'s copy went');
+  assert.ok(cal2.byTitle('Visa D'));
+});

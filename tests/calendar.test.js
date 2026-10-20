@@ -116,3 +116,16 @@ test('items take a length and, for a task, a time — checked', () => {
   assert.throws(() => s.addItem({ type: 'quota', title: 'x', target: 3, time: '09:00' }), /A weekly target has no time/);
   assert.equal(s.addItem({ type: 'task', title: 'plain' }).minutes, undefined);
 });
+
+test('the planner last ran at the newer of its status and the agenda it stamps every run', async () => {
+  const { plannerLastRun, staleSince } = await import('../js/calendar.js');
+  const doc = { calendar: {
+    status: { id: 'status', status: 'active', lastRun: '2026-10-20T07:07:00.000Z' },
+    agenda: { id: 'agenda', status: 'active', syncedAt: '2026-10-20T07:37:00.000Z' },
+  } };
+  assert.equal(plannerLastRun(doc), '2026-10-20T07:37:00.000Z');
+  assert.equal(staleSince(doc, new Date('2026-10-20T08:30:00.000Z')), null, 'not stale: the agenda says it ran 53 minutes ago');
+  doc.calendar.agenda.syncedAt = '2026-10-19T07:00:00.000Z';
+  assert.equal(plannerLastRun(doc), '2026-10-20T07:07:00.000Z');
+  assert.equal(plannerLastRun({ calendar: {} }), null);
+});

@@ -1,7 +1,7 @@
 // The background jobs, for ⚙ → Claude: each one the planner runs, when it last worked and what's
 // wrong, in a line. A job never set up is left out. Pure: a document and a moment in.
 
-import { plannerStatus, momentLabel } from './calendar.js';
+import { plannerStatus, plannerLastRun, momentLabel } from './calendar.js';
 import { gymStatus } from './gym.js';
 import { routinesOf } from './coach.js';
 import { CHECKIN_STATUS } from './checkins.js';
@@ -15,12 +15,13 @@ export function jobLines(doc, now = new Date()) {
   const out = [];
   const when = (iso) => momentLabel(iso, now);
   const planner = plannerStatus(doc);
-  if (planner?.lastRun) {
-    const quiet = !planner.paused && minutesSince(planner.lastRun, now) > QUIET_MIN;
+  const last = plannerLastRun(doc);
+  if (planner && last) {
+    const quiet = !planner.paused && minutesSince(last, now) > QUIET_MIN;
     out.push({
       name: 'Calendar planner', ok: !planner.lastError && !quiet,
-      line: planner.paused ? 'paused' : planner.lastError ? `${planner.lastError} (last ran at ${when(planner.lastRun)})`
-        : quiet ? `last ran at ${when(planner.lastRun)} — it runs every 10 minutes, so something has stopped it` : `ran at ${when(planner.lastRun)}`,
+      line: planner.paused ? 'paused' : planner.lastError ? `${planner.lastError} (last ran at ${when(last)})`
+        : quiet ? `last ran at ${when(last)} — it runs every 10 minutes, so something has stopped it` : `ran at ${when(last)}`,
     });
   }
   const gym = gymStatus(doc);

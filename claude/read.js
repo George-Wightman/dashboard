@@ -10,7 +10,7 @@ import { formatProgress } from '../js/parse.js';
 import { openFlags, FLAG_KINDS, flagKind, flagSourceName } from '../js/flags.js';
 import { changeList } from '../js/changes.js';
 import {
-  readPlannerConfig, dayRecord, plannerStatus, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText, countdowns, daysLeft,
+  readPlannerConfig, dayRecord, plannerStatus, plannerLastRun, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText, countdowns, daysLeft,
 } from '../js/calendar.js';
 import { attention } from '../js/attention.js';
 import { zoneNote, deviceZone } from '../js/travel.js';
@@ -125,7 +125,7 @@ function plannerRead(doc, day) {
   const s = plannerStatus(doc);
   const out = [header(doc, day)];
   out.push(s
-    ? `Calendar planner: last ran ${when(s.lastRun)}${s.paused ? ' · paused' : ''}${s.version ? ` · build ${s.version}` : ''}`
+    ? `Calendar planner: last ran ${when(plannerLastRun(doc))}${s.paused ? ' · paused' : ''}${s.version ? ` · build ${s.version}` : ''}`
     : "Calendar planner: hasn't run yet.");
   if (s?.lastError) out.push(`  Last problem: ${s.lastError}`);
   out.push(`Settings: hours ${config.hours[0]}–${config.hours[1]} · gapMinutes ${config.gapMinutes} · defaultMinutes ${config.defaultMinutes} · maxBlockMinutes ${config.maxBlockMinutes} · days ${config.days} · exactDays ${config.exactDays} · firmUpHour ${config.firmUpHour}`);
