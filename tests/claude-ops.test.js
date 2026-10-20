@@ -241,7 +241,7 @@ test('fieldWarnings: an unknown field says so and names what the op does take', 
   const [note] = fieldWarnings({ op: 'task', title: 'x', length: '2h' });
   assert.match(note, /"length" isn't a field on task/);
   assert.match(note, /ignored/);
-  assert.match(note, /title, date, area, goal, minutes, time, notes, priority, series, suggest/);
+  assert.match(note, /title, date, area, goal, minutes, time, notes, priority, series, order, suggest/);
 });
 
 test("fieldWarnings: a plan retains its task's detailed controls", () => {
@@ -359,4 +359,19 @@ test('a set time already gone on the task\'s own date says the planner won\'t bo
   const id = Object.values(store.doc().items).find((i) => i.title === 'Call York').id;
   assert.match(runOp(store, { op: 'edit', id, set: { time: '07:30' } }), /already gone/);
   assert.doesNotMatch(runOp(store, { op: 'edit', id, set: { date: 'tomorrow' } }), /already gone/);
+});
+
+test('an edit with its fields loose beside the id reads them as set; goalId means goal; a task takes order', () => {
+  const store = fresh();
+  runOp(store, { op: 'goal', title: 'Remote income' });
+  const goal = Object.values(store.doc().goals)[0];
+  runOp(store, { op: 'task', title: 'List options', goalId: goal.id, order: 70 });
+  const t = Object.values(store.doc().items).find((i) => i.title === 'List options');
+  assert.equal(t.goalId, goal.id);
+  assert.equal(t.order, 70);
+  assert.deepEqual(fieldWarnings({ op: 'task', title: 'x', goalId: goal.id, order: 3 }), []);
+  assert.match(runOp(store, { op: 'edit', id: t.id, time: '19:30', minutes: '90m' }), /Edited task "List options": time → 19:30, minutes → /);
+  assert.equal(store.doc().items[t.id].time, '19:30');
+  assert.deepEqual(fieldWarnings({ op: 'edit', id: t.id, date: '2026-09-23', time: null }), []);
+  assert.throws(() => runOp(store, { op: 'edit', id: t.id }), /edit needs set/);
 });

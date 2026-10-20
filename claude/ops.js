@@ -254,6 +254,7 @@ function task(store, op) {
     area: str(op.area), goalId: goalOf(store, op.goal), status: statusOf(op), source: CLAUDE,
     ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
     ...(series ? { series } : {}),
+    ...(Number.isFinite(op.order) ? { order: op.order } : {}),
   });
   return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}${rec.priority ? ' ★' : ''}`, rec.id) + seriesNote(store, rec.id) + offNote(store, rec.id) + pastNote(store, rec.id);
 }
@@ -803,7 +804,7 @@ export const FIELDS = {
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],
   review: ['id'],
-  task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'series', 'suggest', 'details'],
+  task: ['title', 'date', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'series', 'order', 'suggest', 'details'],
   habit: ['title', 'repeat', 'area', 'goal', 'minutes', 'time', 'notes', 'priority', 'suggest', 'details'],
   target: ['title', 'target', 'unit', 'unitLabel', 'area', 'goal', 'notes', 'suggest', 'details'],
   goal: ['title', 'targetDate', 'why', 'milestones', 'notes', 'suggest', 'details'],
@@ -841,7 +842,23 @@ const unknownIn = (obj, fields, what, out) => {
 
 // Warnings, never refusals: an op that works today must go on working. The note is what turns a
 // silent wrong success into something a model can act on.
-export function fieldWarnings(op) {
+// The shapes models reach for that mean one thing only, read as that thing. The trail showed an
+// edit with its fields loose beside the id, not in set, refused eleven times; and goalId for goal.
+export function plainOp(op) {
+  if (!op || typeof op !== 'object' || Array.isArray(op)) return op;
+  if (op.op === 'edit' && op.set === undefined) {
+    const { op: _, id, ...loose } = op;
+    if (Object.keys(loose).length) return { op: 'edit', id, set: loose };
+  }
+  if (['task', 'habit', 'target'].includes(op.op) && op.goalId !== undefined && op.goal === undefined) {
+    const { goalId, ...rest } = op;
+    return { ...rest, goal: goalId };
+  }
+  return op;
+}
+
+export function fieldWarnings(raw) {
+  const op = plainOp(raw);
   if (!op || typeof op !== 'object' || Array.isArray(op)) return [];
   const allowed = FIELDS[op.op];
   if (!allowed) return [];
@@ -869,8 +886,9 @@ export const OPS = {
 // changes no record at all, so there is nothing for George to see or undo.
 export const UNLOGGED = new Set(['undo', 'handoff']);
 
-export function runOp(store, op) {
-  if (!op || typeof op !== 'object' || Array.isArray(op)) throw new Error('Each op is an object like {"op": "task", "title": "…"}');
+export function runOp(store, raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Each op is an object like {"op": "task", "title": "…"}');
+  const op = plainOp(raw);
   const fn = Object.hasOwn(OPS, op.op) ? OPS[op.op] : null;
   if (!fn) throw new Error(`Unknown op ${JSON.stringify(op.op)} — ops: ${Object.keys(OPS).join(', ')}`);
   if (['details', 'rule', 'report', 'review'].includes(op.op)) {

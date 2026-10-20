@@ -183,7 +183,8 @@ minutes to 12 hours (`"45m"`, `"1h30"`, or a number of minutes) — and `"time":
 start, which makes it a fixed event in the calendar. `"notes": "…"` — the detail behind a short title
 (up to 1000 characters; shown under it, and at the top of its calendar block); `"priority": true` —
 booked first, starred. `"series": "Role plays"` — work that only makes sense in order: the planner
-books a series by `order` and never puts a later one before an earlier one (`reference planning`).
+books a series by `order` (a number, which `task` takes too) and never puts a later one before an
+earlier one (`reference planning`).
 `null` clears it on an edit. A date or time that breaks the order comes back with a `Note:`.
 
 ### `habit`
@@ -232,7 +233,9 @@ area, goalId, order, minutes, time, notes, priority, series`; habits: `title, ar
 minutes, time, notes, priority` (`null` clears a length or time); weekly targets: `title, area,
 goalId, target, unitLabel, order, notes`; goals: `title, targetDate, target, unitLabel, why, order, notes`
 (`target: null` measures by milestones); milestones: `title, done, goalId, order`. A weekly target's
-unit can't change — archive it and add a new one.
+unit can't change — archive it and add a new one. The fields can also sit beside `id` without `set`.
+A `Note:` comes back when the change leaves a task on a day its area has off, or at a time already gone
+on its own date.
 
 ### `archive`
 `{"op": "archive", "id": "…"}` — archives an item, goal or milestone (history is kept), removes a
