@@ -127,8 +127,9 @@ test('every playbook the tool offers exists, and the docs send people to them', 
   }
 });
 
-test("SKILL.md tells Claude to keep its hands off George's calendar", () => {
+test("SKILL.md lets Claude move or resize an event only when George asks, and never delete one", () => {
   const skill = read('claude/skill/SKILL.md');
-  assert.match(skill, /no booking, no editing, no deleting/);
+  assert.match(skill, /When George asks you to move or\s+resize something in his calendar, do it directly/);
+  assert.match(skill, /Never delete, retitle or touch a whole series, and never edit his calendar unasked/);
   assert.match(skill, /reading one of them tells you\s+nothing/);
 });

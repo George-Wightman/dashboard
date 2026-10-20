@@ -515,3 +515,12 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 :root[data-screen="daylight"] dialog.snap .sheet-body, :root[data-screen="daylight"] dialog.hebrew-log .sheet-body { height: auto; }
 
 .dl-note-day:empty { display: none; }
+
+/* Dragging a task to a new time (js/ui/timedrag.js). */
+#timeline li.row[data-drag] { cursor: grab; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+#timeline li.row.tl-dragging { opacity: .45; cursor: grabbing; }
+#timeline .tl-drop-before { box-shadow: 0 -3px 0 0 var(--dl-accent, #3F3A9E); }
+#timeline .tl-drop-after { box-shadow: 0 3px 0 0 var(--dl-accent, #3F3A9E); }
+.tl-drag-label { position: fixed; z-index: 50; padding: 8px 12px; border-radius: 12px; background: var(--dl-ink, #1F1B3A); color: var(--dl-ground, #FFFFFF); font: 700 14px/1 var(--dl-text, inherit); pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); }
+#timeline li.row.tl-moving > .tl-time { font-style: italic; }
+#timeline li.row.tl-moving > .tl-time::after { content: ' ·'; color: var(--dl-accent, #3F3A9E); }

@@ -46,3 +46,38 @@ export function tomorrowLine(doc, today) {
   if (!blocks.length) return null;
   return blocks.map((b) => `${b.title} ${b.state === 'rough' ? '~' : ''}${clockLabel(b.start)}`).join(' · ');
 }
+
+// ---- Dragging a task to a new time (js/ui/timedrag.js) -------------------------------------------
+
+const QUARTER = 15 * 60000;
+const pad = (n) => String(n).padStart(2, '0');
+export const toClock = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+// The calendar date a time falls on (after midnight that's tomorrow's, even before the day starts).
+export const toDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+// Where a task dropped on the day lands. `above` and `below` are the entries either side ({ start,
+// end } as ISO, either may be missing); `fraction` is how far down the gap between them it was let go.
+// It goes after what's above and before what's below, in quarter hours, and never before now.
+export function dropTime({ above, below, fraction = 0, minutes = 30, now }) {
+  const length = Math.max(15, minutes) * 60000;
+  const lo = above ? Date.parse(above.end ?? above.start) : null;
+  const hi = below ? Date.parse(below.start) : null;
+  let t;
+  if (lo !== null && hi !== null) t = lo + Math.max(0, Math.min(1, fraction)) * Math.max(0, hi - length - lo);
+  else if (hi !== null) t = hi - length;
+  else if (lo !== null) t = lo;
+  else t = +now;
+  const earliest = Math.ceil(+now / QUARTER) * QUARTER;
+  return new Date(Math.max(earliest, Math.round(t / QUARTER) * QUARTER));
+}
+
+// A task given a time today in the dashboard shows there at once, ahead of the planner moving its
+// block (within ten minutes): its own time and length, marked as on its way.
+export function movedSlot(item, slot, today) {
+  if (item?.type !== 'task' || item.date !== today || !/^\d\d:\d\d$/.test(item.time ?? '')) return slot ?? null;
+  const [y, mo, d] = today.split('-').map(Number);
+  const [hh, mm] = item.time.split(':').map(Number);
+  const start = new Date(y, mo - 1, d, hh, mm);
+  if (slot && toClock(new Date(slot.start)) === item.time) return slot;
+  return { start: start.toISOString(), end: new Date(+start + (item.minutes ?? 30) * 60000).toISOString(), state: 'moving' };
+}

@@ -29,13 +29,21 @@ dashboard's own account and it needs no connector at all. Use it first.
 The CLI week view remains seven days. The app's Upcoming view uses the full confirmed booking
 horizon and also lists future tasks that have no slot yet.
 
-## Never edit his calendar yourself
+## Edit his calendar only when he asks, and only by moving or resizing
 
-Not the blocks the planner made, not his own events, not recurring series. No deleting, no moving, no
-retitling, no tagging. Every one of those is the planner's job or George's, and a change you make by
-hand is invisible to `changes` — so he can't see it and can't undo it.
+George has asked for calendar changes to be made directly when he asks for them ("make tomorrow's gym
+1h45", "move the battery task to first thing"). So, when he asks:
 
-If something is wrong on the calendar, the fix is always in the dashboard:
+- **Move or resize the one event he means** with the Calendar connector. For one day of a repeating
+  event (his Gym series), change that day's instance only, never the series.
+- **Mirror it in the dashboard** when there's a task behind the event: an `edit` with the same `date`
+  and `time` (and `minutes` if the length changed). The planner leaves a moved block where it is, so
+  without the edit the two disagree.
+- **Never delete** an event (deleting a task's event archives the task), never retitle, never tag.
+- **Say exactly what you changed** in the chat: a calendar edit doesn't appear in `changes`, so he
+  can't see it or undo it there.
+
+Unasked, leave his calendar alone. When something is wrong on it, the fix is in the dashboard:
 
 | What's wrong | What to change |
 | --- | --- |

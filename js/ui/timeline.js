@@ -4,14 +4,15 @@
 // ticked. The rows are the classic list's own (js/ui/today.js), so they keep everything they show.
 
 import { h } from './dom.js';
-import { timelineModel, tomorrowLine, mealMarkers } from '../timeline.js';
+import { timelineModel, tomorrowLine, mealMarkers, movedSlot } from '../timeline.js';
 import { slotName } from '../food.js';
 import { openSnap } from './snap.js';
 import { todayRows } from '../schedule.js';
 import { todaySlots, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { scheduleView } from '../plan-state.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
-import { renderRow, enableDrag, listRows } from './today.js';
+import { renderRow, listRows } from './today.js';
+import { enableTimeDrag } from './timedrag.js';
 import { renderCheckin } from './checkin.js';
 import { renderBackRow, sessionExtras } from './coach.js';
 import { keptFocus, restoreFocus } from './side.js';
@@ -35,14 +36,24 @@ function listenForTicks(root, ctx) {
 
 export function renderTimeline(ctx) {
   const root = document.getElementById('timeline');
+  // Mid-drag the rows stay put; the drop redraws.
+  if (ctx.ui.timelineDrag) return;
   const kept = keptFocus(root);
   listenForTicks(root, ctx);
+  enableTimeDrag(root, ctx);
   // Arranging moves tiles only: the day can't be ticked or dragged meanwhile (as the classic list).
   root.inert = !!ctx.ui.arranging;
   const doc = ctx.store.doc();
   const today = ctx.store.today();
   const rows = listRows(todayRows(doc, today));
-  const slots = todaySlots(doc, today);
+  // A task moved here (a drag, or Claude) shows at its new time before the planner books it there.
+  const slots = new Map(todaySlots(doc, today));
+  for (const row of rows) {
+    if (row.suggested) continue;
+    const s = movedSlot(row.item, slots.get(row.item.id), today);
+    if (s) slots.set(row.item.id, s);
+  }
+  const draggable = (row) => !row.suggested && !row.blocked && !row.done;
   const model = timelineModel({ rows, slots, commitments: scheduleView(doc, today).commitments, today, now: new Date(), markers: mealMarkers(doc, today) });
   const { config } = readPlannerConfig(doc);
   const gymId = gymHabitId(doc);
@@ -74,20 +85,26 @@ export function renderTimeline(ctx) {
       return;
     }
     if (e.kind === 'commitment') {
-      timed.push(h('li', { class: 'tl-busy' }, clock(e.start), h('span', { class: 'tl-busy-mark', 'aria-hidden': 'true' }),
+      timed.push(h('li', { class: 'tl-busy', 'data-start': e.start, 'data-end': e.end }, clock(e.start), h('span', { class: 'tl-busy-mark', 'aria-hidden': 'true' }),
         h('span', { class: 'tl-busy-card' }, h('span', {}, e.title), h('span', { class: 'tl-busy-when' }, `until ${clockLabel(e.end)}${e.calendar ? ` · ${e.calendar}` : ''}`))));
       return;
     }
     const { li, extra } = rowEls(e.row);
     li.classList.add('tl-entry');
-    li.prepend(clock(e.start, e.end));
+    Object.assign(li.dataset, { start: e.start, end: e.end });
+    if (e.row.item.type === 'task' && draggable(e.row)) li.dataset.drag = '1';
+    const moving = slots.get(e.row.item.id)?.state === 'moving';
+    if (moving) li.classList.add('tl-moving');
+    const time = clock(e.start, e.end);
+    if (moving) time.title = 'Moved here: its calendar block follows within 10 minutes';
+    li.prepend(time);
     timed.push(li, ...extra);
   });
   if (model.timed.length && model.nowIndex === model.timed.length) timed.push(nowLine());
 
   const anytime = model.anytime.flatMap((row) => {
     const { li, extra } = rowEls(row);
-    if (!row.suggested && !row.blocked) enableDrag(li, row, ctx);
+    if (draggable(row)) li.dataset.drag = '1';
     return [li, ...extra];
   });
 

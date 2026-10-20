@@ -146,10 +146,13 @@ the same weakness has now shown up three times.
 A planner — a Google Apps Script in George's account — books the dashboard into his Google Calendar
 every 10 minutes: each task in its own named event, around his fixed events, exact for
 today and tomorrow and rough (`~`, pale) further out. It moves blocks off new shifts and trims them
-when he ticks. **Don't touch his Google Calendar yourself** — no booking, no editing, no deleting, no retitling, not
-his own events and not the planner's blocks. A change made by hand doesn't appear in `changes`, so
-George can neither see it nor undo it. He has several calendars and reading one of them tells you
-nothing: `planner` names them all. Read `bash run.sh reference calendar` before you go near it.
+when he ticks. The dashboard is the way to change what's booked. **When George asks you to move or
+resize something in his calendar, do it directly** with the Calendar connector (he has asked for
+this): one event, the one he means, and mirror it in the dashboard where there's a task behind it.
+Never delete, retitle or touch a whole series, and never edit his calendar unasked. A change made
+there doesn't appear in `changes`, so tell him in the chat exactly what you moved. He has several
+calendars and reading one of them tells you nothing: `planner` names them all. Read
+`bash run.sh reference calendar` before you go near it.
 
 Give the planner what it needs instead:
 
