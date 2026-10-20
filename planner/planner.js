@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9c1ea274';
+var PLANNER_BUILD = '57ffb774';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1699,8 +1699,9 @@ return { SAID_MAX, SUMMARY_MAX, MISS_GRACE_MINUTES, checkinId, questionFor, wait
 
 // ---- js/food.js
 const __js_food = (() => {
-// Food: a meal snapped (a photo and/or a line) or a usual meal logged in one tap. Gemini estimates
-// protein and calories as ranges; George picks a portion; Claude can correct a big miss later. Protein
+// Food: a meal described in words (a photo is optional) or a usual meal logged in one tap. Gemini
+// estimates protein and calories as ranges, item by item with a count he can change (5 eggs, not 4);
+// any meal can be opened again to change its counts, words or time; Claude can correct a big miss. Protein
 // is the number that matters day to day; calories only as a weekly average against maintenance (he's
 // maintaining, not cutting). Meals live in the `meals` map of data.json; a meal's progress is its
 // `state` (pending, estimated, failed), since `status` is the record's own (active, archived). Pure.
@@ -1710,6 +1711,9 @@ const { addDays } = __js_dates;
 const PORTIONS = { lighter: 0.75, right: 1, bigger: 1.3 };
 const MAX_TRIES = 3;
 const FUEL_ID = 'fuel:settings';
+// Meals go to Flash first (a few a day; worth the better model) and with little randomness.
+const MEAL_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+const MEAL_TEMPERATURE = 0.2;
 const DEFAULT_PROTEIN = 180;
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -1734,19 +1738,25 @@ function snapTime(now, marker) {
 }
 
 const MEAL_SYSTEM = [
-  'You estimate the protein and calories in a meal, from a photo of it, a few words about it, or both.',
-  'Assume typical UK portions unless the words say otherwise. Be honest about uncertainty: give a low, a middle and a high value.',
+  'You estimate the protein and calories in a meal, from what he says about it, and sometimes a photo.',
+  'His words are the best guide to how much he ate. When they give amounts (5 eggs, 2 pittas, half the tray), use exactly those. A photo shows what the food is; for how much, trust his words over the photo.',
+  'He is a big, active man who eats large portions, around 4,000 kcal a day. When nothing says how much, assume a generous portion, not a typical one.',
+  'List each item with a count he can correct: qty is a number, unit is what is counted (eggs, pittas, slices, g, ml, bowls, portions), and protein and kcal are for that whole quantity.',
+  'Be honest about uncertainty: give a low, a middle and a high value for the whole meal.',
   'Reply only with JSON, exactly this shape:',
-  '{"name": "a short name for the meal", "items": [{"name": "an item", "protein": grams, "kcal": calories}], "protein": {"low": g, "mid": g, "high": g}, "kcal": {"low": n, "mid": n, "high": n}}',
+  '{"name": "a short name for the meal", "items": [{"name": "fried egg", "qty": 5, "unit": "eggs", "protein": grams, "kcal": calories}], "protein": {"low": g, "mid": g, "high": g}, "kcal": {"low": n, "mid": n, "high": n}}',
 ].join('\n');
 
-function mealPrompt({ text, at, hasPhoto }) {
+// `usual` is his usual meals, given for scale: what his own portions come to.
+function mealPrompt({ text, at, hasPhoto, usual = [] }) {
   const words = String(text ?? '').trim();
+  const scale = usual.slice(0, 6).map((u) => `${u.name}: ${u.protein} g protein, ${u.kcal} kcal`);
   return [
-    hasPhoto ? 'The photo is the meal.' : 'There is no photo; go by the words.',
+    hasPhoto ? 'There is a photo of the meal.' : 'There is no photo; go by the words.',
     words ? `What he says about it: ${words}` : 'He added no words.',
     `Eaten at ${pad(at.getHours())}:${pad(at.getMinutes())}.`,
-  ].join('\n');
+    scale.length ? `For scale, his usual meals: ${scale.join('; ')}.` : null,
+  ].filter(Boolean).join('\n');
 }
 
 const BAD = 'Gemini’s estimate didn’t make sense';
@@ -1761,15 +1771,47 @@ function range(r, round) {
   return out;
 }
 
+const round1 = (n) => Math.round(n * 10) / 10;
+
+// An item keeps what one of its units is worth (`each`), so changing the count never drifts.
+function item(name, qty, unit, protein, kcal) {
+  return { name, qty, unit, protein: roundProtein(protein), kcal: roundKcal(kcal), each: { protein: round1(protein / qty), kcal: round1(kcal / qty) } };
+}
+
 function parseEstimate(data) {
   if (!data || typeof data !== 'object' || typeof data.name !== 'string' || !data.name.trim()) throw new Error(BAD);
   const items = (Array.isArray(data.items) ? data.items : [])
     .filter((i) => i && typeof i.name === 'string' && i.name.trim() && isNum(i.protein) && isNum(i.kcal))
-    .map((i) => ({ name: i.name.trim(), protein: roundProtein(i.protein), kcal: roundKcal(i.kcal) }));
+    .map((i) => item(i.name.trim(), isNum(i.qty) && i.qty > 0 ? round1(i.qty) : 1, typeof i.unit === 'string' ? i.unit.trim().slice(0, 20) : '', i.protein, i.kcal));
   return { name: data.name.trim(), items, protein: range(data.protein, roundProtein), kcal: range(data.kcal, roundKcal) };
 }
 
-function finalFor(estimate, portion = 'right') {
+// The same item with a new count (0 leaves it out of the totals).
+function withQty(it, qty) {
+  const q = isNum(qty) ? round1(qty) : it.qty;
+  const each = it.each ?? { protein: it.protein / (it.qty || 1), kcal: it.kcal / (it.qty || 1) };
+  return { ...it, qty: q, each, protein: roundProtein(each.protein * q), kcal: roundKcal(each.kcal * q) };
+}
+
+// The count one step up (dir 1) or down (-1): 25 at a time for grams and millilitres, otherwise one,
+// or a half below one (half a pitta). Never below 0.
+function nextQty(it, dir) {
+  const q = it.qty ?? 1;
+  if (/^(g|grams?|ml)$/i.test(it.unit ?? '')) return Math.max(0, q + 25 * dir);
+  const step = q < 1 || (q === 1 && dir < 0) ? 0.5 : 1;
+  return Math.max(0, round1(q + step * dir));
+}
+
+const itemsTotal = (items) => ({
+  protein: roundProtein(items.reduce((s, i) => s + i.protein, 0)),
+  kcal: roundKcal(items.reduce((s, i) => s + i.kcal, 0)),
+});
+
+// What a fresh estimate counts for: its items added up when it has them (so changing a count moves
+// the total from where it started), otherwise the middle of the range for the portion picked.
+function finalFor(estimate, portion = 'right', items = null) {
+  const list = items ?? estimate.items;
+  if (list?.length && list.every((i) => isNum(i.qty))) return itemsTotal(list);
   const k = PORTIONS[portion] ?? 1;
   return { protein: roundProtein(estimate.protein.mid * k), kcal: roundKcal(estimate.kcal.mid * k) };
 }
@@ -1824,17 +1866,17 @@ function usualMeals(doc) {
     .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name));
 }
 
-// What this device should do next: estimate the meals it holds a photo for (and any meal with
-// only words, which any device can do), and upload the photos it holds.
+// What this device should do next: estimate the meals it holds a photo for (and any meal whose photo
+// isn't waiting on another device, which goes by its words), and upload the photos it holds.
 function mealWork(doc, localIds) {
   const needsEstimate = (m) => m.state === 'pending' || (m.state === 'failed' && (m.tries ?? 0) < MAX_TRIES);
   const all = meals(doc);
   return {
-    estimate: all.filter((m) => needsEstimate(m) && (localIds.has(m.id) || !m.photoState)),
+    estimate: all.filter((m) => needsEstimate(m) && (localIds.has(m.id) || m.photoState !== 'local')),
     upload: all.filter((m) => m.photoState === 'local' && localIds.has(m.id)),
   };
 }
-return { PORTIONS, MAX_TRIES, FUEL_ID, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, parseEstimate, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
+return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, parseEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
 })();
 
 // ---- js/schedule.js
@@ -3466,6 +3508,20 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     return create('meals', { ...base, id: `meal:${newId()}`, text: String(text ?? '').trim(), state: 'pending', photoState: hasPhoto ? 'local' : null, estimate: null, final: null });
   }
 
+  // A meal opened again: moved to when it was really eaten, or its words changed and estimated
+  // again (the old numbers count until the new ones land). George's change replaces Claude's correction.
+  function retimeMeal(id, at) {
+    const when = at instanceof Date ? at : new Date(at);
+    if (Number.isNaN(when.getTime())) throw new Error('That time isn’t a date');
+    return patch('meals', id, { at: when.toISOString(), day: logicalDay(when, settings.dayStartHour), slot: slotFor(when) });
+  }
+
+  function redoMeal(id, text) {
+    const words = String(text ?? '').trim();
+    if (!words) throw new Error('Say what you had');
+    return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null });
+  }
+
   function saveUsual({ name, protein, kcal }) {
     const title = requireTitle(name, 'A usual meal');
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
@@ -3680,6 +3736,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     setSession,
     addMeal,
     updateMeal: (id, changes) => patch('meals', id, changes),
+    retimeMeal,
+    redoMeal,
     archiveMeal: (id) => patch('meals', id, { status: 'archived', archivedOn: today() }),
     saveUsual,
     setFuel,
@@ -3967,13 +4025,13 @@ function geminiKeys(settings, storage) {
 }
 
 // `image` ({ mimeType, data: base64 }) goes first in the same message as the words (a meal photo).
-function requestBody(system, prompt, plain, image = null) {
+function requestBody(system, prompt, plain, image = null, temperature = 0.6) {
   const picture = image ? [{ inlineData: { mimeType: image.mimeType, data: image.data } }] : [];
   if (plain) return { contents: [{ role: 'user', parts: [...picture, { text: `${system}\n\n${prompt}` }] }] };
   return {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [...picture, { text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.6 },
+    generationConfig: { responseMimeType: 'application/json', temperature },
   };
 }
 
@@ -4061,6 +4119,7 @@ async function askGemini({
   fetch = (...args) => globalThis.fetch(...args),
   timers = globalThis,
   models = MODELS,
+  temperature = 0.6,
   timeoutMs = TIMEOUT_MS,
 }) {
   const usable = [...new Set((keys ?? []).map((k) => String(k ?? '').trim()).filter(Boolean))];
@@ -4069,7 +4128,7 @@ async function askGemini({
   const sleep = (ms) => new Promise((resolve) => { timers.setTimeout(resolve, ms); });
 
   const send = (model, key, plain) => post({
-    fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body: requestBody(system, prompt, plain, image),
+    fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body: requestBody(system, prompt, plain, image, temperature),
   });
 
   // One model on one key. The plain-body retry after a 400 and the short wait after a 429 each

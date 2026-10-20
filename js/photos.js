@@ -3,7 +3,7 @@
 // or GitHub fails, nothing is lost: the next pass picks it up (on save, when the device comes back
 // online, after each sync, and at start-up).
 
-import { mealWork, mealPrompt, parseEstimate, finalFor, MEAL_SYSTEM, MAX_TRIES } from './food.js';
+import { mealWork, mealPrompt, parseEstimate, finalFor, usualMeals, MEAL_SYSTEM, MEAL_MODELS, MEAL_TEMPERATURE, MAX_TRIES } from './food.js';
 import { GeminiError } from './gemini.js';
 
 const API = 'https://api.github.com';
@@ -114,12 +114,15 @@ async function onePass({ ctx, photos = localPhotos, upload = uploadPhoto, online
     try {
       const { data } = await ctx.gemini.ask({
         system: MEAL_SYSTEM,
-        prompt: mealPrompt({ text: meal.text, at: new Date(meal.at), hasPhoto: !!photo }),
+        prompt: mealPrompt({ text: meal.text, at: new Date(meal.at), hasPhoto: !!photo, usual: usualMeals(store.doc()) }),
         image: photo ? { mimeType: 'image/jpeg', data: photo.big } : null,
+        models: MEAL_MODELS,
+        temperature: MEAL_TEMPERATURE,
       });
       const estimate = parseEstimate(data);
       await idle();
-      store.updateMeal(meal.id, { state: 'estimated', estimate, final: finalFor(estimate, meal.portion ?? 'right'), error: null });
+      // A fresh estimate starts the counts again from Gemini's.
+      store.updateMeal(meal.id, { state: 'estimated', estimate, items: null, final: finalFor(estimate, meal.portion ?? 'right'), error: null });
       result.estimated++;
     } catch (e) {
       if (waitsUntried(e)) continue;

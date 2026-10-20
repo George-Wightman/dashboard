@@ -2,9 +2,11 @@
 
 ## What he does, and what you do
 
-George snaps a meal in the app (a photo, a line about it, or both) or logs a usual meal in one tap.
-Gemini estimates protein and calories straight away, as a range; he picks a portion. That's all he
-does: no weighing, no counting.
+George logs a meal in the app by saying or typing what he had and how much ("5 fried eggs, 2
+pittas"), or logs a usual meal in one tap. A photo is optional: he describes his portions better than
+a picture does (since 20 Oct 2026), so his words win on amounts. Gemini estimates each item with a
+count, and he can open any meal later to change a count (the total follows), change his words and have
+it estimated again, or move it to when he ate it. No weighing.
 
 You check the estimates when you plan with him, and correct the big misses. He is **maintaining, not
 cutting**: protein (around 180 g a day) is what matters day to day; calories only as a weekly average
@@ -26,12 +28,18 @@ photo's path; protein against the target day by day; and the week's calories aga
 
    Only when the estimate is clearly off (more than about 25%, or protein badly wrong). Leave close
    calls alone. The correction replaces his number in every total and shows your mark on the meal.
-4. **Meals he eats again and again** (the same breakfast, a shake): save them as usual meals with exact
+   If he later changes a count on that meal himself, his change replaces your correction.
+   "counts he set" in the `food` read means he has already corrected it himself: leave it alone.
+4. **Logged twice** (a snap and a usual meal for the same breakfast): remove one, with the reason:
+
+       {"op": "meal", "id": "meal:…", "remove": true, "why": "logged twice"}
+
+5. **Meals he eats again and again** (the same breakfast, a shake): save them as usual meals with exact
    numbers, so they log in one tap and need no estimate:
 
        {"op": "meal", "usual": {"name": "Usual breakfast", "protein": 42, "kcal": 610}}
 
-5. **Maintenance**: once there are about two weeks of meals and his weight (or how he feels) is
+6. **Maintenance**: once there are about two weeks of meals and his weight (or how he feels) is
    steady, set his maintenance figure from the weekly average:
 
        {"op": "meal", "fuel": {"maintenanceKcal": 3100}}

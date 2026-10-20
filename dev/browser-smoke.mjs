@@ -147,7 +147,7 @@ try {
   await page.locator('#tiles .tile[data-tile="weeks"] .tile-open').click();
   await page.locator('#widget-sheet[open]').waitFor();
   await page.keyboard.press('Escape');
-  await page.locator('#tiles').getByRole('button', { name: 'Snap a meal', exact: true }).click();
+  await page.locator('#tiles').getByRole('button', { name: 'Log a meal', exact: true }).click();
   await page.locator('#snap[open]').waitFor();
   await page.keyboard.press('Escape');
   await page.locator('#dl-sky').getByRole('button', { name: 'Arrange', exact: true }).click();

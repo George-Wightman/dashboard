@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   slotFor, parseEstimate, finalFor, mealValue, dayProtein, weekKcal, maintenanceVerdict, usualMeals, mealWork, mealPrompt,
-  MEAL_SYSTEM, fuelSettings, mealsOn,
+  MEAL_SYSTEM, fuelSettings, mealsOn, withQty, nextQty, itemsTotal,
 } from '../js/food.js';
 import { fixture } from './helpers.js';
 
@@ -108,4 +108,45 @@ test('review: a marker logs the meal it names, at its time, once that time has p
   assert.equal(slotFor(snapTime(now, breakfast)), 'breakfast');
   assert.equal(snapTime(now, dinner).getTime(), now.getTime(), 'a marker still ahead: now');
   assert.equal(snapTime(now, null).getTime(), now.getTime());
+});
+
+test('items keep a count, and a new count moves the total from where it started', () => {
+  const e = parseEstimate({ name: 'Egg breakfast', items: [{ name: 'Fried egg', qty: 4, unit: 'eggs', protein: 25, kcal: 360 }, { name: 'Pitta', qty: 2, unit: 'pittas', protein: 12, kcal: 330 }],
+    protein: { low: 30, mid: 37, high: 45 }, kcal: { low: 600, mid: 700, high: 800 } });
+  assert.deepEqual(e.items[0], { name: 'Fried egg', qty: 4, unit: 'eggs', protein: 25, kcal: 360, each: { protein: 6.3, kcal: 90 } });
+  assert.deepEqual(finalFor(e), { protein: 37, kcal: 690 });
+  const five = withQty(e.items[0], 5);
+  assert.deepEqual([five.qty, five.protein, five.kcal], [5, 32, 450]);
+  assert.deepEqual(itemsTotal([five, e.items[1]]), { protein: 44, kcal: 780 });
+  // Back to four lands where it began: no drift.
+  assert.equal(withQty(five, 4).kcal, 360);
+});
+
+test('an item with no count counts as one; an estimate without counts uses the range', () => {
+  const e = parseEstimate(est);
+  assert.deepEqual([e.items[0].qty, e.items[0].unit], [1, '']);
+  assert.deepEqual(finalFor({ ...est, items: [] }, 'right'), { protein: 46, kcal: 780 });
+});
+
+test('a count steps by one, a half below one, and 25 for grams', () => {
+  assert.equal(nextQty({ qty: 4, unit: 'eggs' }, 1), 5);
+  assert.equal(nextQty({ qty: 1, unit: 'pitta' }, -1), 0.5);
+  assert.equal(nextQty({ qty: 0.5, unit: 'pitta' }, 1), 1);
+  assert.equal(nextQty({ qty: 0.5, unit: 'pitta' }, -1), 0);
+  assert.equal(nextQty({ qty: 0, unit: 'pitta' }, -1), 0);
+  assert.equal(nextQty({ qty: 100, unit: 'g' }, 1), 125);
+});
+
+test('the prompt trusts his words for amounts and gives his usual meals for scale', () => {
+  assert.match(MEAL_SYSTEM, /trust his words over the photo/);
+  assert.match(MEAL_SYSTEM, /"qty"/);
+  const p = mealPrompt({ text: '5 eggs', at: new Date(2026, 9, 20, 8, 0), hasPhoto: false, usual: [{ name: 'Big egg breakfast', protein: 52, kcal: 1030 }] });
+  assert.match(p, /For scale, his usual meals: Big egg breakfast: 52 g protein, 1030 kcal/);
+  assert.doesNotMatch(mealPrompt({ text: 'x', at: new Date(), hasPhoto: false }), /For scale/);
+});
+
+test('a meal whose photo was uploaded is estimated again from its words', () => {
+  const doc = fixture();
+  doc.meals = { a: meal('a', '2026-10-20', { state: 'pending', photoState: 'uploaded' }), b: meal('b', '2026-10-20', { state: 'pending', photoState: 'local' }) };
+  assert.deepEqual(mealWork(doc, new Set()).estimate.map((m) => m.id), ['a']);
 });

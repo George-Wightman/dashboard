@@ -1,5 +1,5 @@
 // Daylight's Fuel tile: today's protein as a plate filling towards the target, the meals so far
-// (with the photo while this device still has it), "Snap a meal", the week's calories against
+// (with the photo while this device still has it, each opening again to change), "Log a meal", the week's calories against
 // maintenance, and how many meals are waiting to be estimated. Opened big: the last 14 days.
 
 import { h } from './dom.js';
@@ -8,7 +8,7 @@ import { addDays, shortWeekday, shortDate } from '../dates.js';
 import { clockLabel } from '../calendar.js';
 import { localPhotos } from '../photos.js';
 import { LOGOS } from './sources.js';
-import { openSnap } from './snap.js';
+import { openSnap, openMeal } from './snap.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const svg = (tag, attrs = {}) => {
@@ -58,13 +58,15 @@ export function mealWords(meal) {
   return 'waiting to be estimated';
 }
 
+// Each meal opens again, to change its counts, words or time.
 function mealLine(ctx, meal) {
-  return h('li', { class: 'fuel-meal' },
+  const name = meal.estimate?.name ?? meal.text ?? slotName(meal.slot);
+  return h('li', {}, h('button', { class: 'fuel-meal', type: 'button', 'aria-label': `${name}, ${clockLabel(meal.at)}: open to change`, onclick: () => openMeal(ctx, meal.id) },
     thumb(ctx, meal),
     h('span', { class: 'fuel-meal-words' },
-      h('strong', {}, meal.estimate?.name ?? meal.text ?? slotName(meal.slot)),
+      h('strong', {}, name),
       h('span', {}, `${clockLabel(meal.at)} · ${mealWords(meal)}`)),
-    meal.correction ? claudeMark(meal.correction.why) : null);
+    meal.correction ? claudeMark(meal.correction.why) : null));
 }
 
 function weekLine(doc, today) {
@@ -86,7 +88,7 @@ export function renderFuel(ctx) {
   return h('div', { class: 'fuel' },
     h('div', { class: 'fuel-top' }, plate(dayProtein(doc, today), target),
       meals.length ? h('ul', { class: 'fuel-meals' }, meals.map((m) => mealLine(ctx, m))) : h('p', { class: 'fuel-none' }, 'Nothing logged yet today.')),
-    h('button', { class: 'fuel-snap', type: 'button', onclick: () => openSnap(ctx) }, 'Snap a meal'),
+    h('button', { class: 'fuel-snap', type: 'button', onclick: () => openSnap(ctx) }, 'Log a meal'),
     weekLine(doc, today),
     waiting ? h('p', { class: 'fuel-waiting', role: 'status' }, `${waiting} meal${waiting === 1 ? '' : 's'} waiting to be estimated`) : null);
 }

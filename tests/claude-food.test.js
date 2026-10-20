@@ -45,7 +45,28 @@ test('the meal op corrects a meal with a reason, saves a usual meal, and sets Fu
   runOp(store, { op: 'meal', fuel: { maintenanceKcal: 3100 } });
   assert.equal(store.doc().meals['fuel:settings'].maintenanceKcal, 3100);
   assert.throws(() => runOp(store, { op: 'meal' }), /meal needs/);
-  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'usual', 'fuel']);
+  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'remove', 'usual', 'fuel']);
+});
+
+test('the meal op removes a meal logged twice, only with a reason', () => {
+  const store = makeStore({ now: clock(new Date(2026, 9, 20, 21, 0)) });
+  const meal = store.addMeal({ at: new Date(2026, 9, 20, 8, 0), text: 'eggs', hasPhoto: false });
+  assert.throws(() => runOp(store, { op: 'meal', id: meal.id, remove: true }), /needs a why/);
+  assert.match(runOp(store, { op: 'meal', id: meal.id, remove: true, why: 'logged twice' }), /Removed the meal "eggs" \(logged twice\)/);
+  assert.equal(store.doc().meals[meal.id].status, 'archived');
+});
+
+test('George opening a meal again: moved to when he ate it, or estimated again from new words', () => {
+  const store = makeStore({ now: clock(new Date(2026, 9, 20, 21, 0)) });
+  const meal = store.addMeal({ at: new Date(2026, 9, 20, 12, 0), text: 'pasta', hasPhoto: false });
+  store.updateMeal(meal.id, { state: 'estimated', estimate: est, final: { protein: 46, kcal: 780 }, correction: { by: 'claude', protein: 1, kcal: 1, why: 'x' } });
+  store.retimeMeal(meal.id, new Date(2026, 9, 19, 19, 30));
+  assert.deepEqual([store.doc().meals[meal.id].day, store.doc().meals[meal.id].slot], ['2026-10-19', 'dinner']);
+  store.redoMeal(meal.id, '5 eggs and 2 pittas');
+  const m = store.doc().meals[meal.id];
+  assert.deepEqual([m.text, m.state, m.tries, m.correction], ['5 eggs and 2 pittas', 'pending', 0, null]);
+  assert.deepEqual(m.final, { protein: 46, kcal: 780 }, 'the old numbers count until the new ones land');
+  assert.throws(() => store.redoMeal(meal.id, '  '), /Say what you had/);
 });
 
 test('catchup says how eating went', () => {

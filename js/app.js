@@ -154,10 +154,10 @@ const ctx = {
     fake: FAKE,
     // Every key to try, in order: the one in ⚙, then the Hebrew app's on this device.
     keys: () => (FAKE ? (FAKE === 'nokey' ? [] : ['fake-key']) : geminiKeys(store.settings(), localStorage)),
-    async ask({ system, prompt, image = null }) {
+    async ask({ system, prompt, image = null, models, temperature }) {
       // The fake module is only ever loaded in fake mode; otherwise askGemini uses the real fetch.
       const fetch = FAKE ? (await import('../dev/fake-gemini.js')).fakeGeminiFetch(FAKE) : undefined;
-      return askGemini({ keys: ctx.gemini.keys(), system, prompt, image, fetch });
+      return askGemini({ keys: ctx.gemini.keys(), system, prompt, image, fetch, models, temperature });
     },
   },
 };

@@ -20,7 +20,7 @@ import { MEAL_SYSTEM } from '../js/food.js';
 export const FAKE_MODES = ['ok', 'slow', 'nokey', 'quota', 'down', 'offline', 'badkey', 'nonsense', 'meal', 'meal-slow', 'meal-nonsense'];
 
 // The canned estimate for a meal: a chicken wrap, whatever the photo.
-const MEAL = { name: 'Chicken wrap and crisps', items: [{ name: 'Large chicken wrap', protein: 40, kcal: 560 }, { name: 'Bag of crisps', protein: 2, kcal: 180 }, { name: 'Sauce', protein: 0, kcal: 40 }],
+const MEAL = { name: 'Chicken wrap and crisps', items: [{ name: 'Large chicken wrap', qty: 2, unit: 'wraps', protein: 40, kcal: 560 }, { name: 'Bag of crisps', qty: 1, unit: 'bag', protein: 2, kcal: 180 }, { name: 'Sauce', qty: 30, unit: 'g', protein: 0, kcal: 40 }],
   protein: { low: 38, mid: 46, high: 54 }, kcal: { low: 650, mid: 780, high: 900 } };
 
 function response(status, body) {

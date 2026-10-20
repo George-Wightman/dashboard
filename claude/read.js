@@ -503,6 +503,7 @@ function mealText(m) {
   const name = m.estimate?.name ?? m.text ?? m.slot;
   const parts = [`${clockLabel(m.at)} ${m.slot}`, name];
   if (m.correction) parts.push(`${m.correction.protein} g, ${kcalText(m.correction.kcal)} kcal — corrected by you from ${m.final ? kcalText(m.final.kcal) : '?'} (${m.correction.why})`);
+  else if (m.final && m.items) parts.push(`${m.final.protein} g, ${kcalText(m.final.kcal)} kcal (counts he set: ${m.items.map((i) => `${i.qty}${i.unit ? ` ${i.unit}` : ''} ${i.name}`).join(', ')})`);
   else if (m.final) parts.push(`${m.final.protein} g, ${kcalText(m.final.kcal)} kcal (${PORTION_WORDS[m.portion] ?? 'about right'})`);
   else if (m.state === 'failed') parts.push(`couldn't estimate it${m.error ? ` (${m.error})` : ''}, try ${m.tries ?? 0} of ${MAX_TRIES}`);
   else parts.push('waiting to be estimated');

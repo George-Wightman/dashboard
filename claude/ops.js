@@ -620,7 +620,7 @@ function brief(store, op) {
 
 // ---- Food ----------------------------------------------------------------------------------------
 
-// Correct a meal Gemini got badly wrong (with a reason), save a usual meal, or set Fuel's protein
+// Correct a meal Gemini got badly wrong or remove one logged twice (with a reason), save a usual meal, or set Fuel's protein
 // target and maintenance calories.
 function meal(store, op) {
   const amount = (v, what) => {
@@ -631,6 +631,11 @@ function meal(store, op) {
     const { id, rec } = resolveId(store.doc(), op.id, ['meals']);
     if (rec.kind !== 'meal') throw new Error(`${op.id} isn't a meal`);
     const why = String(op.why ?? '').trim();
+    if (op.remove === true) {
+      if (!why) throw new Error('Removing a meal needs a why, e.g. "logged twice"');
+      store.archiveMeal(id);
+      return `Removed the meal ${q(rec.estimate?.name ?? rec.text ?? 'the meal')} (${why})`;
+    }
     if (!why) throw new Error('A correction needs a why: say what the estimate missed, e.g. "the oil and cheese"');
     const protein = amount(op.protein, 'protein');
     const kcal = amount(op.kcal, 'kcal');
@@ -771,7 +776,7 @@ function session(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   details: ['id', 'set'],
-  meal: ['id', 'protein', 'kcal', 'why', 'usual', 'fuel'],
+  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'usual', 'fuel'],
   session: ['id', 'date', 'time', 'title', 'session'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],

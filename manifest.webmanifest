@@ -35,7 +35,7 @@
   ],
   "shortcuts": [
     {
-      "name": "Snap a meal",
+      "name": "Log a meal",
       "short_name": "Snap",
       "url": "./?do=snap",
       "icons": [

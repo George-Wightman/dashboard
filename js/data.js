@@ -579,6 +579,20 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return create('meals', { ...base, id: `meal:${newId()}`, text: String(text ?? '').trim(), state: 'pending', photoState: hasPhoto ? 'local' : null, estimate: null, final: null });
   }
 
+  // A meal opened again: moved to when it was really eaten, or its words changed and estimated
+  // again (the old numbers count until the new ones land). George's change replaces Claude's correction.
+  function retimeMeal(id, at) {
+    const when = at instanceof Date ? at : new Date(at);
+    if (Number.isNaN(when.getTime())) throw new Error('That time isn’t a date');
+    return patch('meals', id, { at: when.toISOString(), day: logicalDay(when, settings.dayStartHour), slot: slotFor(when) });
+  }
+
+  function redoMeal(id, text) {
+    const words = String(text ?? '').trim();
+    if (!words) throw new Error('Say what you had');
+    return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null });
+  }
+
   function saveUsual({ name, protein, kcal }) {
     const title = requireTitle(name, 'A usual meal');
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
@@ -793,6 +807,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     setSession,
     addMeal,
     updateMeal: (id, changes) => patch('meals', id, changes),
+    retimeMeal,
+    redoMeal,
     archiveMeal: (id) => patch('meals', id, { status: 'archived', archivedOn: today() }),
     saveUsual,
     setFuel,

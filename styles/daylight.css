@@ -322,7 +322,8 @@
 .fuel-plate-words { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; }
 .fuel-plate-num { font: 800 30px/1 var(--dl-display); }
 .fuel-meals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; flex: 1 1 160px; min-width: 0; }
-.fuel-meal { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; }
+.fuel-meal { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; width: 100%; padding: 4px; border: 0; border-radius: 14px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.fuel-meal:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
 .fuel-thumb { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; }
 .fuel-thumb.placeholder { display: flex; align-items: center; justify-content: center; font-weight: 700; background: color-mix(in srgb, var(--tile-ink) 14%, transparent); }
 .fuel-meal-words { display: flex; flex-direction: column; font-size: 14px; line-height: 1.3; min-width: 0; }
@@ -367,6 +368,19 @@ label.dl-btn { display: inline-flex; align-items: center; }
 .snap-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .snap-items li { display: flex; justify-content: space-between; gap: 10px; }
 .snap-usual-tick { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.snap-photo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
+.snap-items.editable { gap: 6px; }
+.snap-items.editable li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name qty" "nums qty"; align-items: center; column-gap: 10px; }
+.snap-items.editable li.none { opacity: 0.5; }
+.snap-item-name { grid-area: name; }
+.snap-item-nums { grid-area: nums; font-size: 12px; }
+.snap-qty { grid-area: qty; display: inline-flex; align-items: center; gap: 4px; }
+.snap-step { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--dl-soft, #FFF3E3); color: inherit; font: 700 20px/1 var(--dl-text, inherit); cursor: pointer; }
+.snap-step:disabled, .snap .dl-btn:disabled { opacity: 0.4; cursor: default; }
+.snap-count { min-width: 72px; text-align: center; font-weight: 700; }
+.snap-label { margin: 4px 0 0; font-size: 14px; }
+.snap-at { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.snap-at input { min-height: 40px; border: 0; border-radius: 12px; padding: 0 10px; background: var(--dl-soft, #FFF3E3); color: inherit; font: inherit; }
 .snap-foot { margin: 0; font-size: 12px; text-align: center; }
 
 /* The coach: the morning back question, a session's lines under its row, Body's next session and back mornings. */

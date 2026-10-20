@@ -48,13 +48,13 @@ export function geminiKeys(settings, storage) {
 }
 
 // `image` ({ mimeType, data: base64 }) goes first in the same message as the words (a meal photo).
-function requestBody(system, prompt, plain, image = null) {
+function requestBody(system, prompt, plain, image = null, temperature = 0.6) {
   const picture = image ? [{ inlineData: { mimeType: image.mimeType, data: image.data } }] : [];
   if (plain) return { contents: [{ role: 'user', parts: [...picture, { text: `${system}\n\n${prompt}` }] }] };
   return {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [...picture, { text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.6 },
+    generationConfig: { responseMimeType: 'application/json', temperature },
   };
 }
 
@@ -142,6 +142,7 @@ export async function askGemini({
   fetch = (...args) => globalThis.fetch(...args),
   timers = globalThis,
   models = MODELS,
+  temperature = 0.6,
   timeoutMs = TIMEOUT_MS,
 }) {
   const usable = [...new Set((keys ?? []).map((k) => String(k ?? '').trim()).filter(Boolean))];
@@ -150,7 +151,7 @@ export async function askGemini({
   const sleep = (ms) => new Promise((resolve) => { timers.setTimeout(resolve, ms); });
 
   const send = (model, key, plain) => post({
-    fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body: requestBody(system, prompt, plain, image),
+    fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body: requestBody(system, prompt, plain, image, temperature),
   });
 
   // One model on one key. The plain-body retry after a 400 and the short wait after a 429 each
