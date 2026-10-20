@@ -221,14 +221,24 @@ function seriesNote(store, id) {
   return out.length ? `\n${out.join('\n')}` : '';
 }
 
+// A set time that has already gone on the task's own date — often not the day just read, since a
+// carried-over task keeps its first date (21 Sep 2026). The planner books nothing in the past.
+function pastNote(store, id) {
+  const rec = store.doc().items[id];
+  if (rec?.type !== 'task' || !rec.date || !/^\d\d:\d\d$/.test(rec.time ?? '')) return '';
+  const [y, m, d] = rec.date.split('-').map(Number);
+  const [hh, mm] = rec.time.split(':').map(Number);
+  if (new Date(y, m - 1, d, hh, mm) > store.now()) return '';
+  return `\nNote: ${rec.time} on ${dayName(rec.date, store.today())} has already gone, so the planner won't book it. Set the date too if you meant another day.`;
+}
+
 // A task dated on a day its area has off is neither listed nor booked that day: say so, so a task
 // that seems added doesn't quietly vanish (20 Oct 2026: five Home tasks did).
 function offNote(store, id) {
   const rec = store.doc().items[id];
   if (rec?.type !== 'task' || !rec.date || !excused(store.doc(), rec, rec.date)) return '';
   const off = timeOff(store.doc()).find((o) => offCovers(o, rec.date) && (!o.areas?.length || o.areas.some((a) => a.toLowerCase() === String(rec.area ?? '').toLowerCase())));
-  return `
-Note: that day is time off for ${rec.area ? `"${rec.area}"` : 'everything'} (${off ? offText(off) : 'time off'}), so this task won't be on the list or booked then — it moves to the first day after. Give it another area or day if it's needed sooner.`;
+  return `\nNote: that day is time off for ${rec.area ? `"${rec.area}"` : 'everything'} (${off ? offText(off) : 'time off'}), so this task won't be on the list or booked then — it moves to the first day after. Give it another area or day if it's needed sooner.`;
 }
 
 function task(store, op) {
@@ -245,7 +255,7 @@ function task(store, op) {
     ...(minutes ? { minutes } : {}), ...(time ? { time } : {}), ...(notes ? { notes } : {}), ...(priority ? { priority } : {}),
     ...(series ? { series } : {}),
   });
-  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}${rec.priority ? ' ★' : ''}`, rec.id) + seriesNote(store, rec.id) + offNote(store, rec.id);
+  return tagged(`${verb(op)} task ${q(rec.title)} for ${dayName(rec.date, today)}${timing(rec)}${rec.priority ? ' ★' : ''}`, rec.id) + seriesNote(store, rec.id) + offNote(store, rec.id) + pastNote(store, rec.id);
 }
 
 function habit(store, op) {
@@ -444,7 +454,8 @@ function edit(store, op) {
   const what = Object.keys(changes).map((f) => `${f} → ${show(changes[f], f, store)}`).join(', ');
   const moved = map === 'items' && ['date', 'time', 'series', 'order'].some((f) => f in changes);
   const offMaybe = map === 'items' && ['date', 'area'].some((f) => f in changes) ? offNote(store, id) : '';
-  return `Edited ${noun(map, rec)} ${q(rec.title)}: ${what}${moved ? seriesNote(store, id) : ''}${offMaybe}`;
+  const pastMaybe = map === 'items' && ['date', 'time'].some((f) => f in changes) ? pastNote(store, id) : '';
+  return `Edited ${noun(map, rec)} ${q(rec.title)}: ${what}${moved ? seriesNote(store, id) : ''}${offMaybe}${pastMaybe}`;
 }
 
 // ---- Archiving and suggestions ----------------------------------------------------------------

@@ -365,3 +365,21 @@ test('a task with a time that George has linked to his own event gets no event o
   assert.equal(cal2.byTitle('Research the Visa D'), undefined, 'the planner\'s copy went');
   assert.ok(cal2.byTitle('Visa D'));
 });
+
+test('a weekly target raised late in the week never crowds out next week\'s tasks', () => {
+  const SAT = '2026-09-19';
+  const MON2 = '2026-09-21';
+  const doc = fixture({ items: [
+    { id: 'acprep', type: 'quota', title: 'Assessment centre prep', area: 'Assessment centre', unit: 'minutes', target: 1800, order: 1 },
+    task('rp1', 'Role play 1', 'Assessment centre', MON2, { minutes: 120 }),
+    task('rp2', 'Role play 2', 'Assessment centre', MON2, { minutes: 120 }),
+  ] });
+  const cal = new FakeCalendar();
+  const r = step(cal, doc, now(SAT, '08:00'));
+  const mine = summaries(cal);
+  assert.ok(mine.some((s) => s.startsWith(MON2) && s.endsWith('Role play 1')), mine.join('\n'));
+  assert.ok(mine.some((s) => s.startsWith(MON2) && s.endsWith('Role play 2')), mine.join('\n'));
+  const notes = Object.values(r.days).flatMap((d) => d.notes ?? []);
+  assert.ok(!notes.some((n) => /unscheduled time.*moved to/.test(n)), notes.join('\n'));
+  assert.ok(!notes.some((n) => /Role play/.test(n) && /Couldn't fit/.test(n)), notes.join('\n'));
+});

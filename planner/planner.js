@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'ef65f2ef';
+var PLANNER_BUILD = '90b210e6';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -5266,8 +5266,11 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       busy(to, to + length, ev.title);
     }
 
+    // A weekly target's spare time (a block with no items) goes in after the real work of the same
+    // priority: it's time to fill, and never worth more than a dated task.
+    const spare = (b) => Number(!b.items?.length);
     const queue = [...overflow, ...wanted.filter((b) => b.day === d)]
-      .sort((a, b) => Number(b.priority) - Number(a.priority) || Number(b.carried) - Number(a.carried)
+      .sort((a, b) => Number(b.priority) - Number(a.priority) || spare(a) - spare(b) || Number(b.carried) - Number(a.carried)
         || b.minutes - a.minutes || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     overflow = [];
     const held = new Set();
@@ -5337,7 +5340,9 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       // reading habit drifted a day at a time until it appeared twice on a Sunday and not at all on
       // the Friday. A habit that doesn't fit is simply missed that day.
       const allHabits = b.items.length > 0 && b.items.every((id) => items[id]?.type === 'habit');
-      if (allHabits) {
+      // Nor is a weekly target's spare time carried: the next day has its own share, and a target
+      // raised late in the week once filled the next week with it, ahead of real tasks (19 Sep 2026).
+      if (allHabits || !b.items.length) {
         if (exactDay(d) && !(d === today && todayClosed)) note(`Couldn't fit ${b.base}${onDay(d)}`);
       } else if (next <= lastDay) {
         overflow.push({ ...b, carried: true });

@@ -351,3 +351,12 @@ test('a task added or moved onto its area\'s day off says it won\'t be listed or
   const id = Object.values(store.doc().items).find((i) => i.title === 'Email James').id;
   assert.match(runOp(store, { op: 'edit', id, set: { area: 'Home' } }), /Note: that day is time off/);
 });
+
+test('a set time already gone on the task\'s own date says the planner won\'t book it', () => {
+  const store = fresh();
+  assert.match(runOp(store, { op: 'task', title: 'Confirm the date', time: '08:00' }), /Note: 08:00 on today has already gone, so the planner won't book it/);
+  assert.doesNotMatch(runOp(store, { op: 'task', title: 'Call York', time: '15:00' }), /already gone/);
+  const id = Object.values(store.doc().items).find((i) => i.title === 'Call York').id;
+  assert.match(runOp(store, { op: 'edit', id, set: { time: '07:30' } }), /already gone/);
+  assert.doesNotMatch(runOp(store, { op: 'edit', id, set: { date: 'tomorrow' } }), /already gone/);
+});
