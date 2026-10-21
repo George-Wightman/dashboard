@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '99c69707';
+var PLANNER_BUILD = '92d52e37';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -4035,14 +4035,16 @@ function geminiKeys(settings, storage) {
   return [...new Set([own, ...hebrewKeys(storage)].filter(Boolean))];
 }
 
-// `image` ({ mimeType, data: base64 }) goes first in the same message as the words (a meal photo).
-function requestBody(system, prompt, plain, image = null, temperature = 0.6) {
+// `image` ({ mimeType, data: base64 }) goes first in the same message as the words (a meal photo, a
+// recording). `think: false` turns a thinking model's thinking off, for a quick plain job like writing
+// down what was said; a model that can't turn it off refuses with a 400, and the plain retry follows.
+function requestBody(system, prompt, plain, image = null, temperature = 0.6, think = true) {
   const picture = image ? [{ inlineData: { mimeType: image.mimeType, data: image.data } }] : [];
   if (plain) return { contents: [{ role: 'user', parts: [...picture, { text: `${system}\n\n${prompt}` }] }] };
   return {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [...picture, { text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature },
+    generationConfig: { responseMimeType: 'application/json', temperature, ...(think ? {} : { thinkingConfig: { thinkingBudget: 0 } }) },
   };
 }
 
@@ -4131,6 +4133,7 @@ async function askGemini({
   timers = globalThis,
   models = MODELS,
   temperature = 0.6,
+  think = true,
   timeoutMs = TIMEOUT_MS,
 }) {
   const usable = [...new Set((keys ?? []).map((k) => String(k ?? '').trim()).filter(Boolean))];
@@ -4139,7 +4142,7 @@ async function askGemini({
   const sleep = (ms) => new Promise((resolve) => { timers.setTimeout(resolve, ms); });
 
   const send = (model, key, plain) => post({
-    fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body: requestBody(system, prompt, plain, image, temperature),
+    fetch, timers, timeoutMs, url: `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`, body: requestBody(system, prompt, plain, image, temperature, think),
   });
 
   // One model on one key. The plain-body retry after a 400 and the short wait after a 429 each
