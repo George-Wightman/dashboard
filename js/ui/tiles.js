@@ -60,6 +60,19 @@ export const TILES = [
 ];
 const BY_ID = new Map(TILES.map((t) => [t.id, t]));
 
+// A tile asked for from outside (a home-screen widget's ?big=fuel): opened big when it has a big
+// view, otherwise brought into view and lit for a moment.
+export function openTile(ctx, id) {
+  const tile = BY_ID.get(id);
+  if (!tile) return;
+  if (tile.big) { openBig(ctx, tile); return; }
+  const el = document.querySelector(`[data-tile="${id}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center' });
+  el.classList.add('tile-flash');
+  setTimeout(() => el.classList.remove('tile-flash'), 1600);
+}
+
 const useNudge = () => (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || innerWidth < 760;
 
 function tileEl(ctx, tile, content, arranging) {

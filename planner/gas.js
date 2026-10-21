@@ -27,6 +27,7 @@ import { runGoalReviews } from './reviews.js';
 import { createCheckins } from './checkins.js';
 import { createNudges } from './nudges.js';
 import { handleRelay } from './relay.js';
+import { handleGlance } from './glance.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -494,7 +495,12 @@ export function createPlanner({
     };
     let text;
     try {
-      text = handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+      // The phone's widgets ask with { glance: key } (planner/glance.js); everything else is the relay.
+      let req = null;
+      try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
+      text = req && typeof req === 'object' && 'glance' in req
+        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour() })
+        : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });
     }

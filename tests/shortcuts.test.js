@@ -45,3 +45,9 @@ test('Hebrew time logged by hand counts towards the weekly Hebrew minutes', () =
   assert.deepEqual([log.itemId, log.amount, log.kind, log.note], [q.id, 30, 'amount', 'logged by hand']);
   assert.throws(() => logHebrewByHand(store, 0), /above 0/);
 });
+
+test('a home-screen widget opens its tile big, then tidies the address', () => {
+  const app = read('js/app.js');
+  assert.match(app, /if \(params\.has\('big'\)\) \{[\s\S]*searchParams\.delete\('big'\)[\s\S]*openTile\(ctx, tile\)/);
+  assert.match(read('js/ui/tiles.js'), /export function openTile\(ctx, id\)/);
+});

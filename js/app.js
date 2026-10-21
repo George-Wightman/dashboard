@@ -28,7 +28,7 @@ import { placeFor } from './sky.js';
 import { runMealPass } from './photos.js';
 import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
-import { renderTiles } from './ui/tiles.js';
+import { renderTiles, openTile } from './ui/tiles.js';
 import { paintSnap, openSnap } from './ui/snap.js';
 import { useTranscriber } from './ui/mic.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
@@ -574,6 +574,14 @@ if (params.has('do')) {
   url.searchParams.delete('do');
   history.replaceState(null, '', url.pathname + url.search + url.hash);
   runShortcut(shortcut);
+}
+// A home-screen widget tapped (android/): its tile, big.
+if (params.has('big')) {
+  const tile = params.get('big');
+  const url = new URL(location.href);
+  url.searchParams.delete('big');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+  openTile(ctx, tile);
 }
 reportZone();
 updater.check();

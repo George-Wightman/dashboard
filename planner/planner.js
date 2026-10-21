@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '90b210e6';
+var PLANNER_BUILD = '7f6454d0';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -7036,6 +7036,662 @@ function handleRelay({ raw, repo, token, request, sha256Hex }) {
 return { API, RELAY_FILE, relayPath, handleRelay };
 })();
 
+// ---- js/timeline.js
+const __js_timeline = (() => {
+// Daylight's day, as one timeline: the rows with a calendar time and the calendar's own commitments
+// (a shift, an appointment) in start order, with the now line between them; everything without a
+// time under "Any time today"; and a line for tomorrow. Pure: the drawing is js/ui/timeline.js.
+
+const { dayRecord, clockLabel } = __js_calendar;
+const { localDate } = __js_plan_state;
+const { addDays } = __js_dates;
+const { mealsOn } = __js_food;
+
+// rows: today's list rows (js/ui/today.js's listRows), in their display order. slots: today's
+// times by item id (js/calendar.js's todaySlots). commitments: the planner's busy events.
+function timelineModel({ rows, slots, commitments, today, now, markers = [] }) {
+  const timed = [];
+  const anytime = [];
+  rows.forEach((row, order) => {
+    const slot = row.suggested ? null : slots.get(row.item.id);
+    if (slot) timed.push({ kind: 'row', start: slot.start, end: slot.end, row, order });
+    else anytime.push(row);
+  });
+  commitments
+    .filter((c) => !c.allDay && localDate(c.start) === today)
+    .forEach((c, i) => timed.push({ kind: 'commitment', start: c.start, end: c.end, title: c.title, calendar: c.calendar, order: i }));
+  markers.forEach((m, i) => timed.push({ kind: 'meal', start: m.start, end: m.start, slot: m.slot, order: i }));
+  const rank = (e) => ({ row: 0, meal: 1, commitment: 2 }[e.kind]);
+  timed.sort((a, b) => Date.parse(a.start) - Date.parse(b.start) || rank(a) - rank(b) || a.order - b.order);
+  const entries = timed.map(({ order, ...e }) => e);
+  const after = entries.findIndex((e) => Date.parse(e.start) > +now);
+  return { timed: entries, anytime, nowIndex: after === -1 ? entries.length : after };
+}
+
+// A prompt to snap breakfast, lunch and dinner, at 08:00, 12:30 and 19:00, each only while that
+// meal hasn't been logged today. Not a task: nothing counts it.
+const MEAL_TIMES = [['breakfast', 8, 0], ['lunch', 12, 30], ['dinner', 19, 0]];
+function mealMarkers(doc, today) {
+  const logged = new Set(mealsOn(doc, today).map((m) => m.slot));
+  const [y, mo, d] = today.split('-').map(Number);
+  return MEAL_TIMES.filter(([slot]) => !logged.has(slot))
+    .map(([slot, hh, mm]) => ({ slot, start: new Date(y, mo - 1, d, hh, mm).toISOString() }));
+}
+
+// "Hebrew practice 09:00 · Gym ~17:30": tomorrow's booked blocks, a rough one's time marked with ~.
+function tomorrowLine(doc, today) {
+  const blocks = (dayRecord(doc, addDays(today, 1))?.blocks ?? [])
+    .filter((b) => b.title && b.start)
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  if (!blocks.length) return null;
+  return blocks.map((b) => `${b.title} ${b.state === 'rough' ? '~' : ''}${clockLabel(b.start)}`).join(' · ');
+}
+
+// ---- Dragging a task to a new time (js/ui/timedrag.js) -------------------------------------------
+
+const QUARTER = 15 * 60000;
+const pad = (n) => String(n).padStart(2, '0');
+const toClock = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+// The calendar date a time falls on (after midnight that's tomorrow's, even before the day starts).
+const toDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+// Where a task dropped on the day lands. `above` and `below` are the entries either side ({ start,
+// end } as ISO, either may be missing); `fraction` is how far down the gap between them it was let go.
+// It goes after what's above and before what's below, in quarter hours, and never before now.
+function dropTime({ above, below, fraction = 0, minutes = 30, now }) {
+  const length = Math.max(15, minutes) * 60000;
+  const lo = above ? Date.parse(above.end ?? above.start) : null;
+  const hi = below ? Date.parse(below.start) : null;
+  let t;
+  if (lo !== null && hi !== null) t = lo + Math.max(0, Math.min(1, fraction)) * Math.max(0, hi - length - lo);
+  else if (hi !== null) t = hi - length;
+  else if (lo !== null) t = lo;
+  else t = +now;
+  const earliest = Math.ceil(+now / QUARTER) * QUARTER;
+  return new Date(Math.max(earliest, Math.round(t / QUARTER) * QUARTER));
+}
+
+// A task given a time today in the dashboard shows there at once, ahead of the planner moving its
+// block (within ten minutes): its own time and length, marked as on its way.
+function movedSlot(item, slot, today) {
+  if (item?.type !== 'task' || item.date !== today || !/^\d\d:\d\d$/.test(item.time ?? '')) return slot ?? null;
+  const [y, mo, d] = today.split('-').map(Number);
+  const [hh, mm] = item.time.split(':').map(Number);
+  const start = new Date(y, mo - 1, d, hh, mm);
+  if (slot && toClock(new Date(slot.start)) === item.time) return slot;
+  return { start: start.toISOString(), end: new Date(+start + (item.minutes ?? 30) * 60000).toISOString(), state: 'moving' };
+}
+return { timelineModel, mealMarkers, tomorrowLine, toClock, toDay, dropTime, movedSlot };
+})();
+
+// ---- js/hebrewSync.js
+const __js_hebrewSync = (() => {
+// Read-only pull from the Hebrew app's own sync file (same shape of GitHub-file sync as js/sync.js,
+// a different repo): a gzip+base64 snapshot of its localStorage. Applied as amount/done logs and
+// milestone ticks against fixed records (a goal, a habit, three weekly targets and a ladder of
+// milestones, created once and left alone after), so the app's existing weekly-target bars and
+// streaks (js/schedule.js, js/ui/today.js) show real progress without any new UI. Never writes
+// back to the Hebrew app's repo.
+//
+// WHICH OF ITS KEYS ARE READ, AND WHY THOSE. The Hebrew app's library size (hvr_stats[day].lib) is
+// the obvious number and the wrong one: it counts every entry, drilled or not — 103 of 241 were in
+// the "new" band on the last snapshot anyone checked — and it grows from seeds and imports, with
+// each entry carrying its own inflections nested inside it. So the ladder is built from the four
+// things the app knows that can't be padded:
+//
+//   hvr_stats[day].bands.strong  words the SRS has watched him hold for weeks AND that he has been
+//                                accurate on recently — the app's own hardest band.
+//   hvr_coachlanded              { word: lastLandedTs } — every word said live, unprompted and
+//                                correctly, in a coach conversation. The app's own ledger.
+//   hvr_pathscores               { nodeId: { lesson: { pct, ts, gold } } }. Lesson 99 is the coach
+//                                graduation; `gold` is stamped there when every word a node
+//                                teaches is SRS-ready AND has been said live. "Nodes perfected".
+//   hvr_stats                    the per-day practice numbers: sec, sessions, spoken.
+//
+// Coach transcripts (hvr_coach, hvr_convo) are deliberately device-local in that app and never
+// reach the file, so conversations can be counted by their outcome but never by their number.
+
+const { stableStringify } = __js_doc;
+const { addDays } = __js_dates;
+
+const HEBREW_IDS = {
+  goal: 'hebrew-goal', habit: 'hebrew-habit', minutes: 'hebrew-minutes', spoken: 'hebrew-spoken', live: 'hebrew-live',
+};
+
+const OLD_GOAL_TITLE = 'Hold a 10-minute conversation in Hebrew';
+// The lesson slot the Hebrew app files a node's coach graduation under, and where it stamps the
+// flag saying that node has been perfected.
+const COACH_LESSON = '99';
+
+// How a calibrated step reads once it carries a real number, and how it reads before then. Each
+// `add` in the ladder below is "this many more than he had the day the goal started", so no step
+// can arrive already passed — see calibrate().
+const TRACKS = {
+  strong: { title: (n) => `Hold ${n} Hebrew words strong`, pending: (n) => `Hold ${n} more Hebrew words strong` },
+  live: { title: (n) => `Say ${n} Hebrew words live in conversation`, pending: (n) => `Say ${n} more Hebrew words live in conversation` },
+  gold: { title: (n) => `Perfect ${n} nodes on the Hebrew path`, pending: (n) => `Perfect ${n} more nodes on the Hebrew path` },
+  days: { title: (n) => `Practise Hebrew on ${n} different days`, pending: (n) => `Practise Hebrew on ${n} more days` },
+};
+
+const step = (id, kind, add) => ({ id, title: TRACKS[kind].pending(add), auto: { kind, add } });
+
+// The stages on the way, in the order they should come up. The four automatic tracks are
+// interleaved with the five conversations, which only George can vouch for and so stay plain
+// checkboxes. Their ids are the ones the first ladder used, so anything already ticked stays so.
+const HEBREW_LADDER = [
+  { id: 'hebrew-ms-talk-hello', title: 'Greet her and introduce myself in Hebrew' },
+  step('hebrew-ms-live-1', 'live', 25),
+  step('hebrew-ms-gold-1', 'gold', 3),
+  step('hebrew-ms-strong-1', 'strong', 50),
+  { id: 'hebrew-ms-talk-1', title: 'Have a 1-minute exchange with her in Hebrew (how was your day)' },
+  step('hebrew-ms-practised-1', 'days', 30),
+  step('hebrew-ms-live-2', 'live', 75),
+  step('hebrew-ms-gold-2', 'gold', 10),
+  step('hebrew-ms-strong-2', 'strong', 150),
+  { id: 'hebrew-ms-talk-3', title: 'Have a 3-minute chat with her in Hebrew, no English' },
+  step('hebrew-ms-practised-2', 'days', 90),
+  step('hebrew-ms-live-3', 'live', 200),
+  step('hebrew-ms-gold-3', 'gold', 25),
+  step('hebrew-ms-strong-3', 'strong', 300),
+  { id: 'hebrew-ms-talk-5', title: 'Have a 5-minute chat with her in Hebrew about anything' },
+  step('hebrew-ms-practised-3', 'days', 180),
+  step('hebrew-ms-live-4', 'live', 400),
+  step('hebrew-ms-gold-4', 'gold', 50),
+  step('hebrew-ms-strong-4', 'strong', 600),
+  { id: 'hebrew-ms-talk-10', title: 'Hold a 10-minute conversation in Hebrew' },
+];
+
+// Every word-count and day-count step the first two ladders used. Both counted the library, which
+// is the number this file no longer trusts; version 3 replaces them with the four tracks above.
+const RETIRED = [
+  'hebrew-ms-words-50', 'hebrew-ms-words-100', 'hebrew-ms-words-250', 'hebrew-ms-words-500',
+  'hebrew-ms-words-750', 'hebrew-ms-words-1000', 'hebrew-ms-words-1500', 'hebrew-ms-words-2000',
+  'hebrew-ms-words-3000', 'hebrew-ms-days-7', 'hebrew-ms-days-30', 'hebrew-ms-days-45',
+  'hebrew-ms-days-60', 'hebrew-ms-days-90', 'hebrew-ms-days-120', 'hebrew-ms-days-180',
+];
+const LADDER_VERSION = 3;
+
+// Created once, however they're since renamed, retargeted or archived: this only fills in what's
+// missing, it never resets an existing record. The exceptions are the goal's old title, renamed
+// to plain "Hebrew" if (and only if) it's still exactly what this file first gave it, and a
+// one-time move to the current ladder (retire the library-counting steps, put the rest in order),
+// marked on the goal so it never runs again and never undoes edits made after it.
+function ensureHebrewGoal(store, { minutesTarget = 90, spokenTarget = 40, liveTarget = 15 } = {}) {
+  const doc = store.doc();
+  if (!doc.goals[HEBREW_IDS.goal]) {
+    store.addGoal({ id: HEBREW_IDS.goal, title: 'Hebrew', source: 'hebrew' });
+  } else if (doc.goals[HEBREW_IDS.goal].title === OLD_GOAL_TITLE) {
+    store.updateGoal(HEBREW_IDS.goal, { title: 'Hebrew' });
+  }
+  const migrating = doc.goals[HEBREW_IDS.goal].ladderVersion !== LADDER_VERSION;
+  HEBREW_LADDER.forEach(({ id, title, auto }, i) => {
+    if (!doc.milestones[id]) store.addMilestone(HEBREW_IDS.goal, title, { id, auto, order: i + 1, source: 'hebrew' });
+    else if (migrating) store.updateMilestone(id, { order: i + 1 });
+  });
+  if (migrating) {
+    for (const id of RETIRED) if (doc.milestones[id]?.status === 'active') store.archiveMilestone(id);
+    store.updateGoal(HEBREW_IDS.goal, { ladderVersion: LADDER_VERSION });
+  }
+  if (!doc.items[HEBREW_IDS.habit]) {
+    store.addItem({
+      id: HEBREW_IDS.habit, type: 'habit', title: 'Hebrew practice', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, repeat: { kind: 'daily' }, source: 'hebrew',
+    });
+  }
+  if (!doc.items[HEBREW_IDS.minutes]) {
+    store.addItem({
+      id: HEBREW_IDS.minutes, type: 'quota', title: 'Hebrew learning time', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, target: minutesTarget, unit: 'minutes', source: 'hebrew',
+    });
+  }
+  if (!doc.items[HEBREW_IDS.spoken]) {
+    store.addItem({
+      id: HEBREW_IDS.spoken, type: 'quota', title: 'Hebrew speaking practice', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, target: spokenTarget, unit: 'count', unitLabel: 'reps spoken', source: 'hebrew',
+    });
+  }
+  if (!doc.items[HEBREW_IDS.live]) {
+    store.addItem({
+      id: HEBREW_IDS.live, type: 'quota', title: 'Hebrew words said live', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, target: liveTarget, unit: 'count', unitLabel: 'words live', source: 'hebrew',
+    });
+  }
+}
+
+// The envelope's `body` is gzip, then base64. DecompressionStream is a Web Streams API standard,
+// available in the browser and in Node, so this needs no bundled inflate library.
+async function gunzipBase64(b64) {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new TextDecoder().decode(await new Response(stream).arrayBuffer());
+}
+
+// The envelope's `keys` map mirrors the Hebrew app's localStorage: every value is itself a JSON
+// string. A key that is missing (a Hebrew app older than the feature that writes it) or unreadable
+// reads as empty rather than failing the sync — the rest of the snapshot is still worth applying.
+async function readSnapshot(envelope) {
+  if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error("Not a Hebrew app sync file");
+  const { keys } = JSON.parse(await gunzipBase64(envelope.body));
+  const read = (name) => {
+    try {
+      const value = JSON.parse(keys?.[name] ?? 'null');
+      return value && typeof value === 'object' ? value : {};
+    } catch { return {}; }
+  };
+  return { stats: read('hvr_stats'), landed: read('hvr_coachlanded'), pathscores: read('hvr_pathscores') };
+}
+
+// The day a millisecond timestamp falls on WHERE HE IS, not in UTC: an evening session in a
+// timezone ahead of UTC would otherwise be filed under the previous day. The Hebrew app writes its
+// own day keys the same way.
+function localDay(ts) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// What the ladder is measured in. Each is a plain count of something the Hebrew app has already
+// decided — none of them is re-derived here, so none can drift from what its own screens say.
+function metricsOf({ stats, landed, pathscores }) {
+  const days = Object.keys(stats).sort();
+  let strong = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const bands = stats[days[i]]?.bands;
+    if (bands && typeof bands.strong === 'number') { strong = bands.strong; break; }
+  }
+  return {
+    strong,
+    live: Object.keys(landed).length,
+    gold: Object.values(pathscores).filter((node) => node?.[COACH_LESSON]?.gold === true).length,
+    days: days.filter((day) => stats[day]?.sessions > 0).length,
+  };
+}
+
+// The library size on the latest day that reports one. Shown in Settings beside the honest
+// numbers, never used as a target — see the note at the top of this file.
+function latestWords(stats) {
+  const days = Object.keys(stats).sort();
+  for (let i = days.length - 1; i >= 0; i--) {
+    const lib = stats[days[i]].lib;
+    if (typeof lib === 'number') return lib;
+  }
+  return null;
+}
+
+// WHERE THE LADDER STARTS COUNTING FROM. A step created as "+50 strong words" becomes an ordinary
+// fixed target the first time real numbers arrive: 50 above where he stood that day. That is the
+// whole reason the ladder is written in `add` rather than in absolute numbers — the first two
+// versions guessed at absolute ones and half the rungs ticked themselves on arrival, because he
+// was already a long way into the app.
+//
+// Once. The baseline is stamped on the goal, and a calibrated step carries a plain `n` from then
+// on, so retargeting one by hand afterwards sticks.
+function calibrate(store, metrics) {
+  const doc = store.doc();
+  if (doc.goals[HEBREW_IDS.goal]?.hebrewBaseline) return;
+  for (const m of Object.values(doc.milestones)) {
+    if (m.goalId !== HEBREW_IDS.goal || m.status !== 'active' || !m.auto) continue;
+    const { kind, add } = m.auto;
+    if (!(add > 0) || !TRACKS[kind]) continue;
+    const n = (metrics[kind] ?? 0) + add;
+    store.updateMilestone(m.id, { auto: { kind, n }, title: TRACKS[kind].title(n) });
+  }
+  store.updateGoal(HEBREW_IDS.goal, { hebrewBaseline: { ...metrics, at: store.today() } });
+}
+
+// One log per day per metric, at a deterministic id: re-applying the same day's numbers is a
+// no-op (store.putLog only writes when something actually changed), and a day whose numbers rise
+// as the Hebrew app is used later that day just overwrites the same log with the larger total.
+function applyDailyStats(store, { stats, landed }) {
+  const doc = store.doc();
+  const today = store.today();
+  const active = (id) => doc.items[id]?.status === 'active';
+  for (const [day, s] of Object.entries(stats)) {
+    if (day > today) continue;
+    if (active(HEBREW_IDS.minutes) && s.sec > 0) {
+      // To one decimal minute, never rounded down to zero for a short burst under 30 seconds.
+      const minutes = Math.round((s.sec / 60) * 10) / 10;
+      store.putLog(`hebrew:min:${day}`, { itemId: HEBREW_IDS.minutes, kind: 'amount', amount: minutes, day, source: 'hebrew' });
+    }
+    if (active(HEBREW_IDS.spoken) && s.spoken > 0) {
+      store.putLog(`hebrew:spoken:${day}`, { itemId: HEBREW_IDS.spoken, kind: 'amount', amount: s.spoken, day, source: 'hebrew' });
+    }
+    if (active(HEBREW_IDS.habit) && s.sessions > 0) {
+      store.putLog(`hebrew:done:${day}`, { itemId: HEBREW_IDS.habit, kind: 'done', day, source: 'hebrew' });
+    }
+  }
+  // Distinct words landed live on each day. The Hebrew app keeps only the LAST time it heard each
+  // word, so a word said again in a later week moves with it and an earlier week's bar can fall
+  // slightly on a re-sync. The weekly bar reads "words you said live that week", which stays true
+  // under that rule; the milestones count the ledger as a whole, which is exact either way.
+  if (active(HEBREW_IDS.live)) {
+    const byDay = {};
+    for (const ts of Object.values(landed)) {
+      const day = typeof ts === 'number' ? localDay(ts) : null;
+      if (day && day <= today) byDay[day] = (byDay[day] ?? 0) + 1;
+    }
+    for (const [day, n] of Object.entries(byDay)) {
+      store.putLog(`hebrew:live:${day}`, { itemId: HEBREW_IDS.live, kind: 'amount', amount: n, day, source: 'hebrew' });
+    }
+  }
+}
+
+// Ticks any auto milestone whose rule has been reached. One-way: a milestone once ticked stays
+// ticked (a count that later falls, or one unticked by hand, isn't fought), and an archived one is
+// never touched. A step still carrying `add` has not been calibrated yet and so has no target to
+// meet; it is skipped rather than compared against nothing.
+function applyAutoMilestones(store, metrics) {
+  for (const m of Object.values(store.doc().milestones)) {
+    if (m.goalId !== HEBREW_IDS.goal || m.status !== 'active' || m.done || !m.auto) continue;
+    const { kind, n } = m.auto;
+    if (!(n > 0)) continue;
+    if ((metrics[kind] ?? 0) >= n) store.updateMilestone(m.id, { done: true });
+  }
+}
+
+// WHAT THE HEBREW WIDGET DRAWS (js/ui/hebrew.js), kept on the goal as `hebrewNow` so every device
+// shows it, not only the one holding the Hebrew token: the four ladder numbers, the latest word
+// bands, the last two weeks' practice day by day, and the words most recently said live. Small on
+// purpose — two weeks of days and eight words.
+const RECENT_DAYS = 14;
+const RECENT_WORDS = 8;
+
+function hebrewSummary({ stats, landed }, metrics, today) {
+  const days = Object.keys(stats).sort();
+  let bands = null;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const b = stats[days[i]]?.bands;
+    if (b && typeof b === 'object') { bands = pick(b, ['strong', 'progressing', 'weak', 'new']); break; }
+  }
+  const from = addDays(today, 1 - RECENT_DAYS);
+  const daily = {};
+  for (const day of days) {
+    if (day < from || day > today || !(stats[day]?.sessions > 0)) continue;
+    daily[day] = pick(stats[day], ['sec', 'spoken', 'spokenOk', 'cards', 'clean']);
+  }
+  const recent = Object.entries(landed)
+    .filter(([word, ts]) => word.trim() && typeof ts === 'number' && localDay(ts))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, RECENT_WORDS)
+    .map(([word, ts]) => ({ word: word.trim().slice(0, 40), day: localDay(ts) }));
+  // Growth: strong words at the end of each of the last 8 weeks (oldest first; null before the
+  // stats begin), and words said live in the last 7 days.
+  const strongBy = (day) => {
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (days[i] > day) continue;
+      const n = stats[days[i]]?.bands?.strong;
+      if (typeof n === 'number') return Math.round(n);
+    }
+    return null;
+  };
+  const strongWeeks = Array.from({ length: 8 }, (_, i) => strongBy(addDays(today, -7 * (7 - i))));
+  const weekFrom = addDays(today, -6);
+  const liveWeek = Object.values(landed).filter((ts) => typeof ts === 'number' && localDay(ts) && localDay(ts) >= weekFrom && localDay(ts) <= today).length;
+  return { ...metrics, bands, daily, recent, strongWeeks, liveWeek };
+}
+
+// Only the named keys that hold a finite number, as whole numbers.
+function pick(obj, keys) {
+  const out = {};
+  for (const k of keys) if (Number.isFinite(obj?.[k])) out[k] = Math.round(obj[k]);
+  return out;
+}
+
+// Written only when it has changed, so a sync that finds nothing new saves nothing.
+function saveSummary(store, summary) {
+  const goal = store.doc().goals[HEBREW_IDS.goal];
+  if (!goal || stableStringify(goal.hebrewNow ?? null) === stableStringify(summary)) return;
+  store.updateGoal(HEBREW_IDS.goal, { hebrewNow: summary });
+}
+
+// Fetch, parse and apply once. Like js/sync.js's syncOnce, this never throws: every failure comes
+// back as { ok: false, error }. No file yet is not a failure — there's nothing to apply yet.
+async function syncHebrewProgress({ store, client }) {
+  let remote;
+  try {
+    remote = await client.get();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  if (!remote) return { ok: true, words: null };
+  let snapshot;
+  try {
+    snapshot = await readSnapshot(remote.doc);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  ensureHebrewGoal(store);
+  const metrics = metricsOf(snapshot);
+  // A file with no practice history at all can't say where he stands, and calibrating the ladder
+  // against zero would recreate exactly the too-easy rungs this version exists to fix. Wait for a
+  // snapshot with something in it.
+  if (Object.keys(snapshot.stats).length) calibrate(store, metrics);
+  applyDailyStats(store, snapshot);
+  applyAutoMilestones(store, metrics);
+  saveSummary(store, hebrewSummary(snapshot, metrics, store.today()));
+  return { ok: true, words: latestWords(snapshot.stats), ...metrics };
+}
+return { HEBREW_IDS, HEBREW_LADDER, ensureHebrewGoal, RECENT_DAYS, hebrewSummary, syncHebrewProgress };
+})();
+
+// ---- js/glance.js
+const __js_glance = (() => {
+// The phone's home-screen widgets (android/): each a small copy of a Daylight tile — the day as a short
+// calendar, Fuel, Hebrew, Body, Goals, Countdown and This week. The planner's web app answers a widget
+// with this (planner/glance.js), so what a widget says can change without a new app on the phone: the
+// app only lays out a title, a big number with its caption, and a few lines, and opens the dashboard
+// on that tile, big, when tapped. Pure.
+
+const { todayRows, weekTotal, doneBetween, dayCompletion, goalProgress } = __js_schedule;
+const { todaySlots, clockLabel, countdowns, daysLeft, excused } = __js_calendar;
+const { scheduleView, localDate } = __js_plan_state;
+const { movedSlot } = __js_timeline;
+const { mealsOn, dayProtein, weekKcal, fuelSettings, mealValue, slotName } = __js_food;
+const { formatProgress } = __js_parse;
+const { weekStart, addDays, shortWeekday, shortDate, longDate } = __js_dates;
+const { HEBREW_IDS } = __js_hebrewSync;
+const { cardioQuotaId, gymHabitId } = __js_gym;
+const { nextSession, BACK } = __js_coach;
+
+const SITE = 'https://george-wightman.github.io/dashboard/';
+const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week'];
+const LINES = 8;
+
+const values = (o) => Object.values(o ?? {});
+const active = (doc, id) => (doc.items?.[id]?.status === 'active' ? doc.items[id] : null);
+const open = (tile) => (tile === 'day' ? SITE : `${SITE}?big=${tile}`);
+const kcal = (n) => Math.round(n).toLocaleString('en-GB');
+
+// The day as a short calendar: what has a time today in order (shifts too), then how many have none.
+function day(doc, today, now) {
+  const rows = todayRows(doc, today).filter((r) => !r.suggested && !r.blocked && r.kind !== 'quota');
+  const slots = todaySlots(doc, today);
+  const timed = [];
+  let anytime = 0;
+  for (const r of rows) {
+    const s = movedSlot(r.item, slots.get(r.item.id), today);
+    if (s) timed.push({ start: s.start, end: s.end, text: r.item.title, done: r.done });
+    else if (!r.done) anytime++;
+  }
+  for (const c of scheduleView(doc, today).commitments) {
+    if (!c.allDay && localDate(c.start) === today) timed.push({ start: c.start, end: c.end, text: c.title, busy: true });
+  }
+  timed.sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  // What's over drops to one line, so the widget shows what's still to come.
+  const over = timed.filter((e) => Date.parse(e.end ?? e.start) <= +now);
+  const ahead = timed.filter((e) => !over.includes(e));
+  const next = ahead.find((e) => !e.done);
+  const lines = ahead.map((e) => `${e === next ? '▸ ' : ''}${clockLabel(e.start)}  ${e.done ? '✓ ' : ''}${e.text}${e.busy ? ' (until ' + clockLabel(e.end) + ')' : ''}`);
+  const overTasks = over.filter((e) => !e.busy);
+  if (overTasks.length) lines.unshift(`${overTasks.filter((e) => e.done).length} of ${overTasks.length} earlier done`);
+  if (anytime) lines.push(`+ ${anytime} any time today`);
+  const { done, total } = dayCompletion(doc, today);
+  return {
+    title: longDate(today).replace(/ \w+$/, ''), number: `${done}/${total}`, caption: 'done today',
+    lines: lines.length ? lines : ['Nothing on today.'], open: open('day'),
+  };
+}
+
+function fuel(doc, today) {
+  const { protein: target } = fuelSettings(doc);
+  const lines = mealsOn(doc, today).map((m) => {
+    const v = mealValue(m);
+    return `${slotName(m.slot)}: ${m.estimate?.name ?? m.text ?? ''}${v ? ` · ${v.protein} g` : ' · waiting'}`;
+  });
+  const { average } = weekKcal(doc, today);
+  if (average != null) lines.push(`This week ≈${kcal(average)} kcal a day`);
+  return {
+    title: 'Fuel', number: `${dayProtein(doc, today)} g`, caption: `of ${target} g protein today`,
+    lines: lines.length ? lines : ['Nothing logged yet today.'], open: open('fuel'),
+  };
+}
+
+function hebrew(doc, today) {
+  const minutes = active(doc, HEBREW_IDS.minutes);
+  if (!minutes) return null;
+  const total = Math.round(weekTotal(doc, minutes.id, today));
+  const lines = [];
+  for (const key of ['spoken', 'live']) {
+    const q = active(doc, HEBREW_IDS[key]);
+    if (q) lines.push(`${Math.round(weekTotal(doc, q.id, today))} of ${q.target} ${q.unitLabel || q.title}`);
+  }
+  const monday = weekStart(today);
+  const strip = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(monday, i);
+    if (d > today) return '·';
+    const m = values(doc.logs).filter((l) => l.status === 'active' && l.itemId === minutes.id && l.kind === 'amount' && l.day === d).reduce((s, l) => s + l.amount, 0);
+    return m >= 30 ? '●' : m > 0 ? '◐' : '○';
+  }).join(' ');
+  lines.push(`M T W T F S S   ${strip}`);
+  return {
+    title: 'Hebrew', number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
+    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: open('hebrew'),
+  };
+}
+
+function body(doc, today) {
+  const lines = [];
+  const gym = active(doc, gymHabitId(doc));
+  if (gym?.repeat?.kind === 'perWeek') {
+    const monday = weekStart(today);
+    lines.push(`Gym ${doneBetween(doc, gym.id, monday, addDays(monday, 7))} of ${gym.repeat.n} this week`);
+  }
+  const next = nextSession(doc, today);
+  if (next) lines.push(`Next: ${next.title} · ${next.date === today ? 'today' : `${shortWeekday(next.date)} ${shortDate(next.date)}`}`);
+  const back = doc.gym?.[`back:${today}`];
+  if (back?.status === 'active' && BACK[back.score]) lines.push(`Back this morning: ${BACK[back.score]}`);
+  const cardio = active(doc, cardioQuotaId(doc));
+  if (!cardio && !lines.length) return null;
+  return {
+    title: 'Body', number: cardio ? String(Math.round(weekTotal(doc, cardio.id, today))) : '',
+    caption: cardio ? `of ${cardio.target} cardio min this week` : '', lines, open: open('body'),
+  };
+}
+
+function goals(doc) {
+  const list = values(doc.goals).filter((g) => g.status === 'active' && g.id !== HEBREW_IDS.goal)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!list.length) return null;
+  const lines = list.map((g) => {
+    const p = goalProgress(doc, g);
+    const by = g.targetDate ? ` · by ${shortDate(g.targetDate)}` : '';
+    return `${g.title}: ${p.numeric ? `${p.pct}%` : `${p.done} of ${p.total}`}${by}`;
+  });
+  return { title: 'Goals', number: String(list.length), caption: list.length === 1 ? 'goal on the go' : 'goals on the go', lines, open: open('goals') };
+}
+
+function countdown(doc, today) {
+  const list = countdowns(doc, today);
+  if (!list.length) return null;
+  const [first, ...rest] = list;
+  return {
+    title: 'Countdown', number: first.days > 1 ? String(first.days) : daysLeft(first.days), caption: `${first.days > 1 ? 'days to ' : ''}${first.title}`,
+    lines: rest.map((c) => `${c.title} · ${daysLeft(c.days)} · ${shortWeekday(c.day)} ${shortDate(c.day)}`), open: open('countdown'),
+  };
+}
+
+// The weekly targets the Hebrew and Body widgets don't already show.
+function week(doc, today) {
+  const cardio = cardioQuotaId(doc);
+  const targets = values(doc.items)
+    .filter((i) => i.type === 'quota' && i.status === 'active' && i.id !== cardio && i.goalId !== HEBREW_IDS.goal && !excused(doc, i, today))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!targets.length) return null;
+  const met = targets.filter((q) => weekTotal(doc, q.id, today) >= q.target).length;
+  return {
+    title: 'This week', number: `${met}/${targets.length}`, caption: 'targets met',
+    lines: targets.map((q) => `${q.title}: ${formatProgress(weekTotal(doc, q.id, today), q.target, q.unit)}${q.unit === 'count' && q.unitLabel ? ` ${q.unitLabel}` : ''}`),
+    open: open('week'),
+  };
+}
+
+const MAKERS = { day, fuel, hebrew, body, goals, countdown, week };
+const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goals: 'Goals', countdown: 'Countdown', week: 'This week' };
+
+// Every widget's content for `today` at `now`. A tile with nothing to show says so, rather than vanish
+// from a home screen it was put on.
+function glanceOf(doc, today, now = new Date()) {
+  const tiles = {};
+  for (const id of GLANCE_TILES) {
+    let t = null;
+    try { t = MAKERS[id](doc, today, now); } catch { t = null; }
+    t ??= { title: TITLES[id], number: '', caption: '', lines: ['Nothing to show yet.'], open: open(id) };
+    const more = t.lines.length - LINES;
+    tiles[id] = { ...t, lines: more > 0 ? [...t.lines.slice(0, LINES - 1), `+ ${more + 1} more`] : t.lines };
+  }
+  return { at: now.toISOString(), day: today, tiles };
+}
+return { SITE, GLANCE_TILES, glanceOf };
+})();
+
+// ---- planner/glance.js
+const __planner_glance = (() => {
+// The widgets' way in (android/, js/glance.js): the phone asks the planner's web app for a summary of
+// the day and the tiles, and gets only that — no way to read the data itself, and none to change it.
+// Synchronous, like the relay (planner/relay.js): a web app's doPost can't wait on a promise, so the
+// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp). Its own key,
+// checked against glance.json in the sync repo, so the widgets can be switched off without the relay.
+
+const { glanceOf } = __js_glance;
+const { logicalDay } = __js_dates;
+const { isDoc } = __js_doc;
+const { decodeBase64 } = __js_sync;
+const { API } = __planner_relay;
+
+const GLANCE_FILE = 'glance.json';
+
+function sameText(a, b) {
+  const x = String(a);
+  const y = String(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x.charCodeAt(i) || 0) ^ (y.charCodeAt(i) || 0);
+  return diff === 0;
+}
+
+// `req` is the request already read as JSON ({ glance: key }). One reply out, a JSON string.
+function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4 }) {
+  const reply = (obj) => JSON.stringify(obj);
+  if (!repo || !token) return reply({ error: 'The planner has no GITHUB_TOKEN or SYNC_REPO' });
+  if (typeof req?.glance !== 'string' || req.glance.length < 32) return reply({ error: 'The widget key is missing' });
+  const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  const stored = request(`${API}/repos/${repo}/contents/${GLANCE_FILE}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github+json' } });
+  if (stored.status === 404) return reply({ error: 'The widgets are switched off: there is no glance.json in the sync repo' });
+  if (stored.status !== 200) return reply({ error: `The widgets couldn't read glance.json (GitHub ${stored.status})` });
+  let hash = '';
+  try { hash = String(JSON.parse(decodeBase64(String(JSON.parse(stored.text).content ?? ''))).sha256 ?? ''); } catch { /* refused below */ }
+  if (!/^[0-9a-f]{64}$/.test(hash) || !sameText(sha256Hex(req.glance), hash)) return reply({ error: 'The planner refused the widget key' });
+  // The raw file, whatever its size (the contents API stops giving it inline past 1 MB).
+  const data = request(`${API}/repos/${repo}/contents/data.json`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+  if (data.status !== 200) return reply({ error: `The widgets couldn't read the dashboard (GitHub ${data.status})` });
+  let doc;
+  try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
+  if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
+  return reply(glanceOf(doc, logicalDay(now, dayStartHour), now));
+}
+return { GLANCE_FILE, handleGlance };
+})();
+
 // ---- planner/gas.js
 const __planner_gas = (() => {
 // The planner inside Google Apps Script. George's calendars come through the Calendar advanced
@@ -7067,6 +7723,7 @@ const { runGoalReviews } = __planner_reviews;
 const { createCheckins } = __planner_checkins;
 const { createNudges } = __planner_nudges;
 const { handleRelay } = __planner_relay;
+const { handleGlance } = __planner_glance;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -7534,7 +8191,12 @@ function createPlanner({
     };
     let text;
     try {
-      text = handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+      // The phone's widgets ask with { glance: key } (planner/glance.js); everything else is the relay.
+      let req = null;
+      try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
+      text = req && typeof req === 'object' && 'glance' in req
+        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour() })
+        : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });
     }

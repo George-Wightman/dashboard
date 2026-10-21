@@ -516,6 +516,9 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 
 .dl-note-day:empty { display: none; }
 
+/* A tile asked for by a home-screen widget, lit for a moment (js/ui/tiles.js's openTile). */
+.tile.tile-flash { outline: 3px solid var(--dl-accent, #3F3A9E); outline-offset: 3px; transition: outline-color .4s; }
+
 /* Dragging a task to a new time (js/ui/timedrag.js). */
 #timeline li.row[data-drag] { cursor: grab; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 #timeline li.row.tl-dragging { opacity: .45; cursor: grabbing; }

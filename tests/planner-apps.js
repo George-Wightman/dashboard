@@ -35,7 +35,7 @@ export class FakeRepo {
   doc() { return JSON.parse(this.text); }
   file(path) { const f = this.others.get(path); return f ? JSON.parse(f.text) : null; }
 
-  handle(method, url, payload) {
+  handle(method, url, payload, headers = {}) {
     if (url === 'https://api.github.com/repos/o/r/git/matching-refs/heads/claude/') {
       return { status: 200, body: [...this.branches].map(([name, b]) => ({ ref: `refs/heads/${name}`, object: { sha: b.sha } })) };
     }
@@ -54,6 +54,9 @@ export class FakeRepo {
       return { status: 200, body: { content: { sha: this.others.get(path).sha } } };
     }
     if (!url.startsWith('https://api.github.com/repos/o/r/contents/data.json')) return { status: 404, body: { message: 'Not Found' } };
+    if (method === 'get' && headers.Accept === 'application/vnd.github.raw+json') {
+      return this.text == null ? { status: 404, body: { message: 'Not Found' } } : { status: 200, body: this.text };
+    }
     if (method === 'get') {
       return this.text == null ? { status: 404, body: { message: 'Not Found' } }
         : { status: 200, body: { content: Buffer.from(this.text).toString('base64'), encoding: 'base64', sha: this.sha } };
@@ -85,7 +88,7 @@ export function appsScript({ cal, repo, props = {}, gemini = null, push = () => 
   const route = (url, opts) => {
     const method = String(opts.method ?? 'get').toLowerCase();
     calls.push({ url, method });
-    if (url.startsWith('https://api.github.com/')) return repo.handle(method, url, opts.payload);
+    if (url.startsWith('https://api.github.com/')) return repo.handle(method, url, opts.payload, opts.headers);
     if (url.startsWith('https://api.anthropic.com/')) { fires.push({ url, opts }); return routine(url, opts); }
     if (/^https:\/\/(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[\w.-]+\.push\.apple\.com|[\w.-]+\.notify\.windows\.com)\//.test(url)) {
       pushes.push({ url, opts });
