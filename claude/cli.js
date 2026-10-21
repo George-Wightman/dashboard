@@ -82,6 +82,14 @@ export async function main({
     const build = takeFlag('--build') ?? 'unknown';
     const referencePath = takeFlag('--reference');
     const [command, ...rest] = args;
+    // GitHub first; the planner's relay when this sandbox's proxy refuses or can't reach it.
+    const connect = (config) => {
+      secrets = [config.token, config.relayKey].filter(Boolean);
+      const fetch = config.relayUrl
+        ? relayingFetch({ relayUrl: config.relayUrl, relayKey: config.relayKey, curl: curlFetch, force: env.DASHBOARD_RELAY === '1', onSwitch: () => { relayed = true; } })
+        : undefined;
+      return { fetch, files: makeFiles({ token: config.token, repo: config.repo, ...(fetch ? { fetch } : {}) }) };
+    };
     if (command === 'capabilities') { say(capabilities(rest.join(' ').trim())); return finish(0); }
     if (!command || command === 'help') {
       say(USAGE);
@@ -109,6 +117,16 @@ export async function main({
         say(topic ? `Can't read the ${topic} playbook (${path})` : `Can't read the current reference (${path})`);
         return finish(1);
       }
+      // A playbook's personal half (his health rules, say) can't sit in this public repo, so it lives
+      // in the private sync repo as notes/<topic>.md and is printed after the public half.
+      if (topic) {
+        try {
+          const notes = await connect(readConfig(readText(configPath))).files.read(`notes/${topic}.md`);
+          if (notes) say(`\n# His own notes for ${topic} (private, from the sync repo)\n\n${notes.text}`);
+        } catch (e) {
+          say(`\n(Couldn't read his private notes for ${topic}: ${e.message})`);
+        }
+      }
       return finish(0);
     }
 
@@ -126,12 +144,7 @@ export async function main({
       say(e.message);
       return finish(1);
     }
-    secrets = [config.token, config.relayKey].filter(Boolean);
-    // GitHub first; the planner's relay when this sandbox's proxy refuses or can't reach it.
-    const fetch = config.relayUrl
-      ? relayingFetch({ relayUrl: config.relayUrl, relayKey: config.relayKey, curl: curlFetch, force: env.DASHBOARD_RELAY === '1', onSwitch: () => { relayed = true; } })
-      : undefined;
-    const files = makeFiles({ token: config.token, repo: config.repo, ...(fetch ? { fetch } : {}) });
+    const { fetch, files } = connect(config);
 
     // What the tool refused, kept in the repo. A weaker model can't be relied on to notice it should
     // report anything, so the tool records its own stumbles: four goes at an op that doesn't exist

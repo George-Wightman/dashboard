@@ -117,8 +117,8 @@ Claude coaches your training in a chat; the dashboard shows the plan and keeps a
 ([`docs/superpowers/plans/2026-10-18-coach.md`](docs/superpowers/plans/2026-10-18-coach.md)).
 
 - **Ask Claude to plan your training.** It reads Hevy, your back mornings, your meals and your
-  calendar, follows the rules from your 17 Oct health report (heart, then back, then cardio, without
-  losing squat and bench), and writes each session onto a dated *Gym* task.
+  calendar, follows your own training rules (kept in the private sync repo as `notes/gym.md`, never
+  in this public one), and writes each session onto a dated *Gym* task.
 - **Each session goes into Hevy as a routine** in a folder called *Dashboard*, with the sets and
   weights filled in, within 10 minutes. Start it in Hevy and save: that ticks the session. Training
   a session early? Move its task to that day first, or tick it yourself. The
@@ -131,7 +131,7 @@ Claude coaches your training in a chat; the dashboard shows the plan and keeps a
 - **Body** shows the next session and the week's back mornings; opened big, the coming sessions, 90
   mornings and what's ready for more weight.
 
-Not medical advice: your osteopath and GP have the final say.
+Not medical advice: your own professionals have the final say.
 
 ## Arranging the widgets
 

@@ -29,36 +29,16 @@ key lives in the planner script's Script properties as `HEVY_KEY`, and only Geor
 You never write a workout, and you never change a routine outside the "Dashboard" folder: those are
 his. You only reach Hevy through `session`.
 
-## The rules (his health report, 17 Oct). Not optional.
+## His rules. Not optional.
 
-In priority order: **heart, then back and posture, then cardio, without losing his lifts.**
+His training rules (priorities, the swaps he always makes, where he trains and when that changes)
+are personal, so they aren't in this public playbook: they're in `notes/gym.md` in the private sync
+repo, and `reference gym` prints them at the end of this. If they didn't print, say so and ask him
+before planning, rather than guessing.
 
-- **Cardio:** about 150 moderate minutes a week, mostly low-impact (bike, incline walk, rower, swim).
-  Moderate means he can still talk in sentences. Count what `gym` shows against the Cardio target, and
-  add it to sessions (`cardio`) or as its own task, rather than all in one day.
-- **Back-friendly swaps,** always:
-  - trap-bar deadlifts, not conventional;
-  - split squats and Bulgarian split squats alongside the squat;
-  - chest-supported rows, not bent-over;
-  - core endurance (planks, side planks, bird-dogs, dead bugs), not heavy flexion.
-- **No loaded bending in the first hour after waking.** Never book a hinge or a heavy squat early in
-  his day.
-- **Brace and breathe between heavy reps.** Say so in the session's `note` on heavy days.
-- **Keep squat and bench progressing.** More cardio that costs him his squat progression is not what
-  he asked for. Hold both.
-- **Protein about 180 g a day** while he's maintaining (`food` shows it). Mention it only when he's
-  clearly short across the week.
-- **This is not medical advice.** His osteopath and GP have the final say. Say "see the GP" for
-  chest pain, dizziness, breathlessness out of proportion, numbness or pain down a leg, or a back that
-  is bad (3) for more than a couple of days. He has a GP visit due for his nose, blood pressure and
-  bloods; if it isn't booked, a task for it is worth suggesting.
-
-## Gym or bodyweight
-
-- **UK, until 7 Nov:** gym sessions, as above.
-- **Salzburg, from 7 Nov:** bodyweight only. Push-ups, split squats, single-leg RDLs (bodyweight),
-  hip bridges, pull-ups if there's a bar, the core work, and walking or a bike for cardio. Hevy has
-  templates for these; use their names exactly. No `kg`; progress by reps, then a harder version.
+This is not medical advice: his own professionals have the final say. Say "see the GP" for chest
+pain, dizziness, breathlessness out of proportion, numbness or pain down a leg, or a back that is bad
+(3) for more than a couple of days.
 
 ## Writing the week
 

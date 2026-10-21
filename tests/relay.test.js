@@ -45,7 +45,8 @@ test('relayPath only lets the sync repo\'s files through', () => {
   assert.equal(relayPath('/repos/o/r/contents/handoffs/2026-10-20-a.md', 'o/r'), '/repos/o/r/contents/handoffs/2026-10-20-a.md');
   assert.equal(relayPath('/repos/o/r/contents/data.json?ref=main', 'o/r'), '/repos/o/r/contents/data.json?ref=main');
   assert.equal(relayPath(`/repos/o/r/git/blobs/${'a'.repeat(40)}`, 'o/r'), `/repos/o/r/git/blobs/${'a'.repeat(40)}`);
-  for (const bad of ['/repos/o/other/contents/data.json', '/repos/o/r/contents/../../x', '/repos/o/r/collaborators', '/user', '/repos/o/r/contents/a?per_page=1&x=2', '/repos/o/r/hooks']) {
+  for (const bad of ['/repos/o/other/contents/data.json', '/repos/o/r/contents/../../x', '/repos/o/r/collaborators', '/user', '/repos/o/r/contents/a?per_page=1&x=2', '/repos/o/r/hooks',
+    '/repos/o/r/contents/%2e%2e/%2E%2E/x', '/repos/o/r/contents/a%2Fb', '/repos/o/r/contents/a%5c..', '/repos/o/r/contents/%252e%252e']) {
     assert.equal(relayPath(bad, 'o/r'), null, bad);
   }
 });

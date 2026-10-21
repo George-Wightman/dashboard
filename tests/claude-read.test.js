@@ -90,6 +90,15 @@ test("every read starts with the date and the day's count", () => {
   }
 });
 
+test("inspect never reads out the widgets' key", () => {
+  const d = doc();
+  d.calendar.widgets = { id: 'widgets', status: 'active', url: 'https://script.google.com/macros/s/x/exec', key: 'k'.repeat(43) };
+  const text = READS.inspect(d, TODAY, 'widgets');
+  assert.match(text, /"key": "\(hidden\)"/);
+  assert.ok(!text.includes('k'.repeat(43)));
+  assert.match(text, /macros\/s\/x\/exec/);
+});
+
 test('today: suggestions, then to do, then done, each with its id', () => {
   const text = READS.today(doc(), TODAY);
   const lines = text.split('\n');

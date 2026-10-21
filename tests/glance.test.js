@@ -10,12 +10,12 @@ const at = (hh, mm = 0) => new Date(2026, 9, 21, hh, mm).toISOString();
 function doc() {
   const d = fixture({ items: [
     { id: 'battery', type: 'task', title: 'Find a new laptop battery', date: TODAY, time: '08:45', minutes: 30, order: 1 },
-    { id: 'nca', type: 'task', title: 'Email the NCA', date: TODAY, order: 2 },
-    { id: 'james', type: 'task', title: 'Email James', date: TODAY, order: 3 },
+    { id: 'nca', type: 'task', title: 'Email the landlord', date: TODAY, order: 2 },
+    { id: 'james', type: 'task', title: 'Call the bank', date: TODAY, order: 3 },
   ] });
   d.calendar['day:3'] = { id: 'day:3', status: 'active', day: TODAY, blocks: [
     { key: 'battery-1', start: at(8, 45), end: at(9, 15), items: ['battery'], title: 'Find a new laptop battery', state: 'exact' },
-    { key: 'nca-1', start: at(15, 30), end: at(16, 15), items: ['nca'], title: 'Email the NCA', state: 'exact' },
+    { key: 'nca-1', start: at(15, 30), end: at(16, 15), items: ['nca'], title: 'Email the landlord', state: 'exact' },
   ] };
   d.calendar.agenda = { id: 'agenda', status: 'active', syncedAt: at(7), busy: [{ title: 'Signify', start: at(10), end: at(12), calendar: 'Work' }] };
   return d;
@@ -35,10 +35,10 @@ test('every widget has content, and opens its tile big in the dashboard', () => 
 test('the day widget is a short calendar: what is still to come, the next marked, the rest counted', () => {
   const d = doc();
   const morning = glanceOf(d, TODAY, new Date(2026, 9, 21, 8, 0)).tiles.day;
-  assert.deepEqual(morning.lines, ['▸ 08:45  Find a new laptop battery', '10:00  Signify (until 12:00)', '15:30  Email the NCA', '+ 1 any time today']);
+  assert.deepEqual(morning.lines, ['▸ 08:45  Find a new laptop battery', '10:00  Signify (until 12:00)', '15:30  Email the landlord', '+ 1 any time today']);
   assert.equal(morning.title, 'Wednesday 21');
   const afternoon = glanceOf(d, TODAY, new Date(2026, 9, 21, 13, 0)).tiles.day;
-  assert.deepEqual(afternoon.lines, ['0 of 1 earlier done', '▸ 15:30  Email the NCA', '+ 1 any time today']);
+  assert.deepEqual(afternoon.lines, ['0 of 1 earlier done', '▸ 15:30  Email the landlord', '+ 1 any time today']);
 });
 
 test('fuel shows protein today and the meals', () => {

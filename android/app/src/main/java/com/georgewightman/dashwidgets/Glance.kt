@@ -35,7 +35,8 @@ object Glance {
                 number = t.optString("number"),
                 caption = t.optString("caption"),
                 lines = if (lines == null) emptyList() else (0 until lines.length()).map { lines.getString(it) },
-                open = t.optString("open", SITE),
+                // Only ever the dashboard: a setup link from somewhere else can't make a tap open any page it likes.
+                open = t.optString("open", SITE).let { if (it.startsWith(SITE)) it else SITE },
             )
         }
         return out

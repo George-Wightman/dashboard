@@ -1,7 +1,6 @@
 # Daylight: the dashboard turns to health and Hebrew (18 Oct 2026)
 
-George's aims until May are personal: long-term heart health, his back, cardio without losing his
-lifts, food, and Hebrew. The job search is over. He asked for a heavy redesign that keeps everything
+George's aims until May are personal: his health and training, food, and Hebrew. The job search is over. He asked for a heavy redesign that keeps everything
 the app does but feels alive, a link to his Pixel Watch, a coach that shapes his training from what
 he has done, and a food log that needs no weighing.
 
@@ -28,11 +27,9 @@ at 10:20, snapping a meal, and the phone at 21:40. The numbers there that aren't
 - **Food**: an instant Gemini estimate as a range, protein first. A small copy of each photo is kept so
   Claude can correct big misses when planning. Saved "usual meals" log exactly. Calories are judged as
   a weekly average against maintenance, never a daily target.
-- **The health report (17 Oct)** is the coach's rulebook: priorities heart, then back, then cardio;
-  about 150 moderate minutes a week, mostly low-impact; back-friendly swaps (trap-bar instead of
-  conventional deadlifts, split squats, chest-supported rows, core endurance); no loaded bending in
-  the first hour after waking; brace and breathe between heavy reps; protein around 180 g a day. Not
-  medical advice: his osteopath and GP have the final say.
+- **His own health rules** are the coach's rulebook. They're personal, so they live in the private
+  sync repo (`notes/gym.md`, printed by `reference gym`), not in this public one. Not medical advice:
+  his own professionals have the final say.
 
 ## Rules for the screen
 

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '92d52e37';
+var PLANNER_BUILD = 'b2c03046';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -6977,10 +6977,11 @@ const RELAY_FILE = 'relay.json';
 const METHODS = new Set(['GET', 'PUT', 'DELETE']);
 
 // A path into the sync repo the relay will forward, or null. `repo` is SYNC_REPO, so the caller can
-// never name another repo; `..` and anything after a `#` are refused outright.
+// never name another repo; `..` and anything after a `#` are refused outright, and so are a dot, a
+// slash or a backslash written in %-code, which could otherwise be read as `..` past this check.
 function relayPath(path, repo) {
   const p = String(path ?? '');
-  if (!p.startsWith(`/repos/${repo}/`) || p.includes('..') || p.includes('#') || /[\s\\]/.test(p)) return null;
+  if (!p.startsWith(`/repos/${repo}/`) || p.includes('..') || p.includes('#') || /[\s\\]/.test(p) || /%(2e|2f|5c|25)/i.test(p)) return null;
   const rest = p.slice(`/repos/${repo}/`.length);
   const [route, query = null] = rest.split('?');
   if (query !== null && !/^ref=[\w.%-]+$/.test(query)) return null;

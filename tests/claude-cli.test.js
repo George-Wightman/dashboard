@@ -304,10 +304,35 @@ test('reference with a topic prints that playbook, from beside the live referenc
   const r = await main({
     argv: ['--config', 'config.json', '--reference', 'live/claude/skill/reference.md', 'reference', 'calendar'],
     readText: (path) => (path === 'live/claude/skill/playbooks/calendar.md' ? '# Playbook: calendar\nread planner first\n' : CONFIG),
-    readStdin: async () => '', makeClient: () => new FakeGitHub(), now: MORNING, newId: ids('n'), env: {},
+    readStdin: async () => '', makeClient: () => new FakeGitHub(), makeFiles: () => repoFiles(), now: MORNING, newId: ids('n'), env: {},
   });
   assert.equal(r.code, 0);
   assert.match(r.text, /read planner first/);
+  assert.doesNotMatch(r.text, /own notes/, 'no private notes, no heading');
+});
+
+test("a playbook's private half comes from the sync repo, after the public one", async () => {
+  const r = await main({
+    argv: ['--config', 'config.json', '--reference', 'live/claude/skill/reference.md', 'reference', 'gym'],
+    readText: (path) => (path === 'live/claude/skill/playbooks/gym.md' ? '# Playbook: gym\npublic part\n' : CONFIG),
+    readStdin: async () => '', makeClient: () => new FakeGitHub(), now: MORNING, newId: ids('n'), env: {},
+    makeFiles: () => repoFiles({ 'notes/gym.md': 'Trap-bar, not conventional.\n' }),
+  });
+  assert.equal(r.code, 0);
+  assert.match(r.text, /public part[\s\S]*# His own notes for gym \(private, from the sync repo\)\n\nTrap-bar, not conventional\./);
+});
+
+test("private notes that can't be reached are said, and the public playbook still prints", async () => {
+  const r = await main({
+    argv: ['--config', 'config.json', '--reference', 'live/claude/skill/reference.md', 'reference', 'gym'],
+    readText: (path) => (path === 'live/claude/skill/playbooks/gym.md' ? '# Playbook: gym\npublic part\n' : CONFIG),
+    readStdin: async () => '', makeClient: () => new FakeGitHub(), now: MORNING, newId: ids('n'), env: {},
+    makeFiles: () => ({ read: async () => { throw new Error(`GitHub 500 with ${KEY}`); } }),
+  });
+  assert.equal(r.code, 0);
+  assert.match(r.text, /public part/);
+  assert.match(r.text, /Couldn't read his private notes for gym: GitHub 500/);
+  assert.ok(!r.text.includes(KEY), 'the key never prints');
 });
 
 test('an unknown topic names the ones there are', async () => {

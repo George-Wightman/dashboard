@@ -1,6 +1,11 @@
 # The phone's widgets app (android/): tests, then an unsigned build, on GitHub's machines, whose
 # Android tools come with their licences accepted. The app and pictures of every widget go to the
 # android-builds branch; android/README.md says how it's signed (on the laptop) and installed.
+#
+# Two jobs on purpose. The build runs Gradle and whatever it downloads, so it gets a read-only key and
+# keeps none of it on disk: a key that can write to this repo could rewrite planner.js, which the
+# planner's script loads and runs with every key it holds. Only the publish job, which runs nothing
+# but git, can write.
 name: Widgets app
 
 on:
@@ -10,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android
@@ -21,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -32,16 +39,36 @@ jobs:
         run: |
           set -o pipefail
           gradle -p android testDebugUnitTest assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
-      - name: Publish to android-builds
+      - name: Gather what to publish
         if: always()
         run: |
-          mkdir -p out/shots
+          mkdir -p out/shots out/tests
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk out/ 2>/dev/null || true
           cp android/app/build/widget-shots/*.png out/shots/ 2>/dev/null || true
-          mkdir -p out/tests && cp -r android/app/build/test-results/testDebugUnitTest/*.xml out/tests/ 2>/dev/null || true
+          cp -r android/app/build/test-results/testDebugUnitTest/*.xml out/tests/ 2>/dev/null || true
           # The log too: reading a run's log over the API needs admin rights.
           grep -v -i 'token' build.log | tail -n 400 > out/build.log 2>/dev/null || true
-          echo "${GITHUB_SHA} run ${GITHUB_RUN_NUMBER} ${{ job.status }}" > out/BUILD.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: widgets-build
+          path: out
+          retention-days: 1
+
+  publish:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: widgets-build
+          path: out
+      - name: Publish to android-builds
+        run: |
+          echo "${GITHUB_SHA} run ${GITHUB_RUN_NUMBER} ${{ needs.build.result }}" > out/BUILD.txt
           cd out
           git init -q -b android-builds
           git config user.name "github-actions"

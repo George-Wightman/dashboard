@@ -560,6 +560,8 @@ export const READS = {
     if (!ref) return header(doc, today) + '\ninspect needs the ID from find or list';
     const { map, id, rec } = resolveId(doc, ref);
     const { _sync, ...record } = rec;
+    // A key kept in the data (the widgets' one, on calendar.widgets) never needs to be read out in a chat.
+    if (typeof record.key === 'string') record.key = '(hidden)';
     return header(doc, today) + '\n' + JSON.stringify({ map, record, ...(map === 'items' ? { blockers: blockers(doc, rec, today) } : {}),
       rules: Object.values(doc.rules ?? {}).filter((r) => r.definition.sourceId === id).map((r) => ({ id: r.id, title: r.title, enabled: r.enabled })) }, null, 2);
   },

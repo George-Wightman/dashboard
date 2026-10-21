@@ -18,14 +18,15 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
-// What the planner sends (js/glance.js), as it answered for Wed 21 Oct 2026.
+// What the planner sends (js/glance.js), in its shape, with a made-up day: this repo is public, so
+// never paste a real answer in here.
 private const val SAMPLE = """{"at":"2026-10-21T06:53:24.245Z","day":"2026-10-21","tiles":{
-"day":{"title":"Wednesday 21","number":"1/6","caption":"done today","lines":["▸ 09:00  Find a new laptop battery","09:30  Re-join JD Gyms","10:00  Signify (until 12:00)","12:15  Research the Visa D","12:30  Signify (until 15:00)","13:30  Gym (until 15:15)","16:30  Hebrew practice","+ 3 more"],"open":"https://george-wightman.github.io/dashboard/"},
-"fuel":{"title":"Fuel","number":"57 g","caption":"of 180 g protein today","lines":["Breakfast: Big egg breakfast · 57 g","This week ≈3,690 kcal a day"],"open":"https://george-wightman.github.io/dashboard/?big=fuel"},
+"day":{"title":"Wednesday 21","number":"1/6","caption":"done today","lines":["▸ 09:00  Water the plants","09:30  Renew the library card","10:00  Shift (until 12:00)","12:15  Read about bike repairs","12:30  Shift (until 15:00)","13:30  Gym (until 15:15)","16:30  Hebrew practice","+ 3 more"],"open":"https://george-wightman.github.io/dashboard/"},
+"fuel":{"title":"Fuel","number":"57 g","caption":"of 150 g protein today","lines":["Breakfast: Porridge and eggs · 57 g","This week ≈2,500 kcal a day"],"open":"https://george-wightman.github.io/dashboard/?big=fuel"},
 "hebrew":{"title":"Hebrew","number":"0:45","caption":"of 7 h this week","lines":["12 of 40 reps spoken","3 of 15 words live","○○●····  Mon–Sun"],"open":"https://george-wightman.github.io/dashboard/?big=hebrew"},
 "body":{"title":"Body","number":"30","caption":"of 90 cardio min this week","lines":["Gym 1 of 5 this week","Back this morning: fine"],"open":"https://george-wightman.github.io/dashboard/?big=body"},
-"goals":{"title":"Goals","number":"2","caption":"goals on the go","lines":["Reread Man's Search for Meaning: 7% · by 30 Nov","Remote income alongside Signify: 0 of 5 · by 20 Dec"],"open":"https://george-wightman.github.io/dashboard/?big=goals"},
-"countdown":{"title":"Countdown","number":"17","caption":"days to Flight to Salzburg","lines":[],"open":"https://george-wightman.github.io/dashboard/?big=countdown"},
+"goals":{"title":"Goals","number":"2","caption":"goals on the go","lines":["Read a novel: 7% · by 30 Nov","Learn to juggle: 0 of 5 · by 20 Dec"],"open":"https://george-wightman.github.io/dashboard/?big=goals"},
+"countdown":{"title":"Countdown","number":"17","caption":"days to The holiday","lines":[],"open":"https://george-wightman.github.io/dashboard/?big=countdown"},
 "week":{"title":"This week","number":"","caption":"","lines":["Nothing to show yet."],"open":"https://george-wightman.github.io/dashboard/?big=week"}}}"""
 
 @RunWith(RobolectricTestRunner::class)
@@ -40,6 +41,12 @@ class WidgetsTest {
         assertEquals("57 g", tiles.getValue("fuel").number)
         assertEquals(8, tiles.getValue("day").lines.size)
         assertEquals("https://george-wightman.github.io/dashboard/?big=fuel", tiles.getValue("fuel").open)
+    }
+
+    @Test fun aTapOnlyEverOpensTheDashboard() {
+        val tiles = Glance.parse("""{"tiles":{"fuel":{"title":"Fuel","open":"https://evil.example/?big=fuel"},"goals":{"title":"Goals","open":"intent://x#Intent;end"}}}""")
+        assertEquals(Glance.SITE, tiles.getValue("fuel").open)
+        assertEquals(Glance.SITE, tiles.getValue("goals").open)
     }
 
     @Test(expected = GlanceException::class) fun aRefusalIsAnError() {
