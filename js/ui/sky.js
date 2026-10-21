@@ -85,7 +85,7 @@ export function renderSky(ctx) {
   // The installed app's title bar takes the top of the sky, so it blends in.
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta && meta.getAttribute('content') !== SKY_TOP[phase]) meta.setAttribute('content', SKY_TOP[phase]);
-  document.title = m.total ? `Today · ${m.done}/${m.total}` : 'Today';
+  document.title = m.total ? `Dashboard · ${m.done}/${m.total}` : 'Dashboard';
 
   const [syncText, syncTitle] = syncLabel(ctx.syncState());
   const failing = ctx.syncState().state === 'failing';

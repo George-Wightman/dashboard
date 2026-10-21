@@ -198,7 +198,7 @@ function renderHeader() {
   document.getElementById('date').textContent = longDate(today);
   const { done, total, pushed } = dayScore(store.doc(), today);
   document.getElementById('count').textContent = progressText(done, total, pushed.length);
-  document.title = total ? `Today · ${done}/${total}` : 'Today';
+  document.title = total ? `Dashboard · ${done}/${total}` : 'Dashboard';
 
   const warning = document.getElementById('save-warning');
   const problem = store.saveError() ? "Couldn't save on this device. Export a backup from settings." : store.loadError();

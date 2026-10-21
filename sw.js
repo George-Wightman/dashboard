@@ -103,7 +103,7 @@ self.addEventListener('message', (e) => {
 self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch { data = { body: e.data?.text?.() ?? '' }; }
-  e.waitUntil(self.registration.showNotification(data.title || 'Today', {
+  e.waitUntil(self.registration.showNotification(data.title || 'Dashboard', {
     body: data.body || '', tag: data.tag || 'checkin', data: { url: data.url || './' }, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
   }));
 });

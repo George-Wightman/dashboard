@@ -150,7 +150,7 @@ test('a ping shows as a notification carrying where it leads', async () => {
   assert.equal(h.shown[0].options.tag, payload.tag);
   assert.deepEqual(JSON.parse(JSON.stringify(h.shown[0].options.data)), { url: payload.url }); // another realm's object
   await h.event('push', { data: { json: () => { throw new Error('not json'); }, text: () => 'plain words' } });
-  assert.equal(h.shown[1].title, 'Today');
+  assert.equal(h.shown[1].title, 'Dashboard');
   assert.equal(h.shown[1].options.body, 'plain words');
 });
 

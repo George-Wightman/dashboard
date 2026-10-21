@@ -1,6 +1,6 @@
 {
-  "name": "Today",
-  "short_name": "Today",
+  "name": "Dashboard",
+  "short_name": "Dashboard",
   "description": "What have I got today — tasks, habits, weekly targets and goals.",
   "start_url": "./",
   "scope": "./",
