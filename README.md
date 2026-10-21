@@ -29,7 +29,7 @@ Pieces 1, 3 and 6 of 6: the core hub, the Claude skill and the calendar planner.
   show in the Countdown widget until the day. Nothing is booked for it.
 - **Goals with a number and a date** say what it takes a day to finish on time, under the goal's
   line: *10 pages a day to finish by Thu 15 Oct*.
-- **Logging:** tell Claude what you did ("sent two applications"). Cardio fills itself from Hevy and
+- **Logging:** tell Claude what you did ("sent two applications"). Cardio fills itself from Hevy and Google Health (runs in Strava or on the watch), and
   the Hebrew targets from the Hebrew app, so those are never logged by hand.
 - **Editing:** click any row's title (or a target's name in *This week*) to edit it. Archive
   instead of deleting — history is kept. A habit done a number of times a week shows a dot for each

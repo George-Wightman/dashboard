@@ -62,7 +62,9 @@ pain, dizziness, breathlessness out of proportion, numbness or pain down a leg, 
 ## What a workout does on its own
 
 A Hevy workout ticks the Gym habit and moves the Gym block to when he actually trained, and its
-cardio minutes count towards the linked weekly target. A workout saved from one of your sessions'
+cardio minutes count towards the linked weekly target. So do runs and rides from Google Health
+(Strava, the watch), hourly, logged as `health-cardio-…` with the note *Run (Google Health)*; a run
+inside a Hevy workout's time counts once, from Hevy. A workout saved from one of your sessions'
 routines also ticks that session's task, on or after the session's day. If he trains a session
 early, move the task to that day first (or he ticks it by hand); a workout before the day ticks
 nothing. Those are the **only** automatic ticks anywhere in the

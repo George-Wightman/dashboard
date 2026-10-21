@@ -209,7 +209,10 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
 
 George logs every workout in Hevy. The planner's script copies them into the dashboard every 10
 minutes: a workout ticks his Gym habit (and moves the Gym block in his calendar to when he trained),
-and its cardio minutes count towards his Cardio target. Read `gym` for his key lifts — estimated 1RM,
+and its cardio minutes count towards his Cardio target. Runs and rides he records in Strava or on his
+watch reach the target too, hourly from Google Health (Hevy's own workouts, walks and repeats of the
+same run are left out), once the planner has its `HEALTH_` properties; `gym` says when it last
+checked. Don't log those by hand. Read `gym` for his key lifts — estimated 1RM,
 PRs, pace over 8 weeks, when a target will be reached — cardio by week, the last two weeks'
 sessions, and the sessions you've planned. He's training for more cardio while still progressing his
 squat and bench, with his back first.

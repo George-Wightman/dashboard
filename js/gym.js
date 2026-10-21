@@ -464,9 +464,18 @@ export function hevyTick(doc, itemId, day) {
 // The connection in a few lines, for ⚙ and Claude. `when` formats a moment.
 export function gymStatusLines(doc, when = (iso) => iso) {
   const s = gymStatus(doc);
-  if (!s) return ["Hevy isn't connected — the planner script needs the key as HEVY_KEY in its Script properties"];
-  const out = [`Hevy: last checked ${s.lastSync ? when(s.lastSync) : 'never'} · ${plural(Number(s.count) || 0, 'workout')}`];
-  if (s.backfillPage != null) out.push(`Still copying your Hevy history — page ${s.backfillPage} next`);
-  if (s.lastError) out.push(`Problem: ${s.lastError}`);
+  const out = [];
+  if (!s) out.push("Hevy isn't connected — the planner script needs the key as HEVY_KEY in its Script properties");
+  else {
+    out.push(`Hevy: last checked ${s.lastSync ? when(s.lastSync) : 'never'} · ${plural(Number(s.count) || 0, 'workout')}`);
+    if (s.backfillPage != null) out.push(`Still copying your Hevy history — page ${s.backfillPage} next`);
+    if (s.lastError) out.push(`Problem: ${s.lastError}`);
+  }
+  // Google Health's cardio (planner/health.js), once the planner has its HEALTH_ properties.
+  const h = doc?.gym?.['health-status'];
+  if (h?.status === 'active') {
+    out.push(`Google Health: last checked ${h.lastSync ? when(h.lastSync) : 'never'} · ${plural(Number(h.count) || 0, 'exercise')} this week or so`);
+    if (h.lastError) out.push(`Problem: ${h.lastError}`);
+  }
   return out;
 }

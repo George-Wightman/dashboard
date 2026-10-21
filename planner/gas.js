@@ -21,6 +21,7 @@ import { at } from './time.js';
 import { tagPrompt, readArea } from './tag.js';
 import { syncHevy } from './hevy.js';
 import { syncRoutines } from './routines.js';
+import { syncHealth } from './health.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
@@ -33,6 +34,7 @@ const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
 const TAG_PER_RUN = 5;
 const HEVY_RETRY_MS = 30 * 60000;
+const HEALTH_EVERY_MS = 60 * 60000;
 
 class MemoryStorage {
   constructor(initial = {}) { this.map = new Map(Object.entries(initial)); }
@@ -52,7 +54,7 @@ export function createPlanner({
   const get = (k) => props().getProperty(k);
   const put = (k, v) => props().setProperty(k, String(v));
   const drop = (k) => props().deleteProperty(k);
-  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
+  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
@@ -189,6 +191,21 @@ export function createPlanner({
     if (r.lastError) log(`Hevy routines: ${r.lastError}`);
   }
 
+  // Google Health after Hevy, so its records can tell which of its runs Hevy already has. Hourly:
+  // cardio minutes don't need ten-minute freshness. Skipped until the HEALTH_ properties are set.
+  async function health(store) {
+    const creds = { clientId: get('HEALTH_CLIENT_ID'), clientSecret: get('HEALTH_CLIENT_SECRET'), refreshToken: get('HEALTH_REFRESH_TOKEN') };
+    if (!creds.clientId || !creds.clientSecret || !creds.refreshToken) return;
+    if (now().getTime() - Number(get('HEALTH_TRIED') ?? 0) < HEALTH_EVERY_MS) return;
+    put('HEALTH_TRIED', now().getTime());
+    const cache = {
+      get: () => { try { return JSON.parse(get('HEALTH_ACCESS') ?? 'null'); } catch { return null; } },
+      put: (v) => put('HEALTH_ACCESS', JSON.stringify(v)),
+    };
+    const s = await syncHealth({ fetch, creds, cache, store, now, dayStartHour: dayStartHour(), scrub: clean });
+    if (s.lastError) log(`Google Health: ${s.lastError}`);
+  }
+
   function apply(actions, events) {
     const byKey = {};
     const errors = [];
@@ -289,6 +306,7 @@ export function createPlanner({
       const session = await open();
       const { store } = session;
       await hevy(store);
+      await health(store);
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
       try {
