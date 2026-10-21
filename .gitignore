@@ -3,3 +3,8 @@ claude/skill/config.json
 dev/health-spike/
 preview-data/
 node_modules/
+
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

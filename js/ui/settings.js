@@ -83,6 +83,27 @@ function notificationsGroup(ctx) {
     h('p', { class: 'note' }, "When a task's calendar block ends and it isn't ticked, this device is asked what happened: at most four a day, and never at night. Tapping it opens the question. Your Pixel Watch shows what the phone shows."));
 }
 
+// The phone's home-screen widgets (android/): once the app is installed, Connect hands it the planner's
+// address and the widget key (calendar.widgets, put there by claude/glance-setup.mjs). The key goes
+// straight into the link when tapped, never into the page's markup.
+export const WIDGETS_SCHEME = 'dashwidgets://setup';
+export function widgetsLink(doc) {
+  const w = doc?.calendar?.widgets;
+  if (!w || w.status !== 'active' || typeof w.url !== 'string' || typeof w.key !== 'string') return null;
+  return `${WIDGETS_SCHEME}?u=${encodeURIComponent(w.url)}&k=${encodeURIComponent(w.key)}`;
+}
+function widgetsGroup(ctx) {
+  const ready = !!widgetsLink(ctx.store.doc());
+  return h('details', { class: 'group' }, h('summary', {}, 'Phone widgets', h('span', { class: 'muted' }, ready ? ' · ready to connect' : ' · not set up')),
+    h('p', { class: 'note' }, ready
+      ? 'Widgets for your home screen: today as a short calendar, and Fuel, Hebrew, Body, Goals, Countdown and This week. Install the Dashboard widgets app (Google Drive → Dashboard widgets), then tap Connect here on the phone. Tapping a widget opens its tile here, big.'
+      : 'Ask Claude to set up the phone widgets.'),
+    ready ? h('div', { class: 'buttons' }, h('button', { class: 'btn', type: 'button', onclick: () => {
+      const link = widgetsLink(ctx.store.doc());
+      if (link) location.href = link;
+    } }, 'Connect the widgets app')) : null);
+}
+
 // One folded group: its name, what it's set to now, and its fields.
 const group = (name, now, open, ...body) => h('details', { class: 'group', open },
   h('summary', {}, name, h('span', { class: 'muted' }, ` · ${now}`)), ...body);
@@ -229,6 +250,7 @@ export function openSettings(ctx) {
       h('p', { class: 'note' }, "Gemini tidies what you say in a check-in into a short note for Claude. It's sent your answer and the task's name; on Google's free tier they may use it to improve their products. Without a key your words are kept as they are."),
       h('p', { class: 'note' }, "Snapping a meal sends Gemini the photo, your line about it and the time, to estimate protein and calories; the same free-tier terms apply. Your watch data is never sent.")),
     notificationsGroup(ctx),
+    widgetsGroup(ctx),
     group('Look', `${s.screen === 'classic' ? 'Classic' : 'Daylight'} screen, ${lookName}, evening from ${hourLabel(s.checkinHour)}`, false,
       h('label', { class: 'field' }, h('span', {}, 'Screen'), screen),
       h('label', { class: 'field' }, h('span', {}, 'Look'), look),

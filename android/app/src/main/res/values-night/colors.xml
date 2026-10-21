@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="card">#1F1C3A</color>
+    <color name="ink">#EDEAF7</color>
+    <color name="soft">#24204A</color>
+    <color name="fuel">#1E3A31</color>
+    <color name="on_fuel">#C6E2D6</color>
+    <color name="hebrew">#2A2763</color>
+    <color name="on_hebrew">#D5D2F5</color>
+    <color name="body">#3A2530</color>
+    <color name="on_body">#FFD0C2</color>
+    <color name="goals">#2B2440</color>
+    <color name="accent">#B9B3FF</color>
+</resources>

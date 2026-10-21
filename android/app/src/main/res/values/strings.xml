@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dashboard widgets</string>
+    <string name="widget_waiting">Open the Dashboard widgets app to connect.</string>
+    <string name="w_day">Today: your day as a short calendar</string>
+    <string name="w_fuel">Fuel: protein today and what you\'ve eaten</string>
+    <string name="w_hebrew">Hebrew: this week\'s time, reps and live words</string>
+    <string name="w_body">Body: cardio, gym and your next session</string>
+    <string name="w_goals">Goals: where each one stands</string>
+    <string name="w_countdown">Countdown: the next date you\'re counting to</string>
+    <string name="w_week">This week: your weekly targets</string>
+</resources>

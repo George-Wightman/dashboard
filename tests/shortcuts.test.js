@@ -51,3 +51,9 @@ test('a home-screen widget opens its tile big, then tidies the address', () => {
   assert.match(app, /if \(params\.has\('big'\)\) \{[\s\S]*searchParams\.delete\('big'\)[\s\S]*openTile\(ctx, tile\)/);
   assert.match(read('js/ui/tiles.js'), /export function openTile\(ctx, id\)/);
 });
+
+test('⚙ hands the widgets app its address and key only when they are set', async () => {
+  const { widgetsLink } = await import('../js/ui/settings.js');
+  assert.equal(widgetsLink({ calendar: {} }), null);
+  assert.equal(widgetsLink({ calendar: { widgets: { status: 'active', url: 'https://x/exec', key: 'k k' } } }), 'dashwidgets://setup?u=https%3A%2F%2Fx%2Fexec&k=k%20k');
+});

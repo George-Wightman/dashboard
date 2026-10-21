@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Daylight's day colours (styles/daylight.css); values-night has the night ones. -->
+<resources>
+    <color name="card">#FFFFFF</color>
+    <color name="ink">#1D1A2B</color>
+    <color name="soft">#FFF3E3</color>
+    <color name="fuel">#24785A</color>
+    <color name="on_fuel">#FFFFFF</color>
+    <color name="hebrew">#3F3A9E</color>
+    <color name="on_hebrew">#FFFFFF</color>
+    <color name="body">#FF8A65</color>
+    <color name="on_body">#1D1A2B</color>
+    <color name="goals">#FFE9D2</color>
+    <color name="accent">#3F3A9E</color>
+    <color name="icon_bg">#FFF3E3</color>
+</resources>

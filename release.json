@@ -1,5 +1,5 @@
 {
-  "id": "7ecfcce60038ef552a666012da4391d7e58bfd8ac5cb48d44f61bb9e44a0f344",
+  "id": "76c24efc25f5503632fbf1f8f5f7b8e6cdbe6cb366af172b3e070e54101dd5fb",
   "files": {
     "./": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
     "index.html": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
@@ -43,7 +43,7 @@
     "js/ui/today.js": "acb846e19de58b82be05cc9d1a9319591580f7f99e37d5ca372da1bd6bf2ffc9",
     "js/ui/side.js": "025e583ddc04ea78333ae357a697a1206d6f0b7c07663bd20e4a588102d02ff5",
     "js/ui/edit.js": "dd11c86c07d978352210f1e8afa9a800b760cdaf9b9b6d7eb3437be708e882e4",
-    "js/ui/settings.js": "8708d8fd81d2732e29a3c4073779b03d1d8b78efe6ea79d6127879f9a82a1dc2",
+    "js/ui/settings.js": "338523e16bc6404da8d749228ea3f1e0c897b4568f52e3a23400564ce950b294",
     "js/ui/checkin.js": "eb6813cdca84fe870f87866f247fa08513ac87473ecd4ec78a37ef13895deb2c",
     "js/ui/mic.js": "5256127262cd2903da75762e03503bc1c6ff6fc311b4ee781548fa141b6a7545",
     "js/ui/note.js": "7a06410d1c6adea99114f26cbaa46101c5e4ecdf5ff47f324b898f252a0706e4",

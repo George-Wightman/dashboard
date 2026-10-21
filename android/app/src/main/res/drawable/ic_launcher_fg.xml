@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A sun over two tiles, after Daylight's sky. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFAA3C" android:pathData="M54,30 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0" />
+    <path android:fillColor="#24785A" android:pathData="M30,50 h22 a4,4 0 0 1 4,4 v20 a4,4 0 0 1 -4,4 h-22 a4,4 0 0 1 -4,-4 v-20 a4,4 0 0 1 4,-4 z" />
+    <path android:fillColor="#3F3A9E" android:pathData="M60,50 h18 a4,4 0 0 1 4,4 v20 a4,4 0 0 1 -4,4 h-18 a4,4 0 0 1 -4,-4 v-20 a4,4 0 0 1 4,-4 z" />
+</vector>
