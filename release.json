@@ -1,5 +1,5 @@
 {
-  "id": "78628db26902360bdfe09aa93e14167da20c329bad2a2aacfb0dd96a724ffc1c",
+  "id": "45077be2d7220f3370da6113b19d45b4c5a792f810cedb7bbabc64926592ba35",
   "files": {
     "./": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
     "index.html": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
@@ -12,7 +12,7 @@
     "icons/icon.svg": "ed047463e6d4922fd9c4f21dbedf11b9e4b5cdc3b471b5a4bffcd63dca624754",
     "icons/icon-192.png": "8e7e849913dea81b5333285f54b427c3be4d5de5a20fa90ca0cc99de7dd1db04",
     "icons/icon-512.png": "20842b1a050ea876ecb8cbf7e83fffb62fba540645a1430d4e59f1cf5defdd48",
-    "js/app.js": "0f96f76a9523b0fb91eb8eb0890f3d365458d9fe21704b473ec6aff7d9802291",
+    "js/app.js": "a246f57bf0e3974ab5fefc9cae161cfe6204f1c1f3cfbfa53ff68a3fda51b52b",
     "js/commit.js": "a03407e778be6c3081eb9a4c8b7e25ef190810011b04dacd0beb71a4354e1453",
     "js/data.js": "5605f956c6e64053b8ea083440175e6903d88f07cd1ba204e770c66885f7ee8f",
     "js/doc.js": "6e080d92893d348de97c7982984e6db83e7e7d676d301a4235e87cfe1fcd53f7",
@@ -43,9 +43,9 @@
     "js/ui/today.js": "acb846e19de58b82be05cc9d1a9319591580f7f99e37d5ca372da1bd6bf2ffc9",
     "js/ui/side.js": "025e583ddc04ea78333ae357a697a1206d6f0b7c07663bd20e4a588102d02ff5",
     "js/ui/edit.js": "dd11c86c07d978352210f1e8afa9a800b760cdaf9b9b6d7eb3437be708e882e4",
-    "js/ui/settings.js": "338523e16bc6404da8d749228ea3f1e0c897b4568f52e3a23400564ce950b294",
+    "js/ui/settings.js": "4dcb84c52d65dd43af49f427e017f02ceaacefd43d1a38f8055955961a2fd7bc",
     "js/ui/checkin.js": "eb6813cdca84fe870f87866f247fa08513ac87473ecd4ec78a37ef13895deb2c",
-    "js/ui/mic.js": "c0fb67349c0de4a874d058b689a72894a084b2bb745e9d33de14ad5a62c57fd3",
+    "js/ui/mic.js": "d1e99548e2017f1c2554c1a13620604626e6923138b29dddb4b178dddbf5cc48",
     "js/ui/note.js": "7a06410d1c6adea99114f26cbaa46101c5e4ecdf5ff47f324b898f252a0706e4",
     "js/ui/widgets.js": "09d65ea105d5c693bae5afe254e96c4704e24c0baa80e290b23e9cffbef9cc48",
     "js/ui/flags.js": "2d94fb32ae5edf77ec93636a27e560bb781e011e9ccebbdd997690cd8bf015cf",
@@ -81,6 +81,8 @@
     "js/jobs.js": "2477ab3dd63007374b2dda655f4c05aeb4ec39edab063a707781c7d6b060a4c4",
     "js/voice.js": "d74133cd4c590e4d94cff479aa46813991808ee4e632eef9a959eb623f0e1b82",
     "js/ui/timedrag.js": "b83bec8f7ca062de72f4f74df78cccbd0482299750d20955b24e4eebd4246885",
-    "js/glance.js": "5d3f452ed02c9d4f6a8df86a5be14e30adb21a47c67ba99615648212cfc5e6a7"
+    "js/glance.js": "5d3f452ed02c9d4f6a8df86a5be14e30adb21a47c67ba99615648212cfc5e6a7",
+    "js/stt.js": "915d384d980c6d42cef51b08387e0fc946a22077a1b96f5cab3f2467236706a0",
+    "js/stt-worker.js": "0dc335148a29049a02ef73f0b5f2b07c14558f1cffd8e79fb19d0baff53127aa"
   }
 }

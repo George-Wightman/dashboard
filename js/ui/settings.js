@@ -4,6 +4,7 @@
 // device-local and never synced.
 
 import { h } from './dom.js';
+import { STT_MB, sttSpeed } from '../stt.js';
 import { hebrewKeys } from '../gemini.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
 import { hourLabel } from '../dates.js';
@@ -81,6 +82,39 @@ function notificationsGroup(ctx) {
   show();
   return h('details', { class: 'group' }, h('summary', {}, 'Notifications', now), line, buttons, error,
     h('p', { class: 'note' }, "When a task's calendar block ends and it isn't ticked, this device is asked what happened: at most four a day, and never at night. Tapping it opens the question. Your Pixel Watch shows what the phone shows."));
+}
+
+// Dictation on this device (js/stt.js): the speech model downloaded once, then the mic writes down
+// what's said here, offline and private; Gemini otherwise. Each device chooses for itself.
+function dictationGroup(ctx) {
+  const stt = ctx.stt;
+  if (!stt || typeof Worker !== 'function') return null;
+  const now = h('span', { class: 'muted' });
+  const line = h('p', { class: 'note' });
+  const buttons = h('div', { class: 'buttons' });
+  const error = h('p', { class: 'error', role: 'status' });
+  const show = () => {
+    const s = stt.status();
+    now.textContent = s.state === 'ready' ? ' · on this device' : ' · Gemini';
+    line.textContent = s.state === 'ready'
+      ? `The speech model is on this device: the mic works offline and nothing it hears leaves this device.${sttSpeed(s) ? ` Last time: ${sttSpeed(s)}.` : ''} If it ever fails, Gemini takes over.`
+      : `The mic sends what you say to Gemini to write down. Download the speech model (about ${STT_MB} MB, best on Wi-Fi) and it's written down here instead: offline, and private.`;
+    buttons.replaceChildren(s.state === 'ready'
+      ? h('button', { class: 'btn', type: 'button', onclick: async () => { await stt.remove(); show(); } }, 'Remove it from this device')
+      : h('button', { class: 'btn', type: 'button', onclick: async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        error.textContent = '';
+        try {
+          await stt.download((loaded, total) => { b.textContent = total ? `Downloading… ${Math.floor((loaded / total) * 100)}%` : 'Downloading…'; });
+        } catch (err) {
+          error.textContent = `It couldn't be downloaded: ${err.message}`;
+        }
+        show();
+      } }, `Download the speech model (${STT_MB} MB)`));
+  };
+  show();
+  return h('details', { class: 'group' }, h('summary', {}, 'Dictation', now), line, buttons, error);
 }
 
 // The phone's home-screen widgets (android/): once the app is installed, Connect hands it the planner's
@@ -250,6 +284,7 @@ export function openSettings(ctx) {
       h('p', { class: 'note' }, "Gemini tidies what you say in a check-in into a short note for Claude. It's sent your answer and the task's name; on Google's free tier they may use it to improve their products. Without a key your words are kept as they are."),
       h('p', { class: 'note' }, "Snapping a meal sends Gemini the photo, your line about it and the time, to estimate protein and calories; the same free-tier terms apply. Your watch data is never sent.")),
     notificationsGroup(ctx),
+    dictationGroup(ctx),
     widgetsGroup(ctx),
     group('Look', `${s.screen === 'classic' ? 'Classic' : 'Daylight'} screen, ${lookName}, evening from ${hourLabel(s.checkinHour)}`, false,
       h('label', { class: 'field' }, h('span', {}, 'Screen'), screen),

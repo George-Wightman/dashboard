@@ -31,6 +31,7 @@ import { renderTimeline } from './ui/timeline.js';
 import { renderTiles, openTile } from './ui/tiles.js';
 import { paintSnap, openSnap } from './ui/snap.js';
 import { useTranscriber } from './ui/mic.js';
+import { createStt } from './stt.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
 import { chooseZoneRecord } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles, loadNotePlace, saveNotePlace } from './tiles.js';
@@ -164,7 +165,11 @@ const ctx = {
 };
 
 // The mic writes down what's said with Gemini whenever there's a key (js/ui/mic.js).
-useTranscriber({ ask: (req) => ctx.gemini.ask(req), ready: () => ctx.gemini.keys().length > 0 && navigator.onLine !== false });
+// On this device first when its speech model is downloaded (⚙ → Dictation), loaded once the page is idle.
+const stt = createStt();
+ctx.stt = stt;
+useTranscriber({ ask: (req) => ctx.gemini.ask(req), ready: () => ctx.gemini.keys().length > 0 && navigator.onLine !== false }, stt);
+(globalThis.requestIdleCallback ?? ((fn) => setTimeout(fn, 3000)))(() => stt.warm());
 
 let shownDay = store.today();
 

@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>On-device dictation check</title>
+<!-- Loads js/stt-worker.js, transcribes ?wav= (default preview-data/breakfast.wav) and writes how long
+     loading and transcribing took. ?device=wasm or webgpu. For dev/ checks, not part of the app. -->
+<pre id="out">starting…</pre>
+<script type="module">
+const p = new URLSearchParams(location.search);
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += `\n${s}`; };
+const device = p.get('device') ?? (navigator.gpu ? 'webgpu' : 'wasm');
+const w = new Worker('../js/stt-worker.js', { type: 'module' });
+const t0 = performance.now();
+let lastPct = -1;
+w.onmessage = async ({ data }) => {
+  if (data.type === 'progress' && data.total) {
+    const pct = Math.floor((data.loaded / data.total) * 10) * 10;
+    if (pct !== lastPct) { lastPct = pct; log(`download ${pct}% of ${Math.round(data.total / 1048576)} MB`); }
+  }
+  if (data.type === 'ready') {
+    log(`ready on ${data.device} after ${Math.round(performance.now() - t0)} ms`);
+    const buf = await (await fetch(p.get('wav') ?? '../preview-data/breakfast.wav')).arrayBuffer();
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    const audio = (await ctx.decodeAudioData(buf)).getChannelData(0);
+    log(`audio ${(audio.length / 16000).toFixed(1)} s`);
+    w.postMessage({ type: 'transcribe', id: 1, audio });
+    w.postMessage({ type: 'transcribe', id: 2, audio });
+  }
+  if (data.type === 'text') { log(`#${data.id} ${data.ms} ms: ${data.text}`); if (data.id === 2) document.title = 'done'; }
+  if (data.type === 'error') { log(`error: ${data.message}`); document.title = 'done'; }
+};
+w.postMessage({ type: 'load', device, size: p.get('size') ?? 'base' });
+log(`device asked: ${device}`);
+</script>

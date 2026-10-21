@@ -1,8 +1,9 @@
 // The mic, for the snap sheet, the check-in card and the note for Claude. Tap it and speak; tap again
-// and what he said is written down by Gemini (js/voice.js), told what he's describing, and added to
-// what's already typed, there to read before saving. Nothing is sent by itself. Without a Gemini key
-// (or a browser that can't record) it falls back to the browser's own speech recognition, as he
-// speaks. No button where neither is possible. One recording at a time on the page.
+// and what he said is written down and added to what's already typed, there to read before saving.
+// Nothing is sent by itself. Written down on this device when its speech model is downloaded (⚙ →
+// Dictation, js/stt.js), otherwise — or if that fails — by Gemini (js/voice.js), told what he's
+// describing. With neither (or a browser that can't record) it falls back to the browser's own speech
+// recognition, as he speaks. No button where nothing is possible. One recording at a time on the page.
 
 import { h } from './dom.js';
 import {
@@ -17,16 +18,19 @@ const BLOCKED = 'The microphone is blocked for this page: allow it in the browse
 let listening = null;
 let ticker = null;
 
-// Gemini, set once by js/app.js: ask(...) as ctx.gemini.ask, ready() when there's a key to use.
+// Gemini, set once by js/app.js: ask(...) as ctx.gemini.ask, ready() when there's a key to use. And
+// the on-device model (js/stt.js), when this device has one.
 let transcriber = null;
-export function useTranscriber(t) { transcriber = t; }
+let local = null;
+export function useTranscriber(t, stt = null) { transcriber = t; local = stt; }
+const localReady = () => local?.status().state === 'ready';
 
 export function speechRecognition(g = globalThis) {
   return g.SpeechRecognition ?? g.webkitSpeechRecognition ?? null;
 }
 
 const canRecord = (g = globalThis) => !!(g.navigator?.mediaDevices?.getUserMedia && g.MediaRecorder && (g.AudioContext ?? g.webkitAudioContext));
-const recording = () => !!transcriber?.ready() && canRecord();
+const recording = () => (localReady() || !!transcriber?.ready()) && canRecord();
 
 // Stops whatever is listening without writing anything down: the sheet it was for is closing or sending.
 export const stopListening = () => listening?.cancel();
@@ -41,8 +45,8 @@ function tick() {
   }, 500);
 }
 
-// The recording as 16 kHz mono WAV, base64: what Gemini reads, whatever the browser recorded in.
-async function wavOf(blob) {
+// The recording as 16 kHz mono samples, the quiet either side cut, whatever the browser recorded in.
+async function samplesOf(blob) {
   const Ctx = globalThis.AudioContext ?? globalThis.webkitAudioContext;
   const audio = new Ctx();
   try {
@@ -52,7 +56,7 @@ async function wavOf(blob) {
       const ch = decoded.getChannelData(c);
       for (let i = 0; i < ch.length; i++) mono[i] += ch[i] / decoded.numberOfChannels;
     }
-    return toBase64(encodeWav(trimSilence(downsample(mono, decoded.sampleRate, SAMPLE_RATE))));
+    return trimSilence(downsample(mono, decoded.sampleRate, SAMPLE_RATE));
   } finally {
     audio.close?.();
   }
@@ -82,11 +86,19 @@ async function record({ key, hint, getText, setText, onBlocked, render }) {
     me.phase = 'transcribing';
     render();
     try {
-      const data = await wavOf(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }));
-      const reply = await transcriber.ask({
-        system: TRANSCRIBE_SYSTEM, prompt: transcribePrompt(hint), image: { mimeType: 'audio/wav', data }, models: TRANSCRIBE_MODELS, temperature: 0, think: false,
-      });
-      const heard = parseTranscript(reply.data);
+      const samples = await samplesOf(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }));
+      let heard = null;
+      if (localReady()) {
+        try { heard = (await local.transcribe(samples)).replace(/\s+/g, ' ').trim(); } catch { heard = null; }
+      }
+      if (heard === null) {
+        if (!transcriber?.ready()) throw new Error('the speech model on this device failed, and there’s no Gemini key');
+        const reply = await transcriber.ask({
+          system: TRANSCRIBE_SYSTEM, prompt: transcribePrompt(hint), image: { mimeType: 'audio/wav', data: toBase64(encodeWav(samples)) },
+          models: TRANSCRIBE_MODELS, temperature: 0, think: false,
+        });
+        heard = parseTranscript(reply.data);
+      }
       if (heard) setText(joinText(getText(), heard));
       else onBlocked('Nothing was heard. Try again a little closer to the mic.');
     } catch (e) {
