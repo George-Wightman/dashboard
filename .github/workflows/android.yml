@@ -29,7 +29,9 @@ jobs:
         with:
           gradle-version: '8.7'
       - name: Test and build
-        run: gradle -p android testDebugUnitTest assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle -p android testDebugUnitTest assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
       - name: Publish to android-builds
         if: always()
         run: |
@@ -37,6 +39,8 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk out/ 2>/dev/null || true
           cp android/app/build/widget-shots/*.png out/shots/ 2>/dev/null || true
           mkdir -p out/tests && cp -r android/app/build/test-results/testDebugUnitTest/*.xml out/tests/ 2>/dev/null || true
+          # The log too: reading a run's log over the API needs admin rights.
+          grep -v -i 'token' build.log | tail -n 400 > out/build.log 2>/dev/null || true
           echo "${GITHUB_SHA} run ${GITHUB_RUN_NUMBER} ${{ job.status }}" > out/BUILD.txt
           cd out
           git init -q -b android-builds
