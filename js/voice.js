@@ -6,6 +6,8 @@
 
 export const MAX_SECONDS = 180;
 export const SAMPLE_RATE = 16000;
+// Writing down what was said is a quick plain job: the lighter model first, and no thinking.
+export const TRANSCRIBE_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
 
 export const TRANSCRIBE_SYSTEM = [
   'You write down exactly what a man says in a voice recording, in British English.',
@@ -65,6 +67,24 @@ export function downsample(samples, from, to = SAMPLE_RATE) {
     out[i] = end > start ? sum / (end - start) : 0;
   }
   return out;
+}
+
+// The recording without the quiet before he starts and after he stops (a little kept either side), so
+// less is sent and less is listened to. All of it when nothing is louder than the threshold.
+export function trimSilence(samples, rate = SAMPLE_RATE, threshold = 0.02, keepSeconds = 0.25) {
+  const window = Math.max(1, Math.round(rate * 0.02));
+  const loud = (from) => {
+    let peak = 0;
+    for (let i = from; i < Math.min(samples.length, from + window); i++) peak = Math.max(peak, Math.abs(samples[i]));
+    return peak >= threshold;
+  };
+  let start = 0;
+  while (start < samples.length && !loud(start)) start += window;
+  if (start >= samples.length) return samples;
+  let end = samples.length;
+  while (end > start && !loud(Math.max(start, end - window))) end -= window;
+  const keep = Math.round(rate * keepSeconds);
+  return samples.subarray(Math.max(0, start - keep), Math.min(samples.length, end + keep));
 }
 
 // 16-bit PCM WAV of mono samples (-1…1), which Gemini reads whatever browser recorded it.

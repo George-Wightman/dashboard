@@ -1,5 +1,5 @@
 {
-  "id": "f88678481f26e02b450e7a6388e8f5603f496230959effc27589ff048ff13eca",
+  "id": "78628db26902360bdfe09aa93e14167da20c329bad2a2aacfb0dd96a724ffc1c",
   "files": {
     "./": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
     "index.html": "8636634eafde0e95ddc1a389da541fa7dd9dc8442455e5982ab969726662c971",
@@ -12,7 +12,7 @@
     "icons/icon.svg": "ed047463e6d4922fd9c4f21dbedf11b9e4b5cdc3b471b5a4bffcd63dca624754",
     "icons/icon-192.png": "8e7e849913dea81b5333285f54b427c3be4d5de5a20fa90ca0cc99de7dd1db04",
     "icons/icon-512.png": "20842b1a050ea876ecb8cbf7e83fffb62fba540645a1430d4e59f1cf5defdd48",
-    "js/app.js": "8826d9fcff56927f9d798bdf39cbab3ee8334af2370e7952b24aae14a4a031c2",
+    "js/app.js": "0f96f76a9523b0fb91eb8eb0890f3d365458d9fe21704b473ec6aff7d9802291",
     "js/commit.js": "a03407e778be6c3081eb9a4c8b7e25ef190810011b04dacd0beb71a4354e1453",
     "js/data.js": "5605f956c6e64053b8ea083440175e6903d88f07cd1ba204e770c66885f7ee8f",
     "js/doc.js": "6e080d92893d348de97c7982984e6db83e7e7d676d301a4235e87cfe1fcd53f7",
@@ -23,7 +23,7 @@
     "js/merge.js": "d829d0ffc0843bd4048a1f5781bedb1ea07e254708f4605caf41107b1e3bbe87",
     "js/sync.js": "b1238bfbfaa14a8ea9b716f322de5d5a3764e63312cf3ab1cf7b91e66c7ca4a4",
     "js/hebrewSync.js": "a88a6ba27fd86c3d93c27ac75acb22d641267a82fe4585b23e01879d4a90acfe",
-    "js/gemini.js": "f56d42db92acfb3f2ff9c6049dde934503842c4529135a11670357758e31259e",
+    "js/gemini.js": "b127b58ec9f2b6e686288335910b2f06e142d59ea21e260c819982b769f1912e",
     "js/look.js": "015529f6ad7a58470451c4a5a4686f4793c328f66d569964c0e3eac1d35f72f4",
     "js/layout.js": "1c163eb392156ca65a9efe5b3311e1dfdc676758304fac01fa84fe5f62932ef7",
     "js/flags.js": "762158e944f68eb298f2f8be69d99993142e9ea4fc487d4ba47a646b9af4cab7",
@@ -45,7 +45,7 @@
     "js/ui/edit.js": "dd11c86c07d978352210f1e8afa9a800b760cdaf9b9b6d7eb3437be708e882e4",
     "js/ui/settings.js": "338523e16bc6404da8d749228ea3f1e0c897b4568f52e3a23400564ce950b294",
     "js/ui/checkin.js": "eb6813cdca84fe870f87866f247fa08513ac87473ecd4ec78a37ef13895deb2c",
-    "js/ui/mic.js": "5256127262cd2903da75762e03503bc1c6ff6fc311b4ee781548fa141b6a7545",
+    "js/ui/mic.js": "c0fb67349c0de4a874d058b689a72894a084b2bb745e9d33de14ad5a62c57fd3",
     "js/ui/note.js": "7a06410d1c6adea99114f26cbaa46101c5e4ecdf5ff47f324b898f252a0706e4",
     "js/ui/widgets.js": "09d65ea105d5c693bae5afe254e96c4704e24c0baa80e290b23e9cffbef9cc48",
     "js/ui/flags.js": "2d94fb32ae5edf77ec93636a27e560bb781e011e9ccebbdd997690cd8bf015cf",
@@ -79,7 +79,7 @@
     "js/ui/review.js": "681eccd930ee009f6b23948f6e3fb075511e85f20695c23faff831ff876d274f",
     "js/ui/noteslot.js": "39a25bfbafa3fbbba2fcbf3a16b780b5ca7dc1afaecda5f450a1391775a0497b",
     "js/jobs.js": "2477ab3dd63007374b2dda655f4c05aeb4ec39edab063a707781c7d6b060a4c4",
-    "js/voice.js": "8a376f04698ffa55dbdd2fcbaef257b756622ef819d4111c6ebc10b35717d1f9",
+    "js/voice.js": "d74133cd4c590e4d94cff479aa46813991808ee4e632eef9a959eb623f0e1b82",
     "js/ui/timedrag.js": "b83bec8f7ca062de72f4f74df78cccbd0482299750d20955b24e4eebd4246885",
     "js/glance.js": "5d3f452ed02c9d4f6a8df86a5be14e30adb21a47c67ba99615648212cfc5e6a7"
   }

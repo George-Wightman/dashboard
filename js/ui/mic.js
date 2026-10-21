@@ -6,10 +6,9 @@
 
 import { h } from './dom.js';
 import {
-  TRANSCRIBE_SYSTEM, transcribePrompt, parseTranscript, joinText, heardFrom, downsample, encodeWav, toBase64, clock,
-  MAX_SECONDS, SAMPLE_RATE,
+  TRANSCRIBE_SYSTEM, TRANSCRIBE_MODELS, transcribePrompt, parseTranscript, joinText, heardFrom, downsample, encodeWav, toBase64, clock,
+  trimSilence, MAX_SECONDS, SAMPLE_RATE,
 } from '../voice.js';
-import { MEAL_MODELS } from '../food.js';
 
 const MIC = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
 const BLOCKED = 'The microphone is blocked for this page: allow it in the browser to speak.';
@@ -53,7 +52,7 @@ async function wavOf(blob) {
       const ch = decoded.getChannelData(c);
       for (let i = 0; i < ch.length; i++) mono[i] += ch[i] / decoded.numberOfChannels;
     }
-    return toBase64(encodeWav(downsample(mono, decoded.sampleRate, SAMPLE_RATE)));
+    return toBase64(encodeWav(trimSilence(downsample(mono, decoded.sampleRate, SAMPLE_RATE))));
   } finally {
     audio.close?.();
   }
@@ -85,7 +84,7 @@ async function record({ key, hint, getText, setText, onBlocked, render }) {
     try {
       const data = await wavOf(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }));
       const reply = await transcriber.ask({
-        system: TRANSCRIBE_SYSTEM, prompt: transcribePrompt(hint), image: { mimeType: 'audio/wav', data }, models: MEAL_MODELS, temperature: 0,
+        system: TRANSCRIBE_SYSTEM, prompt: transcribePrompt(hint), image: { mimeType: 'audio/wav', data }, models: TRANSCRIBE_MODELS, temperature: 0, think: false,
       });
       const heard = parseTranscript(reply.data);
       if (heard) setText(joinText(getText(), heard));

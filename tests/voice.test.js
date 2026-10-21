@@ -64,3 +64,24 @@ test('the clock reads minutes and seconds', () => {
   assert.equal(clock(7), '0:07');
   assert.equal(clock(65.4), '1:05');
 });
+
+test('the quiet either side of what he said is cut, a little kept', async () => {
+  const { trimSilence } = await import('../js/voice.js');
+  const rate = 16000;
+  const s = new Float32Array(rate * 3);
+  for (let i = rate; i < rate * 2; i++) s[i] = 0.5 * Math.sin(i / 5);
+  const t = trimSilence(s, rate);
+  assert.ok(t.length > rate && t.length <= rate * 1.6, String(t.length));
+  assert.equal(trimSilence(new Float32Array(1000), rate).length, 1000, 'all quiet: all kept');
+});
+
+test('writing down a recording asks without thinking, lighter model first', async () => {
+  const { TRANSCRIBE_MODELS } = await import('../js/voice.js');
+  assert.equal(TRANSCRIBE_MODELS[0], 'gemini-flash-lite-latest');
+  let body;
+  const fetch = async (url, init) => { body = JSON.parse(init.body); return fakeGeminiFetch('ok', { delayMs: 0 })(url, init); };
+  await askGemini({ keys: ['k'], system: TRANSCRIBE_SYSTEM, prompt: 'x', image: { mimeType: 'audio/wav', data: 'UklGRg==' }, temperature: 0, think: false, fetch });
+  assert.deepEqual(body.generationConfig.thinkingConfig, { thinkingBudget: 0 });
+  await askGemini({ keys: ['k'], system: 'S', prompt: 'P', fetch });
+  assert.equal(body.generationConfig.thinkingConfig, undefined, 'everything else as it was');
+});
