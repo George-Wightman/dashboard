@@ -76,7 +76,8 @@ class WidgetsTest {
                 view.draw(Canvas(bmp))
                 File(out, "$id-${if (night) "night" else "day"}.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 assertEquals(tiles.getValue(id).title, view.findViewById<TextView>(R.id.title).text.toString())
-                assertTrue(view.findViewById<TextView>(R.id.lines).text.isNotEmpty())
+                // Something to read: lines, or the big number (a countdown to one date has only that).
+                assertTrue(id, view.findViewById<TextView>(R.id.lines).text.isNotEmpty() || view.findViewById<TextView>(R.id.number).text.isNotEmpty())
             }
         }
     }
