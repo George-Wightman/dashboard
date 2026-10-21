@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '7f6454d0';
+var PLANNER_BUILD = '99c69707';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -7562,8 +7562,8 @@ function hebrew(doc, today) {
     if (d > today) return '·';
     const m = values(doc.logs).filter((l) => l.status === 'active' && l.itemId === minutes.id && l.kind === 'amount' && l.day === d).reduce((s, l) => s + l.amount, 0);
     return m >= 30 ? '●' : m > 0 ? '◐' : '○';
-  }).join(' ');
-  lines.push(`M T W T F S S   ${strip}`);
+  }).join('');
+  lines.push(`${strip}  Mon–Sun`);
   return {
     title: 'Hebrew', number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
     caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: open('hebrew'),

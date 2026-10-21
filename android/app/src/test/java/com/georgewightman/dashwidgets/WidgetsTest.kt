@@ -22,7 +22,7 @@ import java.io.File
 private const val SAMPLE = """{"at":"2026-10-21T06:53:24.245Z","day":"2026-10-21","tiles":{
 "day":{"title":"Wednesday 21","number":"1/6","caption":"done today","lines":["▸ 09:00  Find a new laptop battery","09:30  Re-join JD Gyms","10:00  Signify (until 12:00)","12:15  Research the Visa D","12:30  Signify (until 15:00)","13:30  Gym (until 15:15)","16:30  Hebrew practice","+ 3 more"],"open":"https://george-wightman.github.io/dashboard/"},
 "fuel":{"title":"Fuel","number":"57 g","caption":"of 180 g protein today","lines":["Breakfast: Big egg breakfast · 57 g","This week ≈3,690 kcal a day"],"open":"https://george-wightman.github.io/dashboard/?big=fuel"},
-"hebrew":{"title":"Hebrew","number":"0:45","caption":"of 7 h this week","lines":["12 of 40 reps spoken","3 of 15 words live","M T W T F S S   ○ ○ ● · · · ·"],"open":"https://george-wightman.github.io/dashboard/?big=hebrew"},
+"hebrew":{"title":"Hebrew","number":"0:45","caption":"of 7 h this week","lines":["12 of 40 reps spoken","3 of 15 words live","○○●····  Mon–Sun"],"open":"https://george-wightman.github.io/dashboard/?big=hebrew"},
 "body":{"title":"Body","number":"30","caption":"of 90 cardio min this week","lines":["Gym 1 of 5 this week","Back this morning: fine"],"open":"https://george-wightman.github.io/dashboard/?big=body"},
 "goals":{"title":"Goals","number":"2","caption":"goals on the go","lines":["Reread Man's Search for Meaning: 7% · by 30 Nov","Remote income alongside Signify: 0 of 5 · by 20 Dec"],"open":"https://george-wightman.github.io/dashboard/?big=goals"},
 "countdown":{"title":"Countdown","number":"17","caption":"days to Flight to Salzburg","lines":[],"open":"https://george-wightman.github.io/dashboard/?big=countdown"},

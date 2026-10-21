@@ -49,7 +49,8 @@
         android:id="@+id/number_row"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:baselineAligned="true"
+        android:baselineAligned="false"
+        android:gravity="bottom"
         android:orientation="horizontal">
 
         <TextView
@@ -70,6 +71,7 @@
             android:ellipsize="end"
             android:maxLines="2"
             android:paddingStart="8dp"
+            android:paddingBottom="5dp"
             android:text=""
             android:textColor="@color/ink"
             android:textSize="13sp" />
