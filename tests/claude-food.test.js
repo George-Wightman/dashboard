@@ -45,7 +45,17 @@ test('the meal op corrects a meal with a reason, saves a usual meal, and sets Fu
   runOp(store, { op: 'meal', fuel: { maintenanceKcal: 3100 } });
   assert.equal(store.doc().meals['fuel:settings'].maintenanceKcal, 3100);
   assert.throws(() => runOp(store, { op: 'meal' }), /meal needs/);
-  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'remove', 'usual', 'fuel']);
+  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel']);
+});
+
+test('the meal op moves a meal logged the morning after to when he ate it, never into the future', () => {
+  const store = makeStore({ now: clock(new Date(2026, 9, 20, 8, 30)) });
+  const meal = store.addMeal({ at: new Date(2026, 9, 20, 8, 29), text: 'beans on toast, last night', hasPhoto: false });
+  assert.match(runOp(store, { op: 'meal', id: meal.id, day: 'yesterday', time: '21:30' }), /Moved "beans on toast, last night" to .* at 21:30/);
+  const m = store.doc().meals[meal.id];
+  assert.deepEqual([m.day, m.slot, new Date(m.at).getHours()], ['2026-10-19', 'snack', 21]);
+  assert.throws(() => runOp(store, { op: 'meal', id: meal.id, day: 'today', time: '23:00' }), /hasn’t come yet/);
+  assert.throws(() => runOp(store, { op: 'meal', id: meal.id, time: '20:00', protein: 30, kcal: 900, why: 'x' }), /two separate/);
 });
 
 test('the meal op removes a meal logged twice, only with a reason', () => {

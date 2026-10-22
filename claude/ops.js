@@ -643,8 +643,8 @@ function brief(store, op) {
 
 // ---- Food ----------------------------------------------------------------------------------------
 
-// Correct a meal Gemini got badly wrong or remove one logged twice (with a reason), save a usual meal, or set Fuel's protein
-// target and maintenance calories.
+// Correct a meal Gemini got badly wrong, remove one logged twice (with a reason), move one to when it
+// was eaten, save a usual meal, or set Fuel's protein target and maintenance calories.
 function meal(store, op) {
   const amount = (v, what) => {
     if (!(typeof v === 'number' && Number.isFinite(v) && v >= 0)) throw new Error(`meal needs ${what} as a number, 0 or more`);
@@ -658,6 +658,18 @@ function meal(store, op) {
       if (!why) throw new Error('Removing a meal needs a why, e.g. "logged twice"');
       store.archiveMeal(id);
       return `Removed the meal ${q(rec.estimate?.name ?? rec.text ?? 'the meal')} (${why})`;
+    }
+    // Moved to when it was really eaten (logged the morning after): a day and a time of day, his time.
+    if (op.time != null || op.day != null) {
+      if (op.protein != null || op.kcal != null) throw new Error('Move a meal and correct it in two separate meal ops');
+      const day = toDay(op.day ?? rec.day, store.today());
+      const t = clockOf(op.time ?? new Date(rec.at).toTimeString().slice(0, 5));
+      const [y, m, d] = day.split('-').map(Number);
+      const [hh, mm] = t.split(':').map(Number);
+      const at = new Date(y, m - 1, d, hh, mm);
+      if (at > store.now()) throw new Error('A meal can’t be moved to a time that hasn’t come yet');
+      store.retimeMeal(id, at);
+      return `Moved ${q(rec.estimate?.name ?? rec.text ?? 'the meal')} to ${dayName(store.doc().meals[id].day, store.today())} at ${t}`;
     }
     if (!why) throw new Error('A correction needs a why: say what the estimate missed, e.g. "the oil and cheese"');
     const protein = amount(op.protein, 'protein');
@@ -799,7 +811,7 @@ function session(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   details: ['id', 'set'],
-  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'usual', 'fuel'],
+  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel'],
   session: ['id', 'date', 'time', 'title', 'session'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],

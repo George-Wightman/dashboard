@@ -344,8 +344,9 @@ notes, since Hevy's sets have no field for them.
 Food (`reference food` first). `{"op": "meal", "id": "meal:…", "protein": 35, "kcal": 1050, "why": "the oil and
 cheese"}` corrects a meal Gemini got badly wrong; the why is required and shown to George, and the
 "correction replaces his number in every total. A meal logged twice: `{"op": "meal", "id": "meal:…", "remove": true,
-"why": "logged twice"}`. `{"op": "meal", "usual": {"name": "Usual breakfast", "protein":
-42, "kcal": 610}}` saves (or updates) a usual meal he can log in one tap. `{"op": "meal", "fuel":
+"why": "logged twice"}`. A meal logged later than he ate it ("this was last night"): `{"op": "meal", "id":
+"meal:…", "day": "yesterday", "time": "20:30"}` moves it (his time; either can be left out). He logs
+meals by saying what he had; the app no longer offers usual meals. `{"op": "meal", "fuel":
 {"protein": 180, "maintenanceKcal": 3100}}` sets the daily protein target and his maintenance calories
 (`null` clears maintenance).
 

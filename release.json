@@ -1,10 +1,10 @@
 {
-  "id": "5e04c7fd9fd658cfeff70cfbd810814c92f82a20365394d02a3b49ea2f1bd0d5",
+  "id": "60bf1b7c43d3843105e9b1e3f0f6ae1fd73d7fd2b38d9fcf2d90d1966fc6d3f1",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "styles.css": "ffd5b0b5e86b65835d3f2910fee074ded528313a4f73be952ea1edbbb94445d9",
-    "styles/daylight.css": "04df8c377ba0f9016fbc9451590fb9987448656e26ffca36a9967b6ec40d6674",
+    "styles/daylight.css": "0961d04f608498529f042e3364c8093cc60a7adbcc754e98b82818c62cfd0122",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
@@ -68,7 +68,7 @@
     "js/ui/needs.js": "e580c39b767fb952b817daff9aea903c77cfee150bb52d7f54e062da48a652cc",
     "js/food.js": "f3a04d63b1c50c3f5f10c3971ca3a95625543168e3a340f3ee46089e5348e30f",
     "js/photos.js": "8664dd5c14d7b9af2a7f4ef1dbe1153330b0bf69f8aec67087f0d21a7ee45b7d",
-    "js/ui/snap.js": "bde0448cbb90c83114c23f49de9afe292ac74b25d16e3b354a9b5ece8c5ef7a7",
+    "js/ui/snap.js": "c3aaaeb12281190d7e00099e835fa5e06e045de2850521f219bc32a49fd4c8d0",
     "js/ui/fuel.js": "0a6512a1ae45b598ada3a792117e1d4c87e5db0a82d87c5580dfd5f99f414aea",
     "js/coach.js": "70abc1b8fea10874b8c92d5dead1ea1c744b2a3de9baddca32ef51eb4140be8f",
     "js/ui/coach.js": "c3461d40d682447abd43ef3988cb66bad4c7c559fb92104e8992dd64ac375d3b",
