@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'd3b4e162';
+var PLANNER_BUILD = '8b3b5141';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -3526,8 +3526,12 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   const putGame = (id, fields, source = 'me') => putRecord('game', id, fields, source).rec;
 
   // A milestone remembers the day it was ticked, so the map can give its wonder card on that day.
-  const milestoneDone = (id, changes) => (Object.hasOwn(changes, 'done') && !!changes.done !== !!doc.milestones[id]?.done
-    ? { ...changes, doneOn: changes.done ? today() : null } : changes);
+  const milestoneDone = (id, changes) => {
+    const rec = doc.milestones[id];
+    if (Object.hasOwn(changes, 'done') && !!changes.done !== !!rec?.done) return { ...changes, doneOn: changes.done ? today() : null };
+    if (rec?.done && !rec.doneOn && typeof rec.updated === 'string') return { ...changes, doneOn: rec.updated.slice(0, 10) };
+    return changes;
+  };
 
   // Food (js/food.js): a meal snapped (a photo and/or words, estimated later) or logged from a usual
   // meal (exact at once, and the usual meal counts a use); usual meals; Fuel's settings.
@@ -3746,7 +3750,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     addMilestone,
     updateMilestone: (id, changes) => patch('milestones', id, milestoneDone(id, changes)),
     toggleMilestone: (id) => patch('milestones', id, milestoneDone(id, { done: !doc.milestones[id]?.done })),
-    archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
+    archiveMilestone: (id) => patch('milestones', id, milestoneDone(id, { status: 'archived', archivedOn: today() })),
 
     saveJournal,
     askCheckin,
@@ -7808,8 +7812,9 @@ function visibleOf(map, owned) {
 }
 
 function claimable(state) {
+  const camps = new Set(state.camps.map((c) => key(c.q, c.r)));
   const out = [];
-  for (const k of state.visible) if (!state.owned.has(k)) out.push(k);
+  for (const k of state.visible) if (!state.owned.has(k) && !camps.has(k)) out.push(k);
   return out.sort();
 }
 
@@ -7930,7 +7935,8 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
   const applyChoice = (c) => {
     const k = key(c.q, c.r);
     if (String(c.id).startsWith('claim:')) {
-      if (state.ready < 1 || !P.tiles.has(k) || state.owned.has(k) || !nbrs(c.q, c.r).some((n) => state.owned.has(n))) return;
+      if (state.ready < 1 || !P.tiles.has(k) || state.owned.has(k) || !nbrs(c.q, c.r).some((n) => state.owned.has(n))
+        || state.camps.some((x) => x.q === c.q && x.r === c.r)) return;
       state.ready--;
       claim(k);
       bank();
@@ -7957,10 +7963,10 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
 
   const choices = values(doc.game)
     .filter((g) => g.status === 'active' && g.city === map.id && (String(g.id).startsWith('claim:') || String(g.id).startsWith('place:')))
-    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
   const wonderDays = new Map();
   for (const m of values(doc.milestones)) {
-    if (m.status !== 'active' || !m.done) continue;
+    if (!['active', 'archived'].includes(m.status) || !m.done) continue;
     const d = m.doneOn ?? (typeof m.updated === 'string' ? m.updated.slice(0, 10) : null);
     if (d) wonderDays.set(d, (wonderDays.get(d) ?? 0) + 1);
   }
@@ -7973,9 +7979,37 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
     return said.length > 160 ? said.slice(0, 157).trimEnd() + '…' : said;
   };
 
+  const wonderCards = (d) => {
+    for (let i = 0; i < (wonderDays.get(d) ?? 0); i++) { state.cards.push({ kind: 'wonder', id: `wonder-${d}-${i}` }); event('wonder-card', 'A goal step: a wonder card'); }
+  };
+  // Roads from cardio.
+  const cardioRoads = (d) => {
+    const minutes = (cardio.get(d) ?? 0) + state.roadCarry;
+    state.roadSteps += Math.floor(minutes / ROAD_MINUTES);
+    state.roadCarry = minutes % ROAD_MINUTES;
+    layRoads();
+  };
+  const wondersAndRoads = (d) => { wonderCards(d); cardioRoads(d); };
+  // How far each tile is from his border, out to `max` rings: one search outwards, not every tile
+  // against every owned tile.
+  const ringsOut = (max) => {
+    const far = new Map();
+    let edge = [...state.owned];
+    for (let n = 1; n <= max && edge.length; n++) {
+      const next = [];
+      for (const k of edge) for (const nb of nbrs(...unkey(k))) {
+        if (!P.tiles.has(nb) || state.owned.has(nb) || far.has(nb)) continue;
+        far.set(nb, n);
+        next.push(nb);
+      }
+      edge = next;
+    }
+    return far;
+  };
+
   const settle = (d) => {
     const score = dayScore(doc, d, idx, offs);
-    if (score.total === 0) return;
+    if (score.total === 0) { wondersAndRoads(d); return; }
     state.turn++;
     state.day = d;
     const finished = score.done === score.total && score.total >= 3;
@@ -8024,7 +8058,7 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
       }
     }
     applyLevels();
-    for (let i = 0; i < (wonderDays.get(d) ?? 0); i++) { state.cards.push({ kind: 'wonder', id: `wonder-${d}-${i}` }); event('wonder-card', 'A goal step: a wonder card'); }
+    wonderCards(d);
     // Barbarians: they creep towards what they're after; on a missed day they raid, and more come.
     const campKeys = () => new Set(state.camps.map((c) => key(c.q, c.r)));
     for (const c of state.camps) {
@@ -8048,9 +8082,9 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
       const goal = unkey(targetTile(state, target));
       const taken = campKeys();
       let spot = null;
+      const far = ringsOut(4);
       for (const want of [3, 4, 2]) {
-        const ring = [...P.tiles.keys()].filter((k) => !state.owned.has(k) && !taken.has(k)
-          && Math.min(...[...state.owned].map((o) => distK(k, o))) === want);
+        const ring = [...far].filter(([k, n]) => n === want && !taken.has(k)).map(([k]) => k);
         if (ring.length) { spot = ring.sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0]; break; }
       }
       if (spot && state.camps.length < MAX_CAMPS) {
@@ -8063,11 +8097,7 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
       const gone = state.camps.shift();
       event('camp-gone', `Barbarians driven off`, { target: gone.target });
     }
-    // Roads from cardio.
-    const minutes = (cardio.get(d) ?? 0) + state.roadCarry;
-    state.roadSteps += Math.floor(minutes / ROAD_MINUTES);
-    state.roadCarry = minutes % ROAD_MINUTES;
-    layRoads();
+    cardioRoads(d);
     const entry = { day: d, turn: state.turn, done: score.done, total: score.total, hammers, golden: state.golden.on, events: state.pending, quote: quoteOn(d) };
     state.pending = [];
     state.chronicle.push(entry);
@@ -8374,8 +8404,10 @@ function validMap(m) {
   if (!m.tiles.some((t) => t.q === 0 && t.r === 0)) return false;
   if (!Array.isArray(m.places) || !m.places.every((p) => p && ID.test(p.id ?? '') && str(p.name, 60) && KINDS.includes(p.kind) && int(p.q) && int(p.r))) return false;
   if (!m.tracks || typeof m.tracks !== 'object') return false;
+  const builds = new Set(m.places.filter((p) => p.kind === 'build').map((p) => p.id));
   for (const t of Object.values(m.tracks)) {
-    if (!t || !Array.isArray(t.areas) || !Array.isArray(t.list) || !t.list.every((e) => Array.isArray(e) && ID.test(e[0] ?? '') && Number.isFinite(e[1]))) return false;
+    if (!t || !Array.isArray(t.areas) || !Array.isArray(t.list) || !t.list.length
+      || !t.list.every((e) => Array.isArray(e) && builds.has(e[0]) && Number.isFinite(e[1]))) return false;
   }
   if (m.art != null && (typeof m.art !== 'object' || !Object.values(m.art).every(safeArt))) return false;
   return true;
@@ -8395,11 +8427,10 @@ async function refreshMaps({ clientFor, storage }) {
   const index = await clientFor('map/index.json').get();
   const ids = Array.isArray(index?.doc?.cities) ? index.doc.cities.filter((id) => ID.test(id)) : [];
   const maps = [];
+  // A city that can't be fetched (a blip) throws, so the cached maps stay; one that's malformed is left out.
   for (const id of ids) {
-    try {
-      const file = await clientFor(`map/${id}.json`).get();
-      if (file && validMap(file.doc) && file.doc.id === id) maps.push(file.doc);
-    } catch { /* one bad city leaves the others */ }
+    const file = await clientFor(`map/${id}.json`).get();
+    if (file && validMap(file.doc) && file.doc.id === id) maps.push(file.doc);
   }
   try { storage.setItem(MAPS_KEY, JSON.stringify({ at: new Date().toISOString(), maps })); } catch { /* too big for this device: kept for this visit only */ }
   return maps;

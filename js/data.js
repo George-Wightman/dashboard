@@ -568,8 +568,12 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   const putGame = (id, fields, source = 'me') => putRecord('game', id, fields, source).rec;
 
   // A milestone remembers the day it was ticked, so the map can give its wonder card on that day.
-  const milestoneDone = (id, changes) => (Object.hasOwn(changes, 'done') && !!changes.done !== !!doc.milestones[id]?.done
-    ? { ...changes, doneOn: changes.done ? today() : null } : changes);
+  const milestoneDone = (id, changes) => {
+    const rec = doc.milestones[id];
+    if (Object.hasOwn(changes, 'done') && !!changes.done !== !!rec?.done) return { ...changes, doneOn: changes.done ? today() : null };
+    if (rec?.done && !rec.doneOn && typeof rec.updated === 'string') return { ...changes, doneOn: rec.updated.slice(0, 10) };
+    return changes;
+  };
 
   // Food (js/food.js): a meal snapped (a photo and/or words, estimated later) or logged from a usual
   // meal (exact at once, and the usual meal counts a use); usual meals; Fuel's settings.
@@ -788,7 +792,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     addMilestone,
     updateMilestone: (id, changes) => patch('milestones', id, milestoneDone(id, changes)),
     toggleMilestone: (id) => patch('milestones', id, milestoneDone(id, { done: !doc.milestones[id]?.done })),
-    archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
+    archiveMilestone: (id) => patch('milestones', id, milestoneDone(id, { status: 'archived', archivedOn: today() })),
 
     saveJournal,
     askCheckin,

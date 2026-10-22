@@ -51,3 +51,17 @@ test('a day with no stamp takes the one before; a UK day after the end has no ci
   assert.equal(cityOf('2026-09-21'), 'town');
   assert.equal(cityOf('2026-09-26'), null);
 });
+
+test('a city that fails to arrive keeps the cached maps', async () => {
+  const storage = new MemoryStorage();
+  await refreshMaps({ clientFor: repo({ 'map/index.json': { cities: ['town'] }, 'map/town.json': mapTown() }), storage });
+  const flaky = (path) => ({ get: async () => { if (path === 'map/town.json') throw new Error('GitHub timed out'); return { doc: { cities: ['town'] } }; } });
+  await assert.rejects(refreshMaps({ clientFor: flaky, storage }));
+  assert.equal(loadCachedMaps(storage).length, 1);
+});
+
+test("a track must name real buildings, and at least one", () => {
+  const m = mapTown();
+  assert.equal(validMap({ ...m, tracks: { ...m.tracks, sport: { name: 'Sport', areas: [], list: [['nowhere', 10]] } } }), false);
+  assert.equal(validMap({ ...m, tracks: { ...m.tracks, sport: { name: 'Sport', areas: [], list: [] } } }), false);
+});

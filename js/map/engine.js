@@ -65,8 +65,9 @@ export function visibleOf(map, owned) {
 }
 
 export function claimable(state) {
+  const camps = new Set(state.camps.map((c) => key(c.q, c.r)));
   const out = [];
-  for (const k of state.visible) if (!state.owned.has(k)) out.push(k);
+  for (const k of state.visible) if (!state.owned.has(k) && !camps.has(k)) out.push(k);
   return out.sort();
 }
 
@@ -187,7 +188,8 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
   const applyChoice = (c) => {
     const k = key(c.q, c.r);
     if (String(c.id).startsWith('claim:')) {
-      if (state.ready < 1 || !P.tiles.has(k) || state.owned.has(k) || !nbrs(c.q, c.r).some((n) => state.owned.has(n))) return;
+      if (state.ready < 1 || !P.tiles.has(k) || state.owned.has(k) || !nbrs(c.q, c.r).some((n) => state.owned.has(n))
+        || state.camps.some((x) => x.q === c.q && x.r === c.r)) return;
       state.ready--;
       claim(k);
       bank();
@@ -214,10 +216,10 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
 
   const choices = values(doc.game)
     .filter((g) => g.status === 'active' && g.city === map.id && (String(g.id).startsWith('claim:') || String(g.id).startsWith('place:')))
-    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
   const wonderDays = new Map();
   for (const m of values(doc.milestones)) {
-    if (m.status !== 'active' || !m.done) continue;
+    if (!['active', 'archived'].includes(m.status) || !m.done) continue;
     const d = m.doneOn ?? (typeof m.updated === 'string' ? m.updated.slice(0, 10) : null);
     if (d) wonderDays.set(d, (wonderDays.get(d) ?? 0) + 1);
   }
@@ -230,9 +232,37 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     return said.length > 160 ? said.slice(0, 157).trimEnd() + '…' : said;
   };
 
+  const wonderCards = (d) => {
+    for (let i = 0; i < (wonderDays.get(d) ?? 0); i++) { state.cards.push({ kind: 'wonder', id: `wonder-${d}-${i}` }); event('wonder-card', 'A goal step: a wonder card'); }
+  };
+  // Roads from cardio.
+  const cardioRoads = (d) => {
+    const minutes = (cardio.get(d) ?? 0) + state.roadCarry;
+    state.roadSteps += Math.floor(minutes / ROAD_MINUTES);
+    state.roadCarry = minutes % ROAD_MINUTES;
+    layRoads();
+  };
+  const wondersAndRoads = (d) => { wonderCards(d); cardioRoads(d); };
+  // How far each tile is from his border, out to `max` rings: one search outwards, not every tile
+  // against every owned tile.
+  const ringsOut = (max) => {
+    const far = new Map();
+    let edge = [...state.owned];
+    for (let n = 1; n <= max && edge.length; n++) {
+      const next = [];
+      for (const k of edge) for (const nb of nbrs(...unkey(k))) {
+        if (!P.tiles.has(nb) || state.owned.has(nb) || far.has(nb)) continue;
+        far.set(nb, n);
+        next.push(nb);
+      }
+      edge = next;
+    }
+    return far;
+  };
+
   const settle = (d) => {
     const score = dayScore(doc, d, idx, offs);
-    if (score.total === 0) return;
+    if (score.total === 0) { wondersAndRoads(d); return; }
     state.turn++;
     state.day = d;
     const finished = score.done === score.total && score.total >= 3;
@@ -281,7 +311,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
       }
     }
     applyLevels();
-    for (let i = 0; i < (wonderDays.get(d) ?? 0); i++) { state.cards.push({ kind: 'wonder', id: `wonder-${d}-${i}` }); event('wonder-card', 'A goal step: a wonder card'); }
+    wonderCards(d);
     // Barbarians: they creep towards what they're after; on a missed day they raid, and more come.
     const campKeys = () => new Set(state.camps.map((c) => key(c.q, c.r)));
     for (const c of state.camps) {
@@ -305,9 +335,9 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
       const goal = unkey(targetTile(state, target));
       const taken = campKeys();
       let spot = null;
+      const far = ringsOut(4);
       for (const want of [3, 4, 2]) {
-        const ring = [...P.tiles.keys()].filter((k) => !state.owned.has(k) && !taken.has(k)
-          && Math.min(...[...state.owned].map((o) => distK(k, o))) === want);
+        const ring = [...far].filter(([k, n]) => n === want && !taken.has(k)).map(([k]) => k);
         if (ring.length) { spot = ring.sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0]; break; }
       }
       if (spot && state.camps.length < MAX_CAMPS) {
@@ -320,11 +350,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
       const gone = state.camps.shift();
       event('camp-gone', `Barbarians driven off`, { target: gone.target });
     }
-    // Roads from cardio.
-    const minutes = (cardio.get(d) ?? 0) + state.roadCarry;
-    state.roadSteps += Math.floor(minutes / ROAD_MINUTES);
-    state.roadCarry = minutes % ROAD_MINUTES;
-    layRoads();
+    cardioRoads(d);
     const entry = { day: d, turn: state.turn, done: score.done, total: score.total, hammers, golden: state.golden.on, events: state.pending, quote: quoteOn(d) };
     state.pending = [];
     state.chronicle.push(entry);

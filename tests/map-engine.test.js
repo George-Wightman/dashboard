@@ -188,3 +188,38 @@ test('no more than four camps, however many days are missed', () => {
   for (let n = 0; n < 12; n++) t.done(n, [t.ids.a]);
   assert.ok(run(t.store, day(12)).camps.length <= 4);
 });
+
+test('a goal step and a run on a day with nothing counted still count', () => {
+  const t = town();
+  const cardio = t.store.addItem({ type: 'quota', title: 'Cardio', area: 'Health', target: 90, unit: 'minutes' });
+  t.store.putGym('config', { cardioQuota: cardio.id });
+  t.store.putCalendar('off:all', { start: day(1), end: day(1), reason: 'A day off' }, 'claude');
+  t.store.logAmount({ itemId: cardio.id, amount: 15, day: day(1) });
+  const goal = t.store.addGoal({ title: 'A goal' });
+  const m = t.store.addMilestone(goal.id, 'A step');
+  t.store.updateMilestone(m.id, { done: true, doneOn: day(1) });
+  const s = run(t.store, day(2));
+  assert.ok(s.cards.some((c) => c.kind === 'wonder'));
+  assert.equal(s.roadCarry, 5);
+});
+
+test("a camp's tile can't be claimed while the camp is on it", () => {
+  const t = town();
+  for (let n = 0; n < 4; n++) t.done(n, t.all.filter((id) => id !== t.ids.gym));
+  const s = run(t.store, day(4));
+  const camps = new Set(s.camps.map((c) => `${c.q},${c.r}`));
+  assert.ok(claimable(s).every((k) => !camps.has(k)));
+});
+
+test('a big land with misses replays in well under a second a turn', () => {
+  const tiles = [];
+  for (let q = -30; q <= 30; q++) for (let r = -30; r <= 30; r++) if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= 30) tiles.push({ q, r, terrain: 'meadow' });
+  const big = mapTown({ tiles });
+  const t = town();
+  for (let n = 0; n < 200; n++) t.done(n, n % 3 === 0 ? t.all.slice(0, 4) : t.all);
+  const t0 = performance.now();
+  const s = run(t.store, day(200), big);
+  const ms = performance.now() - t0;
+  assert.ok(s.owned.size > 300, `owned ${s.owned.size}`);
+  assert.ok(ms < 3000, `took ${ms.toFixed(0)} ms`);
+});

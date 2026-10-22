@@ -1,5 +1,5 @@
 {
-  "id": "fc2744e2a769363477824f50742c6b58a42c09fedd7c1d1451960b990a05c7af",
+  "id": "8b39b75efc1fa988e156ea95746cea225c3c7227a67fbc86a74f6220cd8b5708",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
@@ -14,7 +14,7 @@
     "icons/icon-512.png": "2a04a23cb76f80533fb8dda7a98b76562a75d9dcf812e6fb7927099f39645eca",
     "js/app.js": "fcc906fa5c2dcf8d39fe025c1d8becac2d349b9d2f0b7c58a639a2572cd9834e",
     "js/commit.js": "a03407e778be6c3081eb9a4c8b7e25ef190810011b04dacd0beb71a4354e1453",
-    "js/data.js": "8eed03c5629d500f4ecaa13e3287fbe00951f8d6b7ff19f661fbe31ecc1a7c68",
+    "js/data.js": "75d5dfd69fc71cf4417a84c07dd78485382891d3507c0d4d9f9de84bc14b92b1",
     "js/doc.js": "561623d52e22af7fd1f5131760cb16c5c2142f2fb768fccc0cb0c8f52060c2dd",
     "js/dates.js": "2dda4426edef203d9d3fb2db293d0bf72c15b863eb73c5631155105ab76a8da9",
     "js/parse.js": "8b6c418ba04c3953a99cc3db1df7073c7db47958212aa832738f344019f10be8",
@@ -85,8 +85,8 @@
     "js/stt.js": "915d384d980c6d42cef51b08387e0fc946a22077a1b96f5cab3f2467236706a0",
     "js/stt-worker.js": "0dc335148a29049a02ef73f0b5f2b07c14558f1cffd8e79fb19d0baff53127aa",
     "js/map/hex.js": "0a6f49b322848397a07cc86c6f49020af743d0157661664e39d2cb5fd5d318fe",
-    "js/map/engine.js": "330c4e7a4bc41ab8038edf483cc862f8be4f52fc467835379d34f7af44f009b0",
-    "js/map/files.js": "3e9f114fe0f754fce5ebdf7e8ef66e106a0017e0ad1b03a48ad6246518eacc21",
+    "js/map/engine.js": "22ac13c8df659bebe1633e18d3256d37ce09cdaa2b877fad65c824c7de52ecfa",
+    "js/map/files.js": "55d4d68d3fe339a9a5f75fc918c3e1890fece613c5a5d5bf83bb06eb6d3dec2c",
     "js/map/summary.js": "098760672921cf9bb0144a25a33f1d62883adc92a38b2caf89e7b9bb7fd61bfb",
     "js/ui/map.js": "addc54471272f287e8b7282ac3ca2930687499c9ca0da3bbe22b5fbdb17303eb",
     "js/ui/map-art.js": "51b9e638edb822a1adec4c726e30a7a2717a3436c897befc19ec801515418a43"

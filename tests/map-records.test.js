@@ -60,3 +60,13 @@ test('the revision grows with every change', () => {
   store.addItem({ type: 'task', title: 'One', date: store.today() });
   assert.ok(store.revision() > before);
 });
+
+test('a milestone ticked before the map keeps its day when it is edited or archived later', () => {
+  const store = makeStore();
+  const goal = store.addGoal({ title: 'Hebrew' });
+  const m = store.addMilestone(goal.id, 'Old step');
+  store.doc().milestones[m.id] = { ...store.doc().milestones[m.id], done: true, updated: '2026-09-01T10:00:00.000Z' };
+  delete store.doc().milestones[m.id].doneOn;
+  store.updateMilestone(m.id, { title: 'Old step, renamed' });
+  assert.equal(store.doc().milestones[m.id].doneOn, '2026-09-01');
+});
