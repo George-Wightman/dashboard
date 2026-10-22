@@ -36,6 +36,7 @@ import { openHebrewLog } from './ui/hebrewlog.js';
 import { chooseZoneRecord } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles, loadNotePlace, saveNotePlace } from './tiles.js';
 import { renderNoteSlot } from './ui/noteslot.js';
+import { loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -62,6 +63,10 @@ let layout = loadLayout(localStorage, WIDGET_IDS);
 // Daylight's tiles (js/tiles.js): this device's own too, started from the arrangement above.
 let tiles = loadTiles(localStorage, layout);
 let notePlace = loadNotePlace(localStorage);
+// The map's private files (js/map/files.js): the last good copies, refreshed with sync now and then.
+let maps = loadCachedMaps(localStorage);
+let mapsAt = 0;
+const MAPS_EVERY = 30 * 60 * 1000;
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
 // fake mode the real keys are never read, and dev/fake-gemini.js answers instead of Google (the
@@ -134,6 +139,8 @@ const ctx = {
   layout: () => layout,
   columnCount: () => (WIDE.matches ? 2 : 1),
   tiles: () => tiles,
+  // The map's cities (js/ui/map.js): none until the sync repo has map files.
+  maps: () => maps,
   // Where the note for Claude sits on Daylight (js/ui/noteslot.js).
   notePlace: () => notePlace,
   setNotePlace(next) {
@@ -354,6 +361,17 @@ async function runHebrewSync() {
   }
 }
 
+// The map's files change rarely: read them at most every half hour, and keep the last good ones.
+async function runMapSync() {
+  const { token, repo } = store.settings();
+  if (FAKE || !token || !repo || navigator.onLine === false || Date.now() - mapsAt < MAPS_EVERY) return;
+  mapsAt = Date.now();
+  try {
+    maps = await refreshMaps({ clientFor: (path) => createGitHubClient({ token, repo, path }), storage: localStorage });
+    if (canRun()) render();
+  } catch { /* offline or refused: the cached maps stay */ }
+}
+
 // Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the
 // re-rendered areas (#list, #under, #side) — the check-in box included.
 function typing() {
@@ -393,6 +411,7 @@ const scheduler = createSyncScheduler({
     // pass's push to the main sync repo, rather than waiting for the next one.
     await runHebrewSync();
     const result = await runSync();
+    await runMapSync();
     ctx.mealPass();
     return result;
   },
@@ -435,6 +454,8 @@ function wake() {
 // The day's list locks at 11:00 (js/commit.js): checked after every change and once a minute.
 function lockDay() {
   try { ensureCommitment(store, store.today(), new Date()); } catch { /* the planner locks it too */ }
+  // Which country the day was in, for the map (js/map/files.js): once a day, only once there's a map.
+  if (maps.length) try { ensureDayPlace(store, store.today(), Intl.DateTimeFormat().resolvedOptions().timeZone); } catch { /* next time */ }
 }
 
 store.subscribe((reason) => {

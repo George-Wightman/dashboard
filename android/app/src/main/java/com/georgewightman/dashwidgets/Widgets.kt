@@ -38,6 +38,7 @@ class BodyWidget : TileWidget("body")
 class GoalsWidget : TileWidget("goals")
 class CountdownWidget : TileWidget("countdown")
 class WeekWidget : TileWidget("week")
+class MapWidget : TileWidget("map")
 
 object Widgets {
     const val ACTION_REFRESH = "com.georgewightman.dashwidgets.REFRESH"
@@ -45,20 +46,20 @@ object Widgets {
     val PROVIDERS: Map<String, Class<out TileWidget>> = linkedMapOf(
         "day" to DayWidget::class.java, "fuel" to FuelWidget::class.java, "hebrew" to HebrewWidget::class.java,
         "body" to BodyWidget::class.java, "goals" to GoalsWidget::class.java, "countdown" to CountdownWidget::class.java,
-        "week" to WeekWidget::class.java,
+        "week" to WeekWidget::class.java, "map" to MapWidget::class.java,
     )
 
     // Each tile's colours, as Daylight's (styles/daylight.css); values-night has the night ones.
     private val BACKGROUND = mapOf(
         "day" to R.drawable.bg_day, "fuel" to R.drawable.bg_fuel, "hebrew" to R.drawable.bg_hebrew, "body" to R.drawable.bg_body,
-        "goals" to R.drawable.bg_goals, "countdown" to R.drawable.bg_countdown, "week" to R.drawable.bg_day,
+        "goals" to R.drawable.bg_goals, "countdown" to R.drawable.bg_countdown, "week" to R.drawable.bg_day, "map" to R.drawable.bg_map,
     )
     private val INK = mapOf(
         "day" to R.color.ink, "fuel" to R.color.on_fuel, "hebrew" to R.color.on_hebrew, "body" to R.color.on_body,
-        "goals" to R.color.ink, "countdown" to R.color.ink, "week" to R.color.ink,
+        "goals" to R.color.ink, "countdown" to R.color.ink, "week" to R.color.ink, "map" to R.color.on_map,
     )
     private val NAMES = mapOf(
-        "day" to "Today", "fuel" to "Fuel", "hebrew" to "Hebrew", "body" to "Body", "goals" to "Goals", "countdown" to "Countdown", "week" to "This week",
+        "day" to "Today", "fuel" to "Fuel", "hebrew" to "Hebrew", "body" to "Body", "goals" to "Goals", "countdown" to "Countdown", "week" to "This week", "map" to "Map",
     )
 
     fun refreshInBackground(ctx: Context, pending: android.content.BroadcastReceiver.PendingResult?, force: Boolean) {

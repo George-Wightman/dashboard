@@ -241,9 +241,10 @@ export function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
       }
     }
   }
-  const done = counted.filter((r) => r.done).length;
+  const doneRows = counted.filter((r) => r.done);
+  const done = doneRows.length;
   return {
-    done, total: counted.length + missed.length + dropped.length,
+    done, total: counted.length + missed.length + dropped.length, doneRows,
     open: counted.filter((r) => !r.done), pushed, missed, dropped, released, optional,
   };
 }

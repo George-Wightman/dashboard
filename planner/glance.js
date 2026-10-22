@@ -9,8 +9,21 @@ import { logicalDay } from '../js/dates.js';
 import { isDoc } from '../js/doc.js';
 import { decodeBase64 } from '../js/sync.js';
 import { API } from './relay.js';
+import { validMap } from '../js/map/files.js';
 
 export const GLANCE_FILE = 'glance.json';
+
+// The map's private files (js/map/files.js), for the Map widget: none when there are none, or any fails.
+function readMaps(request, repo, headers) {
+  const raw = (path) => {
+    const res = request(`${API}/repos/${repo}/contents/${path}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+    if (res.status !== 200) return null;
+    try { return JSON.parse(res.text); } catch { return null; }
+  };
+  const index = raw('map/index.json');
+  const ids = Array.isArray(index?.cities) ? index.cities.filter((id) => /^[a-z0-9-]{1,40}$/.test(id)) : [];
+  return ids.map((id) => raw(`map/${id}.json`)).filter((m) => validMap(m));
+}
 
 function sameText(a, b) {
   const x = String(a);
@@ -38,5 +51,5 @@ export function handleGlance({ req, repo, token, request, sha256Hex, now = new D
   let doc;
   try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
   if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
-  return reply(glanceOf(doc, logicalDay(now, dayStartHour), now));
+  return reply(glanceOf(doc, logicalDay(now, dayStartHour), now, readMaps(request, repo, headers)));
 }

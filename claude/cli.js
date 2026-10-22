@@ -19,6 +19,8 @@ import { resolveId } from './ids.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { mapToday, mapSummary, readMaps } from '../js/map/summary.js';
+import { validMap } from '../js/map/files.js';
 
 const saveFile = (path, bytes) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, bytes); };
 
@@ -28,7 +30,7 @@ export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews',
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · reference [topic] · handoffs · handoff <name>',
+  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · reference [topic] · handoffs · handoff <name>',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
   'Discover: capabilities [topic|op] · inspect <id> · workflows. Test any JSON batch with preview before apply; preview writes nothing.',
@@ -232,6 +234,8 @@ export async function main({
     if (command === 'catchup') {
       try {
         say(READS.catchup(store.doc(), store.today(), rest.join(' '), now()));
+        const got = mapToday(store.doc(), await readMaps(files, validMap).catch(() => []), store.today());
+        if (got) say(['', 'The map', ...mapSummary(got).map((l) => `  ${l}`)].join('\n'));
       } catch (e) {
         say(e.message);
         return finish(1);
@@ -242,6 +246,13 @@ export async function main({
         say(saved.ok ? `(Caught up to ${when(caughtUpSince(store.doc()) ?? now().toISOString()).split(', ')[1]} — the next catchup starts here.)`
           : `(The catch-up couldn't be marked, so the next one will repeat this: ${saved.error})`);
       }
+      return finish(0);
+    }
+
+    // The map (js/map/summary.js), from the private map files beside data.json.
+    if (command === 'map') {
+      const got = mapToday(store.doc(), await readMaps(files, validMap).catch(() => []), store.today());
+      say(got ? mapSummary(got).join('\n') : 'There is no map yet: the sync repo has no map files.');
       return finish(0);
     }
 

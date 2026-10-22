@@ -19,6 +19,7 @@ import { renderReview, renderReviewBig } from './review.js';
 import { noteBlock } from './noteslot.js';
 import { hebrewMinutesId } from '../tiles.js';
 import { openBig } from './big.js';
+import { renderMapTile, renderMapBig } from './map.js';
 
 // Parts of a tile one under the other, or nothing when none has anything to show.
 const stacked = (...parts) => {
@@ -52,6 +53,12 @@ export const TILES = [
   { id: 'goals', title: 'Goals', area: 'goals', render: renderGoals },
   { id: 'weeks', title: 'Your weeks', area: 'weeks', render: renderHistory, big: renderHistoryBig },
   { id: 'countdown', title: 'Countdown', area: 'countdown', render: renderCountdown },
+  // The map (js/ui/map.js): its picture opens it big too.
+  {
+    id: 'map', title: 'Map', area: 'map',
+    render: (ctx) => renderMapTile({ ...ctx, openMap: () => openBig(ctx, BY_ID.get('map')) }),
+    big: renderMapBig,
+  },
   {
     id: 'week', title: 'This week', area: 'week',
     // Only the targets no other tile shows (each number in one place).

@@ -2,7 +2,7 @@
 
 import { WORKFLOW_MAPS, checkDetails, workflowRecordProblem } from './workflow.js';
 
-export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', 'meals', ...WORKFLOW_MAPS];
+export const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', 'meals', 'game', ...WORKFLOW_MAPS];
 
 export function emptyDoc() {
   return { schema: 1, ...Object.fromEntries(MAPS.map((map) => [map, {}])) };
@@ -132,6 +132,14 @@ export function recordProblem(map, id, r) {
       && string(b.key) && timestamp(b.start) && timestamp(b.end) && strings(b.items)))) return 'Invalid calendar blocks';
     if (!optional('day', day) || !optional('lastRun', timestamp, true)) return 'Invalid calendar date';
     if (!optional('calendars', (v) => Array.isArray(v) && v.every((c) => isPlainObject(c) && string(c.name)))) return 'Invalid calendar list';
+  }
+  // The map's choices (js/map/engine.js): a tile claimed, a card placed, or the place George was on a day.
+  if (map === 'game') {
+    const tile = Number.isInteger(r.q) && Number.isInteger(r.r) && Math.abs(r.q) < 1000 && Math.abs(r.r) < 1000;
+    const city = string(r.city) && /^[a-z0-9-]{1,40}$/.test(r.city);
+    if (id.startsWith('claim:') && !(city && tile && day(r.day) && timestamp(r.at))) return 'Invalid map choice';
+    if (id.startsWith('place:') && !(city && tile && string(r.card) && r.card.length <= 80 && day(r.day) && timestamp(r.at))) return 'Invalid map choice';
+    if (id.startsWith('day:') && !(day(r.day) && ['uk', 'salzburg'].includes(r.place))) return 'Invalid map choice';
   }
   if (map === 'gym' && id.startsWith('w:')) {
     if (!day(r.day) || !timestamp(r.start) || !timestamp(r.end) || !Array.isArray(r.exercises)

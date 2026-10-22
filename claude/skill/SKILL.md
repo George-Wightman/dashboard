@@ -34,7 +34,7 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
     bash <skill folder>/run.sh today
 
 **Reads:** `catchup [days]`, `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`,
-`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `back`, `reference`. Each
+`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `back`, `map`, `reference`. Each
 starts with today's date — work other dates out from it.
 
 If the tool names an op or a read that isn't in your `reference.md`, your copy is older than the

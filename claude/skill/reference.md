@@ -94,6 +94,16 @@ every check-in in that time; new flags; workouts from Hevy; what he moved or del
 Calendar; the planner's notes today; what needs attention. Then it records the catch-up, so the next
 one starts there (it says so on its last line). At most the last seven days. The first ever catch-up
 covers yesterday and today. `catchup 3` reads the last three days and leaves the marker where it is.
+When George has a map, it ends with the map too (see `map`).
+
+### `map`
+His Civ-style map, worked out from his day scores: tiles, tiles waiting to be claimed, a golden age
+(three finished days in a row), barbarian camps and what they're heading for (they come from what he
+missed: a missed gym heads for the gym), raided tiles, cards waiting to be placed, the next building
+on each track, and the last turn. Use it to encourage and to name what slipped ("barbarians are two
+tiles from the gym because it's been missed twice"). It lists how many places are still hidden,
+never which: they're his to discover, so don't tell him. You can't claim tiles or place cards for
+him; those are his choices, in the app.
 
 ### `checkins [days]`
 Check-ins from the last 14 days (or `days`), newest first: the day, the task and its id, whether it

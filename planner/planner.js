@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '3f767101';
+var PLANNER_BUILD = 'd3b4e162';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -390,7 +390,7 @@ const __js_doc = (() => {
 
 const { WORKFLOW_MAPS, checkDetails, workflowRecordProblem } = __js_workflow;
 
-const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', 'meals', ...WORKFLOW_MAPS];
+const MAPS = ['items', 'goals', 'milestones', 'logs', 'journal', 'flags', 'changes', 'calendar', 'gym', 'meals', 'game', ...WORKFLOW_MAPS];
 
 function emptyDoc() {
   return { schema: 1, ...Object.fromEntries(MAPS.map((map) => [map, {}])) };
@@ -520,6 +520,14 @@ function recordProblem(map, id, r) {
       && string(b.key) && timestamp(b.start) && timestamp(b.end) && strings(b.items)))) return 'Invalid calendar blocks';
     if (!optional('day', day) || !optional('lastRun', timestamp, true)) return 'Invalid calendar date';
     if (!optional('calendars', (v) => Array.isArray(v) && v.every((c) => isPlainObject(c) && string(c.name)))) return 'Invalid calendar list';
+  }
+  // The map's choices (js/map/engine.js): a tile claimed, a card placed, or the place George was on a day.
+  if (map === 'game') {
+    const tile = Number.isInteger(r.q) && Number.isInteger(r.r) && Math.abs(r.q) < 1000 && Math.abs(r.r) < 1000;
+    const city = string(r.city) && /^[a-z0-9-]{1,40}$/.test(r.city);
+    if (id.startsWith('claim:') && !(city && tile && day(r.day) && timestamp(r.at))) return 'Invalid map choice';
+    if (id.startsWith('place:') && !(city && tile && string(r.card) && r.card.length <= 80 && day(r.day) && timestamp(r.at))) return 'Invalid map choice';
+    if (id.startsWith('day:') && !(day(r.day) && ['uk', 'salzburg'].includes(r.place))) return 'Invalid map choice';
   }
   if (map === 'gym' && id.startsWith('w:')) {
     if (!day(r.day) || !timestamp(r.start) || !timestamp(r.end) || !Array.isArray(r.exercises)
@@ -2135,9 +2143,10 @@ function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
       }
     }
   }
-  const done = counted.filter((r) => r.done).length;
+  const doneRows = counted.filter((r) => r.done);
+  const done = doneRows.length;
   return {
-    done, total: counted.length + missed.length + dropped.length,
+    done, total: counted.length + missed.length + dropped.length, doneRows,
     open: counted.filter((r) => !r.done), pushed, missed, dropped, released, optional,
   };
 }
@@ -3044,7 +3053,9 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
 
   const stamp = () => now().toISOString();
   const today = () => logicalDay(now(), settings.dayStartHour);
-  const notify = (reason) => { for (const fn of listeners) fn(reason); };
+  // Counts every change, so a view can tell its cached work is stale (js/ui/map.js).
+  let revision = 0;
+  const notify = (reason) => { revision++; for (const fn of listeners) fn(reason); };
 
   function save(key, value) {
     try {
@@ -3511,6 +3522,13 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   // The calendar planner's records (js/calendar.js).
   const putCalendar = (id, fields, source = 'planner') => putRecord('calendar', id, fields, source);
 
+  // The map's choices (js/map/engine.js): one record each, so two devices' claims merge cleanly.
+  const putGame = (id, fields, source = 'me') => putRecord('game', id, fields, source).rec;
+
+  // A milestone remembers the day it was ticked, so the map can give its wonder card on that day.
+  const milestoneDone = (id, changes) => (Object.hasOwn(changes, 'done') && !!changes.done !== !!doc.milestones[id]?.done
+    ? { ...changes, doneOn: changes.done ? today() : null } : changes);
+
   // Food (js/food.js): a meal snapped (a photo and/or words, estimated later) or logged from a usual
   // meal (exact at once, and the usual meal counts a use); usual meals; Fuel's settings.
   function addMeal({ at, text = '', hasPhoto = false, usualId = null }) {
@@ -3703,6 +3721,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     now: () => now(),
     saveError: () => [...saveErrors.values()].join('; ') || null,
     loadError: () => loadError,
+    revision: () => revision,
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -3725,8 +3744,8 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     updateGoal: (id, changes) => patch('goals', id, changes),
     archiveGoal: (id) => patch('goals', id, { status: 'archived', archivedOn: today() }),
     addMilestone,
-    updateMilestone: (id, changes) => patch('milestones', id, changes),
-    toggleMilestone: (id) => patch('milestones', id, { done: !doc.milestones[id]?.done }),
+    updateMilestone: (id, changes) => patch('milestones', id, milestoneDone(id, changes)),
+    toggleMilestone: (id) => patch('milestones', id, milestoneDone(id, { done: !doc.milestones[id]?.done })),
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
 
     saveJournal,
@@ -3750,6 +3769,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     pruneChanges,
 
     putCalendar,
+    putGame,
     putGym,
     setBack,
     soreFlag,
@@ -7705,6 +7725,452 @@ async function syncHebrewProgress({ store, client }) {
 return { HEBREW_IDS, HEBREW_LADDER, ensureHebrewGoal, RECENT_DAYS, hebrewSummary, syncHebrewProgress };
 })();
 
+// ---- js/map/hex.js
+const __js_map_hex = (() => {
+// Axial hex coordinates for the map (js/map/engine.js, js/ui/map.js): pointy-top hexes, a tile as
+// "q,r". Pure.
+
+const DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+const key = (q, r) => `${q},${r}`;
+const unkey = (k) => k.split(',').map(Number);
+const nbrs = (q, r) => DIRS.map(([a, b]) => key(q + a, r + b));
+const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[0] + a[1] - b[0] - b[1]));
+const distK = (a, b) => dist(unkey(a), unkey(b));
+return { DIRS, key, unkey, nbrs, dist, distK };
+})();
+
+// ---- js/map/engine.js
+const __js_map_engine = (() => {
+// The map (docs/superpowers/specs/2026-10-22-civ-map-design.md): a city's land grows from George's
+// honest day score. Nothing about the game is stored: the state is replayed, turn by turn, from the
+// shared document, the city's map file and his choices (the `game` records). So every device draws
+// the same map, an undo changes the past correctly, and there is nothing to merge. Pure.
+
+const { dayScore, doneIndex } = __js_schedule;
+const { timeOff } = __js_calendar;
+const { cardioQuotaId } = __js_gym;
+const { addDays } = __js_dates;
+const { key, unkey, nbrs, dist, distK } = __js_map_hex;
+
+const COST = 40;          // hammers for a tile
+const GOLDEN_COST = 30;   // in a golden age
+const BANK = 5;           // tiles that can wait to be claimed
+const REPAIR = 20;        // hammers to repair a raided tile
+const LEVEL_STEP = 400;   // track points per building level once a track's cards are all earned
+const MAX_LEVEL = 3;
+const GOLDEN_RUN = 3;     // finished days in a row for a golden age
+const ROAD_MINUTES = 10;  // cardio minutes per road step
+const FINISHED_BONUS = 20;
+const MAX_CAMPS = 4;     // past this, a miss raids but sends no more
+const FIND_VALUE = { coal: 20, wheat: 10, sheep: 10, deer: 10, horses: 10, pub: 15, pitwheel: 15, stone: 10, fish: 10 };
+const FIND_NAME = { coal: 'Coal seam', wheat: 'Wheat', sheep: 'Sheep', deer: 'Deer', horses: 'Horses', pub: 'A pub', pitwheel: 'An old pit wheel', stone: 'Stone', fish: 'Fish' };
+
+const values = (o) => Object.values(o ?? {});
+const CENTRE = key(0, 0);
+const rowHammers = (row) => ((row.item.minutes ?? 0) >= 60 ? 20 : 10);
+
+// Where George was each day: the `day:` stamps, each lasting until the next. With none yet, the UK.
+function makeCityOf(doc, maps) {
+  const stamps = values(doc.game).filter((g) => g.status === 'active' && String(g.id).startsWith('day:'))
+    .map((g) => [g.day, g.place]).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const placeOn = (day) => {
+    let place = 'uk';
+    for (const [d, p] of stamps) { if (d > day) break; place = p; }
+    return place;
+  };
+  return (day) => {
+    const place = placeOn(day);
+    return maps.find((m) => m.place === place && m.start <= day && (!m.end || day <= m.end))?.id ?? null;
+  };
+}
+
+// The map file's lookups, built once per file.
+const prepared = new WeakMap();
+function prepare(map) {
+  let p = prepared.get(map);
+  if (p) return p;
+  const tiles = new Map(map.tiles.map((t) => [key(t.q, t.r), t]));
+  const at = new Map(map.places.filter((x) => x.kind !== 'build').map((x) => [key(x.q, x.r), x]));
+  const builds = map.places.filter((x) => x.kind === 'build');
+  const zones = Object.fromEntries(builds.map((b) => [b.id, new Set([key(b.q, b.r), ...nbrs(b.q, b.r)].filter((k) => tiles.has(k)))]));
+  const trackOfArea = {};
+  for (const [t, def] of Object.entries(map.tracks ?? {})) for (const a of def.areas ?? []) trackOfArea[a] = t;
+  p = { tiles, at, builds, zones, trackOfArea, byId: new Map(map.places.map((x) => [x.id, x])) };
+  prepared.set(map, p);
+  return p;
+}
+
+function visibleOf(map, owned) {
+  const { tiles } = prepare(map);
+  const v = new Set(owned);
+  for (const k of owned) for (const n of nbrs(...unkey(k))) if (tiles.has(n)) v.add(n);
+  return v;
+}
+
+function claimable(state) {
+  const out = [];
+  for (const k of state.visible) if (!state.owned.has(k)) out.push(k);
+  return out.sort();
+}
+
+// The tiles a card can go on.
+function placeable(state, card) {
+  const P = prepare(state.map);
+  const builtTiles = new Set(Object.values(state.built));
+  if (card.kind === 'wonder') {
+    return [...state.owned].filter((k) => { const p = P.at.get(k); return p?.kind === 'wonder' && !state.wonders.has(p.id); }).sort();
+  }
+  const zone = P.zones[card.id];
+  if (!zone) return [];
+  return [...zone].filter((k) => state.owned.has(k) && k !== CENTRE && !P.at.has(k) && !builtTiles.has(k)).sort();
+}
+
+// The tile a camp heads for: a placed building, a zone's centre, a place, or the city centre.
+function targetTile(state, target) {
+  const P = prepare(state.map);
+  if (state.built[target]) return state.built[target];
+  const p = P.byId.get(target);
+  return p ? key(p.q, p.r) : CENTRE;
+}
+
+const nearestToCentre = (keys) => [...keys].sort((a, b) => distK(a, CENTRE) - distK(b, CENTRE) || (unkey(a)[0] - unkey(b)[0]) || (unkey(a)[1] - unkey(b)[1]))[0];
+
+function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
+  const P = prepare(map);
+  const idx = doneIndex(doc);
+  const offs = timeOff(doc);
+  const cardioId = cardioQuotaId(doc);
+  const owned = new Set([CENTRE, ...nbrs(0, 0)].filter((k) => P.tiles.has(k)));
+  const state = {
+    map, turn: 0, day: null, owned, visible: visibleOf(map, owned), ready: 1, pool: 0, cost: COST,
+    golden: { on: false, run: 0 }, track: Object.fromEntries(Object.keys(map.tracks ?? {}).map((t) => [t, 0])),
+    earned: new Set(), cards: [], built: {}, levels: {}, pendingLevels: {}, wonders: new Set(),
+    camps: [], pillaged: new Set(), roads: [], roadNet: new Set([CENTRE]), roadSteps: 0, roadCarry: 0,
+    found: new Set(), zonesSeen: new Set(), claimedFinds: new Set(),
+    chronicle: [], last: null, pending: [], history: snapshots ? [] : null,
+  };
+  const event = (kind, text, extra = {}) => state.pending.push({ kind, text, ...extra });
+  const see = (quiet) => {
+    state.visible = visibleOf(map, state.owned);
+    for (const k of state.visible) {
+      const p = P.at.get(k);
+      if (p?.kind === 'found' && !state.found.has(p.id)) { state.found.add(p.id); if (!quiet) event('discovered', `Discovered ${p.name}`, { id: p.id }); }
+      for (const b of P.builds) if (P.zones[b.id].has(k) && !state.zonesSeen.has(b.id)) { state.zonesSeen.add(b.id); if (!quiet) event('zone', `Good ground spotted for ${b.name}`, { id: b.id }); }
+    }
+  };
+  see(true);
+
+  const claim = (k, auto = false) => {
+    state.owned.add(k);
+    const t = P.tiles.get(k);
+    if (t.find && !state.claimedFinds.has(k)) {
+      state.claimedFinds.add(k);
+      const v = map.finds?.[t.find] ?? FIND_VALUE[t.find] ?? 10;
+      state.pool += v;
+      event('find', `${FIND_NAME[t.find] ?? 'A find'}: +${v} hammers`, { k });
+    }
+    const p = P.at.get(k);
+    if (p?.kind === 'found') event('reached', `${p.name} is yours`, { id: p.id });
+    if (p?.kind === 'wonder') event('site', 'A wonder site is yours', { k });
+    if (auto) event('auto', 'A tile was claimed for you (five were waiting)', { k });
+    see(false);
+  };
+  const bank = () => {
+    while (state.pool >= state.cost) {
+      state.pool -= state.cost;
+      if (state.ready < BANK) { state.ready++; continue; }
+      const k = nearestToCentre(claimable(state));
+      if (!k) { state.pool += state.cost; break; }
+      claim(k, true);
+    }
+  };
+  const applyLevels = () => {
+    for (const [tr, def] of Object.entries(map.tracks ?? {})) {
+      while ((state.pendingLevels[tr] ?? 0) > 0) {
+        const placed = def.list.map(([id]) => id).filter((id) => state.built[id] && (state.levels[id] ?? 1) < MAX_LEVEL);
+        if (!placed.length) break;
+        const id = placed.sort((a, b) => (state.levels[a] ?? 1) - (state.levels[b] ?? 1))[0];
+        state.levels[id] = (state.levels[id] ?? 1) + 1;
+        state.pendingLevels[tr]--;
+        event('level', `${P.byId.get(id).name} reaches level ${state.levels[id]}`, { id });
+      }
+    }
+  };
+  const layRoads = () => {
+    while (state.roadSteps > 0) {
+      // Joined-up targets: owned tiles holding a place, a building or a built wonder.
+      const builtTiles = new Set(Object.values(state.built));
+      const targets = new Set();
+      for (const k of state.owned) {
+        if (state.roadNet.has(k)) continue;
+        const p = P.at.get(k);
+        if ((p && (p.kind !== 'wonder' || state.wonders.has(p.id))) || builtTiles.has(k)) targets.add(k);
+      }
+      if (!targets.size) break;
+      // Breadth-first from the network through owned tiles to the nearest target.
+      const prev = new Map(); const queue = [...state.roadNet].sort(); let hit = null;
+      for (const k of queue) prev.set(k, null);
+      for (let i = 0; i < queue.length && !hit; i++) {
+        for (const n of nbrs(...unkey(queue[i])).sort()) {
+          if (prev.has(n) || !state.owned.has(n)) continue;
+          prev.set(n, queue[i]);
+          if (targets.has(n)) { hit = n; break; }
+          queue.push(n);
+        }
+      }
+      if (!hit) break;
+      let step = hit;
+      while (prev.get(step) && !state.roadNet.has(prev.get(step))) step = prev.get(step);
+      state.roadNet.add(step);
+      state.roads.push([prev.get(step), step]);
+      state.roadSteps--;
+    }
+  };
+
+  const applyChoice = (c) => {
+    const k = key(c.q, c.r);
+    if (String(c.id).startsWith('claim:')) {
+      if (state.ready < 1 || !P.tiles.has(k) || state.owned.has(k) || !nbrs(c.q, c.r).some((n) => state.owned.has(n))) return;
+      state.ready--;
+      claim(k);
+      bank();
+      return;
+    }
+    // place:<city>:<card>: a building by its id, or a wonder by its site's id.
+    const site = P.at.get(k);
+    if (site?.kind === 'wonder' && site.id === c.card) {
+      const i = state.cards.findIndex((x) => x.kind === 'wonder');
+      if (i === -1 || !state.owned.has(k) || state.wonders.has(site.id)) return;
+      state.cards.splice(i, 1);
+      state.wonders.add(site.id);
+      event('wonder', `${site.name} is built`, { id: site.id });
+      return;
+    }
+    const i = state.cards.findIndex((x) => x.kind === 'build' && x.id === c.card);
+    if (i === -1 || !placeable(state, state.cards[i]).includes(k)) return;
+    state.cards.splice(i, 1);
+    state.built[c.card] = k;
+    state.levels[c.card] = 1;
+    event('built', `${P.byId.get(c.card).name} is built`, { id: c.card });
+    applyLevels();
+  };
+
+  const choices = values(doc.game)
+    .filter((g) => g.status === 'active' && g.city === map.id && (String(g.id).startsWith('claim:') || String(g.id).startsWith('place:')))
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
+  const wonderDays = new Map();
+  for (const m of values(doc.milestones)) {
+    if (m.status !== 'active' || !m.done) continue;
+    const d = m.doneOn ?? (typeof m.updated === 'string' ? m.updated.slice(0, 10) : null);
+    if (d) wonderDays.set(d, (wonderDays.get(d) ?? 0) + 1);
+  }
+  const cardio = new Map();
+  for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'amount' && cardioId && l.itemId === cardioId) cardio.set(l.day, (cardio.get(l.day) ?? 0) + l.amount);
+  const quoteOn = (d) => {
+    const said = values(doc.journal).filter((j) => String(j.id).startsWith(`reflect:${d}:`) && typeof j.said === 'string' && j.said.trim())
+      .sort((a, b) => (a.answeredAt < b.answeredAt ? -1 : 1))[0]?.said.trim();
+    if (!said) return null;
+    return said.length > 160 ? said.slice(0, 157).trimEnd() + '…' : said;
+  };
+
+  const settle = (d) => {
+    const score = dayScore(doc, d, idx, offs);
+    if (score.total === 0) return;
+    state.turn++;
+    state.day = d;
+    const finished = score.done === score.total && score.total >= 3;
+    const miss = score.done < score.total;
+    // Golden age: from the third finished day in a row; a miss ends it.
+    const wasGolden = state.golden.on;
+    if (finished) state.golden.run++; else if (miss) state.golden.run = 0;
+    state.golden.on = state.golden.run >= GOLDEN_RUN;
+    state.cost = state.golden.on ? GOLDEN_COST : COST;
+    if (state.golden.on && !wasGolden) event('golden', 'A golden age begins');
+    if (!state.golden.on && wasGolden) event('golden-end', 'The golden age ends');
+    let hammers = 0;
+    for (const row of score.doneRows) {
+      const h = rowHammers(row);
+      hammers += h;
+      const tr = P.trackOfArea[row.item.area];
+      if (tr) state.track[tr] += h;
+    }
+    if (finished) hammers += FINISHED_BONUS;
+    state.pool += hammers;
+    // Raided tiles are repaired first.
+    for (const k of [...state.pillaged]) {
+      if (state.pool < REPAIR) break;
+      state.pool -= REPAIR;
+      state.pillaged.delete(k);
+      event('repaired', 'A raided tile is repaired', { k });
+    }
+    bank();
+    // Cards, then levels once a track's cards are all earned.
+    for (const [tr, def] of Object.entries(map.tracks ?? {})) {
+      for (const [id, need] of def.list) {
+        if (state.track[tr] >= need && !state.earned.has(id)) {
+          state.earned.add(id);
+          state.cards.push({ kind: 'build', id });
+          event('card', `Card earned: ${P.byId.get(id).name}`, { id });
+        }
+      }
+      const last = def.list.at(-1)?.[1] ?? 0;
+      if (def.list.every(([id]) => state.earned.has(id))) {
+        const due = Math.floor(Math.max(0, state.track[tr] - last) / LEVEL_STEP);
+        const given = state.levelsGiven?.[tr] ?? 0;
+        if (due > given) {
+          state.pendingLevels[tr] = (state.pendingLevels[tr] ?? 0) + due - given;
+          state.levelsGiven = { ...state.levelsGiven, [tr]: due };
+        }
+      }
+    }
+    applyLevels();
+    for (let i = 0; i < (wonderDays.get(d) ?? 0); i++) { state.cards.push({ kind: 'wonder', id: `wonder-${d}-${i}` }); event('wonder-card', 'A goal step: a wonder card'); }
+    // Barbarians: they creep towards what they're after; on a missed day they raid, and more come.
+    const campKeys = () => new Set(state.camps.map((c) => key(c.q, c.r)));
+    for (const c of state.camps) {
+      const goal = unkey(targetTile(state, c.target));
+      const here = dist([c.q, c.r], goal);
+      const taken = campKeys();
+      const step = nbrs(c.q, c.r).filter((n) => P.tiles.has(n) && !state.owned.has(n) && !taken.has(n))
+        .map(unkey).sort((a, b) => dist(a, goal) - dist(b, goal) || a[0] - b[0] || a[1] - b[1])[0];
+      if (step && dist(step, goal) < here) [c.q, c.r] = step;
+    }
+    if (miss) {
+      for (const c of state.camps) {
+        const goal = unkey(targetTile(state, c.target));
+        const victim = nbrs(c.q, c.r).filter((n) => state.owned.has(n) && n !== CENTRE && !state.pillaged.has(n))
+          .sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0];
+        if (victim) { state.pillaged.add(victim); event('raid', `Barbarians raid near ${P.byId.get(c.target)?.name ?? 'the centre'}`, { k: victim }); }
+      }
+      const missedItems = [...score.open.map((r) => r.item), ...score.missed.map((e) => e.item), ...score.dropped.map((e) => e.item)];
+      const tr = missedItems.map((it) => P.trackOfArea[it.area]).find(Boolean);
+      const target = tr ? (map.tracks[tr].list.map(([id]) => id).find((id) => state.built[id]) ?? map.tracks[tr].list[0][0]) : (map.home && P.byId.has(map.home) ? map.home : 'centre');
+      const goal = unkey(targetTile(state, target));
+      const taken = campKeys();
+      let spot = null;
+      for (const want of [3, 4, 2]) {
+        const ring = [...P.tiles.keys()].filter((k) => !state.owned.has(k) && !taken.has(k)
+          && Math.min(...[...state.owned].map((o) => distK(k, o))) === want);
+        if (ring.length) { spot = ring.sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0]; break; }
+      }
+      if (spot && state.camps.length < MAX_CAMPS) {
+        const [q, r] = unkey(spot);
+        state.camps.push({ q, r, target });
+        event('camp', `Barbarians set out for ${P.byId.get(target)?.name ?? 'the centre'}`, { target });
+      }
+    } else if (finished && state.camps.length) {
+      state.camps.sort((a, b) => dist([a.q, a.r], [0, 0]) - dist([b.q, b.r], [0, 0]));
+      const gone = state.camps.shift();
+      event('camp-gone', `Barbarians driven off`, { target: gone.target });
+    }
+    // Roads from cardio.
+    const minutes = (cardio.get(d) ?? 0) + state.roadCarry;
+    state.roadSteps += Math.floor(minutes / ROAD_MINUTES);
+    state.roadCarry = minutes % ROAD_MINUTES;
+    layRoads();
+    const entry = { day: d, turn: state.turn, done: score.done, total: score.total, hammers, golden: state.golden.on, events: state.pending, quote: quoteOn(d) };
+    state.pending = [];
+    state.chronicle.push(entry);
+    state.last = entry;
+    if (state.history) state.history.push(snapshot(state));
+  };
+
+  let ci = 0;
+  for (let d = map.start; d <= today; d = addDays(d, 1)) {
+    // His choices for the day, in the order he made them; any that aren't legal then are ignored.
+    while (ci < choices.length && choices[ci].day <= d) { if (choices[ci].day <= today) applyChoice(choices[ci]); ci++; }
+    layRoads();
+    if (d < today && (!map.end || d <= map.end) && cityOf(d) === map.id) settle(d);
+  }
+  state.today = state.pending;
+  state.pending = [];
+  return state;
+}
+
+function snapshot(s) {
+  return {
+    day: s.day, turn: s.turn, owned: [...s.owned], built: { ...s.built }, levels: { ...s.levels }, wonders: [...s.wonders],
+    camps: s.camps.map((c) => ({ ...c })), pillaged: [...s.pillaged], roads: s.roads.map((r) => [...r]), golden: s.golden.on,
+    found: [...s.found], claimedFinds: [...s.claimedFinds],
+  };
+}
+
+// The map file's lookups, for the views: tiles, places by tile, buildings, zones, places by id.
+const lookups = (map) => prepare(map);
+return { COST, GOLDEN_COST, BANK, REPAIR, LEVEL_STEP, MAX_LEVEL, GOLDEN_RUN, ROAD_MINUTES, FINISHED_BONUS, MAX_CAMPS, FIND_VALUE, FIND_NAME, rowHammers, makeCityOf, visibleOf, claimable, placeable, replay, lookups };
+})();
+
+// ---- js/map/summary.js
+const __js_map_summary = (() => {
+// The map in words (docs/superpowers/specs/2026-10-22-civ-map-design.md): for Claude's catch-up and
+// `map` read (claude/cli.js), and for the phone's Map widget (js/glance.js). Pure.
+
+const { replay, makeCityOf, lookups } = __js_map_engine;
+const { distK } = __js_map_hex;
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// The city showing today: where he is, else the latest one started.
+function mapToday(doc, maps, today) {
+  if (!maps?.length) return null;
+  const cityOf = makeCityOf(doc, maps);
+  const here = cityOf(today);
+  const map = maps.find((m) => m.id === here) ?? [...maps].filter((m) => m.start <= today).sort((a, b) => (a.start < b.start ? 1 : -1))[0];
+  return map ? { map, state: replay({ doc, map, today, cityOf }) } : null;
+}
+
+const nextOf = (state, def, L) => {
+  const next = def.list.find(([id]) => !state.earned.has(id));
+  return next ? `${def.name} ${state.track[Object.keys(state.map.tracks).find((t) => state.map.tracks[t] === def)] ?? 0}/${next[1]} → ${L.byId.get(next[0])?.name}` : `${def.name}: all cards earned, levelling up`;
+};
+
+// Lines for Claude. Hidden places stay hidden: only how many are left, never their names.
+function mapSummary({ map, state }) {
+  const L = lookups(map);
+  const out = [`${map.name}: turn ${state.turn}, ${plural(state.owned.size, 'tile')} of ${L.tiles.size}. ${state.ready ? `${plural(state.ready, 'tile')} waiting to be claimed; ` : ''}${state.pool}/${state.cost} hammers to the next.`];
+  out.push(state.golden.on ? `Golden age: ${state.golden.run} finished days in a row (tiles cost ${state.cost}).` : `No golden age: ${plural(state.golden.run, 'finished day')} in a row (three starts one).`);
+  for (const c of state.camps) {
+    const away = Math.min(...[...state.owned].map((k) => distK(k, `${c.q},${c.r}`))) - 1;
+    out.push(`Barbarians heading for ${L.byId.get(c.target)?.name ?? 'the centre'}, ${away <= 0 ? 'at his border' : `${plural(away, 'tile')} from his border`} (they came from a missed ${L.byId.get(c.target)?.track ?? 'day'}).`);
+  }
+  if (state.pillaged.size) out.push(`${plural(state.pillaged.size, 'raided tile')}: the next ${state.pillaged.size * 20} hammers repair them.`);
+  if (state.cards.length) out.push(`Cards waiting to be placed: ${state.cards.map((c) => (c.kind === 'wonder' ? 'a wonder' : L.byId.get(c.id)?.name)).join(', ')}.`);
+  out.push(`Next: ${Object.values(map.tracks ?? {}).map((def) => nextOf(state, def, L)).join('; ')}.`);
+  const found = [...state.found].map((id) => L.byId.get(id)?.name);
+  const hidden = map.places.filter((p) => p.kind === 'found' && !state.found.has(p.id)).length;
+  const built = [...Object.keys(state.built), ...state.wonders].map((id) => `${L.byId.get(id)?.name}${state.levels[id] > 1 ? ` (level ${state.levels[id]})` : ''}`);
+  out.push(`Found: ${found.length ? found.join(', ') : 'nothing yet'}; ${plural(hidden, 'place')} still hidden (don't tell him what).${built.length ? ` Built: ${built.join(', ')}.` : ''}`);
+  if (state.last) out.push(`Last turn (${state.last.day}): ${state.last.done} of ${state.last.total} done, +${state.last.hammers} hammers${state.last.events.length ? `; ${state.last.events.map((e) => e.text).join('; ')}` : ''}.`);
+  return out;
+}
+
+// The phone's Map widget: the city, its tiles, and what's waiting.
+function glanceMap({ map, state }, site) {
+  const L = lookups(map);
+  const lines = [];
+  if (state.ready) lines.push(`${plural(state.ready, 'tile')} to claim`);
+  if (state.cards.length) lines.push(`${plural(state.cards.length, 'card')} to place`);
+  if (state.golden.on) lines.push(`Golden age · ${state.golden.run} days`);
+  for (const name of new Set(state.camps.map((c) => L.byId.get(c.target)?.name ?? 'the centre'))) lines.push(`Barbarians heading for ${name}`);
+  lines.push(`Next tile ${state.pool}/${state.cost}`);
+  return { title: map.name, number: String(state.owned.size), caption: 'tiles', lines, open: `${site}?big=map` };
+}
+
+// Reads the map files through a { read(path) → { text } | null } store (claude/files.js).
+async function readMaps(files, validMap) {
+  const index = await files.read('map/index.json');
+  if (!index) return [];
+  let ids = [];
+  try { ids = JSON.parse(index.text).cities ?? []; } catch { return []; }
+  const maps = [];
+  for (const id of ids) {
+    try { const f = await files.read(`map/${id}.json`); const m = f && JSON.parse(f.text); if (validMap(m) && m.id === id) maps.push(m); } catch { /* skip a bad one */ }
+  }
+  return maps;
+}
+return { mapToday, mapSummary, glanceMap, readMaps };
+})();
+
 // ---- js/glance.js
 const __js_glance = (() => {
 // The phone's home-screen widgets (android/): each a small copy of a Daylight tile — the day as a short
@@ -7723,9 +8189,10 @@ const { weekStart, addDays, shortWeekday, shortDate, longDate } = __js_dates;
 const { HEBREW_IDS } = __js_hebrewSync;
 const { cardioQuotaId, gymHabitId } = __js_gym;
 const { nextSession, BACK } = __js_coach;
+const { mapToday, glanceMap } = __js_map_summary;
 
 const SITE = 'https://george-wightman.github.io/dashboard/';
-const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week'];
+const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week', 'map'];
 const LINES = 8;
 
 const values = (o) => Object.values(o ?? {});
@@ -7856,16 +8323,22 @@ function week(doc, today) {
   };
 }
 
-const MAKERS = { day, fuel, hebrew, body, goals, countdown, week };
-const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goals: 'Goals', countdown: 'Countdown', week: 'This week' };
+// The map (js/map/summary.js): only when the planner could read the private map files.
+function map(doc, today, now, maps) {
+  const got = mapToday(doc, maps, today);
+  return got ? glanceMap(got, SITE) : null;
+}
+
+const MAKERS = { day, fuel, hebrew, body, goals, countdown, week, map };
+const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goals: 'Goals', countdown: 'Countdown', week: 'This week', map: 'Map' };
 
 // Every widget's content for `today` at `now`. A tile with nothing to show says so, rather than vanish
 // from a home screen it was put on.
-function glanceOf(doc, today, now = new Date()) {
+function glanceOf(doc, today, now = new Date(), maps = []) {
   const tiles = {};
   for (const id of GLANCE_TILES) {
     let t = null;
-    try { t = MAKERS[id](doc, today, now); } catch { t = null; }
+    try { t = MAKERS[id](doc, today, now, maps); } catch { t = null; }
     t ??= { title: TITLES[id], number: '', caption: '', lines: ['Nothing to show yet.'], open: open(id) };
     const more = t.lines.length - LINES;
     tiles[id] = { ...t, lines: more > 0 ? [...t.lines.slice(0, LINES - 1), `+ ${more + 1} more`] : t.lines };
@@ -7873,6 +8346,72 @@ function glanceOf(doc, today, now = new Date()) {
   return { at: now.toISOString(), day: today, tiles };
 }
 return { SITE, GLANCE_TILES, glanceOf };
+})();
+
+// ---- js/map/files.js
+const __js_map_files = (() => {
+// The map's private files (docs/superpowers/specs/2026-10-22-civ-map-design.md): `map/index.json`
+// lists the cities and `map/<city>.json` is each one's land, places and drawings, all in the private
+// sync repo, read with the same key as data.json. The last good copies are kept on this device so the
+// map works offline. And the day's place: which country George was in, stamped once a day.
+
+const { CENTRAL } = __js_travel;
+
+const MAPS_KEY = 'dash_maps';
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const ID = /^[a-z0-9-]{1,40}$/;
+const KINDS = ['found', 'build', 'wonder'];
+const int = (v) => Number.isInteger(v) && Math.abs(v) < 1000;
+const str = (v, max = 200) => typeof v === 'string' && v.length <= max;
+// A drawing is an SVG and nothing that could run.
+const safeArt = (s) => str(s, 200000) && /^<svg[\s>]/.test(s) && !/<script|<foreignObject|\son[a-z]+\s*=|javascript:/i.test(s);
+
+function validMap(m) {
+  if (!m || typeof m !== 'object') return false;
+  if (!ID.test(m.id ?? '') || !str(m.name, 60) || !['uk', 'salzburg'].includes(m.place) || !DAY.test(m.start ?? '')) return false;
+  if (m.end != null && !DAY.test(m.end)) return false;
+  if (!Array.isArray(m.tiles) || !m.tiles.length || !m.tiles.every((t) => t && int(t.q) && int(t.r) && str(t.terrain, 20))) return false;
+  if (!m.tiles.some((t) => t.q === 0 && t.r === 0)) return false;
+  if (!Array.isArray(m.places) || !m.places.every((p) => p && ID.test(p.id ?? '') && str(p.name, 60) && KINDS.includes(p.kind) && int(p.q) && int(p.r))) return false;
+  if (!m.tracks || typeof m.tracks !== 'object') return false;
+  for (const t of Object.values(m.tracks)) {
+    if (!t || !Array.isArray(t.areas) || !Array.isArray(t.list) || !t.list.every((e) => Array.isArray(e) && ID.test(e[0] ?? '') && Number.isFinite(e[1]))) return false;
+  }
+  if (m.art != null && (typeof m.art !== 'object' || !Object.values(m.art).every(safeArt))) return false;
+  return true;
+}
+
+function loadCachedMaps(storage) {
+  try {
+    const saved = JSON.parse(storage.getItem(MAPS_KEY));
+    return Array.isArray(saved?.maps) ? saved.maps.filter(validMap) : [];
+  } catch {
+    return [];
+  }
+}
+
+// `clientFor(path)` gives a { get } like js/sync.js's createGitHubClient: null when the file isn't there.
+async function refreshMaps({ clientFor, storage }) {
+  const index = await clientFor('map/index.json').get();
+  const ids = Array.isArray(index?.doc?.cities) ? index.doc.cities.filter((id) => ID.test(id)) : [];
+  const maps = [];
+  for (const id of ids) {
+    try {
+      const file = await clientFor(`map/${id}.json`).get();
+      if (file && validMap(file.doc) && file.doc.id === id) maps.push(file.doc);
+    } catch { /* one bad city leaves the others */ }
+  }
+  try { storage.setItem(MAPS_KEY, JSON.stringify({ at: new Date().toISOString(), maps })); } catch { /* too big for this device: kept for this visit only */ }
+  return maps;
+}
+
+// The first open of a day says where George is: Central European time is Salzburg, anywhere else the UK.
+function ensureDayPlace(store, day, timeZone) {
+  const id = `day:${day}`;
+  if (store.doc().game?.[id]) return null;
+  return store.putGame(id, { day, place: CENTRAL.test(timeZone ?? '') ? 'salzburg' : 'uk' });
+}
+return { MAPS_KEY, safeArt, validMap, loadCachedMaps, refreshMaps, ensureDayPlace };
 })();
 
 // ---- planner/glance.js
@@ -7888,8 +8427,21 @@ const { logicalDay } = __js_dates;
 const { isDoc } = __js_doc;
 const { decodeBase64 } = __js_sync;
 const { API } = __planner_relay;
+const { validMap } = __js_map_files;
 
 const GLANCE_FILE = 'glance.json';
+
+// The map's private files (js/map/files.js), for the Map widget: none when there are none, or any fails.
+function readMaps(request, repo, headers) {
+  const raw = (path) => {
+    const res = request(`${API}/repos/${repo}/contents/${path}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+    if (res.status !== 200) return null;
+    try { return JSON.parse(res.text); } catch { return null; }
+  };
+  const index = raw('map/index.json');
+  const ids = Array.isArray(index?.cities) ? index.cities.filter((id) => /^[a-z0-9-]{1,40}$/.test(id)) : [];
+  return ids.map((id) => raw(`map/${id}.json`)).filter((m) => validMap(m));
+}
 
 function sameText(a, b) {
   const x = String(a);
@@ -7917,7 +8469,7 @@ function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), 
   let doc;
   try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
   if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
-  return reply(glanceOf(doc, logicalDay(now, dayStartHour), now));
+  return reply(glanceOf(doc, logicalDay(now, dayStartHour), now, readMaps(request, repo, headers)));
 }
 return { GLANCE_FILE, handleGlance };
 })();

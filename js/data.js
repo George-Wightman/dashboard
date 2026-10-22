@@ -95,7 +95,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
 
   const stamp = () => now().toISOString();
   const today = () => logicalDay(now(), settings.dayStartHour);
-  const notify = (reason) => { for (const fn of listeners) fn(reason); };
+  // Counts every change, so a view can tell its cached work is stale (js/ui/map.js).
+  let revision = 0;
+  const notify = (reason) => { revision++; for (const fn of listeners) fn(reason); };
 
   function save(key, value) {
     try {
@@ -562,6 +564,13 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // The calendar planner's records (js/calendar.js).
   const putCalendar = (id, fields, source = 'planner') => putRecord('calendar', id, fields, source);
 
+  // The map's choices (js/map/engine.js): one record each, so two devices' claims merge cleanly.
+  const putGame = (id, fields, source = 'me') => putRecord('game', id, fields, source).rec;
+
+  // A milestone remembers the day it was ticked, so the map can give its wonder card on that day.
+  const milestoneDone = (id, changes) => (Object.hasOwn(changes, 'done') && !!changes.done !== !!doc.milestones[id]?.done
+    ? { ...changes, doneOn: changes.done ? today() : null } : changes);
+
   // Food (js/food.js): a meal snapped (a photo and/or words, estimated later) or logged from a usual
   // meal (exact at once, and the usual meal counts a use); usual meals; Fuel's settings.
   function addMeal({ at, text = '', hasPhoto = false, usualId = null }) {
@@ -754,6 +763,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     now: () => now(),
     saveError: () => [...saveErrors.values()].join('; ') || null,
     loadError: () => loadError,
+    revision: () => revision,
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -776,8 +786,8 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     updateGoal: (id, changes) => patch('goals', id, changes),
     archiveGoal: (id) => patch('goals', id, { status: 'archived', archivedOn: today() }),
     addMilestone,
-    updateMilestone: (id, changes) => patch('milestones', id, changes),
-    toggleMilestone: (id) => patch('milestones', id, { done: !doc.milestones[id]?.done }),
+    updateMilestone: (id, changes) => patch('milestones', id, milestoneDone(id, changes)),
+    toggleMilestone: (id) => patch('milestones', id, milestoneDone(id, { done: !doc.milestones[id]?.done })),
     archiveMilestone: (id) => patch('milestones', id, { status: 'archived', archivedOn: today() }),
 
     saveJournal,
@@ -801,6 +811,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     pruneChanges,
 
     putCalendar,
+    putGame,
     putGym,
     setBack,
     soreFlag,

@@ -9,4 +9,5 @@
     <string name="w_goals">Goals: where each one stands</string>
     <string name="w_countdown">Countdown: the next date you\'re counting to</string>
     <string name="w_week">This week: your weekly targets</string>
+    <string name="w_map">Map: your land, tiles to claim and barbarians</string>
 </resources>

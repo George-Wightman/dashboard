@@ -25,7 +25,8 @@ export function saveNotePlace(storage, place) {
   try { storage.setItem(NOTE_KEY, NOTE_PLACES.includes(place) ? place : 'top'); } catch { /* this device only */ }
 }
 // `review` (the week in review) only shows Saturday to Monday, at the top.
-export const TILE_IDS = ['review', 'needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'week'];
+// `map` shows only once the sync repo has a map file (js/ui/map.js).
+export const TILE_IDS = ['review', 'needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'week', 'map'];
 export const DEFAULT_TILES = Object.freeze({ v: 1, order: Object.freeze([...TILE_IDS]), hidden: Object.freeze([]) });
 
 // The classic widgets with a tile. Note for Claude moved into the timeline; Muscles and Cardio

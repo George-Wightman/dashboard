@@ -27,7 +27,8 @@ private const val SAMPLE = """{"at":"2026-10-21T06:53:24.245Z","day":"2026-10-21
 "body":{"title":"Body","number":"30","caption":"of 90 cardio min this week","lines":["Gym 1 of 5 this week","Back this morning: fine"],"open":"https://george-wightman.github.io/dashboard/?big=body"},
 "goals":{"title":"Goals","number":"2","caption":"goals on the go","lines":["Read a novel: 7% · by 30 Nov","Learn to juggle: 0 of 5 · by 20 Dec"],"open":"https://george-wightman.github.io/dashboard/?big=goals"},
 "countdown":{"title":"Countdown","number":"17","caption":"days to The holiday","lines":[],"open":"https://george-wightman.github.io/dashboard/?big=countdown"},
-"week":{"title":"This week","number":"","caption":"","lines":["Nothing to show yet."],"open":"https://george-wightman.github.io/dashboard/?big=week"}}}"""
+"week":{"title":"This week","number":"","caption":"","lines":["Nothing to show yet."],"open":"https://george-wightman.github.io/dashboard/?big=week"},
+"map":{"title":"Townsby","number":"24","caption":"tiles","lines":["2 tiles to claim","Golden age · 3 days","Next tile 15/40"],"open":"https://george-wightman.github.io/dashboard/?big=map"}}}"""
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

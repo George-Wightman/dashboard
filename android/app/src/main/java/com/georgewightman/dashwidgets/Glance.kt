@@ -15,7 +15,7 @@ class GlanceException(message: String) : Exception(message)
 
 object Glance {
     const val SITE = "https://george-wightman.github.io/dashboard/"
-    val TILES = listOf("day", "fuel", "hebrew", "body", "goals", "countdown", "week")
+    val TILES = listOf("day", "fuel", "hebrew", "body", "goals", "countdown", "week", "map")
     // Not more often than this, however many widgets ask at once.
     private const val FRESH_MS = 5 * 60 * 1000L
     private const val PREFS = "glance"

@@ -11,6 +11,8 @@
     <color name="body">#FF8A65</color>
     <color name="on_body">#1D1A2B</color>
     <color name="goals">#FFE9D2</color>
+    <color name="map">#16324A</color>
+    <color name="on_map">#EAF0F4</color>
     <color name="accent">#3F3A9E</color>
     <color name="icon_bg">#FFF3E3</color>
 </resources>

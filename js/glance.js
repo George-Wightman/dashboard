@@ -14,9 +14,10 @@ import { weekStart, addDays, shortWeekday, shortDate, longDate } from './dates.j
 import { HEBREW_IDS } from './hebrewSync.js';
 import { cardioQuotaId, gymHabitId } from './gym.js';
 import { nextSession, BACK } from './coach.js';
+import { mapToday, glanceMap } from './map/summary.js';
 
 export const SITE = 'https://george-wightman.github.io/dashboard/';
-export const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week'];
+export const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week', 'map'];
 const LINES = 8;
 
 const values = (o) => Object.values(o ?? {});
@@ -147,16 +148,22 @@ function week(doc, today) {
   };
 }
 
-const MAKERS = { day, fuel, hebrew, body, goals, countdown, week };
-const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goals: 'Goals', countdown: 'Countdown', week: 'This week' };
+// The map (js/map/summary.js): only when the planner could read the private map files.
+function map(doc, today, now, maps) {
+  const got = mapToday(doc, maps, today);
+  return got ? glanceMap(got, SITE) : null;
+}
+
+const MAKERS = { day, fuel, hebrew, body, goals, countdown, week, map };
+const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goals: 'Goals', countdown: 'Countdown', week: 'This week', map: 'Map' };
 
 // Every widget's content for `today` at `now`. A tile with nothing to show says so, rather than vanish
 // from a home screen it was put on.
-export function glanceOf(doc, today, now = new Date()) {
+export function glanceOf(doc, today, now = new Date(), maps = []) {
   const tiles = {};
   for (const id of GLANCE_TILES) {
     let t = null;
-    try { t = MAKERS[id](doc, today, now); } catch { t = null; }
+    try { t = MAKERS[id](doc, today, now, maps); } catch { t = null; }
     t ??= { title: TITLES[id], number: '', caption: '', lines: ['Nothing to show yet.'], open: open(id) };
     const more = t.lines.length - LINES;
     tiles[id] = { ...t, lines: more > 0 ? [...t.lines.slice(0, LINES - 1), `+ ${more + 1} more`] : t.lines };
