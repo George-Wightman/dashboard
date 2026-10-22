@@ -93,22 +93,39 @@ test('a shift on top of a block moves it, and only it, with a note', () => {
   assert.ok(r.days[TUE].notes.includes('Moved Trace the pharma figure on Wed to 15:15 (Signify)'));
 });
 
-test('time freed up later in the day is used, not left as a hole', () => {
+test('a booked block stays put when earlier time opens up', () => {
+  // 22 Oct 2026: blocks slid earlier on nearly every run — cooking ended up at 08:45 — and George
+  // couldn't trust anything to be where he'd last seen it. Once booked, a block only moves for a clash.
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
-  assert.equal(span(cal.byTitle('Trace the pharma figure')), '13:15–13:45');
-  assert.equal(span(cal.byTitle('Trace the WHO figure')), '14:00–14:30');
-  // George drags Wednesday's gym into the afternoon. The late morning it freed is now the earliest
-  // the day's work can start, so it starts there rather than sitting behind an empty two hours.
   const gym = cal.all().find((e) => e.summary === 'Gym' && e.start.dateTime.startsWith(WED));
   cal.move(gym.id, WED, '15:00', '17:00');
   const r = step(cal, doc, now(TUE, '08:30'), first.days);
-  assert.equal(span(cal.byTitle('Trace the pharma figure')), '10:30–11:00');
-  assert.equal(span(cal.byTitle('Trace the WHO figure')), '11:15–11:45');
-  assert.ok(r.days[TUE].notes.includes('Moved Trace the pharma figure on Wed to 10:30 (earlier time opened up)'));
-  // And it settles there: a block already at its earliest fit has nowhere earlier to go, so the run
-  // ten minutes later moves nothing. Without that the day would creep every time the planner ran.
+  assert.equal(span(cal.byTitle('Trace the pharma figure')), '13:15–13:45');
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '14:00–14:30');
   assert.deepEqual(step(cal, doc, now(TUE, '08:40'), r.days).actions, []);
+});
+
+test('freed time is used when sliding is the only way the day fits its work', () => {
+  const doc = fixture({ items: [
+    task('a', 'Task A', 'Job search', WED),
+    task('b', 'Task B', 'Job search', WED),
+  ] });
+  doc.calendar.config = { id: 'config', status: 'active', dayHours: { [WED]: ['09:00', '12:00'] } };
+  const cal = new FakeCalendar([instance(GYM, 'Gym', WED, '09:00', '10:00', 'gym')]);
+  const first = step(cal, doc, now(TUE, '08:00'));
+  assert.equal(span(cal.byTitle('Task A')), '10:15–10:45');
+  assert.equal(span(cal.byTitle('Task B')), '11:00–11:30');
+  // The gym moves off and a 90-minute task arrives: with A and B where they are, it can't fit; slid
+  // into the freed hour, all three do.
+  cal.move(cal.all().find((e) => e.summary === 'Gym').id, WED, '15:00', '17:00');
+  doc.items.c = { ...doc.items.a, id: 'c', title: 'Task C', minutes: 90 };
+  step(cal, doc, now(TUE, '08:30'), first.days);
+  assert.deepEqual(summaries(cal).filter((s) => s.includes('Task')), [
+    '2026-09-16 09:00–09:30 Task A',
+    '2026-09-16 09:45–10:15 Task B',
+    '2026-09-16 10:30–12:00 Task C',
+  ]);
 });
 
 test('a hole left behind a block never drags it later', () => {
@@ -203,8 +220,8 @@ test('a block George deletes is not booked again that day', () => {
   assert.deepEqual(inserts(r), []);
   assert.deepEqual(r.days[WED].skipped, ['pharma']);
   assert.ok(cal.byTitle('Trace the WHO figure'));
-  // The time it freed isn't left as a hole: what was behind it slides up into it.
-  assert.equal(span(cal.byTitle('Trace the WHO figure')), '13:15–13:45');
+  // What was behind it stays where it was: nothing needed the time it freed.
+  assert.equal(span(cal.byTitle('Trace the WHO figure')), '14:00–14:30');
 });
 
 test('Hebrew and Gym: a session George placed stays; the other one moves off it', () => {
@@ -248,6 +265,32 @@ test('a task with a time is a fixed event: blocks go round it, and it gets a tic
   const ticked = fixture({ items: Object.values(doc.items), logs: [done('acday', WED, { at: at(WED, '17:05').toISOString() })] });
   step(cal, ticked, now(WED, '18:00'), first.days);
   assert.equal(span(cal.byTitle('✓ ASSESSMENT CENTRE')), '10:30–17:00');
+});
+
+test('an area with hours of its own books only in them, even past the day\'s hours', () => {
+  const doc = fixture({ items: [
+    task('cook', 'Cook: chilli', 'Food', WED, { minutes: 60 }),
+    task('who', 'Trace the WHO figure', 'Job search', WED),
+  ] });
+  doc.calendar.config = { id: 'config', status: 'active', areaHours: { food: ['18:30', '21:00'] } };
+  const cal = new FakeCalendar();
+  step(cal, doc, now(TUE, '08:00'));
+  assert.deepEqual(summaries(cal), [
+    '2026-09-16 09:00–09:30 Trace the WHO figure',
+    '2026-09-16 18:30–19:30 Cook: chilli',
+  ]);
+});
+
+test('a task with a time moved to a later day takes its block with it, even once the old one has passed', () => {
+  // 22 Oct 2026: "Email James" was booked for Wednesday 19:00, missed, and moved to Friday from the
+  // dashboard. Its Wednesday block was in the past, so it stayed there, and Friday got nothing.
+  const doc = fixture({ items: [task('james', 'Email James', 'Job search', MON, { time: '19:00', minutes: 20 })] });
+  const cal = new FakeCalendar();
+  const first = step(cal, doc, now(MON, '08:00'));
+  assert.deepEqual(summaries(cal), ['2026-09-14 19:00–19:20 Email James']);
+  doc.items.james = { ...doc.items.james, date: WED, time: '17:00' };
+  step(cal, doc, now(TUE, '08:00'), first.days);
+  assert.deepEqual(summaries(cal), ['2026-09-16 17:00–17:20 Email James']);
 });
 
 test('at 20:00 the day after tomorrow turns exact where it stands', () => {

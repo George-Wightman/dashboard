@@ -124,3 +124,32 @@ test('ensureCommitment: the day as it stands at the lock, written once', () => {
 
 // ---- The Coach ---------------------------------------------------------------------------------
 
+
+// ---- Meals --------------------------------------------------------------------------------------
+
+const OCT23 = '2026-10-23';
+const meal = (id, day, extra = {}) => ({ id, kind: 'meal', day, at: `${day}T12:00:00.000Z`, slot: 'lunch', status: 'active', ...extra });
+function withMeals(items, meals) {
+  const d = doc({ items });
+  for (const m of meals) d.meals[m.id] = m;
+  return d;
+}
+
+test('logging meals is a row of its own from 23 October, done at three meals', () => {
+  const s = dayScore(withMeals([walk], [meal('m1', OCT23), meal('m2', OCT23)]), OCT23);
+  assert.deepEqual([s.done, s.total], [0, 2]);
+  const row = s.open.find((r) => r.kind === 'meals');
+  assert.deepEqual([row.logged, row.needed, row.item.title], [2, 3, 'Log your meals']);
+  const full = dayScore(withMeals([walk], [meal('m1', OCT23), meal('m2', OCT23), meal('m3', OCT23, { slot: 'snack' })]), OCT23);
+  assert.deepEqual([full.done, full.total], [1, 2]);
+  assert.ok(full.doneRows.some((r) => r.kind === 'meals'));
+});
+
+test('meals don\'t count before 23 October, nor archived ones, nor on a day off', () => {
+  assert.equal(dayScore(withMeals([walk], []), '2026-10-22').total, 1);
+  const archived = dayScore(withMeals([walk], ['a', 'b', 'c'].map((id) => meal(id, OCT23, { status: 'archived' }))), OCT23);
+  assert.deepEqual([archived.done, archived.total], [0, 2]);
+  const off = withMeals([walk], [meal('old', '2026-10-20')]);
+  off.calendar['off:x'] = { id: 'off:x', status: 'active', start: OCT23, end: OCT23, areas: [], reason: 'Away' };
+  assert.equal(dayScore(off, OCT23).total, 0);
+});

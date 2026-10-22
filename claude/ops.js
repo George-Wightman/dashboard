@@ -566,7 +566,7 @@ const settingText = (field, value) => {
 };
 
 // Changes the planner's settings (js/calendar.js); every other setting is kept. areaCalendars,
-// areaColors and dayHours change one key at a time (null removes a key). An area colour one of
+// areaColors, dayHours and areaHours change one key at a time (null removes a key). An area colour one of
 // George's calendars already takes (the planner's status says which) is refused.
 function planner(store, op) {
   const fields = Object.keys(op).filter((k) => k !== 'op');

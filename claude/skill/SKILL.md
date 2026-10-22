@@ -197,8 +197,9 @@ have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
   booked first, starred on his list.
 - **Area colours** — `{"op": "planner", "areaColors": {"Assessment centre": "Grape"}}` (Google's colour
   names). The `planner` read lists the colours his calendars already take; don't reuse those.
-- **One setting at a time** — `areaCalendars`, `areaColors` and `dayHours` change one key per op
-  (`null` removes it); `dayHours` sets planning hours for a date.
+- **One setting at a time** — `areaCalendars`, `areaColors`, `dayHours` and `areaHours` change one
+  key per op (`null` removes it); `dayHours` sets planning hours for a date, `areaHours` an area's own
+  hours (cooking in the evening).
 - **Attention** — read `attention` in *plan my week* and whenever George asks how things stand, then
   fix what you can (lengths, stuck tasks, targets behind) and tell him the rest.
 - **Flags** — ⚑ in the app is his inbox for you: *For Claude*, *Feature*, *Bug*, *Note*. `flags`

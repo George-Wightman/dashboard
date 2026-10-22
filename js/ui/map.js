@@ -11,6 +11,7 @@ import {
   decoSvg, findSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadSvg, bannerSvg, pinSvg, mix,
 } from './map-art.js';
 import { addDays, shortDate } from '../dates.js';
+import { dayPoints } from '../map/points.js';
 
 export const SEEN_KEY = 'dash_map_seen';
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -68,9 +69,10 @@ export function describeTile(state, map, k) {
   return [title, lines];
 }
 
-export function tileLines(state, map) {
+export function tileLines(state, map, points = null) {
   const L = lookups(map);
   const out = [];
+  if (points) out.push(`Today +${points.earned}${points.toEarn ? `, +${points.toEarn} to go` : ''}${points.bonus.earned ? ' · finished' : ''}`);
   if (state.ready) out.push(`${plural(state.ready, 'tile')} to claim`);
   if (state.cards.length) out.push(`${plural(state.cards.length, 'card')} to place`);
   if (state.golden.on) out.push(`Golden age: ${state.golden.run} finished days in a row`);
@@ -225,7 +227,7 @@ export function renderMapTile(ctx) {
   const pic = svgEl(boxAround(state.visible, S * 2.5), mapSvg(state, map, { today, fresh, id: 'mt' }), 'map-pic');
   const ham = h('b', { class: 'map-ham' }, `${state.pool}`);
   if (morning && state.last.hammers) countUp(ham, state.pool);
-  const lines = tileLines(state, map);
+  const lines = tileLines(state, map, dayPoints(ctx.store.doc(), today, map));
   const yesterday = state.last ? morningLine(state.last) : null;
   return h('div', { class: 'map-tile' },
     h('p', { class: 'tile-hero' }, h('span', { class: 'tile-num' }, String(state.owned.size)), h('span', { class: 'tile-cap' }, `tiles of ${map.name}`)),
@@ -303,7 +305,25 @@ export function renderMapBig(ctx) {
         animateView(ctx, svg, f());
       } }, name === 'land' ? map.name : name === 'england' ? 'England' : 'Europe')),
   h('button', { class: 'dl-btn', type: 'button', onclick: () => playHistory(ctx, svg, { map, state, today }) }, 'Watch it grow'));
-  return h('div', { class: 'map-big' }, hud, box, zoom, h('h3', {}, 'Cards'), cards, tracks, chronicle(state));
+  return h('div', { class: 'map-big' }, hud, box, zoom, pointsSection(ctx.store.doc(), today, map), h('h3', {}, 'Cards'), cards, tracks, chronicle(state));
+}
+
+// Today's checklist (js/map/points.js): every row that counts, what it's worth, and whether it's in.
+const POINT_MARK = { earned: '✓', open: '○', optional: '·', pushed: '↷', missed: '✗', released: '–' };
+const POINT_STATE = { earned: 'Earned', open: 'Still to do: a miss if not', optional: 'Optional today', pushed: 'Pushed: not counted today', missed: 'A miss', released: 'No longer needed' };
+export function pointsSection(doc, today, map) {
+  const p = dayPoints(doc, today, map);
+  const head = `+${p.earned} so far${p.toEarn ? ` · +${p.toEarn} still to earn` : ''}`;
+  const bonus = p.bonus.earned ? `Day finished: +${p.bonus.amount} bonus`
+    : p.bonus.possible ? `Finish all ${p.total} for +${p.bonus.amount} (${p.bonus.left} to go)` : 'Fewer than 3 rows count today, so no finished-day bonus';
+  return h('section', { class: 'map-points' },
+    h('h3', {}, "Today's points"),
+    h('p', { class: 'map-points-head' }, h('b', {}, head), h('span', { class: `map-chip${p.bonus.earned ? ' gold' : ''}` }, bonus)),
+    h('ul', {}, p.rows.map((r) => h('li', { class: `pt pt-${r.state}`, style: r.track ? `--track:${TRACK_COLOUR[r.track] ?? 'transparent'}` : null, title: POINT_STATE[r.state] },
+      h('span', { class: 'pt-mark', 'aria-label': POINT_STATE[r.state] }, POINT_MARK[r.state]),
+      h('span', { class: 'pt-title' }, r.title, r.note ? h('small', {}, r.note) : null),
+      h('span', { class: 'pt-ham' }, r.hammers ? `+${r.hammers}` : '0')))),
+    h('p', { class: 'muted' }, `An hour or more planned is worth 20, anything shorter 10. ${p.cardio.minutes ? `Cardio today: ${p.cardio.minutes} minutes, a road step per ${p.cardio.perStep}. ` : 'Cardio builds roads, a step per 10 minutes. '}Weekly targets don't count; a goal step earns a wonder card.`));
 }
 
 function chronicle(state) {

@@ -5,6 +5,7 @@ import { timeOff, excused, offCovers } from './calendar.js';
 import { blockers, completedBefore } from './workflow.js';
 import { plannedTaskDay, bookingsFor, localDate } from './plan-state.js';
 import { DUOLINGO_SOURCE } from './duolingo.js';
+import { mealsOn } from './food.js';
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -111,6 +112,20 @@ export function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) 
     }
   }
   return rows.sort(byOrder);
+}
+
+// Logging what he eats is a row of its own from 23 October 2026 (he asked for it to count): done
+// once three meals are logged for the day. Any three, snacks included — a meal's name comes from the
+// time it's logged at, so a late dinner reads as a snack. Nothing ticks it; the meals are the tick.
+// It isn't one of his items, so it's never on the list itself (js/ui/today.js draws it); and with no
+// meal ever logged, Food isn't in use and there's no row.
+export const MEALS_ROW = { id: 'meals', type: 'meals', title: 'Log your meals', area: 'Health', created: '2026-10-23', status: 'active', order: 1e9 };
+export const MEALS_NEEDED = 3;
+
+export function mealsRow(doc, day, offs = timeOff(doc)) {
+  if (day < MEALS_ROW.created || !values(doc.meals).length || (offs.length && excused(doc, MEALS_ROW, day, offs))) return null;
+  const logged = mealsOn(doc, day).length;
+  return { item: MEALS_ROW, kind: 'meals', done: logged >= MEALS_NEEDED, logged, needed: MEALS_NEEDED, carriedFrom: null, suggested: false };
 }
 
 // Amounts logged against an item or a goal in the Monday–Sunday week containing `day`.
@@ -239,6 +254,8 @@ export function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
     if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
     else counted.push(r);
   }
+  const meals = mealsRow(doc, day, offs);
+  if (meals) counted.push(meals);
   const pushed = [];
   const missed = [];
   const dropped = [];
@@ -287,7 +304,8 @@ export function dayDetail(doc, day) {
   const amounts = activeLogs(doc, (l) => l.kind === 'amount' && l.day === day)
     .map((log) => ({ log, item: doc.items[log.itemId] ?? null, goal: doc.goals[log.goalId] ?? null }))
     .sort((a, b) => ((a.log.at ?? '') < (b.log.at ?? '') ? -1 : 1));
-  return { rows: rowsForDay(doc, day, doneIndex(doc)), amounts };
+  const meals = mealsRow(doc, day);
+  return { rows: [...rowsForDay(doc, day, doneIndex(doc)), ...(meals ? [meals] : [])], amounts };
 }
 
 export function goalTotal(doc, goalId) {

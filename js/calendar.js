@@ -16,6 +16,7 @@ export const CALENDAR_DEFAULTS = {
   priorityAreas: [],
   areaColors: {},
   dayHours: {},
+  areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
   nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
@@ -112,10 +113,16 @@ export const CONFIG_CHECKS = {
     if (!ok) throw new Error(`${field} should map a date to two times, like {"2026-09-18": ["09:00", "13:00"]}`);
     return Object.fromEntries(Object.entries(v).map(([d, h]) => [d, [h[0], h[1]]]));
   },
+  areaHours: (v, field) => {
+    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([a, h]) => text(a)
+      && Array.isArray(h) && h.length === 2 && clockMinutes(h[0]) != null && clockMinutes(h[1]) != null && clockMinutes(h[0]) < clockMinutes(h[1]));
+    if (!ok) throw new Error(`${field} should map an area to two times, like {"Food": ["16:30", "20:00"]}`);
+    return Object.fromEntries(Object.entries(v).map(([a, h]) => [a.trim(), [h[0], h[1]]]));
+  },
 };
 
 // Settings that change one key at a time: a key set to null is removed; the rest are kept.
-export const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours'];
+export const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours', 'areaHours'];
 
 export function mergeSetting(field, current, value) {
   if (!MERGED_SETTINGS.includes(field) || !value || typeof value !== 'object' || Array.isArray(value)) return value;

@@ -136,6 +136,7 @@ function plannerRead(doc, day) {
   out.push(`  ignore: ${config.ignore.join(', ') || 'nothing'}`);
   out.push(`  priorityAreas: ${config.priorityAreas.join(', ') || 'none'} · areaColors: ${Object.entries(config.areaColors).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'}`);
   out.push(`  dayHours: ${Object.entries(config.dayHours).map(([d, [f, t]]) => `${d} ${f}–${t}`).join(', ') || 'none'}`);
+  out.push(`  areaHours: ${Object.entries(config.areaHours).map(([a, [f, t]]) => `${a} ${f}–${t}`).join(', ') || 'none'}`);
   out.push(`  duolingo: ${config.duolingo || 'not set (Duolingo unchecked)'}`);
   const duo = config.duolingo ? duolingoStatusLine(doc, when) : null;
   if (duo) out.push(`  ${duo}`);

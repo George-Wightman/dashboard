@@ -295,12 +295,16 @@ name), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` �
 start of its title, and the events that are its sessions), `priorityAreas` (areas booked first and
 starred), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour names: Lavender, Sage, Grape,
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
-take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `nudges` (`false` turns off
+take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `areaHours`
+(`{"Food": ["16:30", "20:00"]}` — an area booked only in its own hours, inside the day's hours or not:
+cooking in the evening rather than first thing), `nudges` (`false` turns off
 the pushes before a miss: the back question at 07:30, lunch at 14:00, Hebrew at 20:00, a session half an
 hour ahead; on by default, at most four a day), `duolingo` (George's Duolingo username, `""` to stop: the
 planner adds his Hebrew course's XP to the day as a `duolingo:<day>` log on Hebrew practice. A
 Duolingo-only day keeps the streak but isn't ticked or counted as done; rows say *Duolingo only (N XP)*). `areaCalendars`,
-`areaColors` and `dayHours` change one key at a time; `null` removes a key.
+`areaColors`, `dayHours` and `areaHours` change one key at a time; `null` removes a key.
+A block the planner booked stays where it is from run to run; it moves only for a clash, or earlier
+when that's the only way the day fits its work.
 
 ### `off`
 Time off. `{"op": "off", "start": "2026-09-16", "end": "2026-09-17", "areas": ["Job search"], "reason": "…"}`

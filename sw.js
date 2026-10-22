@@ -12,7 +12,7 @@ const SHELL = [
   'js/ui/widgets.js', 'js/ui/flags.js', 'js/ui/changes.js', 'js/ui/claude.js', 'js/ui/sources.js', 'js/ui/gym.js', 'js/ui/hebrew.js', 'js/ui/countdown.js', 'js/ui/big.js',
   'js/ui/training.js',
   'js/sky.js', 'js/timeline.js', 'js/header.js', 'js/needs.js', 'js/tiles.js', 'js/ui/sky.js', 'js/ui/timeline.js', 'js/ui/tiles.js', 'js/ui/needs.js', 'js/food.js', 'js/photos.js', 'js/ui/snap.js', 'js/ui/fuel.js', 'js/coach.js', 'js/ui/coach.js', 'js/ui/hebrewlog.js', 'js/travel.js', 'js/nudges.js', 'js/review.js', 'js/ui/review.js', 'js/ui/noteslot.js', 'js/jobs.js', 'js/voice.js', 'js/ui/timedrag.js', 'js/glance.js', 'js/stt.js', 'js/stt-worker.js',
-  'js/map/hex.js', 'js/map/engine.js', 'js/map/files.js', 'js/map/summary.js', 'js/ui/map.js', 'js/ui/map-art.js',
+  'js/map/hex.js', 'js/map/engine.js', 'js/map/files.js', 'js/map/summary.js', 'js/map/points.js', 'js/ui/map.js', 'js/ui/map-art.js',
 ];
 
 const META = 'today-dashboard-meta';

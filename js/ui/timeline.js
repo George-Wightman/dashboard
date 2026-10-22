@@ -11,7 +11,7 @@ import { todayRows } from '../schedule.js';
 import { todaySlots, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { scheduleView } from '../plan-state.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
-import { renderRow, listRows } from './today.js';
+import { renderRow, listRows, renderMealsRow } from './today.js';
 import { enableTimeDrag } from './timedrag.js';
 import { renderCheckin } from './checkin.js';
 import { renderBackRow, sessionExtras } from './coach.js';
@@ -107,6 +107,8 @@ export function renderTimeline(ctx) {
     if (draggable(row)) li.dataset.drag = '1';
     return [li, ...extra];
   });
+  const meals = renderMealsRow(ctx);
+  if (meals) anytime.push(meals);
 
   const back = renderBackRow(ctx);
   const checkin = renderCheckin(ctx);

@@ -48,7 +48,7 @@ Unasked, leave his calendar alone. When something is wrong on it, the fix is in 
 | What's wrong | What to change |
 | --- | --- |
 | Booked on a day he isn't working | `off` |
-| In the wrong place in the day | `planner` `hours`, or `dayHours` for one date |
+| In the wrong place in the day | `planner` `hours`, `dayHours` for one date, or `areaHours` for an area (cooking in the evening) |
 | On the wrong calendar | `planner` `areaCalendars` for that area |
 | Too long, too short, or no length | `edit` with `minutes` |
 | Should happen at a set time | `edit` with `time` — on a task **or** a habit |

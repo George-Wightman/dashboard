@@ -353,7 +353,11 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
         actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
         continue;
       }
-      const span = want && !pinned && start > nowMs ? { start: want.start, end: want.end } : { start, end };
+      // A block already over stays as the record of its time — unless the task has since been given
+      // a time still to come: then it was moved, and its block goes with it (22 Oct 2026: "Email
+      // James" sat on a Wednesday gone by while Friday, where it had been moved, got nothing).
+      const moveOn = want && !pinned && (start > nowMs || (end <= nowMs && !finished && want.start > nowMs));
+      const span = moveOn ? { start: want.start, end: want.end } : { start, end };
       const name = want?.title ?? base;
       settle(span, 'fixed', finished ? `✓ ${name}` : name, ids, name);
       continue;
@@ -488,11 +492,21 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   });
 
   // ---- What needs time, and where it goes ---------------------------------------------------------
-  const windowOf = (d) => {
-    const [from, to] = config.dayHours[d] ?? config.hours;
+  const windowOf = (d, hours = config.dayHours[d] ?? config.hours) => {
+    const [from, to] = hours;
     const open = at(d, from).getTime();
     const close = at(d, to).getTime();
     return { open, start: dayClosed(doc, d) ? close : d === today ? Math.max(open, ceilQuarter(nowMs)) : open, end: close };
+  };
+  // An area with hours of its own (areaHours: cooking in the evening) books only in them, inside the
+  // day's hours or not: earliest-first put a Saturday's cooking at 08:45 (22 Oct 2026).
+  const areaHoursOf = (area) => {
+    const k = Object.keys(config.areaHours ?? {}).find((a) => norm(a) === norm(area));
+    return k === undefined ? null : config.areaHours[k];
+  };
+  const winFor = (b, d) => {
+    const own = areaHoursOf(b.area);
+    return own ? windowOf(d, own) : windowOf(d);
   };
   const todayWindow = windowOf(today);
   const todayClosed = dayClosed(doc, today) || todayWindow.start + MIN_BLOCK > todayWindow.end;
@@ -572,7 +586,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
 
     // The day packed around what's already fixed. `order` is who gets first refusal; the blocks that
     // can stay put are settled the same way whatever the order, so two orders can be compared fairly.
-    const pack = (order) => {
+    const pack = (order, slide = false) => {
       const taken = [...hard];
       const slot = new Map();
       const take = (b, s) => { slot.set(b.key, s); taken.push({ start: s, end: s + b.minutes * MINUTE, title: b.base }); };
@@ -583,13 +597,20 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
           if (!ex || localDay(ex.start) !== d) continue;
           const length = b.minutes * MINUTE;
           const s = ex.start.getTime();
-          // A block the planner placed itself keeps its slot, but slides *earlier* in the day when
-          // earlier time has opened up: George moved a gym session off the late morning and the two
-          // hours it freed sat empty all day, while the work that wanted them cascaded into the rest
-          // of the week. Earlier only — moving a block later would push work into the evening for no
-          // reason, and one already at its earliest fit doesn't move at all, so nothing drifts
-          // between runs. A block George moved himself isn't here: those are pinned before this.
-          const w = seriesWindow(b, d, { start: win.open, end: Math.min(win.end, s + length) }, slot);
+          const bw = winFor(b, d);
+          // A block the planner placed itself keeps its slot while nothing clashes with it: blocks
+          // that slid earlier whenever time opened up left George unable to trust anything to be
+          // where he'd last seen it (22 Oct 2026). Sliding — earlier only, never later — is kept for
+          // when it's the only way the day fits its work (`slide`, tried below when work is
+          // bumped): a gym session moved off the late morning once left two hours empty while the
+          // work that wanted them cascaded into the rest of the week. A block George moved himself
+          // isn't here: those are pinned before this.
+          if (!slide) {
+            const w = seriesWindow(b, d, bw, slot);
+            if (w && s >= w.start && s + length <= w.end && fits(s, s + length, busyFor(b), gap)) take(b, s);
+            continue;
+          }
+          const w = seriesWindow(b, d, { start: bw.open, end: Math.min(bw.end, s + length) }, slot);
           const to = w && earliestFit(length, w, busyFor(b), gap);
           if (to != null) take(b, to);
         }
@@ -597,10 +618,11 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       const bumped = [];
       for (const b of inSeriesOrder(order, rankOf)) {
         if (slot.has(b.key)) continue;
-        const w = seriesWindow(b, d, win, slot);
+        const bw = winFor(b, d);
+        const w = seriesWindow(b, d, bw, slot);
         let s = w && earliestFit(b.minutes * MINUTE, w, busyFor(b), gap);
         if (s == null && w) {
-          const loose = seriesWindow(b, d, win, slot, true);
+          const loose = seriesWindow(b, d, bw, slot, true);
           s = earliestFit(b.minutes * MINUTE, loose, busyFor(b), gap);
         }
         if (s != null) take(b, s);
@@ -614,16 +636,20 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
 
     // Biggest-first is usually right, but a carried block takes first refusal however short it is,
     // and a long one that then has nowhere to go leaves the day short of work it had room for. So
-    // when anything is bumped, try again with the bumped blocks first and keep whichever
-    // arrangement strands less. Only two orders, both settled the same way, so the result is stable.
+    // when anything is bumped, try again with the bumped blocks first, then both orders with booked
+    // blocks free to slide earlier, and keep whichever arrangement strands less — the first of them
+    // on a tie, so blocks stay put unless moving them fits more. All settled the same way, so the
+    // result is stable.
     let { slot, bumped } = pack(queue);
     if (bumped.length) {
       const jumped = new Set(bumped.map((b) => b.key));
-      const alt = pack([...bumped, ...queue.filter((b) => !jumped.has(b.key))]);
+      const first = [...bumped, ...queue.filter((b) => !jumped.has(b.key))];
       const stranded = (list) => list.reduce((n, b) => n + b.minutes, 0);
-      if (alt.bumped.length < bumped.length
-        || (alt.bumped.length === bumped.length && stranded(alt.bumped) < stranded(bumped))) {
-        ({ slot, bumped } = alt);
+      for (const alt of [pack(first), pack(queue, true), pack(first, true)]) {
+        if (alt.bumped.length < bumped.length
+          || (alt.bumped.length === bumped.length && stranded(alt.bumped) < stranded(bumped))) {
+          ({ slot, bumped } = alt);
+        }
       }
     }
 

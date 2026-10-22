@@ -569,6 +569,19 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .map-track { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-weight: 600; }
 .map-track .map-bar { margin-left: 0; background: color-mix(in srgb, var(--dl-ink) 12%, transparent); }
 .map-track .map-bar i { background: var(--track); }
+.map-points h3 { margin: 0 0 6px; }
+.map-points-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 0 0 8px; font-size: 16px; }
+.map-points ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.map-points .pt { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: baseline; padding: 5px 8px; border-left: 3px solid var(--track, transparent); border-radius: 6px; }
+.map-points .pt-mark { font-weight: 800; text-align: center; }
+.map-points .pt-title small { display: block; color: var(--dl-muted); font-size: 13px; }
+.map-points .pt-ham { font-weight: 700; font-variant-numeric: tabular-nums; }
+.map-points .pt-earned { background: color-mix(in srgb, var(--dl-gold) 14%, transparent); }
+.map-points .pt-earned .pt-mark { color: var(--dl-gold); }
+.map-points .pt-open .pt-ham, .map-points .pt-optional .pt-ham { color: var(--dl-muted); }
+.map-points .pt-pushed, .map-points .pt-released { color: var(--dl-muted); }
+.map-points .pt-missed .pt-mark, .map-points .pt-missed .pt-ham { color: #d4553f; }
+.map-points > .muted { margin: 8px 0 0; font-size: 13px; }
 .map-chronicle ol { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
 .map-chronicle li { display: block; line-height: 1.45; }
 .map-chronicle q { display: block; margin-top: 2px; font-style: italic; color: var(--dl-muted); }

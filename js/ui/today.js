@@ -5,13 +5,14 @@
 // Hebrew's in Hebrew, the rest in This week (js/ui/side.js).
 
 import { h } from './dom.js';
-import { todayRows, streak, doneBetween } from '../schedule.js';
+import { todayRows, streak, doneBetween, mealsRow } from '../schedule.js';
 import { carryLabel, addDays, weekStart, forLabel } from '../dates.js';
 import { sourceMark, logoMark } from './sources.js';
 import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { openOutcome } from './outcome.js';
 import { renderCheckin, tickAndAsk } from './checkin.js';
+import { openSnap } from './snap.js';
 
 // A weekly habit's dots: one per time a week, filled for each tick so far.
 export function pipState(ticks, n) {
@@ -128,6 +129,19 @@ export function renderRow(row, ctx, slot = null, star = false, via = null) {
     sourceMark(item.source, 'added'), item.area, progressCell(row, ctx)));
 }
 
+// Logging meals (js/schedule.js's mealsRow): a row that counts like any other but ticks itself at
+// three meals logged. Its box can't be ticked by hand; its title logs a meal.
+export function renderMealsRow(ctx) {
+  const row = mealsRow(ctx.store.doc(), ctx.store.today());
+  if (!row) return null;
+  const said = `${row.logged} of ${row.needed} logged`;
+  return h('li', { class: `row bare no-prog meals-row${row.done ? ' done' : ''}`, 'data-id': row.item.id, 'data-area': row.item.area },
+    h('input', { type: 'checkbox', checked: row.done, disabled: true, title: `Ticks itself once ${row.needed} meals are logged`, 'aria-label': `Done: ${row.item.title}` }),
+    mainCell(h('span', { class: 'title-cell' },
+      h('span', { class: 'title', title: 'Log a meal', onclick: () => openSnap(ctx) }, row.item.title),
+      row.done ? null : h('span', { class: 'carry' }, said)), null, row.item.area));
+}
+
 // Dragging reorders within a row's own group (done or not), inside whichever list the row is in:
 // Today's list on the classic screen, "Any time today" in Daylight's timeline.
 export function enableDrag(li, row, ctx) {
@@ -188,5 +202,7 @@ export function renderToday(ctx) {
     if (row.item.notes && ctx.ui.noteFor === row.item.id) els.push(h('li', { class: 'note-row' }, row.item.notes));
   };
   timedOrder(rows, slots).forEach(add);
+  const meals = renderMealsRow(ctx);
+  if (meals) els.push(meals);
   list.replaceChildren(...els);
 }

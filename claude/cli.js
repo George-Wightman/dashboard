@@ -21,7 +21,10 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { mapToday, mapSummary, readMaps } from '../js/map/summary.js';
 import { validMap } from '../js/map/files.js';
+import { dayPoints, pointsLines } from '../js/map/points.js';
 
+// The map in words, then today's points row by row: what's counting and what isn't.
+const mapLines = (doc, today, got) => [...mapSummary(got), ...pointsLines(dayPoints(doc, today, got.map))];
 const saveFile = (path, bytes) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, bytes); };
 
 // Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
@@ -235,7 +238,7 @@ export async function main({
       try {
         say(READS.catchup(store.doc(), store.today(), rest.join(' '), now()));
         const got = mapToday(store.doc(), await readMaps(files, validMap).catch(() => []), store.today());
-        if (got) say(['', 'The map', ...mapSummary(got).map((l) => `  ${l}`)].join('\n'));
+        if (got) say(['', 'The map', ...mapLines(store.doc(), store.today(), got).map((l) => `  ${l}`)].join('\n'));
       } catch (e) {
         say(e.message);
         return finish(1);
@@ -252,7 +255,7 @@ export async function main({
     // The map (js/map/summary.js), from the private map files beside data.json.
     if (command === 'map') {
       const got = mapToday(store.doc(), await readMaps(files, validMap).catch(() => []), store.today());
-      say(got ? mapSummary(got).join('\n') : 'There is no map yet: the sync repo has no map files.');
+      say(got ? mapLines(store.doc(), store.today(), got).join('\n') : 'There is no map yet: the sync repo has no map files.');
       return finish(0);
     }
 

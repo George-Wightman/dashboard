@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '1dd10ac0';
+var PLANNER_BUILD = '8d427d0b';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1256,6 +1256,7 @@ const CALENDAR_DEFAULTS = {
   priorityAreas: [],
   areaColors: {},
   dayHours: {},
+  areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
   nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
@@ -1352,10 +1353,16 @@ const CONFIG_CHECKS = {
     if (!ok) throw new Error(`${field} should map a date to two times, like {"2026-09-18": ["09:00", "13:00"]}`);
     return Object.fromEntries(Object.entries(v).map(([d, h]) => [d, [h[0], h[1]]]));
   },
+  areaHours: (v, field) => {
+    const ok = v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([a, h]) => text(a)
+      && Array.isArray(h) && h.length === 2 && clockMinutes(h[0]) != null && clockMinutes(h[1]) != null && clockMinutes(h[0]) < clockMinutes(h[1]));
+    if (!ok) throw new Error(`${field} should map an area to two times, like {"Food": ["16:30", "20:00"]}`);
+    return Object.fromEntries(Object.entries(v).map(([a, h]) => [a.trim(), [h[0], h[1]]]));
+  },
 };
 
 // Settings that change one key at a time: a key set to null is removed; the rest are kept.
-const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours'];
+const MERGED_SETTINGS = ['areaCalendars', 'areaColors', 'dayHours', 'areaHours'];
 
 function mergeSetting(field, current, value) {
   if (!MERGED_SETTINGS.includes(field) || !value || typeof value !== 'object' || Array.isArray(value)) return value;
@@ -1940,6 +1947,7 @@ const { timeOff, excused, offCovers } = __js_calendar;
 const { blockers, completedBefore } = __js_workflow;
 const { plannedTaskDay, bookingsFor, localDate } = __js_plan_state;
 const { DUOLINGO_SOURCE } = __js_duolingo;
+const { mealsOn } = __js_food;
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -2046,6 +2054,20 @@ function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
     }
   }
   return rows.sort(byOrder);
+}
+
+// Logging what he eats is a row of its own from 23 October 2026 (he asked for it to count): done
+// once three meals are logged for the day. Any three, snacks included — a meal's name comes from the
+// time it's logged at, so a late dinner reads as a snack. Nothing ticks it; the meals are the tick.
+// It isn't one of his items, so it's never on the list itself (js/ui/today.js draws it); and with no
+// meal ever logged, Food isn't in use and there's no row.
+const MEALS_ROW = { id: 'meals', type: 'meals', title: 'Log your meals', area: 'Health', created: '2026-10-23', status: 'active', order: 1e9 };
+const MEALS_NEEDED = 3;
+
+function mealsRow(doc, day, offs = timeOff(doc)) {
+  if (day < MEALS_ROW.created || !values(doc.meals).length || (offs.length && excused(doc, MEALS_ROW, day, offs))) return null;
+  const logged = mealsOn(doc, day).length;
+  return { item: MEALS_ROW, kind: 'meals', done: logged >= MEALS_NEEDED, logged, needed: MEALS_NEEDED, carriedFrom: null, suggested: false };
 }
 
 // Amounts logged against an item or a goal in the Monday–Sunday week containing `day`.
@@ -2174,6 +2196,8 @@ function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
     if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
     else counted.push(r);
   }
+  const meals = mealsRow(doc, day, offs);
+  if (meals) counted.push(meals);
   const pushed = [];
   const missed = [];
   const dropped = [];
@@ -2222,7 +2246,8 @@ function dayDetail(doc, day) {
   const amounts = activeLogs(doc, (l) => l.kind === 'amount' && l.day === day)
     .map((log) => ({ log, item: doc.items[log.itemId] ?? null, goal: doc.goals[log.goalId] ?? null }))
     .sort((a, b) => ((a.log.at ?? '') < (b.log.at ?? '') ? -1 : 1));
-  return { rows: rowsForDay(doc, day, doneIndex(doc)), amounts };
+  const meals = mealsRow(doc, day);
+  return { rows: [...rowsForDay(doc, day, doneIndex(doc)), ...(meals ? [meals] : [])], amounts };
 }
 
 function goalTotal(doc, goalId) {
@@ -2251,7 +2276,7 @@ function goalProgress(doc, goal) {
   const ticked = live.filter((m) => m.done).length;
   return { numeric: false, done: ticked, total: live.length, pct: live.length ? Math.round((ticked / live.length) * 100) : 0 };
 }
-return { countsOn, doneIndex, duolingoOn, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, dayScore, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
+return { countsOn, doneIndex, duolingoOn, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, MEALS_ROW, MEALS_NEEDED, mealsRow, weekTotal, todayRows, streak, dayCompletion, dayScore, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
 })();
 
 // ---- js/gym.js
@@ -5146,7 +5171,11 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
         actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
         continue;
       }
-      const span = want && !pinned && start > nowMs ? { start: want.start, end: want.end } : { start, end };
+      // A block already over stays as the record of its time — unless the task has since been given
+      // a time still to come: then it was moved, and its block goes with it (22 Oct 2026: "Email
+      // James" sat on a Wednesday gone by while Friday, where it had been moved, got nothing).
+      const moveOn = want && !pinned && (start > nowMs || (end <= nowMs && !finished && want.start > nowMs));
+      const span = moveOn ? { start: want.start, end: want.end } : { start, end };
       const name = want?.title ?? base;
       settle(span, 'fixed', finished ? `✓ ${name}` : name, ids, name);
       continue;
@@ -5281,11 +5310,21 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   });
 
   // ---- What needs time, and where it goes ---------------------------------------------------------
-  const windowOf = (d) => {
-    const [from, to] = config.dayHours[d] ?? config.hours;
+  const windowOf = (d, hours = config.dayHours[d] ?? config.hours) => {
+    const [from, to] = hours;
     const open = at(d, from).getTime();
     const close = at(d, to).getTime();
     return { open, start: dayClosed(doc, d) ? close : d === today ? Math.max(open, ceilQuarter(nowMs)) : open, end: close };
+  };
+  // An area with hours of its own (areaHours: cooking in the evening) books only in them, inside the
+  // day's hours or not: earliest-first put a Saturday's cooking at 08:45 (22 Oct 2026).
+  const areaHoursOf = (area) => {
+    const k = Object.keys(config.areaHours ?? {}).find((a) => norm(a) === norm(area));
+    return k === undefined ? null : config.areaHours[k];
+  };
+  const winFor = (b, d) => {
+    const own = areaHoursOf(b.area);
+    return own ? windowOf(d, own) : windowOf(d);
   };
   const todayWindow = windowOf(today);
   const todayClosed = dayClosed(doc, today) || todayWindow.start + MIN_BLOCK > todayWindow.end;
@@ -5365,7 +5404,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
 
     // The day packed around what's already fixed. `order` is who gets first refusal; the blocks that
     // can stay put are settled the same way whatever the order, so two orders can be compared fairly.
-    const pack = (order) => {
+    const pack = (order, slide = false) => {
       const taken = [...hard];
       const slot = new Map();
       const take = (b, s) => { slot.set(b.key, s); taken.push({ start: s, end: s + b.minutes * MINUTE, title: b.base }); };
@@ -5376,13 +5415,20 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
           if (!ex || localDay(ex.start) !== d) continue;
           const length = b.minutes * MINUTE;
           const s = ex.start.getTime();
-          // A block the planner placed itself keeps its slot, but slides *earlier* in the day when
-          // earlier time has opened up: George moved a gym session off the late morning and the two
-          // hours it freed sat empty all day, while the work that wanted them cascaded into the rest
-          // of the week. Earlier only — moving a block later would push work into the evening for no
-          // reason, and one already at its earliest fit doesn't move at all, so nothing drifts
-          // between runs. A block George moved himself isn't here: those are pinned before this.
-          const w = seriesWindow(b, d, { start: win.open, end: Math.min(win.end, s + length) }, slot);
+          const bw = winFor(b, d);
+          // A block the planner placed itself keeps its slot while nothing clashes with it: blocks
+          // that slid earlier whenever time opened up left George unable to trust anything to be
+          // where he'd last seen it (22 Oct 2026). Sliding — earlier only, never later — is kept for
+          // when it's the only way the day fits its work (`slide`, tried below when work is
+          // bumped): a gym session moved off the late morning once left two hours empty while the
+          // work that wanted them cascaded into the rest of the week. A block George moved himself
+          // isn't here: those are pinned before this.
+          if (!slide) {
+            const w = seriesWindow(b, d, bw, slot);
+            if (w && s >= w.start && s + length <= w.end && fits(s, s + length, busyFor(b), gap)) take(b, s);
+            continue;
+          }
+          const w = seriesWindow(b, d, { start: bw.open, end: Math.min(bw.end, s + length) }, slot);
           const to = w && earliestFit(length, w, busyFor(b), gap);
           if (to != null) take(b, to);
         }
@@ -5390,10 +5436,11 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       const bumped = [];
       for (const b of inSeriesOrder(order, rankOf)) {
         if (slot.has(b.key)) continue;
-        const w = seriesWindow(b, d, win, slot);
+        const bw = winFor(b, d);
+        const w = seriesWindow(b, d, bw, slot);
         let s = w && earliestFit(b.minutes * MINUTE, w, busyFor(b), gap);
         if (s == null && w) {
-          const loose = seriesWindow(b, d, win, slot, true);
+          const loose = seriesWindow(b, d, bw, slot, true);
           s = earliestFit(b.minutes * MINUTE, loose, busyFor(b), gap);
         }
         if (s != null) take(b, s);
@@ -5407,16 +5454,20 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
 
     // Biggest-first is usually right, but a carried block takes first refusal however short it is,
     // and a long one that then has nowhere to go leaves the day short of work it had room for. So
-    // when anything is bumped, try again with the bumped blocks first and keep whichever
-    // arrangement strands less. Only two orders, both settled the same way, so the result is stable.
+    // when anything is bumped, try again with the bumped blocks first, then both orders with booked
+    // blocks free to slide earlier, and keep whichever arrangement strands less — the first of them
+    // on a tie, so blocks stay put unless moving them fits more. All settled the same way, so the
+    // result is stable.
     let { slot, bumped } = pack(queue);
     if (bumped.length) {
       const jumped = new Set(bumped.map((b) => b.key));
-      const alt = pack([...bumped, ...queue.filter((b) => !jumped.has(b.key))]);
+      const first = [...bumped, ...queue.filter((b) => !jumped.has(b.key))];
       const stranded = (list) => list.reduce((n, b) => n + b.minutes, 0);
-      if (alt.bumped.length < bumped.length
-        || (alt.bumped.length === bumped.length && stranded(alt.bumped) < stranded(bumped))) {
-        ({ slot, bumped } = alt);
+      for (const alt of [pack(first), pack(queue, true), pack(first, true)]) {
+        if (alt.bumped.length < bumped.length
+          || (alt.bumped.length === bumped.length && stranded(alt.bumped) < stranded(bumped))) {
+          ({ slot, bumped } = alt);
+        }
       }
     }
 
