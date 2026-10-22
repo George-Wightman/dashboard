@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.georgewightman.dashwidgets.WidgetsTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-22T13:04:51" hostname="runnervm8k3b6" time="12.373">
+  <properties/>
+  <testcase name="drawsEachWidgetInDayAndNight" classname="com.georgewightman.dashwidgets.WidgetsTest" time="12.157"/>
+  <testcase name="aTapOnlyEverOpensTheDashboard" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.04"/>
+  <testcase name="readsEveryTile" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.044"/>
+  <testcase name="beforeConnectingItSaysHow" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.07"/>
+  <testcase name="takesOnlyAProperSetupLink" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.035"/>
+  <testcase name="aRefusalIsAnError" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.027"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
