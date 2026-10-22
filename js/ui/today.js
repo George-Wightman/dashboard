@@ -7,7 +7,7 @@
 import { h } from './dom.js';
 import { todayRows, streak, doneBetween } from '../schedule.js';
 import { carryLabel, addDays, weekStart, forLabel } from '../dates.js';
-import { sourceMark } from './sources.js';
+import { sourceMark, logoMark } from './sources.js';
 import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { openOutcome } from './outcome.js';
@@ -95,6 +95,12 @@ function noteMark(item, ctx) {
   }, '≡');
 }
 
+// A habit with Duolingo XP but no tick (js/duolingo.js): the owl and the XP, the rest on hover.
+function duolingoNote(xp) {
+  const what = `Duolingo only today: ${xp} XP. That keeps the streak going but doesn't tick it; a Hebrew Reader session does`;
+  return h('span', { class: 'via duo', title: what }, logoMark('duolingo', what), `${xp} XP`);
+}
+
 // `via` is a Hevy workout's tick ({ from, at }): the row says when he trained.
 export function renderRow(row, ctx, slot = null, star = false, via = null) {
   if (row.suggested) return renderSuggestion(row, ctx);
@@ -114,6 +120,7 @@ export function renderRow(row, ctx, slot = null, star = false, via = null) {
       item.pinned ? h('span', { class: 'pin', title: 'Pinned to this slot — take the pin off its calendar block to let it move again', role: 'img', 'aria-label': 'Pinned to this slot' }, '📌') : null,
       titleEl(item, () => ctx.openEditor({ map: 'items', id: item.id })),
       via?.from && via?.at ? h('span', { class: 'via', title: 'Ticked by your Hevy workout' }, `via Hevy · ${clockLabel(via.from)}–${clockLabel(via.at)}`) : null,
+      row.duolingo ? duolingoNote(row.duolingo) : null,
       item.notes ? noteMark(item, ctx) : null,
       row.blocked ? h('span', { class: 'carry', title: row.blocked.join('; ') }, 'Waiting') : null,
       item.details?.deadline ? h('span', { class: 'carry', title: 'Target deadline (does not reschedule automatically)' }, `by ${item.details.deadline}`) : null,

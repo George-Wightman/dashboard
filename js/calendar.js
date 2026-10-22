@@ -17,6 +17,7 @@ export const CALENDAR_DEFAULTS = {
   areaColors: {},
   dayHours: {},
   nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
+  duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
 
 // Google Calendar's event colours, by the names George sees, and their ids in the API.
@@ -57,6 +58,10 @@ export const CONFIG_CHECKS = {
     return [v[0], v[1]];
   },
   gapMinutes: wholeNumber(0, 60),
+  duolingo: (v, field) => {
+    if (typeof v !== 'string' || !/^[\w.-]{0,40}$/.test(v.trim())) throw new Error(`${field} should be a Duolingo username, or "" to stop checking`);
+    return v.trim();
+  },
   nudges: (v, field) => {
     if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
     return v;

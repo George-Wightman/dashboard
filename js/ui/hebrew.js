@@ -6,7 +6,7 @@
 // it adds the whole ladder — the conversations ticked right there — and the last two weeks day by day.
 
 import { h } from './dom.js';
-import { weekTotal, streak, milestonesOf } from '../schedule.js';
+import { weekTotal, streak, milestonesOf, duolingoOn } from '../schedule.js';
 import { addDays, weekStart, shortWeekday, shortDate } from '../dates.js';
 import { formatAmount } from '../parse.js';
 import { HEBREW_IDS, RECENT_DAYS } from '../hebrewSync.js';
@@ -29,7 +29,8 @@ export function hebrewWeek(doc, today) {
   const monday = weekStart(today);
   return Array.from({ length: 7 }, (_, i) => {
     const day = addDays(monday, i);
-    return { day, minutes: day > today ? 0 : minutesOn(doc, day), today: day === today, future: day > today };
+    const future = day > today;
+    return { day, minutes: future ? 0 : minutesOn(doc, day), xp: future ? 0 : duolingoOn(doc, HEBREW_IDS.habit, day), today: day === today, future };
   });
 }
 
@@ -68,10 +69,12 @@ export function ladder(doc) {
 
 function weekCells(doc, today) {
   return h('div', { class: 'heb-week' }, hebrewWeek(doc, today).map((c) => {
-    const label = `${shortWeekday(c.day)}: ${c.future ? 'to come' : c.minutes ? `${formatAmount(c.minutes, 'minutes')} practised` : 'no practice'}`;
+    const duo = !c.minutes && c.xp > 0;
+    const what = c.future ? 'to come' : c.minutes ? `${formatAmount(c.minutes, 'minutes')} practised` : duo ? `Duolingo only, ${c.xp} XP` : 'no practice';
+    const label = `${shortWeekday(c.day)}: ${what}`;
     return h('div', { class: c.today ? 'heb-day today' : 'heb-day', title: label, 'aria-label': label, role: 'img' },
       h('span', { class: 'dow' }, shortWeekday(c.day)[0]),
-      h('span', { class: c.future ? 'heb-cell future' : `heb-cell lvl${shade(c.minutes)}` }));
+      h('span', { class: c.future ? 'heb-cell future' : duo ? 'heb-cell duo' : `heb-cell lvl${shade(c.minutes)}` }));
   }));
 }
 

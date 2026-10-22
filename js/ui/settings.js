@@ -6,6 +6,7 @@
 import { h } from './dom.js';
 import { STT_MB, sttSpeed } from '../stt.js';
 import { hebrewKeys } from '../gemini.js';
+import { duolingoStatusLine, duolingoStatus } from '../duolingo.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
 import { hourLabel } from '../dates.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
@@ -186,6 +187,9 @@ export function openSettings(ctx) {
   const hebrewSyncSet = !!(s.hebrewRepo && s.hebrewToken);
   const hebrewProblem = ctx.hebrewSyncProblem();
   const hebrewStatus = ctx.hebrewStatus();
+  // Duolingo is checked by the planner (planner/duolingo.js), not this device: its line, once it has one.
+  const clockOf = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const duolingo = duolingoStatusLine(ctx.store.doc(), clockOf);
   const lookName = (LOOK_CHOICES.find(([value]) => value === s.look)?.[1] ?? '').split(' (')[0];
 
   file.addEventListener('change', async () => {
@@ -272,6 +276,8 @@ export function openSettings(ctx) {
           `${hebrewStatus.words} in the library`,
         ].filter(Boolean).join(' · ') + (hebrewStatus.at ? `, last synced ${hebrewStatus.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '') + '.')
         : null,
+      duolingo ? h('p', { class: duolingoStatus(ctx.store.doc())?.lastError ? 'error' : 'note' },
+        `${duolingo}. A day with Duolingo but no Hebrew Reader session keeps the streak but isn't ticked.`) : null,
       h('div', { class: 'buttons' },
         h('button', { class: 'btn', type: 'button', onclick: () => { ctx.hebrewSyncNow(); dialog.close(); } }, 'Sync now'))),
     group('The day', `starts at ${hourLabel(s.dayStartHour)}`, false,

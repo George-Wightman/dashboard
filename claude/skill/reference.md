@@ -297,7 +297,9 @@ starred), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour nam
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
 take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `nudges` (`false` turns off
 the pushes before a miss: the back question at 07:30, lunch at 14:00, Hebrew at 20:00, a session half an
-hour ahead; on by default, at most four a day). `areaCalendars`,
+hour ahead; on by default, at most four a day), `duolingo` (George's Duolingo username, `""` to stop: the
+planner adds his Hebrew course's XP to the day as a `duolingo:<day>` log on Hebrew practice. A
+Duolingo-only day keeps the streak but isn't ticked or counted as done; rows say *Duolingo only (N XP)*). `areaCalendars`,
 `areaColors` and `dayHours` change one key at a time; `null` removes a key.
 
 ### `off`

@@ -207,6 +207,15 @@ writes back to that repo, and this can never conflict with the Hebrew app's own 
 the goal, habit, targets and stages are ordinary records — rename them, retarget them, or archive
 them, and the sync leaves your changes alone; it only ever fills in what's missing.
 
+**Duolingo** counts for less. Once the planner setting `duolingo` has your username (ask Claude), the
+planner reads your public Duolingo profile on each run, with no login. Whatever XP your Hebrew course gained since
+the last check goes on that day as a log on *Hebrew practice*. A day with Duolingo but no Hebrew Reader
+session leaves the habit **unticked**: the day score, the map and the planner still count it as not
+done. But the habit's streak survives it, the row shows the owl and the XP, the Hebrew widget's week
+outlines the day instead of leaving it empty, and the evening push mentions it. Duolingo's history
+before the first check needs a login, so it isn't filled in. ⚙ → *Hebrew progress* shows when it last
+checked, or what went wrong.
+
 **What the stages count, and why not "words known".** The app's library size is the obvious number
 and the wrong one: it counts every entry whether or not it has ever been drilled, and it grows from
 seeds and imports, with each word's own inflections nested inside it. So the ladder is built from

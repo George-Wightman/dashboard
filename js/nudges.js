@@ -8,6 +8,7 @@ import { wallClock, deviceZone } from './travel.js';
 import { mealsOn } from './food.js';
 import { readPlannerConfig, dayRecord } from './calendar.js';
 import { sessionTasks, routineFor } from './coach.js';
+import { duolingoLogId } from './duolingo.js';
 
 export const NUDGES_PER_DAY = 4;
 const SESSION_AHEAD_MIN = 35;
@@ -48,7 +49,10 @@ function hebrewNudge(doc, t, day, clk) {
     .reduce((n, l) => n + (Number(l.amount) || 0), 0));
   if (minutes >= share) return null;
   // "Logged so far": the Hebrew Reader's minutes arrive when the dashboard syncs on one of his devices.
-  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.`, url: './?do=hebrew' };
+  // Duolingo doesn't count towards them, but it's said, so the push isn't news to him.
+  const duo = doc.logs?.[duolingoLogId(day)];
+  const xp = duo?.status === 'active' && duo.kind === 'amount' ? ` Duolingo: ${duo.amount} XP.` : '';
+  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.${xp}`, url: './?do=hebrew' };
 }
 
 function sessionNudges(doc, t, day, zone) {

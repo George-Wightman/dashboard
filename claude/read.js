@@ -18,6 +18,7 @@ import {
   gymConfig, gymStatus, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
 } from '../js/gym.js';
 import { checkinsSince } from '../js/checkins.js';
+import { duolingoStatusLine } from '../js/duolingo.js';
 import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES } from '../js/food.js';
 import { BACK, backScores, sessionTasks, sessionLines, routinesOf, routineFor, sessionWorkout, readyMarks } from '../js/coach.js';
 
@@ -49,6 +50,7 @@ function rowLine(doc, row, today, idx) {
   const parts = [`${mark} ${star}${TYPE_NAMES[item.type]} ${q(item.title)} ${tag(item.id)}`];
   if (row.suggested && item.type === 'task' && item.date && item.date !== today) parts.push(forLabel(item.date, today));
   if (row.carriedFrom) parts.push(carryLabel(row.carriedFrom, today));
+  if (row.duolingo) parts.push(`Duolingo only (${row.duolingo} XP)`);
   if (item.type === 'habit' && !row.suggested) {
     const s = streak(doc, item, today);
     if (s.current > 1) parts.push(`streak ${s.current}`);
@@ -134,6 +136,9 @@ function plannerRead(doc, day) {
   out.push(`  ignore: ${config.ignore.join(', ') || 'nothing'}`);
   out.push(`  priorityAreas: ${config.priorityAreas.join(', ') || 'none'} · areaColors: ${Object.entries(config.areaColors).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'}`);
   out.push(`  dayHours: ${Object.entries(config.dayHours).map(([d, [f, t]]) => `${d} ${f}–${t}`).join(', ') || 'none'}`);
+  out.push(`  duolingo: ${config.duolingo || 'not set (Duolingo unchecked)'}`);
+  const duo = config.duolingo ? duolingoStatusLine(doc, when) : null;
+  if (duo) out.push(`  ${duo}`);
   out.push(`  Colours George's calendars take (not for areas): ${s?.takenColors?.length ? s.takenColors.join(', ') : 'not known until the planner runs'}`);
   // George's calendars by name, because without them anyone looking at his calendar from outside the
   // dashboard has to guess what they're called — and guessing one out of seven once had a whole
@@ -216,7 +221,7 @@ function day(doc, today, arg) {
   const out = [header(doc, today), `${longDate(d)} (${d}) · ${score.done} of ${score.total} done`];
   const off = offLine(doc, d);
   if (off) out.push(off);
-  for (const r of rows) out.push(`  ${r.done ? '[x]' : '[ ]'} ${TYPE_NAMES[r.item.type]} ${q(r.item.title)} ${tag(r.item.id)}`);
+  for (const r of rows) out.push(`  ${r.done ? '[x]' : '[ ]'} ${TYPE_NAMES[r.item.type]} ${q(r.item.title)} ${tag(r.item.id)}${r.duolingo ? ` · Duolingo only (${r.duolingo} XP)` : ''}`);
   // What he committed to that left the day, and what didn't need doing (js/schedule.js's dayScore).
   const named = (list, extra = () => '') => list.map((e) => `${q(e.item.title)} ${tag(e.item.id)}${extra(e)}`).join(', ');
   const commitment = doc.calendar?.[`commit:${d}`];

@@ -5,7 +5,7 @@ const SHELL = [
   './', 'index.html', 'styles.css', 'styles/daylight.css', 'fonts/BricolageGrotesque.woff2', 'fonts/Figtree.woff2', 'fonts/Rubik-Hebrew.woff2', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/commit.js', 'js/data.js', 'js/doc.js', 'js/dates.js', 'js/parse.js', 'js/schedule.js',
-  'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/gemini.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/checkins.js',
+  'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/duolingo.js', 'js/gemini.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/checkins.js',
   'js/plan-state.js', 'js/ui/agenda.js', 'js/push-client.js',
   'js/workflow.js', 'js/goal-review.js', 'js/ui/outcome.js',
   'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/checkin.js', 'js/ui/mic.js', 'js/ui/note.js',

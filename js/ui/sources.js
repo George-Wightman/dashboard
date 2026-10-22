@@ -6,7 +6,7 @@
 
 import { h } from './dom.js';
 
-export const SOURCE_NAMES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', notion: 'Notion', workflow: 'a follow-up rule', calendar: 'your calendar' };
+export const SOURCE_NAMES = { claude: 'Claude', gemini: 'Gemini', hebrew: 'Hebrew app', duolingo: 'Duolingo', notion: 'Notion', workflow: 'a follow-up rule', calendar: 'your calendar' };
 
 const svg = (body) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
 const RAYS = [[12, 2.5], [18.5, 4.5], [21.5, 10], [20, 17.5], [14, 21.5], [7, 20.5], [2.5, 15], [3, 7.5], [7.5, 3]];
@@ -23,6 +23,11 @@ export const LOGOS = {
     + '<path d="M8.5 16.5v-9l7 9v-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
   calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/>'
     + '<path d="M3.5 10h17M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
+  // Duolingo's owl, as little of it as still reads: the head, two big eyes and the beak.
+  duolingo: svg('<g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">'
+    + '<path d="M4.5 10a7.5 7.5 0 0 1 15 0v6a5 5 0 0 1-5 5h-5a5 5 0 0 1-5-5z"/>'
+    + '<circle cx="9" cy="10.5" r="2.6"/><circle cx="15" cy="10.5" r="2.6"/></g>'
+    + '<path d="M10.6 14.5h2.8L12 16.6z" fill="currentColor"/>'),
   workflow: svg('<path d="M5 5h9a5 5 0 0 1 0 10H5m4-4-4 4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
 };
 
@@ -39,6 +44,11 @@ export function sourceMark(source, verb = 'added') {
   const label = sourceLabel(source, verb);
   if (!label) return null;
   if (!LOGOS[source]) return h('span', { class: 'by' }, label);
+  return logoMark(source, label);
+}
+
+// A source's logo alone, with `label` as its hover text and what a screen reader hears.
+export function logoMark(source, label) {
   const el = h('span', { class: 'src', title: label, role: 'img', 'aria-label': label });
   el.innerHTML = LOGOS[source]; // a fixed string from this file, never data
   return el;

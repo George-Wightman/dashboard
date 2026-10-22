@@ -4,6 +4,7 @@ import { addDays, weekday, weekStart, dayOfMonth, daysInMonth } from './dates.js
 import { timeOff, excused, offCovers } from './calendar.js';
 import { blockers, completedBefore } from './workflow.js';
 import { plannedTaskDay, bookingsFor, localDate } from './plan-state.js';
+import { DUOLINGO_SOURCE } from './duolingo.js';
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -17,16 +18,31 @@ export function countsOn(record, day) {
 }
 
 // Every active 'done' log, grouped by item, built in one pass. Pass this to the functions below
-// (as their last argument) to avoid re-scanning all logs once per item.
+// (as their last argument) to avoid re-scanning all logs once per item. Duolingo's XP on a habit
+// (js/duolingo.js) rides along as `idx.duolingo`: itemId → day → XP.
 export function doneIndex(doc) {
   const idx = new Map();
+  idx.duolingo = new Map();
   for (const l of values(doc.logs)) {
-    if (l.status !== 'active' || l.kind !== 'done') continue;
+    if (l.status !== 'active') continue;
+    if (l.kind === 'amount' && l.source === DUOLINGO_SOURCE) {
+      let days = idx.duolingo.get(l.itemId);
+      if (!days) idx.duolingo.set(l.itemId, days = new Map());
+      days.set(l.day, (days.get(l.day) ?? 0) + (Number(l.amount) || 0));
+      continue;
+    }
+    if (l.kind !== 'done') continue;
     let set = idx.get(l.itemId);
     if (!set) idx.set(l.itemId, set = new Set());
     set.add(l.day);
   }
   return idx;
+}
+
+// The Duolingo XP on a habit on a day, 0 for none. A day with some but no tick is weaker than a
+// tick: still open on the day, but it keeps the habit's streak going.
+export function duolingoOn(doc, itemId, day, idx = doneIndex(doc)) {
+  return (idx.duolingo ?? doneIndex(doc).duolingo).get(itemId)?.get(day) ?? 0;
 }
 
 // Habits let off for a day (a 'skip' log, which the retired Coach wrote), as "itemId|day": excused like time off.
@@ -89,7 +105,9 @@ export function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) 
       const row = taskRow(doc, item, day, idx);
       if (row) rows.push(row);
     } else if (item.type === 'habit' && isHabitDue(doc, item, day, idx)) {
-      rows.push({ item, kind: 'habit', done: doneDays(doc, item.id, idx).has(day), carriedFrom: null, suggested: false });
+      const done = doneDays(doc, item.id, idx).has(day);
+      const duolingo = done ? 0 : duolingoOn(doc, item.id, day, idx);
+      rows.push({ item, kind: 'habit', done, carriedFrom: null, suggested: false, ...(duolingo ? { duolingo } : {}) });
     }
   }
   return rows.sort(byOrder);
@@ -145,7 +163,8 @@ function occurrenceStreak(doc, item, today) {
   const outcomes = [];
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
-    const ok = ticked.has(day);
+    // A Duolingo-only day isn't done, but it isn't a miss either.
+    const ok = ticked.has(day) || duolingoOn(doc, item.id, day, idx) > 0;
     // Time off, or let off for the day: a miss doesn't count, a tick still does.
     if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
     if (day === today && !ok) continue; // today isn't over yet

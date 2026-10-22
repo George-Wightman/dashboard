@@ -4,7 +4,7 @@
 // app only lays out a title, a big number with its caption, and a few lines, and opens the dashboard
 // on that tile, big, when tapped. Pure.
 
-import { todayRows, weekTotal, doneBetween, dayCompletion, goalProgress } from './schedule.js';
+import { todayRows, weekTotal, doneBetween, dayCompletion, goalProgress, duolingoOn } from './schedule.js';
 import { todaySlots, clockLabel, countdowns, daysLeft, excused } from './calendar.js';
 import { scheduleView, localDate } from './plan-state.js';
 import { movedSlot } from './timeline.js';
@@ -83,7 +83,7 @@ function hebrew(doc, today) {
     const d = addDays(monday, i);
     if (d > today) return '·';
     const m = values(doc.logs).filter((l) => l.status === 'active' && l.itemId === minutes.id && l.kind === 'amount' && l.day === d).reduce((s, l) => s + l.amount, 0);
-    return m >= 30 ? '●' : m > 0 ? '◐' : '○';
+    return m >= 30 ? '●' : m > 0 ? '◐' : duolingoOn(doc, HEBREW_IDS.habit, d) > 0 ? '◔' : '○';
   }).join('');
   lines.push(`${strip}  Mon–Sun`);
   return {

@@ -125,6 +125,7 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .row .note-mark { flex: none; background: none; border: 0; padding: 0 .15rem; color: var(--muted); cursor: pointer; font-size: .95rem; line-height: 1; }
 .row .note-mark[aria-expanded="true"], .row .note-mark:hover { color: var(--accent); }
 .row .via { flex: none; font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.row .via.duo { display: inline-flex; align-items: center; gap: .2rem; }
 .gym-line { grid-column: 1 / -1; padding: 0 .9rem .5rem 3rem; font-size: .8rem; color: var(--muted); }
 .note-row { grid-column: 1 / -1; padding: .1rem .9rem .55rem 3rem; font-size: .8rem; color: var(--muted); white-space: pre-wrap; }
 .row .meta { flex: none; display: flex; align-items: center; gap: .75rem; font-size: .8rem; color: var(--muted); }
@@ -332,6 +333,8 @@ button.icon { background: none; border: 0; padding: .25rem; font-size: 1.1rem; c
 .heb-cell.lvl3 { background: var(--lvl3); border-color: var(--lvl3); }
 .heb-cell.lvl4 { background: var(--lvl4); border-color: var(--lvl4); }
 .heb-cell.future { border-style: dashed; }
+/* Duolingo but no Reader minutes (js/duolingo.js): something done, short of a session. */
+.heb-cell.duo { border: 2px solid var(--lvl2); background: var(--panel); }
 .heb-day.today .heb-cell { box-shadow: 0 0 0 1.5px var(--muted); }
 .heb-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: .7rem 0; font-size: .8rem; }
 .heb-stat { display: flex; flex-direction: column; min-width: 0; }

@@ -22,6 +22,7 @@ import { tagPrompt, readArea } from './tag.js';
 import { syncHevy } from './hevy.js';
 import { syncRoutines } from './routines.js';
 import { syncHealth } from './health.js';
+import { syncDuolingo } from './duolingo.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
@@ -206,6 +207,15 @@ export function createPlanner({
     if (s.lastError) log(`Google Health: ${s.lastError}`);
   }
 
+  // Duolingo every run: one small request, and a Duolingo-only day should show before the evening's
+  // Hebrew push. Skipped until the planner setting `duolingo` has his username.
+  async function duolingo(store) {
+    const user = readPlannerConfig(store.doc()).config.duolingo;
+    if (!user) return;
+    const s = await syncDuolingo({ fetch, user, store, now, dayStartHour: dayStartHour(), scrub: clean });
+    if (s.lastError) log(`Duolingo: ${s.lastError}`);
+  }
+
   function apply(actions, events) {
     const byKey = {};
     const errors = [];
@@ -307,6 +317,7 @@ export function createPlanner({
       const { store } = session;
       await hevy(store);
       await health(store);
+      await duolingo(store);
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
       try {

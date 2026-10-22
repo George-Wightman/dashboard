@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '8b3b5141';
+var PLANNER_BUILD = '1dd10ac0';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1257,6 +1257,7 @@ const CALENDAR_DEFAULTS = {
   areaColors: {},
   dayHours: {},
   nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
+  duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
 
 // Google Calendar's event colours, by the names George sees, and their ids in the API.
@@ -1297,6 +1298,10 @@ const CONFIG_CHECKS = {
     return [v[0], v[1]];
   },
   gapMinutes: wholeNumber(0, 60),
+  duolingo: (v, field) => {
+    if (typeof v !== 'string' || !/^[\w.-]{0,40}$/.test(v.trim())) throw new Error(`${field} should be a Duolingo username, or "" to stop checking`);
+    return v.trim();
+  },
   nudges: (v, field) => {
     if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
     return v;
@@ -1898,6 +1903,34 @@ function mealWork(doc, localIds) {
 return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, parseEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
 })();
 
+// ---- js/duolingo.js
+const __js_duolingo = (() => {
+// Duolingo, as the dashboard reads it (docs/superpowers/specs/2026-10-22-duolingo-design.md). The
+// planner (planner/duolingo.js) checks George's public profile and adds the XP his Hebrew course
+// gains to the day's `duolingo:<day>` log: an amount log on the Hebrew practice habit. That's a
+// weaker day than a Hebrew Reader session: the habit stays unticked and the day isn't counted as
+// done, but the streak survives it (js/schedule.js). Pure.
+
+const DUOLINGO_SOURCE = 'duolingo';
+const DUOLINGO_STATUS = 'duolingo-status';
+const duolingoLogId = (day) => `duolingo:${day}`;
+
+// What the planner last saw: { user, xp, lastSync, lastError }, or null before its first check.
+function duolingoStatus(doc) {
+  const s = doc?.calendar?.[DUOLINGO_STATUS];
+  return s && s.status === 'active' ? s : null;
+}
+
+// One line for ⚙ and Claude's planner read, or null while Duolingo isn't set up.
+function duolingoStatusLine(doc, when = (iso) => iso) {
+  const s = duolingoStatus(doc);
+  if (!s) return null;
+  if (s.lastError) return `Duolingo (${s.user}): ${s.lastError}`;
+  return `Duolingo (${s.user}): last checked ${s.lastSync ? when(s.lastSync) : 'never'} · ${s.xp} Hebrew XP`;
+}
+return { DUOLINGO_SOURCE, DUOLINGO_STATUS, duolingoLogId, duolingoStatus, duolingoStatusLine };
+})();
+
 // ---- js/schedule.js
 const __js_schedule = (() => {
 // What's on a day, and the numbers derived from it. Pure: a document and a day in, values out.
@@ -1906,6 +1939,7 @@ const { addDays, weekday, weekStart, dayOfMonth, daysInMonth } = __js_dates;
 const { timeOff, excused, offCovers } = __js_calendar;
 const { blockers, completedBefore } = __js_workflow;
 const { plannedTaskDay, bookingsFor, localDate } = __js_plan_state;
+const { DUOLINGO_SOURCE } = __js_duolingo;
 
 const values = (map) => Object.values(map ?? {});
 const byOrder = (a, b) => (a.item.order ?? 0) - (b.item.order ?? 0);
@@ -1919,16 +1953,31 @@ function countsOn(record, day) {
 }
 
 // Every active 'done' log, grouped by item, built in one pass. Pass this to the functions below
-// (as their last argument) to avoid re-scanning all logs once per item.
+// (as their last argument) to avoid re-scanning all logs once per item. Duolingo's XP on a habit
+// (js/duolingo.js) rides along as `idx.duolingo`: itemId → day → XP.
 function doneIndex(doc) {
   const idx = new Map();
+  idx.duolingo = new Map();
   for (const l of values(doc.logs)) {
-    if (l.status !== 'active' || l.kind !== 'done') continue;
+    if (l.status !== 'active') continue;
+    if (l.kind === 'amount' && l.source === DUOLINGO_SOURCE) {
+      let days = idx.duolingo.get(l.itemId);
+      if (!days) idx.duolingo.set(l.itemId, days = new Map());
+      days.set(l.day, (days.get(l.day) ?? 0) + (Number(l.amount) || 0));
+      continue;
+    }
+    if (l.kind !== 'done') continue;
     let set = idx.get(l.itemId);
     if (!set) idx.set(l.itemId, set = new Set());
     set.add(l.day);
   }
   return idx;
+}
+
+// The Duolingo XP on a habit on a day, 0 for none. A day with some but no tick is weaker than a
+// tick: still open on the day, but it keeps the habit's streak going.
+function duolingoOn(doc, itemId, day, idx = doneIndex(doc)) {
+  return (idx.duolingo ?? doneIndex(doc).duolingo).get(itemId)?.get(day) ?? 0;
 }
 
 // Habits let off for a day (a 'skip' log, which the retired Coach wrote), as "itemId|day": excused like time off.
@@ -1991,7 +2040,9 @@ function rowsForDay(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
       const row = taskRow(doc, item, day, idx);
       if (row) rows.push(row);
     } else if (item.type === 'habit' && isHabitDue(doc, item, day, idx)) {
-      rows.push({ item, kind: 'habit', done: doneDays(doc, item.id, idx).has(day), carriedFrom: null, suggested: false });
+      const done = doneDays(doc, item.id, idx).has(day);
+      const duolingo = done ? 0 : duolingoOn(doc, item.id, day, idx);
+      rows.push({ item, kind: 'habit', done, carriedFrom: null, suggested: false, ...(duolingo ? { duolingo } : {}) });
     }
   }
   return rows.sort(byOrder);
@@ -2047,7 +2098,8 @@ function occurrenceStreak(doc, item, today) {
   const outcomes = [];
   for (let day = item.created; day <= today; day = addDays(day, 1)) {
     if (!isHabitDue(doc, item, day, idx)) continue;
-    const ok = ticked.has(day);
+    // A Duolingo-only day isn't done, but it isn't a miss either.
+    const ok = ticked.has(day) || duolingoOn(doc, item.id, day, idx) > 0;
     // Time off, or let off for the day: a miss doesn't count, a tick still does.
     if (!ok && ((offs.length && excused(doc, item, day, offs)) || skipped.has(`${item.id}|${day}`))) continue;
     if (day === today && !ok) continue; // today isn't over yet
@@ -2199,7 +2251,7 @@ function goalProgress(doc, goal) {
   const ticked = live.filter((m) => m.done).length;
   return { numeric: false, done: ticked, total: live.length, pct: live.length ? Math.round((ticked / live.length) * 100) : 0 };
 }
-return { countsOn, doneIndex, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, dayScore, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
+return { countsOn, doneIndex, duolingoOn, skipSet, doneDays, doneBetween, isHabitDue, rowsForDay, weekTotal, todayRows, streak, dayCompletion, dayScore, history, dayDetail, goalTotal, milestonesOf, goalItems, goalProgress };
 })();
 
 // ---- js/gym.js
@@ -6173,6 +6225,430 @@ async function syncHealth({
 return { HEALTH, LOOKBACK_DAYS, healthRecord, healthLabel, countedMinutes, healthStatus, syncHealth };
 })();
 
+// ---- js/hebrewSync.js
+const __js_hebrewSync = (() => {
+// Read-only pull from the Hebrew app's own sync file (same shape of GitHub-file sync as js/sync.js,
+// a different repo): a gzip+base64 snapshot of its localStorage. Applied as amount/done logs and
+// milestone ticks against fixed records (a goal, a habit, three weekly targets and a ladder of
+// milestones, created once and left alone after), so the app's existing weekly-target bars and
+// streaks (js/schedule.js, js/ui/today.js) show real progress without any new UI. Never writes
+// back to the Hebrew app's repo.
+//
+// WHICH OF ITS KEYS ARE READ, AND WHY THOSE. The Hebrew app's library size (hvr_stats[day].lib) is
+// the obvious number and the wrong one: it counts every entry, drilled or not — 103 of 241 were in
+// the "new" band on the last snapshot anyone checked — and it grows from seeds and imports, with
+// each entry carrying its own inflections nested inside it. So the ladder is built from the four
+// things the app knows that can't be padded:
+//
+//   hvr_stats[day].bands.strong  words the SRS has watched him hold for weeks AND that he has been
+//                                accurate on recently — the app's own hardest band.
+//   hvr_coachlanded              { word: lastLandedTs } — every word said live, unprompted and
+//                                correctly, in a coach conversation. The app's own ledger.
+//   hvr_pathscores               { nodeId: { lesson: { pct, ts, gold } } }. Lesson 99 is the coach
+//                                graduation; `gold` is stamped there when every word a node
+//                                teaches is SRS-ready AND has been said live. "Nodes perfected".
+//   hvr_stats                    the per-day practice numbers: sec, sessions, spoken.
+//
+// Coach transcripts (hvr_coach, hvr_convo) are deliberately device-local in that app and never
+// reach the file, so conversations can be counted by their outcome but never by their number.
+
+const { stableStringify } = __js_doc;
+const { addDays } = __js_dates;
+
+const HEBREW_IDS = {
+  goal: 'hebrew-goal', habit: 'hebrew-habit', minutes: 'hebrew-minutes', spoken: 'hebrew-spoken', live: 'hebrew-live',
+};
+
+const OLD_GOAL_TITLE = 'Hold a 10-minute conversation in Hebrew';
+// The lesson slot the Hebrew app files a node's coach graduation under, and where it stamps the
+// flag saying that node has been perfected.
+const COACH_LESSON = '99';
+
+// How a calibrated step reads once it carries a real number, and how it reads before then. Each
+// `add` in the ladder below is "this many more than he had the day the goal started", so no step
+// can arrive already passed — see calibrate().
+const TRACKS = {
+  strong: { title: (n) => `Hold ${n} Hebrew words strong`, pending: (n) => `Hold ${n} more Hebrew words strong` },
+  live: { title: (n) => `Say ${n} Hebrew words live in conversation`, pending: (n) => `Say ${n} more Hebrew words live in conversation` },
+  gold: { title: (n) => `Perfect ${n} nodes on the Hebrew path`, pending: (n) => `Perfect ${n} more nodes on the Hebrew path` },
+  days: { title: (n) => `Practise Hebrew on ${n} different days`, pending: (n) => `Practise Hebrew on ${n} more days` },
+};
+
+const step = (id, kind, add) => ({ id, title: TRACKS[kind].pending(add), auto: { kind, add } });
+
+// The stages on the way, in the order they should come up. The four automatic tracks are
+// interleaved with the five conversations, which only George can vouch for and so stay plain
+// checkboxes. Their ids are the ones the first ladder used, so anything already ticked stays so.
+const HEBREW_LADDER = [
+  { id: 'hebrew-ms-talk-hello', title: 'Greet her and introduce myself in Hebrew' },
+  step('hebrew-ms-live-1', 'live', 25),
+  step('hebrew-ms-gold-1', 'gold', 3),
+  step('hebrew-ms-strong-1', 'strong', 50),
+  { id: 'hebrew-ms-talk-1', title: 'Have a 1-minute exchange with her in Hebrew (how was your day)' },
+  step('hebrew-ms-practised-1', 'days', 30),
+  step('hebrew-ms-live-2', 'live', 75),
+  step('hebrew-ms-gold-2', 'gold', 10),
+  step('hebrew-ms-strong-2', 'strong', 150),
+  { id: 'hebrew-ms-talk-3', title: 'Have a 3-minute chat with her in Hebrew, no English' },
+  step('hebrew-ms-practised-2', 'days', 90),
+  step('hebrew-ms-live-3', 'live', 200),
+  step('hebrew-ms-gold-3', 'gold', 25),
+  step('hebrew-ms-strong-3', 'strong', 300),
+  { id: 'hebrew-ms-talk-5', title: 'Have a 5-minute chat with her in Hebrew about anything' },
+  step('hebrew-ms-practised-3', 'days', 180),
+  step('hebrew-ms-live-4', 'live', 400),
+  step('hebrew-ms-gold-4', 'gold', 50),
+  step('hebrew-ms-strong-4', 'strong', 600),
+  { id: 'hebrew-ms-talk-10', title: 'Hold a 10-minute conversation in Hebrew' },
+];
+
+// Every word-count and day-count step the first two ladders used. Both counted the library, which
+// is the number this file no longer trusts; version 3 replaces them with the four tracks above.
+const RETIRED = [
+  'hebrew-ms-words-50', 'hebrew-ms-words-100', 'hebrew-ms-words-250', 'hebrew-ms-words-500',
+  'hebrew-ms-words-750', 'hebrew-ms-words-1000', 'hebrew-ms-words-1500', 'hebrew-ms-words-2000',
+  'hebrew-ms-words-3000', 'hebrew-ms-days-7', 'hebrew-ms-days-30', 'hebrew-ms-days-45',
+  'hebrew-ms-days-60', 'hebrew-ms-days-90', 'hebrew-ms-days-120', 'hebrew-ms-days-180',
+];
+const LADDER_VERSION = 3;
+
+// Created once, however they're since renamed, retargeted or archived: this only fills in what's
+// missing, it never resets an existing record. The exceptions are the goal's old title, renamed
+// to plain "Hebrew" if (and only if) it's still exactly what this file first gave it, and a
+// one-time move to the current ladder (retire the library-counting steps, put the rest in order),
+// marked on the goal so it never runs again and never undoes edits made after it.
+function ensureHebrewGoal(store, { minutesTarget = 90, spokenTarget = 40, liveTarget = 15 } = {}) {
+  const doc = store.doc();
+  if (!doc.goals[HEBREW_IDS.goal]) {
+    store.addGoal({ id: HEBREW_IDS.goal, title: 'Hebrew', source: 'hebrew' });
+  } else if (doc.goals[HEBREW_IDS.goal].title === OLD_GOAL_TITLE) {
+    store.updateGoal(HEBREW_IDS.goal, { title: 'Hebrew' });
+  }
+  const migrating = doc.goals[HEBREW_IDS.goal].ladderVersion !== LADDER_VERSION;
+  HEBREW_LADDER.forEach(({ id, title, auto }, i) => {
+    if (!doc.milestones[id]) store.addMilestone(HEBREW_IDS.goal, title, { id, auto, order: i + 1, source: 'hebrew' });
+    else if (migrating) store.updateMilestone(id, { order: i + 1 });
+  });
+  if (migrating) {
+    for (const id of RETIRED) if (doc.milestones[id]?.status === 'active') store.archiveMilestone(id);
+    store.updateGoal(HEBREW_IDS.goal, { ladderVersion: LADDER_VERSION });
+  }
+  if (!doc.items[HEBREW_IDS.habit]) {
+    store.addItem({
+      id: HEBREW_IDS.habit, type: 'habit', title: 'Hebrew practice', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, repeat: { kind: 'daily' }, source: 'hebrew',
+    });
+  }
+  if (!doc.items[HEBREW_IDS.minutes]) {
+    store.addItem({
+      id: HEBREW_IDS.minutes, type: 'quota', title: 'Hebrew learning time', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, target: minutesTarget, unit: 'minutes', source: 'hebrew',
+    });
+  }
+  if (!doc.items[HEBREW_IDS.spoken]) {
+    store.addItem({
+      id: HEBREW_IDS.spoken, type: 'quota', title: 'Hebrew speaking practice', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, target: spokenTarget, unit: 'count', unitLabel: 'reps spoken', source: 'hebrew',
+    });
+  }
+  if (!doc.items[HEBREW_IDS.live]) {
+    store.addItem({
+      id: HEBREW_IDS.live, type: 'quota', title: 'Hebrew words said live', area: 'Hebrew',
+      goalId: HEBREW_IDS.goal, target: liveTarget, unit: 'count', unitLabel: 'words live', source: 'hebrew',
+    });
+  }
+}
+
+// The envelope's `body` is gzip, then base64. DecompressionStream is a Web Streams API standard,
+// available in the browser and in Node, so this needs no bundled inflate library.
+async function gunzipBase64(b64) {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new TextDecoder().decode(await new Response(stream).arrayBuffer());
+}
+
+// The envelope's `keys` map mirrors the Hebrew app's localStorage: every value is itself a JSON
+// string. A key that is missing (a Hebrew app older than the feature that writes it) or unreadable
+// reads as empty rather than failing the sync — the rest of the snapshot is still worth applying.
+async function readSnapshot(envelope) {
+  if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error("Not a Hebrew app sync file");
+  const { keys } = JSON.parse(await gunzipBase64(envelope.body));
+  const read = (name) => {
+    try {
+      const value = JSON.parse(keys?.[name] ?? 'null');
+      return value && typeof value === 'object' ? value : {};
+    } catch { return {}; }
+  };
+  return { stats: read('hvr_stats'), landed: read('hvr_coachlanded'), pathscores: read('hvr_pathscores') };
+}
+
+// The day a millisecond timestamp falls on WHERE HE IS, not in UTC: an evening session in a
+// timezone ahead of UTC would otherwise be filed under the previous day. The Hebrew app writes its
+// own day keys the same way.
+function localDay(ts) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// What the ladder is measured in. Each is a plain count of something the Hebrew app has already
+// decided — none of them is re-derived here, so none can drift from what its own screens say.
+function metricsOf({ stats, landed, pathscores }) {
+  const days = Object.keys(stats).sort();
+  let strong = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const bands = stats[days[i]]?.bands;
+    if (bands && typeof bands.strong === 'number') { strong = bands.strong; break; }
+  }
+  return {
+    strong,
+    live: Object.keys(landed).length,
+    gold: Object.values(pathscores).filter((node) => node?.[COACH_LESSON]?.gold === true).length,
+    days: days.filter((day) => stats[day]?.sessions > 0).length,
+  };
+}
+
+// The library size on the latest day that reports one. Shown in Settings beside the honest
+// numbers, never used as a target — see the note at the top of this file.
+function latestWords(stats) {
+  const days = Object.keys(stats).sort();
+  for (let i = days.length - 1; i >= 0; i--) {
+    const lib = stats[days[i]].lib;
+    if (typeof lib === 'number') return lib;
+  }
+  return null;
+}
+
+// WHERE THE LADDER STARTS COUNTING FROM. A step created as "+50 strong words" becomes an ordinary
+// fixed target the first time real numbers arrive: 50 above where he stood that day. That is the
+// whole reason the ladder is written in `add` rather than in absolute numbers — the first two
+// versions guessed at absolute ones and half the rungs ticked themselves on arrival, because he
+// was already a long way into the app.
+//
+// Once. The baseline is stamped on the goal, and a calibrated step carries a plain `n` from then
+// on, so retargeting one by hand afterwards sticks.
+function calibrate(store, metrics) {
+  const doc = store.doc();
+  if (doc.goals[HEBREW_IDS.goal]?.hebrewBaseline) return;
+  for (const m of Object.values(doc.milestones)) {
+    if (m.goalId !== HEBREW_IDS.goal || m.status !== 'active' || !m.auto) continue;
+    const { kind, add } = m.auto;
+    if (!(add > 0) || !TRACKS[kind]) continue;
+    const n = (metrics[kind] ?? 0) + add;
+    store.updateMilestone(m.id, { auto: { kind, n }, title: TRACKS[kind].title(n) });
+  }
+  store.updateGoal(HEBREW_IDS.goal, { hebrewBaseline: { ...metrics, at: store.today() } });
+}
+
+// One log per day per metric, at a deterministic id: re-applying the same day's numbers is a
+// no-op (store.putLog only writes when something actually changed), and a day whose numbers rise
+// as the Hebrew app is used later that day just overwrites the same log with the larger total.
+function applyDailyStats(store, { stats, landed }) {
+  const doc = store.doc();
+  const today = store.today();
+  const active = (id) => doc.items[id]?.status === 'active';
+  for (const [day, s] of Object.entries(stats)) {
+    if (day > today) continue;
+    if (active(HEBREW_IDS.minutes) && s.sec > 0) {
+      // To one decimal minute, never rounded down to zero for a short burst under 30 seconds.
+      const minutes = Math.round((s.sec / 60) * 10) / 10;
+      store.putLog(`hebrew:min:${day}`, { itemId: HEBREW_IDS.minutes, kind: 'amount', amount: minutes, day, source: 'hebrew' });
+    }
+    if (active(HEBREW_IDS.spoken) && s.spoken > 0) {
+      store.putLog(`hebrew:spoken:${day}`, { itemId: HEBREW_IDS.spoken, kind: 'amount', amount: s.spoken, day, source: 'hebrew' });
+    }
+    if (active(HEBREW_IDS.habit) && s.sessions > 0) {
+      store.putLog(`hebrew:done:${day}`, { itemId: HEBREW_IDS.habit, kind: 'done', day, source: 'hebrew' });
+    }
+  }
+  // Distinct words landed live on each day. The Hebrew app keeps only the LAST time it heard each
+  // word, so a word said again in a later week moves with it and an earlier week's bar can fall
+  // slightly on a re-sync. The weekly bar reads "words you said live that week", which stays true
+  // under that rule; the milestones count the ledger as a whole, which is exact either way.
+  if (active(HEBREW_IDS.live)) {
+    const byDay = {};
+    for (const ts of Object.values(landed)) {
+      const day = typeof ts === 'number' ? localDay(ts) : null;
+      if (day && day <= today) byDay[day] = (byDay[day] ?? 0) + 1;
+    }
+    for (const [day, n] of Object.entries(byDay)) {
+      store.putLog(`hebrew:live:${day}`, { itemId: HEBREW_IDS.live, kind: 'amount', amount: n, day, source: 'hebrew' });
+    }
+  }
+}
+
+// Ticks any auto milestone whose rule has been reached. One-way: a milestone once ticked stays
+// ticked (a count that later falls, or one unticked by hand, isn't fought), and an archived one is
+// never touched. A step still carrying `add` has not been calibrated yet and so has no target to
+// meet; it is skipped rather than compared against nothing.
+function applyAutoMilestones(store, metrics) {
+  for (const m of Object.values(store.doc().milestones)) {
+    if (m.goalId !== HEBREW_IDS.goal || m.status !== 'active' || m.done || !m.auto) continue;
+    const { kind, n } = m.auto;
+    if (!(n > 0)) continue;
+    if ((metrics[kind] ?? 0) >= n) store.updateMilestone(m.id, { done: true });
+  }
+}
+
+// WHAT THE HEBREW WIDGET DRAWS (js/ui/hebrew.js), kept on the goal as `hebrewNow` so every device
+// shows it, not only the one holding the Hebrew token: the four ladder numbers, the latest word
+// bands, the last two weeks' practice day by day, and the words most recently said live. Small on
+// purpose — two weeks of days and eight words.
+const RECENT_DAYS = 14;
+const RECENT_WORDS = 8;
+
+function hebrewSummary({ stats, landed }, metrics, today) {
+  const days = Object.keys(stats).sort();
+  let bands = null;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const b = stats[days[i]]?.bands;
+    if (b && typeof b === 'object') { bands = pick(b, ['strong', 'progressing', 'weak', 'new']); break; }
+  }
+  const from = addDays(today, 1 - RECENT_DAYS);
+  const daily = {};
+  for (const day of days) {
+    if (day < from || day > today || !(stats[day]?.sessions > 0)) continue;
+    daily[day] = pick(stats[day], ['sec', 'spoken', 'spokenOk', 'cards', 'clean']);
+  }
+  const recent = Object.entries(landed)
+    .filter(([word, ts]) => word.trim() && typeof ts === 'number' && localDay(ts))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, RECENT_WORDS)
+    .map(([word, ts]) => ({ word: word.trim().slice(0, 40), day: localDay(ts) }));
+  // Growth: strong words at the end of each of the last 8 weeks (oldest first; null before the
+  // stats begin), and words said live in the last 7 days.
+  const strongBy = (day) => {
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (days[i] > day) continue;
+      const n = stats[days[i]]?.bands?.strong;
+      if (typeof n === 'number') return Math.round(n);
+    }
+    return null;
+  };
+  const strongWeeks = Array.from({ length: 8 }, (_, i) => strongBy(addDays(today, -7 * (7 - i))));
+  const weekFrom = addDays(today, -6);
+  const liveWeek = Object.values(landed).filter((ts) => typeof ts === 'number' && localDay(ts) && localDay(ts) >= weekFrom && localDay(ts) <= today).length;
+  return { ...metrics, bands, daily, recent, strongWeeks, liveWeek };
+}
+
+// Only the named keys that hold a finite number, as whole numbers.
+function pick(obj, keys) {
+  const out = {};
+  for (const k of keys) if (Number.isFinite(obj?.[k])) out[k] = Math.round(obj[k]);
+  return out;
+}
+
+// Written only when it has changed, so a sync that finds nothing new saves nothing.
+function saveSummary(store, summary) {
+  const goal = store.doc().goals[HEBREW_IDS.goal];
+  if (!goal || stableStringify(goal.hebrewNow ?? null) === stableStringify(summary)) return;
+  store.updateGoal(HEBREW_IDS.goal, { hebrewNow: summary });
+}
+
+// Fetch, parse and apply once. Like js/sync.js's syncOnce, this never throws: every failure comes
+// back as { ok: false, error }. No file yet is not a failure — there's nothing to apply yet.
+async function syncHebrewProgress({ store, client }) {
+  let remote;
+  try {
+    remote = await client.get();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  if (!remote) return { ok: true, words: null };
+  let snapshot;
+  try {
+    snapshot = await readSnapshot(remote.doc);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  ensureHebrewGoal(store);
+  const metrics = metricsOf(snapshot);
+  // A file with no practice history at all can't say where he stands, and calibrating the ladder
+  // against zero would recreate exactly the too-easy rungs this version exists to fix. Wait for a
+  // snapshot with something in it.
+  if (Object.keys(snapshot.stats).length) calibrate(store, metrics);
+  applyDailyStats(store, snapshot);
+  applyAutoMilestones(store, metrics);
+  saveSummary(store, hebrewSummary(snapshot, metrics, store.today()));
+  return { ok: true, words: latestWords(snapshot.stats), ...metrics };
+}
+return { HEBREW_IDS, HEBREW_LADDER, ensureHebrewGoal, RECENT_DAYS, hebrewSummary, syncHebrewProgress };
+})();
+
+// ---- planner/duolingo.js
+const __planner_duolingo = (() => {
+// Duolingo, for the planner's run: the XP on George's Hebrew course, read from his public profile,
+// and what it gained since the last check added to that day's log on the Hebrew practice habit
+// (js/duolingo.js says what the dashboard makes of it). Read only, and no login: Duolingo has no
+// official API, so this is the endpoint its own site uses for a public profile, and its day-by-day
+// history (which needs a login) is never asked for. That's why the first check only takes a starting
+// point. A failure is kept as a sentence in the status record and never stops the planner.
+
+const { logicalDay } = __js_dates;
+const { HEBREW_IDS } = __js_hebrewSync;
+const { DUOLINGO_SOURCE, DUOLINGO_STATUS, duolingoStatus, duolingoLogId } = __js_duolingo;
+
+const DUOLINGO = 'https://www.duolingo.com/2017-06-30/users';
+const QUIET_MS = 55 * 60000; // a check that found nothing new is recorded at most hourly
+
+class DuolingoError extends Error {}
+
+// The XP on his Hebrew courses (learning Hebrew, from any language), from the public profile.
+async function hebrewXp(fetch, user) {
+  let res;
+  try {
+    res = await fetch(`${DUOLINGO}?username=${encodeURIComponent(user)}`, { headers: { accept: 'application/json' } });
+  } catch {
+    throw new DuolingoError("Couldn't reach Duolingo");
+  }
+  if (!res.ok) throw new DuolingoError(`Couldn't reach Duolingo (it answered ${res.status})`);
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    throw new DuolingoError("Duolingo's reply wasn't JSON");
+  }
+  const profile = body?.users?.[0];
+  if (!profile) throw new DuolingoError(`Duolingo has no public profile called ${user}`);
+  if (!Array.isArray(profile.courses)) throw new DuolingoError("Duolingo's profile has no course list (is it private?)");
+  const hebrew = profile.courses.filter((c) => c?.learningLanguage === 'he' && Number.isFinite(c.xp));
+  if (!hebrew.length) throw new DuolingoError(`${user} isn't doing a Hebrew course on Duolingo`);
+  return hebrew.reduce((n, c) => n + c.xp, 0);
+}
+
+// One check. Returns the status as it now stands.
+async function syncDuolingo({ fetch, user, store, now = () => new Date(), dayStartHour = 4, scrub = (s) => s }) {
+  const t = now();
+  const prev = duolingoStatus(store.doc());
+  // A new username starts again from its own XP.
+  const base = prev?.user === user && Number.isFinite(prev.xp) ? prev.xp : null;
+  const status = { user, xp: base, lastSync: prev?.user === user ? prev.lastSync ?? null : null, lastError: null };
+  try {
+    const xp = await hebrewXp(fetch, user);
+    const gained = base == null ? 0 : xp - base;
+    const habit = store.doc().items[HEBREW_IDS.habit];
+    if (gained > 0 && habit?.status === 'active') {
+      const day = logicalDay(t, dayStartHour);
+      const id = duolingoLogId(day);
+      const log = store.doc().logs[id];
+      const before = log?.status === 'active' ? Number(log.amount) || 0 : 0;
+      store.putLog(id, {
+        itemId: habit.id, kind: 'amount', amount: before + gained, day, at: t.toISOString(),
+        note: 'Duolingo XP', source: DUOLINGO_SOURCE, status: 'active',
+      });
+    }
+    status.xp = xp;
+    if (xp !== base || !status.lastSync || t.getTime() - Date.parse(status.lastSync) >= QUIET_MS) status.lastSync = t.toISOString();
+  } catch (err) {
+    status.lastError = scrub(err instanceof DuolingoError ? err.message : `Duolingo check stopped: ${err?.message ?? err}`);
+  }
+  store.putCalendar(DUOLINGO_STATUS, status, DUOLINGO_SOURCE);
+  return status;
+}
+return { DUOLINGO, syncDuolingo };
+})();
+
 // ---- planner/properties.js
 const __planner_properties = (() => {
 // Script Properties allow 9 KB per value. Publish a chunk manifest only after every
@@ -6908,6 +7384,7 @@ const { wallClock, deviceZone } = __js_travel;
 const { mealsOn } = __js_food;
 const { readPlannerConfig, dayRecord } = __js_calendar;
 const { sessionTasks, routineFor } = __js_coach;
+const { duolingoLogId } = __js_duolingo;
 
 const NUDGES_PER_DAY = 4;
 const SESSION_AHEAD_MIN = 35;
@@ -6948,7 +7425,10 @@ function hebrewNudge(doc, t, day, clk) {
     .reduce((n, l) => n + (Number(l.amount) || 0), 0));
   if (minutes >= share) return null;
   // "Logged so far": the Hebrew Reader's minutes arrive when the dashboard syncs on one of his devices.
-  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.`, url: './?do=hebrew' };
+  // Duolingo doesn't count towards them, but it's said, so the push isn't news to him.
+  const duo = doc.logs?.[duolingoLogId(day)];
+  const xp = duo?.status === 'active' && duo.kind === 'amount' ? ` Duolingo: ${duo.amount} XP.` : '';
+  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.${xp}`, url: './?do=hebrew' };
 }
 
 function sessionNudges(doc, t, day, zone) {
@@ -7376,357 +7856,6 @@ function movedSlot(item, slot, today) {
   return { start: start.toISOString(), end: new Date(+start + (item.minutes ?? 30) * 60000).toISOString(), state: 'moving' };
 }
 return { timelineModel, mealMarkers, tomorrowLine, toClock, toDay, dropTime, movedSlot };
-})();
-
-// ---- js/hebrewSync.js
-const __js_hebrewSync = (() => {
-// Read-only pull from the Hebrew app's own sync file (same shape of GitHub-file sync as js/sync.js,
-// a different repo): a gzip+base64 snapshot of its localStorage. Applied as amount/done logs and
-// milestone ticks against fixed records (a goal, a habit, three weekly targets and a ladder of
-// milestones, created once and left alone after), so the app's existing weekly-target bars and
-// streaks (js/schedule.js, js/ui/today.js) show real progress without any new UI. Never writes
-// back to the Hebrew app's repo.
-//
-// WHICH OF ITS KEYS ARE READ, AND WHY THOSE. The Hebrew app's library size (hvr_stats[day].lib) is
-// the obvious number and the wrong one: it counts every entry, drilled or not — 103 of 241 were in
-// the "new" band on the last snapshot anyone checked — and it grows from seeds and imports, with
-// each entry carrying its own inflections nested inside it. So the ladder is built from the four
-// things the app knows that can't be padded:
-//
-//   hvr_stats[day].bands.strong  words the SRS has watched him hold for weeks AND that he has been
-//                                accurate on recently — the app's own hardest band.
-//   hvr_coachlanded              { word: lastLandedTs } — every word said live, unprompted and
-//                                correctly, in a coach conversation. The app's own ledger.
-//   hvr_pathscores               { nodeId: { lesson: { pct, ts, gold } } }. Lesson 99 is the coach
-//                                graduation; `gold` is stamped there when every word a node
-//                                teaches is SRS-ready AND has been said live. "Nodes perfected".
-//   hvr_stats                    the per-day practice numbers: sec, sessions, spoken.
-//
-// Coach transcripts (hvr_coach, hvr_convo) are deliberately device-local in that app and never
-// reach the file, so conversations can be counted by their outcome but never by their number.
-
-const { stableStringify } = __js_doc;
-const { addDays } = __js_dates;
-
-const HEBREW_IDS = {
-  goal: 'hebrew-goal', habit: 'hebrew-habit', minutes: 'hebrew-minutes', spoken: 'hebrew-spoken', live: 'hebrew-live',
-};
-
-const OLD_GOAL_TITLE = 'Hold a 10-minute conversation in Hebrew';
-// The lesson slot the Hebrew app files a node's coach graduation under, and where it stamps the
-// flag saying that node has been perfected.
-const COACH_LESSON = '99';
-
-// How a calibrated step reads once it carries a real number, and how it reads before then. Each
-// `add` in the ladder below is "this many more than he had the day the goal started", so no step
-// can arrive already passed — see calibrate().
-const TRACKS = {
-  strong: { title: (n) => `Hold ${n} Hebrew words strong`, pending: (n) => `Hold ${n} more Hebrew words strong` },
-  live: { title: (n) => `Say ${n} Hebrew words live in conversation`, pending: (n) => `Say ${n} more Hebrew words live in conversation` },
-  gold: { title: (n) => `Perfect ${n} nodes on the Hebrew path`, pending: (n) => `Perfect ${n} more nodes on the Hebrew path` },
-  days: { title: (n) => `Practise Hebrew on ${n} different days`, pending: (n) => `Practise Hebrew on ${n} more days` },
-};
-
-const step = (id, kind, add) => ({ id, title: TRACKS[kind].pending(add), auto: { kind, add } });
-
-// The stages on the way, in the order they should come up. The four automatic tracks are
-// interleaved with the five conversations, which only George can vouch for and so stay plain
-// checkboxes. Their ids are the ones the first ladder used, so anything already ticked stays so.
-const HEBREW_LADDER = [
-  { id: 'hebrew-ms-talk-hello', title: 'Greet her and introduce myself in Hebrew' },
-  step('hebrew-ms-live-1', 'live', 25),
-  step('hebrew-ms-gold-1', 'gold', 3),
-  step('hebrew-ms-strong-1', 'strong', 50),
-  { id: 'hebrew-ms-talk-1', title: 'Have a 1-minute exchange with her in Hebrew (how was your day)' },
-  step('hebrew-ms-practised-1', 'days', 30),
-  step('hebrew-ms-live-2', 'live', 75),
-  step('hebrew-ms-gold-2', 'gold', 10),
-  step('hebrew-ms-strong-2', 'strong', 150),
-  { id: 'hebrew-ms-talk-3', title: 'Have a 3-minute chat with her in Hebrew, no English' },
-  step('hebrew-ms-practised-2', 'days', 90),
-  step('hebrew-ms-live-3', 'live', 200),
-  step('hebrew-ms-gold-3', 'gold', 25),
-  step('hebrew-ms-strong-3', 'strong', 300),
-  { id: 'hebrew-ms-talk-5', title: 'Have a 5-minute chat with her in Hebrew about anything' },
-  step('hebrew-ms-practised-3', 'days', 180),
-  step('hebrew-ms-live-4', 'live', 400),
-  step('hebrew-ms-gold-4', 'gold', 50),
-  step('hebrew-ms-strong-4', 'strong', 600),
-  { id: 'hebrew-ms-talk-10', title: 'Hold a 10-minute conversation in Hebrew' },
-];
-
-// Every word-count and day-count step the first two ladders used. Both counted the library, which
-// is the number this file no longer trusts; version 3 replaces them with the four tracks above.
-const RETIRED = [
-  'hebrew-ms-words-50', 'hebrew-ms-words-100', 'hebrew-ms-words-250', 'hebrew-ms-words-500',
-  'hebrew-ms-words-750', 'hebrew-ms-words-1000', 'hebrew-ms-words-1500', 'hebrew-ms-words-2000',
-  'hebrew-ms-words-3000', 'hebrew-ms-days-7', 'hebrew-ms-days-30', 'hebrew-ms-days-45',
-  'hebrew-ms-days-60', 'hebrew-ms-days-90', 'hebrew-ms-days-120', 'hebrew-ms-days-180',
-];
-const LADDER_VERSION = 3;
-
-// Created once, however they're since renamed, retargeted or archived: this only fills in what's
-// missing, it never resets an existing record. The exceptions are the goal's old title, renamed
-// to plain "Hebrew" if (and only if) it's still exactly what this file first gave it, and a
-// one-time move to the current ladder (retire the library-counting steps, put the rest in order),
-// marked on the goal so it never runs again and never undoes edits made after it.
-function ensureHebrewGoal(store, { minutesTarget = 90, spokenTarget = 40, liveTarget = 15 } = {}) {
-  const doc = store.doc();
-  if (!doc.goals[HEBREW_IDS.goal]) {
-    store.addGoal({ id: HEBREW_IDS.goal, title: 'Hebrew', source: 'hebrew' });
-  } else if (doc.goals[HEBREW_IDS.goal].title === OLD_GOAL_TITLE) {
-    store.updateGoal(HEBREW_IDS.goal, { title: 'Hebrew' });
-  }
-  const migrating = doc.goals[HEBREW_IDS.goal].ladderVersion !== LADDER_VERSION;
-  HEBREW_LADDER.forEach(({ id, title, auto }, i) => {
-    if (!doc.milestones[id]) store.addMilestone(HEBREW_IDS.goal, title, { id, auto, order: i + 1, source: 'hebrew' });
-    else if (migrating) store.updateMilestone(id, { order: i + 1 });
-  });
-  if (migrating) {
-    for (const id of RETIRED) if (doc.milestones[id]?.status === 'active') store.archiveMilestone(id);
-    store.updateGoal(HEBREW_IDS.goal, { ladderVersion: LADDER_VERSION });
-  }
-  if (!doc.items[HEBREW_IDS.habit]) {
-    store.addItem({
-      id: HEBREW_IDS.habit, type: 'habit', title: 'Hebrew practice', area: 'Hebrew',
-      goalId: HEBREW_IDS.goal, repeat: { kind: 'daily' }, source: 'hebrew',
-    });
-  }
-  if (!doc.items[HEBREW_IDS.minutes]) {
-    store.addItem({
-      id: HEBREW_IDS.minutes, type: 'quota', title: 'Hebrew learning time', area: 'Hebrew',
-      goalId: HEBREW_IDS.goal, target: minutesTarget, unit: 'minutes', source: 'hebrew',
-    });
-  }
-  if (!doc.items[HEBREW_IDS.spoken]) {
-    store.addItem({
-      id: HEBREW_IDS.spoken, type: 'quota', title: 'Hebrew speaking practice', area: 'Hebrew',
-      goalId: HEBREW_IDS.goal, target: spokenTarget, unit: 'count', unitLabel: 'reps spoken', source: 'hebrew',
-    });
-  }
-  if (!doc.items[HEBREW_IDS.live]) {
-    store.addItem({
-      id: HEBREW_IDS.live, type: 'quota', title: 'Hebrew words said live', area: 'Hebrew',
-      goalId: HEBREW_IDS.goal, target: liveTarget, unit: 'count', unitLabel: 'words live', source: 'hebrew',
-    });
-  }
-}
-
-// The envelope's `body` is gzip, then base64. DecompressionStream is a Web Streams API standard,
-// available in the browser and in Node, so this needs no bundled inflate library.
-async function gunzipBase64(b64) {
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new TextDecoder().decode(await new Response(stream).arrayBuffer());
-}
-
-// The envelope's `keys` map mirrors the Hebrew app's localStorage: every value is itself a JSON
-// string. A key that is missing (a Hebrew app older than the feature that writes it) or unreadable
-// reads as empty rather than failing the sync — the rest of the snapshot is still worth applying.
-async function readSnapshot(envelope) {
-  if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error("Not a Hebrew app sync file");
-  const { keys } = JSON.parse(await gunzipBase64(envelope.body));
-  const read = (name) => {
-    try {
-      const value = JSON.parse(keys?.[name] ?? 'null');
-      return value && typeof value === 'object' ? value : {};
-    } catch { return {}; }
-  };
-  return { stats: read('hvr_stats'), landed: read('hvr_coachlanded'), pathscores: read('hvr_pathscores') };
-}
-
-// The day a millisecond timestamp falls on WHERE HE IS, not in UTC: an evening session in a
-// timezone ahead of UTC would otherwise be filed under the previous day. The Hebrew app writes its
-// own day keys the same way.
-function localDay(ts) {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return null;
-  const pad = (x) => String(x).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// What the ladder is measured in. Each is a plain count of something the Hebrew app has already
-// decided — none of them is re-derived here, so none can drift from what its own screens say.
-function metricsOf({ stats, landed, pathscores }) {
-  const days = Object.keys(stats).sort();
-  let strong = 0;
-  for (let i = days.length - 1; i >= 0; i--) {
-    const bands = stats[days[i]]?.bands;
-    if (bands && typeof bands.strong === 'number') { strong = bands.strong; break; }
-  }
-  return {
-    strong,
-    live: Object.keys(landed).length,
-    gold: Object.values(pathscores).filter((node) => node?.[COACH_LESSON]?.gold === true).length,
-    days: days.filter((day) => stats[day]?.sessions > 0).length,
-  };
-}
-
-// The library size on the latest day that reports one. Shown in Settings beside the honest
-// numbers, never used as a target — see the note at the top of this file.
-function latestWords(stats) {
-  const days = Object.keys(stats).sort();
-  for (let i = days.length - 1; i >= 0; i--) {
-    const lib = stats[days[i]].lib;
-    if (typeof lib === 'number') return lib;
-  }
-  return null;
-}
-
-// WHERE THE LADDER STARTS COUNTING FROM. A step created as "+50 strong words" becomes an ordinary
-// fixed target the first time real numbers arrive: 50 above where he stood that day. That is the
-// whole reason the ladder is written in `add` rather than in absolute numbers — the first two
-// versions guessed at absolute ones and half the rungs ticked themselves on arrival, because he
-// was already a long way into the app.
-//
-// Once. The baseline is stamped on the goal, and a calibrated step carries a plain `n` from then
-// on, so retargeting one by hand afterwards sticks.
-function calibrate(store, metrics) {
-  const doc = store.doc();
-  if (doc.goals[HEBREW_IDS.goal]?.hebrewBaseline) return;
-  for (const m of Object.values(doc.milestones)) {
-    if (m.goalId !== HEBREW_IDS.goal || m.status !== 'active' || !m.auto) continue;
-    const { kind, add } = m.auto;
-    if (!(add > 0) || !TRACKS[kind]) continue;
-    const n = (metrics[kind] ?? 0) + add;
-    store.updateMilestone(m.id, { auto: { kind, n }, title: TRACKS[kind].title(n) });
-  }
-  store.updateGoal(HEBREW_IDS.goal, { hebrewBaseline: { ...metrics, at: store.today() } });
-}
-
-// One log per day per metric, at a deterministic id: re-applying the same day's numbers is a
-// no-op (store.putLog only writes when something actually changed), and a day whose numbers rise
-// as the Hebrew app is used later that day just overwrites the same log with the larger total.
-function applyDailyStats(store, { stats, landed }) {
-  const doc = store.doc();
-  const today = store.today();
-  const active = (id) => doc.items[id]?.status === 'active';
-  for (const [day, s] of Object.entries(stats)) {
-    if (day > today) continue;
-    if (active(HEBREW_IDS.minutes) && s.sec > 0) {
-      // To one decimal minute, never rounded down to zero for a short burst under 30 seconds.
-      const minutes = Math.round((s.sec / 60) * 10) / 10;
-      store.putLog(`hebrew:min:${day}`, { itemId: HEBREW_IDS.minutes, kind: 'amount', amount: minutes, day, source: 'hebrew' });
-    }
-    if (active(HEBREW_IDS.spoken) && s.spoken > 0) {
-      store.putLog(`hebrew:spoken:${day}`, { itemId: HEBREW_IDS.spoken, kind: 'amount', amount: s.spoken, day, source: 'hebrew' });
-    }
-    if (active(HEBREW_IDS.habit) && s.sessions > 0) {
-      store.putLog(`hebrew:done:${day}`, { itemId: HEBREW_IDS.habit, kind: 'done', day, source: 'hebrew' });
-    }
-  }
-  // Distinct words landed live on each day. The Hebrew app keeps only the LAST time it heard each
-  // word, so a word said again in a later week moves with it and an earlier week's bar can fall
-  // slightly on a re-sync. The weekly bar reads "words you said live that week", which stays true
-  // under that rule; the milestones count the ledger as a whole, which is exact either way.
-  if (active(HEBREW_IDS.live)) {
-    const byDay = {};
-    for (const ts of Object.values(landed)) {
-      const day = typeof ts === 'number' ? localDay(ts) : null;
-      if (day && day <= today) byDay[day] = (byDay[day] ?? 0) + 1;
-    }
-    for (const [day, n] of Object.entries(byDay)) {
-      store.putLog(`hebrew:live:${day}`, { itemId: HEBREW_IDS.live, kind: 'amount', amount: n, day, source: 'hebrew' });
-    }
-  }
-}
-
-// Ticks any auto milestone whose rule has been reached. One-way: a milestone once ticked stays
-// ticked (a count that later falls, or one unticked by hand, isn't fought), and an archived one is
-// never touched. A step still carrying `add` has not been calibrated yet and so has no target to
-// meet; it is skipped rather than compared against nothing.
-function applyAutoMilestones(store, metrics) {
-  for (const m of Object.values(store.doc().milestones)) {
-    if (m.goalId !== HEBREW_IDS.goal || m.status !== 'active' || m.done || !m.auto) continue;
-    const { kind, n } = m.auto;
-    if (!(n > 0)) continue;
-    if ((metrics[kind] ?? 0) >= n) store.updateMilestone(m.id, { done: true });
-  }
-}
-
-// WHAT THE HEBREW WIDGET DRAWS (js/ui/hebrew.js), kept on the goal as `hebrewNow` so every device
-// shows it, not only the one holding the Hebrew token: the four ladder numbers, the latest word
-// bands, the last two weeks' practice day by day, and the words most recently said live. Small on
-// purpose — two weeks of days and eight words.
-const RECENT_DAYS = 14;
-const RECENT_WORDS = 8;
-
-function hebrewSummary({ stats, landed }, metrics, today) {
-  const days = Object.keys(stats).sort();
-  let bands = null;
-  for (let i = days.length - 1; i >= 0; i--) {
-    const b = stats[days[i]]?.bands;
-    if (b && typeof b === 'object') { bands = pick(b, ['strong', 'progressing', 'weak', 'new']); break; }
-  }
-  const from = addDays(today, 1 - RECENT_DAYS);
-  const daily = {};
-  for (const day of days) {
-    if (day < from || day > today || !(stats[day]?.sessions > 0)) continue;
-    daily[day] = pick(stats[day], ['sec', 'spoken', 'spokenOk', 'cards', 'clean']);
-  }
-  const recent = Object.entries(landed)
-    .filter(([word, ts]) => word.trim() && typeof ts === 'number' && localDay(ts))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, RECENT_WORDS)
-    .map(([word, ts]) => ({ word: word.trim().slice(0, 40), day: localDay(ts) }));
-  // Growth: strong words at the end of each of the last 8 weeks (oldest first; null before the
-  // stats begin), and words said live in the last 7 days.
-  const strongBy = (day) => {
-    for (let i = days.length - 1; i >= 0; i--) {
-      if (days[i] > day) continue;
-      const n = stats[days[i]]?.bands?.strong;
-      if (typeof n === 'number') return Math.round(n);
-    }
-    return null;
-  };
-  const strongWeeks = Array.from({ length: 8 }, (_, i) => strongBy(addDays(today, -7 * (7 - i))));
-  const weekFrom = addDays(today, -6);
-  const liveWeek = Object.values(landed).filter((ts) => typeof ts === 'number' && localDay(ts) && localDay(ts) >= weekFrom && localDay(ts) <= today).length;
-  return { ...metrics, bands, daily, recent, strongWeeks, liveWeek };
-}
-
-// Only the named keys that hold a finite number, as whole numbers.
-function pick(obj, keys) {
-  const out = {};
-  for (const k of keys) if (Number.isFinite(obj?.[k])) out[k] = Math.round(obj[k]);
-  return out;
-}
-
-// Written only when it has changed, so a sync that finds nothing new saves nothing.
-function saveSummary(store, summary) {
-  const goal = store.doc().goals[HEBREW_IDS.goal];
-  if (!goal || stableStringify(goal.hebrewNow ?? null) === stableStringify(summary)) return;
-  store.updateGoal(HEBREW_IDS.goal, { hebrewNow: summary });
-}
-
-// Fetch, parse and apply once. Like js/sync.js's syncOnce, this never throws: every failure comes
-// back as { ok: false, error }. No file yet is not a failure — there's nothing to apply yet.
-async function syncHebrewProgress({ store, client }) {
-  let remote;
-  try {
-    remote = await client.get();
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-  if (!remote) return { ok: true, words: null };
-  let snapshot;
-  try {
-    snapshot = await readSnapshot(remote.doc);
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-  ensureHebrewGoal(store);
-  const metrics = metricsOf(snapshot);
-  // A file with no practice history at all can't say where he stands, and calibrating the ladder
-  // against zero would recreate exactly the too-easy rungs this version exists to fix. Wait for a
-  // snapshot with something in it.
-  if (Object.keys(snapshot.stats).length) calibrate(store, metrics);
-  applyDailyStats(store, snapshot);
-  applyAutoMilestones(store, metrics);
-  saveSummary(store, hebrewSummary(snapshot, metrics, store.today()));
-  return { ok: true, words: latestWords(snapshot.stats), ...metrics };
-}
-return { HEBREW_IDS, HEBREW_LADDER, ensureHebrewGoal, RECENT_DAYS, hebrewSummary, syncHebrewProgress };
 })();
 
 // ---- js/map/hex.js
@@ -8209,7 +8338,7 @@ const __js_glance = (() => {
 // app only lays out a title, a big number with its caption, and a few lines, and opens the dashboard
 // on that tile, big, when tapped. Pure.
 
-const { todayRows, weekTotal, doneBetween, dayCompletion, goalProgress } = __js_schedule;
+const { todayRows, weekTotal, doneBetween, dayCompletion, goalProgress, duolingoOn } = __js_schedule;
 const { todaySlots, clockLabel, countdowns, daysLeft, excused } = __js_calendar;
 const { scheduleView, localDate } = __js_plan_state;
 const { movedSlot } = __js_timeline;
@@ -8288,7 +8417,7 @@ function hebrew(doc, today) {
     const d = addDays(monday, i);
     if (d > today) return '·';
     const m = values(doc.logs).filter((l) => l.status === 'active' && l.itemId === minutes.id && l.kind === 'amount' && l.day === d).reduce((s, l) => s + l.amount, 0);
-    return m >= 30 ? '●' : m > 0 ? '◐' : '○';
+    return m >= 30 ? '●' : m > 0 ? '◐' : duolingoOn(doc, HEBREW_IDS.habit, d) > 0 ? '◔' : '○';
   }).join('');
   lines.push(`${strip}  Mon–Sun`);
   return {
@@ -8531,6 +8660,7 @@ const { tagPrompt, readArea } = __planner_tag;
 const { syncHevy } = __planner_hevy;
 const { syncRoutines } = __planner_routines;
 const { syncHealth } = __planner_health;
+const { syncDuolingo } = __planner_duolingo;
 const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner_properties;
 const { processWorkflows } = __js_workflow;
 const { runGoalReviews } = __planner_reviews;
@@ -8715,6 +8845,15 @@ function createPlanner({
     if (s.lastError) log(`Google Health: ${s.lastError}`);
   }
 
+  // Duolingo every run: one small request, and a Duolingo-only day should show before the evening's
+  // Hebrew push. Skipped until the planner setting `duolingo` has his username.
+  async function duolingo(store) {
+    const user = readPlannerConfig(store.doc()).config.duolingo;
+    if (!user) return;
+    const s = await syncDuolingo({ fetch, user, store, now, dayStartHour: dayStartHour(), scrub: clean });
+    if (s.lastError) log(`Duolingo: ${s.lastError}`);
+  }
+
   function apply(actions, events) {
     const byKey = {};
     const errors = [];
@@ -8816,6 +8955,7 @@ function createPlanner({
       const { store } = session;
       await hevy(store);
       await health(store);
+      await duolingo(store);
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
       try {

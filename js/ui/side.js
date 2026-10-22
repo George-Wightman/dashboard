@@ -9,6 +9,7 @@ import { shortDate, shortWeekday, daysBetween, weekStart } from '../dates.js';
 import { offLine, excused } from '../calendar.js';
 import { dayLines, cardioQuotaId, workouts } from '../gym.js';
 import { HEBREW_IDS } from '../hebrewSync.js';
+import { DUOLINGO_SOURCE } from '../duolingo.js';
 import { SOURCE_NAMES } from './sources.js';
 import { bigSection } from './big.js';
 
@@ -229,8 +230,9 @@ function renderDayDetail(ctx, day) {
     return box;
   }
   box.append(h('ul', {},
-    rows.map((r) => h('li', { class: r.done ? null : 'miss' }, `${r.done ? '✓' : '✗'} ${r.item.title}`)),
+    rows.map((r) => h('li', { class: r.done ? null : 'miss' }, `${r.done ? '✓' : r.duolingo ? '◔' : '✗'} ${r.item.title}${r.duolingo ? ' (Duolingo only)' : ''}`)),
     amounts.map(({ log, item, goal }) => {
+      if (log.source === DUOLINGO_SOURCE) return h('li', {}, `+ ${log.amount} XP on Duolingo`);
       const target = item ?? goal;
       return h('li', {}, `+ ${formatAmount(log.amount, target?.unit ?? 'count')} ${target?.title ?? ''}`);
     }),
