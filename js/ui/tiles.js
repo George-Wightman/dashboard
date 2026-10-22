@@ -27,6 +27,15 @@ const stacked = (...parts) => {
   return shown.length ? h('div', { class: 'tile-parts' }, shown) : null;
 };
 
+function mapSafely(draw) {
+  try {
+    return draw();
+  } catch (e) {
+    console.error(e);
+    return h('p', { class: 'muted' }, `The map couldn't be drawn: ${e.message}`);
+  }
+}
+
 // A widget's content with its big number above it.
 const withHero = (hero, content) => {
   if (!content && !hero) return null;
@@ -53,11 +62,12 @@ export const TILES = [
   { id: 'goals', title: 'Goals', area: 'goals', render: renderGoals },
   { id: 'weeks', title: 'Your weeks', area: 'weeks', render: renderHistory, big: renderHistoryBig },
   { id: 'countdown', title: 'Countdown', area: 'countdown', render: renderCountdown },
-  // The map (js/ui/map.js): its picture opens it big too.
+  // The map (js/ui/map.js): its picture opens it big too. A map that can't draw says so in its own
+  // tile rather than taking the rest of the screen with it.
   {
     id: 'map', title: 'Map', area: 'map',
-    render: (ctx) => renderMapTile({ ...ctx, openMap: () => openBig(ctx, BY_ID.get('map')) }),
-    big: renderMapBig,
+    render: (ctx) => mapSafely(() => renderMapTile({ ...ctx, openMap: () => openBig(ctx, BY_ID.get('map')) })),
+    big: (ctx) => mapSafely(() => renderMapBig(ctx)),
   },
   {
     id: 'week', title: 'This week', area: 'week',
