@@ -1,10 +1,10 @@
 {
-  "id": "417f26032fd458594da1d46cdbc3d26fe92f1d97e03fdaec9c98909ac2f28e81",
+  "id": "3e981158930a9b1063ca2dc900c86aeefa2653e62281fab986d48efc91a808ea",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "styles.css": "82757c6e1a2f8af994dc37b125a00f8bf62b90d7bafe61e98bb1dbfa5f674836",
-    "styles/daylight.css": "66329aaa79fdf020f2d92cfee416eeebda746d5ac169642cc486b622ba7f9d6d",
+    "styles/daylight.css": "729ed769ebd03790f47ed9b0731b5dd80d9d5962810687df5a0cde9ebe609240",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
