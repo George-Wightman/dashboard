@@ -4,7 +4,7 @@
 
 import { dayRecord, clockLabel } from './calendar.js';
 import { localDate } from './plan-state.js';
-import { addDays } from './dates.js';
+import { addDays, shortWeekday, shortDate } from './dates.js';
 import { mealsOn } from './food.js';
 
 // rows: today's list rows (js/ui/today.js's listRows), in their display order. slots: today's
@@ -45,6 +45,33 @@ export function tomorrowLine(doc, today) {
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   if (!blocks.length) return null;
   return blocks.map((b) => `${b.title} ${b.state === 'rough' ? '~' : ''}${clockLabel(b.start)}`).join(' · ');
+}
+
+// ---- Going back a day (‹ › on the Today heading) ------------------------------------------------
+
+// A day he didn't get to fill in can be gone back to and ticked, up to a week ago. Its ticks count
+// for that day, so its score, its sun and its map points follow.
+export const BACK_DAYS = 7;
+
+// The day the timeline shows: the past day stepped back to (`viewDay`), while it's within the week;
+// otherwise today — so a rollover, or a page left open, comes back to today by itself.
+export function shownDay(viewDay, today) {
+  return viewDay && viewDay < today && viewDay >= addDays(today, -BACK_DAYS) ? viewDay : today;
+}
+
+// The day after a step back (-1) or forward (+1): null for today, and no further back than the week.
+export function stepDay(viewDay, today, by) {
+  const day = shownDay(viewDay, today);
+  const next = addDays(day, by);
+  if (next >= today) return null;
+  return next < addDays(today, -BACK_DAYS) ? (day === today ? null : day) : next;
+}
+
+// "Today", "Yesterday", or "Fri 23 Oct".
+export function dayHeading(day, today) {
+  if (day === today) return 'Today';
+  if (day === addDays(today, -1)) return 'Yesterday';
+  return `${shortWeekday(day)} ${shortDate(day)}`;
 }
 
 // ---- Dragging a task to a new time (js/ui/timedrag.js) -------------------------------------------

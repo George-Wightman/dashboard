@@ -72,6 +72,10 @@ address.
   "now" line that moves. Everything without a time is under **Any time today**, where rows can still be
   dragged into order. A check-in waits at the top; tomorrow's blocks and **Tell Claude** come last. Rows
   keep everything they show on the classic list.
+- **A day you didn't fill in:** ‹ beside *Today* goes back a day at a time, up to a week. That day
+  shows as it was booked, and a tick, a check-in or a meal logged there counts for that day, so its
+  score, its sun and its map points follow. › or **Back to today** comes forward again; the page always
+  opens on today.
 - **Tiles: how your aims are going.** Needs you (only when a calendar conflict or a task without a slot
   needs a decision, in plain words), Body (cardio this week as one big number, your lifts and today's
   session), Hebrew, Goals, Your weeks (a gold sun per day, fuller for a better day), Countdown and This

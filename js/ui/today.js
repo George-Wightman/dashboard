@@ -11,7 +11,7 @@ import { sourceMark, logoMark } from './sources.js';
 import { todaySlots, timedOrder, clockLabel, isPriority, readPlannerConfig } from '../calendar.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { openOutcome } from './outcome.js';
-import { renderCheckin, tickAndAsk } from './checkin.js';
+import { renderCheckin, tickAndAsk, dayOf } from './checkin.js';
 import { openSnap } from './snap.js';
 
 // A weekly habit's dots: one per time a week, filled for each tick so far.
@@ -49,7 +49,7 @@ function weekDots(doc, item, today) {
 // neither.
 function progressCell(row, ctx) {
   const doc = ctx.store.doc();
-  const today = ctx.store.today();
+  const today = dayOf(ctx);
   const { item } = row;
   const parts = [];
   if (item.type !== 'task') {
@@ -111,7 +111,7 @@ export function renderRow(row, ctx, slot = null, star = false, via = null) {
   return h('li', { class: cls, 'data-id': item.id },
     h('input', { type: 'checkbox', checked: row.done, disabled: !!row.blocked, 'aria-label': `Done: ${item.title}`,
         onchange: (e) => {
-          if (!row.done && item.details?.outcomeForm?.length) { e.target.checked = false; openOutcome(ctx, item.id, true); return; }
+          if (!row.done && item.details?.outcomeForm?.length) { e.target.checked = false; openOutcome(ctx, item.id, true, dayOf(ctx)); return; }
           try { tickAndAsk(ctx, item.id); }
           catch (error) { ctx.ui.taskError = error.message; ctx.render(); }
         } }),
@@ -125,21 +125,28 @@ export function renderRow(row, ctx, slot = null, star = false, via = null) {
       item.notes ? noteMark(item, ctx) : null,
       row.blocked ? h('span', { class: 'carry', title: row.blocked.join('; ') }, 'Waiting') : null,
       item.details?.deadline ? h('span', { class: 'carry', title: 'Target deadline (does not reschedule automatically)' }, `by ${item.details.deadline}`) : null,
-      row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, store.today())) : null),
+      row.carriedFrom ? h('span', { class: 'carry' }, carryLabel(row.carriedFrom, dayOf(ctx))) : null),
     sourceMark(item.source, 'added'), item.area, progressCell(row, ctx)));
 }
 
 // Logging meals (js/schedule.js's mealsRow): a row that counts like any other but ticks itself at
-// three meals logged. Its box can't be ticked by hand; its title logs a meal.
+// three meals logged. Its box can't be ticked by hand; its title logs a meal — on a past day, at
+// lunchtime that day, to be changed in the meal's time.
 export function renderMealsRow(ctx) {
-  const row = mealsRow(ctx.store.doc(), ctx.store.today());
+  const day = dayOf(ctx);
+  const row = mealsRow(ctx.store.doc(), day);
   if (!row) return null;
   const said = `${row.logged} of ${row.needed} logged`;
   return h('li', { class: `row bare no-prog meals-row${row.done ? ' done' : ''}`, 'data-id': row.item.id, 'data-area': row.item.area },
     h('input', { type: 'checkbox', checked: row.done, disabled: true, title: `Ticks itself once ${row.needed} meals are logged`, 'aria-label': `Done: ${row.item.title}` }),
     mainCell(h('span', { class: 'title-cell' },
-      h('span', { class: 'title', title: 'Log a meal', onclick: () => openSnap(ctx) }, row.item.title),
+      h('span', { class: 'title', title: 'Log a meal', onclick: () => openSnap(ctx, day < ctx.store.today() ? pastMeal(day) : null) }, row.item.title),
       row.done ? null : h('span', { class: 'carry' }, said)), null, row.item.area));
+}
+
+function pastMeal(day) {
+  const [y, mo, d] = day.split('-').map(Number);
+  return { slot: 'lunch', start: new Date(y, mo - 1, d, 12, 30).toISOString() };
 }
 
 // Dragging reorders within a row's own group (done or not), inside whichever list the row is in:

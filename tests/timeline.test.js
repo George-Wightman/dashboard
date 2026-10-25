@@ -69,3 +69,20 @@ test("tomorrow's line, with rough times marked", () => {
   assert.match(tomorrowLine(doc, today), /^Hebrew practice \d\d:\d\d · Gym ~\d\d:\d\d$/);
   assert.equal(tomorrowLine(emptyDoc(), today), null);
 });
+
+test('going back: up to a week, then no further; forward again ends on today', async () => {
+  const { shownDay, stepDay, dayHeading } = await import('../js/timeline.js');
+  assert.equal(stepDay(null, today, -1), '2026-10-19');
+  assert.equal(stepDay('2026-10-19', today, -1), '2026-10-18');
+  assert.equal(stepDay('2026-10-13', today, -1), '2026-10-13');
+  assert.equal(stepDay('2026-10-19', today, 1), null);
+  assert.equal(stepDay(null, today, 1), null);
+  assert.equal(shownDay(null, today), today);
+  assert.equal(shownDay('2026-10-13', today), '2026-10-13');
+  assert.equal(shownDay('2026-10-12', today), today, 'more than a week back');
+  assert.equal(shownDay('2026-10-20', today), today);
+  assert.equal(shownDay('2026-10-19', '2026-10-21'), '2026-10-19', 'the day after, still a past day');
+  assert.equal(dayHeading(today, today), 'Today');
+  assert.equal(dayHeading('2026-10-19', today), 'Yesterday');
+  assert.equal(dayHeading('2026-10-16', today), 'Fri 16 Oct');
+});

@@ -41,6 +41,8 @@ import { loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
 const store = createStore({ storage: localStorage });
 const ui = {
   noteFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
+  // A past day Today's column shows, gone back to with ‹ (js/ui/timeline.js); null for today.
+  viewDay: null,
   // The widget opened big (js/ui/big.js): its registry entry, or null.
   big: null,
   // Arrange mode (js/ui/widgets.js): toggled by #arrange-button, Escape, or Done.
@@ -282,6 +284,8 @@ function applyLook() {
   if (root.dataset.screen !== screen) {
     root.dataset.screen = screen;
     clearOtherScreen(screen);
+    // The classic list is always today's, so a past day shown on Daylight goes with it.
+    ui.viewDay = null;
   }
   const meta = document.querySelector('meta[name="theme-color"]');
   // On Daylight the sky sets it (js/ui/sky.js), so the title bar is the sky's own colour.
@@ -425,6 +429,7 @@ function checkRollover() {
   if (day !== shownDay) {
     shownDay = day;
     ui.historyDay = null;
+    ui.viewDay = null;
     // A new day: yesterday's check-in drafts no longer apply, nor a back question asked for yesterday.
     ui.checkin = checkinState();
     ui.backAsk = false;

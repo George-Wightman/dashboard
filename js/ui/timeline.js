@@ -2,9 +2,12 @@
 // row with a calendar time and each calendar commitment in start order with the now line between
 // them, then "Any time today", tomorrow's line and the Tell Claude bar. The only place anything is
 // ticked. The rows are the classic list's own (js/ui/today.js), so they keep everything they show.
+// ‹ on the heading goes back to a past day, up to a week, to tick what didn't get ticked then: the
+// day as it was booked, with no now line, no dragging and nothing of today's (suggestions, the back
+// question, tomorrow's line).
 
 import { h } from './dom.js';
-import { timelineModel, tomorrowLine, mealMarkers, movedSlot } from '../timeline.js';
+import { timelineModel, tomorrowLine, mealMarkers, movedSlot, stepDay, dayHeading } from '../timeline.js';
 import { slotName } from '../food.js';
 import { openSnap } from './snap.js';
 import { todayRows } from '../schedule.js';
@@ -13,7 +16,7 @@ import { scheduleView } from '../plan-state.js';
 import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { renderRow, listRows, renderMealsRow } from './today.js';
 import { enableTimeDrag } from './timedrag.js';
-import { renderCheckin } from './checkin.js';
+import { renderCheckin, dayOf } from './checkin.js';
 import { renderBackRow, sessionExtras } from './coach.js';
 import { keptFocus, restoreFocus } from './side.js';
 
@@ -34,6 +37,22 @@ function listenForTicks(root, ctx) {
   }, true);
 }
 
+// The heading: ‹ Today ›, and "Back to today" while a past day shows.
+function renderHeading(ctx, day, today) {
+  const el = document.getElementById('dl-today-h');
+  if (!el) return;
+  const go = (by) => { ctx.ui.viewDay = by ? stepDay(ctx.ui.viewDay, today, by) : null; ctx.render(); };
+  const back = stepDay(ctx.ui.viewDay, today, -1);
+  const label = dayHeading(day, today);
+  el.replaceChildren(...[
+    h('button', { class: 'day-step', type: 'button', disabled: !back || back === day, title: 'The day before', 'aria-label': 'Show the day before', onclick: () => go(-1) }, '‹'),
+    h('span', { class: 'day-name' }, label),
+    day < today ? h('button', { class: 'day-step', type: 'button', title: 'The day after', 'aria-label': 'Show the day after', onclick: () => go(1) }, '›') : null,
+    day < today ? h('button', { class: 'link day-today', type: 'button', onclick: () => go(0) }, 'Back to today') : null,
+  ].filter(Boolean));
+  document.getElementById('dl-today')?.classList.toggle('past', day < today);
+}
+
 export function renderTimeline(ctx) {
   const root = document.getElementById('timeline');
   // Mid-drag the rows stay put; the drop redraws.
@@ -44,8 +63,12 @@ export function renderTimeline(ctx) {
   // Arranging moves tiles only: the day can't be ticked or dragged meanwhile (as the classic list).
   root.inert = !!ctx.ui.arranging;
   const doc = ctx.store.doc();
-  const today = ctx.store.today();
-  const rows = listRows(todayRows(doc, today));
+  // `today` is the day showing: a past day when ‹ has gone back to one.
+  const today = dayOf(ctx);
+  const past = today < ctx.store.today();
+  renderHeading(ctx, today, ctx.store.today());
+  // A past day: its own rows as they were, without today's suggestions.
+  const rows = listRows(todayRows(doc, today)).filter((r) => !(past && r.suggested));
   // A task moved here (a drag, or Claude) shows at its new time before the planner books it there.
   const slots = new Map(todaySlots(doc, today));
   for (const row of rows) {
@@ -53,7 +76,7 @@ export function renderTimeline(ctx) {
     const s = movedSlot(row.item, slots.get(row.item.id), today);
     if (s) slots.set(row.item.id, s);
   }
-  const draggable = (row) => !row.suggested && !row.blocked && !row.done;
+  const draggable = (row) => !past && !row.suggested && !row.blocked && !row.done;
   const model = timelineModel({ rows, slots, commitments: scheduleView(doc, today).commitments, today, now: new Date(), markers: mealMarkers(doc, today) });
   const { config } = readPlannerConfig(doc);
   const gymId = gymHabitId(doc);
@@ -78,7 +101,7 @@ export function renderTimeline(ctx) {
 
   const timed = [];
   model.timed.forEach((e, i) => {
-    if (i === model.nowIndex) timed.push(nowLine());
+    if (!past && i === model.nowIndex) timed.push(nowLine());
     if (e.kind === 'meal') {
       timed.push(h('li', { class: 'tl-meal' }, clock(e.start), h('span', { class: 'tl-meal-mark', 'aria-hidden': 'true' }),
         h('button', { class: 'tl-meal-btn', type: 'button', onclick: () => openSnap(ctx, { slot: e.slot, start: e.start }) }, `${slotName(e.slot)}: log it`)));
@@ -100,7 +123,7 @@ export function renderTimeline(ctx) {
     li.prepend(time);
     timed.push(li, ...extra);
   });
-  if (model.timed.length && model.nowIndex === model.timed.length) timed.push(nowLine());
+  if (!past && model.timed.length && model.nowIndex === model.timed.length) timed.push(nowLine());
 
   const anytime = model.anytime.flatMap((row) => {
     const { li, extra } = rowEls(row);
@@ -110,17 +133,17 @@ export function renderTimeline(ctx) {
   const meals = renderMealsRow(ctx);
   if (meals) anytime.push(meals);
 
-  const back = renderBackRow(ctx);
+  const back = past ? null : renderBackRow(ctx);
   const checkin = renderCheckin(ctx);
-  const tomorrow = tomorrowLine(doc, today);
+  const tomorrow = past ? null : tomorrowLine(doc, today);
   root.replaceChildren(...[
     back ? h('ul', { class: 'tl-checkin tl-backq' }, back) : null,
     checkin ? h('ul', { class: 'tl-checkin' }, checkin) : null,
     ctx.ui.taskError ? h('p', { class: 'error', role: 'alert' }, ctx.ui.taskError,
       h('button', { class: 'link', type: 'button', onclick: () => { ctx.ui.taskError = null; ctx.render(); } }, 'Dismiss')) : null,
-    rows.length ? null : h('p', { class: 'tl-empty' }, 'Nothing on today. Tell Claude what you want to get done.'),
+    rows.length ? null : h('p', { class: 'tl-empty' }, past ? 'Nothing was on that day.' : 'Nothing on today. Tell Claude what you want to get done.'),
     timed.length ? h('ol', { class: 'tl' }, timed) : null,
-    anytime.length ? h('h3', { class: 'tl-any-h' }, 'Any time today') : null,
+    anytime.length ? h('h3', { class: 'tl-any-h' }, past ? 'Any time that day' : 'Any time today') : null,
     anytime.length ? h('ul', { class: 'tl-any' }, anytime) : null,
     tomorrow ? h('p', { class: 'tl-tomorrow' }, `Tomorrow: ${tomorrow}`) : null,
   ].filter(Boolean));

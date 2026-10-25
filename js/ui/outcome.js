@@ -1,7 +1,8 @@
 import { h } from './dom.js';
 import { matchesRule } from '../workflow.js';
 
-export function openOutcome(ctx, sourceId, complete = false) {
+// `day`: the day it happened, when Today's column is showing a past day.
+export function openOutcome(ctx, sourceId, complete = false, day = undefined) {
   const { store, ui } = ctx;
   ui.closeEditor?.();
   const record = store.doc().items[sourceId] ?? store.doc().goals[sourceId];
@@ -42,7 +43,7 @@ export function openOutcome(ctx, sourceId, complete = false) {
   const submit = h('button', { class: 'btn primary', type: 'submit' }, complete ? 'Save outcome and complete' : 'Save outcome');
   const form = h('form', { onsubmit: (e) => {
     e.preventDefault(); submit.disabled = true;
-    try { store.reportOutcome({ sourceId, answers, complete, id: reportId }); close(); }
+    try { store.reportOutcome({ sourceId, answers, complete, id: reportId, day }); close(); }
     catch (e) { error.textContent = e.message; submit.disabled = false; }
   } }, h('h2', {}, record.title), h('p', { class: 'note' }, 'Record what actually happened. Leave optional answers blank if you do not know.'),
   controls, effects, error, h('div', { class: 'buttons' }, submit, h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel')));

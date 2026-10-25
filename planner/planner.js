@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '8d427d0b';
+var PLANNER_BUILD = 'f834c20a';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -7829,7 +7829,7 @@ const __js_timeline = (() => {
 
 const { dayRecord, clockLabel } = __js_calendar;
 const { localDate } = __js_plan_state;
-const { addDays } = __js_dates;
+const { addDays, shortWeekday, shortDate } = __js_dates;
 const { mealsOn } = __js_food;
 
 // rows: today's list rows (js/ui/today.js's listRows), in their display order. slots: today's
@@ -7872,6 +7872,33 @@ function tomorrowLine(doc, today) {
   return blocks.map((b) => `${b.title} ${b.state === 'rough' ? '~' : ''}${clockLabel(b.start)}`).join(' · ');
 }
 
+// ---- Going back a day (‹ › on the Today heading) ------------------------------------------------
+
+// A day he didn't get to fill in can be gone back to and ticked, up to a week ago. Its ticks count
+// for that day, so its score, its sun and its map points follow.
+const BACK_DAYS = 7;
+
+// The day the timeline shows: the past day stepped back to (`viewDay`), while it's within the week;
+// otherwise today — so a rollover, or a page left open, comes back to today by itself.
+function shownDay(viewDay, today) {
+  return viewDay && viewDay < today && viewDay >= addDays(today, -BACK_DAYS) ? viewDay : today;
+}
+
+// The day after a step back (-1) or forward (+1): null for today, and no further back than the week.
+function stepDay(viewDay, today, by) {
+  const day = shownDay(viewDay, today);
+  const next = addDays(day, by);
+  if (next >= today) return null;
+  return next < addDays(today, -BACK_DAYS) ? (day === today ? null : day) : next;
+}
+
+// "Today", "Yesterday", or "Fri 23 Oct".
+function dayHeading(day, today) {
+  if (day === today) return 'Today';
+  if (day === addDays(today, -1)) return 'Yesterday';
+  return `${shortWeekday(day)} ${shortDate(day)}`;
+}
+
 // ---- Dragging a task to a new time (js/ui/timedrag.js) -------------------------------------------
 
 const QUARTER = 15 * 60000;
@@ -7906,7 +7933,7 @@ function movedSlot(item, slot, today) {
   if (slot && toClock(new Date(slot.start)) === item.time) return slot;
   return { start: start.toISOString(), end: new Date(+start + (item.minutes ?? 30) * 60000).toISOString(), state: 'moving' };
 }
-return { timelineModel, mealMarkers, tomorrowLine, toClock, toDay, dropTime, movedSlot };
+return { timelineModel, mealMarkers, tomorrowLine, BACK_DAYS, shownDay, stepDay, dayHeading, toClock, toDay, dropTime, movedSlot };
 })();
 
 // ---- js/map/hex.js

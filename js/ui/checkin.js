@@ -6,16 +6,21 @@
 import { h } from './dom.js';
 import { waitingCheckins, questionFor, SUMMARY_SYSTEM, summaryPrompt, parseSummary } from '../checkins.js';
 import { micButton, stopListening, grow } from './mic.js';
+import { shownDay } from '../timeline.js';
 
 const SAVED_FOR_MS = 6000;
 
 export const checkinState = () => ({ drafts: {}, error: '', saved: '', first: null });
 
+// The day Today's column shows: today, or a past day gone back to with ‹ (js/timeline.js). Ticks,
+// check-ins and meals there are that day's.
+export const dayOf = (ctx) => shownDay(ctx.ui.viewDay, ctx.store.today());
+
 // A tick from the list or a task card: the tick, then (for a task) the question — or, for a tick
-// taken off, its unanswered question goes too.
+// taken off, its unanswered question goes too. On the day showing.
 export function tickAndAsk(ctx, itemId) {
   const { store } = ctx;
-  const day = store.today();
+  const day = dayOf(ctx);
   const log = store.toggleDone(itemId, day);
   if (store.doc().items[itemId]?.type !== 'task') return;
   if (log) store.askCheckin({ day, itemId, why: 'done' });
@@ -24,7 +29,7 @@ export function tickAndAsk(ctx, itemId) {
 
 // The one on show: the one a notification opened, else the oldest waiting.
 function current(ctx) {
-  const waiting = waitingCheckins(ctx.store.doc(), ctx.store.today());
+  const waiting = waitingCheckins(ctx.store.doc(), dayOf(ctx));
   const first = waiting.find((r) => r.id === ctx.ui.checkin.first);
   return { rec: first ?? waiting[0] ?? null, count: waiting.length };
 }

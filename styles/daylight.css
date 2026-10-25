@@ -108,7 +108,16 @@
   display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start;
 }
 .dl-today { flex: 2 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-.dl-today > h2 { margin: 0; font: 800 28px/1.1 var(--dl-display); }
+.dl-today > h2 { margin: 0; font: 800 28px/1.1 var(--dl-display); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* ‹ Today ›: going back to a past day to tick what didn't get ticked then. */
+.day-step {
+  width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--dl-line); padding: 0 0 3px; background: var(--dl-card);
+  color: var(--dl-ink); font: 700 24px/1 var(--dl-display); cursor: pointer;
+}
+.day-step:hover:not(:disabled), .day-step:focus-visible { background: var(--dl-soft); }
+.day-step:disabled { opacity: .3; cursor: default; }
+.day-today { margin-left: 8px; font: 600 14px/1 var(--dl-text); color: var(--dl-accent); }
+.dl-today.past > h2 .day-name { color: var(--dl-carry-ink); }
 .dl-tiles {
   flex: 3 1 620px; min-width: 0; display: grid; gap: 18px; align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
