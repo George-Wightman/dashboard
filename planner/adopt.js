@@ -1,8 +1,10 @@
-// An event George adds himself on an area's calendar becomes a task
-// (docs/superpowers/specs/2026-09-22-calendar-one-to-one-design.md). His main calendar is where he
-// keeps reminders like "Dinner with dad", so it is left out; so is anything the planner doesn't book
-// into. The event then becomes the task's own block: it carries the planner's markers from this run
-// on, so moving, renaming, ticking and deleting work as for any block.
+// An event George adds himself on an area's calendar, or on the planner's default calendar, becomes
+// a task (docs/superpowers/specs/2026-09-22-calendar-one-to-one-design.md). His main calendar is
+// where he keeps what's happening, like "Dinner with dad", so it is left out even as the default; so
+// is anything the planner doesn't book into. From 26 Oct 2026 the default is "To do", where he and
+// Claude both put the small things: he had been dumping them on his main calendar, where they never
+// became tasks. The event then becomes the task's own block: it carries the planner's markers from
+// this run on, so moving, renaming, ticking and deleting work as for any block.
 
 import { norm, resolveCalendars } from './calendars.js';
 import { blockBody } from './plan.js';
@@ -13,11 +15,13 @@ import { clockLabel } from '../js/calendar.js';
 const TITLE_MAX = 200;
 const NOTES_MAX = 1000;
 
-// Calendar id → the area whose tasks it takes. The main calendar never counts. When two areas book
-// into one calendar, a priority area wins, then whichever the settings name first.
+// Calendar id → the area whose tasks it takes; the default calendar takes no area (''), as it's
+// where the planner books tasks whose area has no calendar of its own. The main calendar never
+// counts. When two areas book into one calendar, a priority area wins, then whichever the settings
+// name first.
 export function adoptableCalendars(calendars, config) {
   const { find } = resolveCalendars(calendars, config);
-  const main = find(config.defaultCalendar) ?? find('main');
+  const main = find('main');
   const priority = new Set(config.priorityAreas.map(norm));
   const out = new Map();
   for (const [area, name] of Object.entries(config.areaCalendars)) {
@@ -25,6 +29,8 @@ export function adoptableCalendars(calendars, config) {
     if (!cal || cal.primary || cal.id === main?.id) continue;
     if (!out.has(cal.id) || (priority.has(norm(area)) && !priority.has(norm(out.get(cal.id))))) out.set(cal.id, area);
   }
+  const fallback = find(config.defaultCalendar);
+  if (fallback && !fallback.primary && fallback.id !== main?.id && !out.has(fallback.id)) out.set(fallback.id, '');
   return out;
 }
 

@@ -291,7 +291,8 @@ Change the calendar planner's settings; every other setting is kept.
 `maxBlockMinutes` (30–480, the longest block), `days` (1–14, how far ahead), `exactDays` (1–7, days
 with exact times), `firmUpHour` (12–23, when the next day turns exact), `ignore` (calendar names, by
 their start), `areaCalendars` (`{"Job search": "Application"}`), `defaultCalendar` (`"main"` or a
-name), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` — a habit by id or the
+name: where tasks of an area with no calendar go, and, unless it's main, a calendar whose own events
+become tasks), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` — a habit by id or the
 start of its title, and the events that are its sessions), `priorityAreas` (areas booked first and
 starred), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour names: Lavender, Sage, Grape,
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars

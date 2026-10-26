@@ -61,12 +61,17 @@ try to put it back, and don't read a moved block as a mistake.
 
 ## Events George adds himself
 
-An event he adds on **Application, Challenger, Hebrew or Gym** — any calendar an area books into —
-becomes a task on its next run: its title, day, start time (pinned), length, the area that books into
-that calendar, and its description as notes. The event becomes that task's block, so everything above
-applies to it. His **main calendar** (Tasks, being renamed Stuff) is for reminders like "Dinner with
-dad" and never becomes tasks; nor do Work, repeating events, linked habit sessions or all-day events.
-So if George says "I put it in the calendar", look for the task before adding one.
+An event he adds on **To do**, or on **Application, Challenger, Hebrew or Gym** (any calendar an area
+books into), becomes a task on its next run: its title, day, start time (pinned), length, the area
+that books into that calendar (none for To do), and its description as notes. The event becomes that
+task's block, so everything above applies to it.
+
+**To do** (the `defaultCalendar` from 26 Oct 2026) is where the small things go, his and yours alike:
+he dumps quick to-dos there, and a task whose area has no calendar of its own is booked there. His
+**main calendar** (Stuff) is for what's happening — family, travel, seeing people — and never becomes
+tasks; nor do Work, repeating events, linked habit sessions or all-day events. So if George says "I
+put it in the calendar", look for the task before adding one, and if a to-do of his is sitting on
+Stuff, it's only busy time: move the event to To do and it becomes a task.
 
 ## The one thing he may need to do by hand
 

@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeStore, clock } from './helpers.js';
-import { FakeCalendar, ev, allDayEv, MAIN, APP, GYM, WORK } from './planner-fakes.js';
+import { FakeCalendar, ev, allDayEv, MAIN, APP, GYM, WORK, CALS } from './planner-fakes.js';
 import { at } from '../planner/time.js';
 import { createPlanner } from '../planner/gas.js';
 import { FakeRepo, appsScript } from './planner-apps.js';
@@ -12,11 +12,13 @@ import { openFlags } from '../js/flags.js';
 
 process.env.TZ = 'Europe/London';
 const THU = '2026-09-17', FRI = '2026-09-18', SAT = '2026-09-19';
+const TODO = 'todo@group';
+const WITH_TODO = [...CALS, { id: TODO, name: 'To do', backgroundColor: '#4986e7', accessRole: 'owner' }];
 
-function setup({ config = null, events = [] } = {}) {
+function setup({ config = null, events = [], calendars = CALS } = {}) {
   const store = makeStore({ now: clock(at(FRI, '08:00')), prefix: 'task-' });
   if (config) store.putCalendar('config', config);
-  const cal = new FakeCalendar(events);
+  const cal = new FakeCalendar(events, calendars);
   const repo = new FakeRepo(store.doc());
   const env = appsScript({ cal, repo, props: { GITHUB_TOKEN: 'test-token', SYNC_REPO: 'o/r' }, now: () => at(FRI, '08:00') });
   return { repo, cal, env, planner: createPlanner(env) };
@@ -88,6 +90,37 @@ test('left alone: the main calendar, Work, repeating sessions, linked habits, al
   await planner.run();
   assert.deepEqual(tasks(repo).map((t) => t.title), []);
   assert.equal(cal.byTitle('Dinner with dad').extendedProperties, undefined);
+});
+
+test('an event George adds on the default calendar (To do) becomes a task with no area', async () => {
+  const { repo, cal, planner } = setup({
+    config: { defaultCalendar: 'To do' }, calendars: WITH_TODO,
+    events: [ev(TODO, 'Reply to James', FRI, '14:45', '15:15', { id: 'james' })],
+  });
+  assert.equal(await planner.run(), 'ok');
+  const [t] = active(repo);
+  assert.equal(t.title, 'Reply to James');
+  assert.equal(t.time, '14:45');
+  assert.equal(t.area, '');
+  assert.equal(t.source, 'calendar');
+  assert.equal(t.fromEvent, `${TODO}|james`);
+  assert.equal(cal.get('james').extendedProperties.private.dash, '1');
+  await planner.run();
+  assert.equal(tasks(repo).length, 1);
+  assert.equal(cal.all().length, 1);
+});
+
+test('with To do as the default, the main calendar is still left alone, and tasks book onto To do', async () => {
+  const store = makeStore({ now: clock(at(FRI, '08:00')), prefix: 'task-' });
+  store.putCalendar('config', { defaultCalendar: 'To do' });
+  const task = store.addItem({ type: 'task', title: 'Call Ryanair', date: FRI, time: '10:30', minutes: 30 });
+  const cal = new FakeCalendar([ev(MAIN, "Uncle Pete's", FRI, '15:00', '18:00')], WITH_TODO);
+  const repo = new FakeRepo(store.doc());
+  const planner = createPlanner(appsScript({ cal, repo, props: { GITHUB_TOKEN: 'test-token', SYNC_REPO: 'o/r' }, now: () => at(FRI, '08:00') }));
+  assert.equal(await planner.run(), 'ok');
+  assert.deepEqual(active(repo).map((t) => t.id), [task.id]);
+  assert.equal(cal.byTitle("Uncle Pete's").extendedProperties, undefined);
+  assert.equal(cal.byTitle('Call Ryanair').calendarId, TODO);
 });
 
 test("moving George's event moves the task, like any block", async () => {
