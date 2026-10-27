@@ -12,6 +12,7 @@
 
 import { gymConfig, cardioQuotaId, workouts } from '../js/gym.js';
 import { addDays, weekStart, logicalDay } from '../js/dates.js';
+import { plannedTaskDay } from '../js/plan-state.js';
 
 export const HEALTH = 'https://health.googleapis.com/v4/users/me';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -149,12 +150,35 @@ export function countedMinutes(doc) {
   return out;
 }
 
-// The minutes as logs on the cardio target, made once each (fixed ids), following edits, taken off
-// when the record goes — and never put back once George has taken one off.
+// The run task a run on `day` ticks ("Easy run", "Long run"): one dated or booked that day, not yet
+// ticked, first in his order. Hevy ticks the Gym; the watch's run used to reach only the cardio
+// minutes, and the morning's Easy run sat unticked (27 Oct 2026).
+const RUN_TASK = /\brun\b/i;
+function runTask(doc, day) {
+  const ticked = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
+  return Object.values(doc.items ?? {})
+    .filter((i) => i.type === 'task' && i.status === 'active' && RUN_TASK.test(i.title) && !ticked.has(i.id)
+      && (i.date === day || plannedTaskDay(doc, i) === day))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1))[0] ?? null;
+}
+const isRun = (r) => /RUN/i.test(r.type) || RUN_TASK.test(r.title);
+
+// The minutes as logs on the cardio target, and a run's tick on its run task, made once each (fixed
+// ids), following edits, taken off when the record goes — and never put back once George has taken
+// one off.
 function reconcile(store, startedOn) {
   const quotaId = cardioQuotaId(store.doc(), gymConfig(store.doc()));
   const minutes = countedMinutes(store.doc());
   for (const r of healthRecords(store.doc())) {
+    const doneId = `health-done-${r.healthId}`;
+    const tick = store.doc().logs[doneId];
+    const ticks = r.status === 'active' && r.day >= startedOn && isRun(r) && (minutes[r.healthId] ?? 0) > 0;
+    if (!tick) {
+      const task = ticks ? runTask(store.doc(), r.day) : null;
+      if (task) store.putLog(doneId, { itemId: task.id, kind: 'done', day: r.day, at: r.end, from: r.start, source: 'health' });
+    } else if (tick.status === 'active') {
+      store.putLog(doneId, ticks ? { day: r.day, at: r.end, from: r.start } : { status: 'archived' });
+    }
     const id = `health-cardio-${r.healthId}`;
     const log = store.doc().logs[id];
     const amount = r.status === 'active' && r.day >= startedOn ? minutes[r.healthId] ?? 0 : 0;

@@ -108,6 +108,27 @@ test('last week stays out; a run deleted in Google takes its minutes; a log Geor
   assert.equal(store.doc().gym['h:a'].status, 'archived');
 });
 
+test("a run ticks that day's run task, once, when it happened; a walk doesn't, and a deleted run unticks", async () => {
+  const { store, health, sync, now } = setup();
+  const easy = store.addItem({ type: 'task', title: 'Easy run', area: 'Health', date: WED, created: '2026-10-19' });
+  const long = store.addItem({ type: 'task', title: 'Long run', area: 'Health', date: '2026-10-24', created: '2026-10-19' });
+  const email = store.addItem({ type: 'task', title: 'Email the runner', area: 'Admin', date: '2026-10-20', created: '2026-10-19' });
+  health.add('walk', 'WALKING', WED, '12:00', '12:40');
+  await sync();
+  const ticks = () => Object.values(store.doc().logs).filter((l) => l.kind === 'done' && l.status === 'active');
+  assert.deepEqual(ticks(), []);
+  health.add('run', 'RUNNING', WED, '08:00', '08:13');
+  now.advance(60 * 60000);
+  await sync();
+  assert.deepEqual(ticks().map((l) => [l.id, l.itemId, l.day, l.from, l.at]),
+    [['health-done-run', easy.id, WED, at(WED, '08:00').toISOString(), at(WED, '08:13').toISOString()]]);
+  assert.ok(!ticks().some((l) => l.itemId === long.id || l.itemId === email.id));
+  health.remove('run');
+  now.advance(60 * 60000);
+  await sync();
+  assert.deepEqual(ticks(), []);
+});
+
 test('the access token is reused while it lasts; a refused filter is read without one', async () => {
   const { health, sync, logs, now } = setup();
   health.refuseFilter = true;

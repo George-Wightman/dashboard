@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9f3fa03f';
+var PLANNER_BUILD = 'fadad334';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -4820,7 +4820,8 @@ const __planner_plan = (() => {
 // planner's day records out. Pure — planner/gas.js reads the calendars, applies the changes and
 // keeps the records. The rules are the design's (docs/superpowers/specs/2026-09-14-calendar-planner-design.md):
 // blocks by area, around fixed events, exact for the first days and rough after; never moved once
-// George has moved them; trimmed, or moved to the tick, when he ticks; removed when missed.
+// George has moved them; trimmed, or moved to the tick, when he ticks; left where they were, pale,
+// when over and unticked, until the next day's hours begin; removed then if still unticked.
 
 const { addDays, logicalDay, daysBetween, shortWeekday } = __js_dates;
 const { readPlannerConfig, timeOff, offWindows, offCovers, COLOR_NAMES, colorName } = __js_calendar;
@@ -4905,6 +4906,8 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     const i = daysBetween(today, d);
     return i < config.exactDays || (i === config.exactDays && now.getHours() >= config.firmUpHour);
   };
+  // When today's hours begin: until then, yesterday's unticked blocks wait for their ticks.
+  const morning = at(today, (config.dayHours[today] ?? config.hours)[0]).getTime();
 
   const { watched, find } = resolveCalendars(calendars, config);
   const watchedIds = new Set(watched.map((c) => c.id));
@@ -5004,15 +5007,17 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     let finished = false;
     let when = null;
     let span = null;
+    let first = null;
     for (const l of doneLogs) {
       if (l.itemId !== id || (isTask ? l.day > day : l.day !== day)) continue;
       finished = true;
+      if (first == null || l.day < first) first = l.day;
       const t = Date.parse(l.at ?? '');
       if (Number.isFinite(t) && (when == null || t > when)) when = t;
       const f = Date.parse(l.from ?? '');
       if (Number.isFinite(f) && Number.isFinite(t) && t > f && (span == null || t > span.end)) span = { start: f, end: t };
     }
-    return { finished, at: when, span };
+    return { finished, at: when, span, day: first };
   }
 
   const recs = {};
@@ -5129,8 +5134,8 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active' || linkedByGeorge.has(id))) {
       actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }); fixedWanted.delete(key); continue;
     }
-    const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
-      const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), nextState, calendars.find((c) => c.id === ev.calendarId));
+    const settle = (span, nextState, title, coverIds = ids, nextBase = base, look = nextState) => {
+      const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), look, calendars.find((c) => c.id === ev.calendarId));
       // A pinned block wears the pin, so George can see why it isn't moving and take it off again.
       // Only the event carries it; the recorded title stays clean for the dashboard to mark itself.
       // Only a task, though: taking the marker off is read back on tasks alone, and a marker he
@@ -5181,15 +5186,30 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       continue;
     }
 
-    const ticks = ids.map((id) => tickOf(id, kd));
+    // A task's block from yesterday, still waiting for its tick, takes one made today: he ticks at the
+    // end of the day or the morning after, from today's list.
+    const ticks = ids.map((id) => tickOf(id, items[id]?.type === 'task' && kd < today ? today : kd));
     const doneCount = ticks.filter((t) => t.finished).length;
     const lastTick = ticks.reduce((m, t) => (t.at != null && (m == null || t.at > m) ? t.at : m), null);
     const allDone = ids.length > 0 && doneCount === ids.length;
 
+    // Booked again after a miss, then ticked for the day it was missed: the miss's own booking becomes
+    // the record (below), and this one isn't wanted.
+    if (allDone && start > nowMs && !pinned && ids.every((id, i) => ticks[i].day < kd
+      && rec(ticks[i].day).missed.some((m) => m.itemId === id && m.start))) {
+      actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
+      continue;
+    }
     if (allDone && lastTick != null) {
+      // When it actually happened, where a tick knows (a run from Google Health); trimmed to the tick
+      // when it came inside the block; moved to it when it came first. A tick after the block was over
+      // leaves it where it was booked: that's when he got round to ticking, not when he did it — the
+      // morning's run went to 22:00 when he ticked it that night (27 Oct 2026).
+      const real = ticks.reduce((m, t) => (t.span && (m == null || t.span.end > m.end) ? t.span : m), null);
       let span = { start, end };
-      if (lastTick >= start && lastTick < end) span = { start, end: Math.max(lastTick, start + MIN_BLOCK) };
-      else if (lastTick < start || localDay(new Date(lastTick)) === localDay(ev.start)) span = recordSpan(lastTick, end - start, ev.id);
+      if (real && localDay(new Date(real.start)) === localDay(ev.start)) span = { start: real.start, end: Math.max(real.end, real.start + MIN_BLOCK) };
+      else if (lastTick >= start && lastTick < end) span = { start, end: Math.max(lastTick, start + MIN_BLOCK) };
+      else if (lastTick < start) span = recordSpan(lastTick, end - start, ev.id);
       settle(span, 'done', blockTitle(base, 'done'));
       continue;
     }
@@ -5206,10 +5226,16 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
         settle({ start, end }, 'partial', blockTitle(base, 'partial', doneCount, ids.length), ids.filter((_, i) => ticks[i].finished));
       } else if (!ids.length) {
         settle({ start, end }, 'done', base);
+      } else if (logicalDay(ev.start, dayStartHour) >= today || (logicalDay(ev.start, dayStartHour) === yesterday && nowMs < morning)) {
+        // Over and not ticked: waiting for its tick, pale, until his next day's hours begin. It used to
+        // go the moment it ended, booked again later or the next day, and the task left that day's
+        // list with it — when he hadn't ticked yet, not when he hadn't done it (27 Oct 2026).
+        const nextState = state === 'rough' ? 'exact' : state;
+        settle({ start, end }, nextState, blockTitle(base, nextState), ids, base, 'rough');
       } else {
         actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
         for (const id of ids) {
-          if (!rec(kd).missed.some((m) => m.itemId === id)) rec(kd).missed.push({ itemId: id, minutes: items[id]?.minutes ?? config.defaultMinutes });
+          if (!rec(kd).missed.some((m) => m.itemId === id)) rec(kd).missed.push({ itemId: id, minutes: items[id]?.minutes ?? config.defaultMinutes, start: iso(start), end: iso(end) });
         }
       }
       continue;
@@ -5290,24 +5316,28 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   }
   movableHabits.sort((a, b) => a.ev.start - b.ev.start);
 
-  // A missed task ticked later today: a record of it, ending at the tick.
-  const todayRec = rec(today);
-  todayRec.missed = todayRec.missed.filter((m) => {
-    const t = tickOf(m.itemId, today);
-    if (!t.finished) return true;
-    if (t.at == null || covered.get(today)?.has(m.itemId) || !items[m.itemId]) return false;
-    const cal = calendarFor(items[m.itemId].area ?? '', config, find, problems);
-    if (!cal) return false;
-    const key = `${today}|done|${m.itemId}`;
-    const span = recordSpan(t.at, m.minutes * MINUTE, null);
-    const title = blockTitle(items[m.itemId].title, 'done');
-    actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
-    busy(span.start, span.end, title);
-    cover(today, [m.itemId]);
-    useKey(today, key);
-    record(today, { key, eventId: null, calendarId: cal.id, title, start: span.start, end: span.end, state: 'done', items: [m.itemId] });
-    return false;
-  });
+  // Missed work ticked afterwards for its own day (from the day after too): a record of it where it
+  // was booked, or, for a miss that didn't keep its time, ending at the tick.
+  for (const d of [yesterday, today]) {
+    const r = rec(d);
+    r.missed = r.missed.filter((m) => {
+      const t = tickOf(m.itemId, d);
+      if (!t.finished) return true;
+      const booked = m.start && m.end ? { start: Date.parse(m.start), end: Date.parse(m.end) } : null;
+      if ((!booked && t.at == null) || covered.get(d)?.has(m.itemId) || !items[m.itemId]) return false;
+      const cal = calendarFor(items[m.itemId].area ?? '', config, find, problems);
+      if (!cal) return false;
+      const key = `${d}|done|${m.itemId}`;
+      const span = booked ?? recordSpan(t.at, m.minutes * MINUTE, null);
+      const title = blockTitle(items[m.itemId].title, 'done');
+      actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
+      busy(span.start, span.end, title);
+      cover(d, [m.itemId]);
+      useKey(d, key);
+      record(d, { key, eventId: null, calendarId: cal.id, title, start: span.start, end: span.end, state: 'done', items: [m.itemId] });
+      return false;
+    });
+  }
 
   // ---- What needs time, and where it goes ---------------------------------------------------------
   const windowOf = (d, hours = config.dayHours[d] ?? config.hours) => {
@@ -6081,6 +6111,7 @@ const __planner_health = (() => {
 
 const { gymConfig, cardioQuotaId, workouts } = __js_gym;
 const { addDays, weekStart, logicalDay } = __js_dates;
+const { plannedTaskDay } = __js_plan_state;
 
 const HEALTH = 'https://health.googleapis.com/v4/users/me';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -6218,12 +6249,35 @@ function countedMinutes(doc) {
   return out;
 }
 
-// The minutes as logs on the cardio target, made once each (fixed ids), following edits, taken off
-// when the record goes — and never put back once George has taken one off.
+// The run task a run on `day` ticks ("Easy run", "Long run"): one dated or booked that day, not yet
+// ticked, first in his order. Hevy ticks the Gym; the watch's run used to reach only the cardio
+// minutes, and the morning's Easy run sat unticked (27 Oct 2026).
+const RUN_TASK = /\brun\b/i;
+function runTask(doc, day) {
+  const ticked = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
+  return Object.values(doc.items ?? {})
+    .filter((i) => i.type === 'task' && i.status === 'active' && RUN_TASK.test(i.title) && !ticked.has(i.id)
+      && (i.date === day || plannedTaskDay(doc, i) === day))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1))[0] ?? null;
+}
+const isRun = (r) => /RUN/i.test(r.type) || RUN_TASK.test(r.title);
+
+// The minutes as logs on the cardio target, and a run's tick on its run task, made once each (fixed
+// ids), following edits, taken off when the record goes — and never put back once George has taken
+// one off.
 function reconcile(store, startedOn) {
   const quotaId = cardioQuotaId(store.doc(), gymConfig(store.doc()));
   const minutes = countedMinutes(store.doc());
   for (const r of healthRecords(store.doc())) {
+    const doneId = `health-done-${r.healthId}`;
+    const tick = store.doc().logs[doneId];
+    const ticks = r.status === 'active' && r.day >= startedOn && isRun(r) && (minutes[r.healthId] ?? 0) > 0;
+    if (!tick) {
+      const task = ticks ? runTask(store.doc(), r.day) : null;
+      if (task) store.putLog(doneId, { itemId: task.id, kind: 'done', day: r.day, at: r.end, from: r.start, source: 'health' });
+    } else if (tick.status === 'active') {
+      store.putLog(doneId, ticks ? { day: r.day, at: r.end, from: r.start } : { status: 'archived' });
+    }
     const id = `health-cardio-${r.healthId}`;
     const log = store.doc().logs[id];
     const amount = r.status === 'active' && r.day >= startedOn ? minutes[r.healthId] ?? 0 : 0;

@@ -183,18 +183,75 @@ test('ticked before its block: the block moves to end at the tick', () => {
   assert.equal(span(cal.byTitle('✓ Write the day out')), '08:05–09:05');
 });
 
-test('missed: the block goes and the task gets a new slot; ticked later, a record ends at the tick', () => {
+// 27 Oct 2026: a block that ended unticked went at once and the task was booked again later, or the
+// next day — when George just hadn't ticked yet. It now waits, pale, where it was, until the next
+// day's hours begin.
+test('over and unticked: the block stays where it was, pale, and nothing is booked again', () => {
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
   const later = step(cal, doc, now(TUE, '14:00'), first.days);
-  assert.deepEqual(later.actions.map((a) => a.op), ['delete', 'insert']);
-  assert.equal(span(cal.byTitle('Chase the GSS outcome')), '17:30–18:00');
-  assert.deepEqual(later.days[TUE].missed, [{ itemId: 'chase', minutes: 30 }]);
-  const ticked = fixture({ items: Object.values(doc.items), logs: [done('chase', TUE, { at: at(TUE, '15:00').toISOString() })] });
-  const r = step(cal, ticked, now(TUE, '15:05'), later.days);
-  assert.equal(r.actions.length, 1);
-  assert.equal(span(cal.byTitle('✓ Chase the GSS outcome')), '14:30–15:00');
-  assert.deepEqual(r.days[TUE].missed, []);
+  assert.deepEqual(later.actions.map((a) => a.op), ['patch']);
+  const e = cal.byTitle('Chase the GSS outcome');
+  assert.equal(span(e), '13:15–13:45');
+  assert.equal(e.colorId, '4');
+  assert.equal(e.extendedProperties.private.dashState, 'exact');
+  assert.equal(cal.mine().filter((x) => x.summary.includes('Chase')).length, 1);
+  assert.deepEqual(later.days[TUE].missed, []);
+  assert.deepEqual(step(cal, doc, now(TUE, '14:10'), later.days).actions, []);
+});
+
+test('ticked that evening, after its block: it stays where it was booked', () => {
+  const { doc, cal } = tuesday();
+  const first = step(cal, doc, now(TUE, '08:00'));
+  const later = step(cal, doc, now(TUE, '14:00'), first.days);
+  const ticked = fixture({ items: Object.values(doc.items), logs: [done('chase', TUE, { at: at(TUE, '22:00').toISOString() })] });
+  step(cal, ticked, now(TUE, '22:05'), later.days);
+  assert.equal(span(cal.byTitle('✓ Chase the GSS outcome')), '13:15–13:45');
+});
+
+test('ticked by a run the watch recorded: the block goes to when he ran', () => {
+  const { doc, cal } = tuesday();
+  const first = step(cal, doc, now(TUE, '08:00'));
+  const later = step(cal, doc, now(TUE, '14:00'), first.days);
+  const ticked = fixture({ items: Object.values(doc.items), logs: [done('chase', TUE, { from: at(TUE, '18:00').toISOString(), at: at(TUE, '18:40').toISOString() })] });
+  step(cal, ticked, now(TUE, '19:00'), later.days);
+  assert.equal(span(cal.byTitle('✓ Chase the GSS outcome')), '18:00–18:40');
+});
+
+test('ticked the next morning before his hours: yesterday\'s block becomes the record', () => {
+  const { doc, cal } = tuesday();
+  const first = step(cal, doc, now(TUE, '08:00'));
+  const later = step(cal, doc, now(TUE, '22:00'), first.days);
+  const morning = step(cal, doc, now(WED, '07:00'), later.days);
+  assert.equal(span(cal.byTitle('Chase the GSS outcome')), '13:15–13:45');
+  assert.ok(!morning.actions.some((a) => a.op === 'delete' && a.eventId === cal.byTitle('Chase the GSS outcome').id));
+  const ticked = fixture({ items: Object.values(doc.items), logs: [done('chase', WED, { at: at(WED, '07:30').toISOString() })] });
+  step(cal, ticked, now(WED, '07:35'), morning.days);
+  const e = cal.byTitle('✓ Chase the GSS outcome');
+  assert.equal(e.start.dateTime.slice(0, 10), TUE);
+  assert.equal(span(e), '13:15–13:45');
+});
+
+test('still unticked once the next day\'s hours begin: a miss, booked again; ticked for its day, back where it was', () => {
+  const { doc, cal } = tuesday();
+  const first = step(cal, doc, now(TUE, '08:00'));
+  const later = step(cal, doc, now(TUE, '22:00'), first.days);
+  const wed = step(cal, doc, now(WED, '09:30'), later.days);
+  const missed = wed.days[TUE].missed;
+  assert.deepEqual(missed.map((m) => m.itemId).sort(), ['chase', 'dayout']);
+  const chase = missed.find((m) => m.itemId === 'chase');
+  assert.equal(span({ start: { dateTime: chase.start }, end: { dateTime: chase.end } }), '13:15–13:45');
+  const again = cal.byTitle('Chase the GSS outcome');
+  assert.equal(again.start.dateTime.slice(0, 10), WED);
+  // Ticked for Tuesday from Wednesday's back-a-day: the record goes back to Tuesday's booking.
+  const ticked = fixture({ items: Object.values(doc.items), logs: [done('chase', TUE, { at: at(WED, '10:00').toISOString() })] });
+  const r = step(cal, ticked, now(WED, '10:05'), wed.days);
+  const e = cal.byTitle('✓ Chase the GSS outcome');
+  assert.equal(e.start.dateTime.slice(0, 10), TUE);
+  assert.equal(span(e), '13:15–13:45');
+  assert.deepEqual(r.days[TUE].missed.map((m) => m.itemId), ['dayout']);
+  assert.ok(!cal.mine().some((x) => x.summary.includes('Chase') && x.start.dateTime.startsWith(WED)));
+  assert.deepEqual(step(cal, ticked, now(WED, '10:15'), r.days).actions, []);
 });
 
 test('part done when the block ends: the title says so and the rest gets a new slot', () => {
