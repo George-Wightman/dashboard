@@ -9,8 +9,9 @@ const PEACH = [0xFF, 0xE9, 0xD2];
 const INK = [0x1D, 0x1A, 0x2B];
 const SUN = [0xFF, 0xAA, 0x3C];
 
-// In a 100-unit square: the D a little right of the middle, so it sits centred by eye.
-const DX = 3;
+// In a 100-unit square: the D shifted right until its own ink (the heavy stem and the dots, not the
+// sun) is centred, so the D sits in the middle by eye and the sun hangs off to its right.
+const DX = 10;
 const STEM = { x: 34 + DX, top: 24, bottom: 76, width: 7 };
 const ARC = { cx: 34 + DX, cy: 50, r: 26, dot: 3, gap: 9, first: 0.25 };
 const SUN_AT = { x: 54 + DX, y: 33, r: 9 };

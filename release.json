@@ -1,5 +1,5 @@
 {
-  "id": "3e981158930a9b1063ca2dc900c86aeefa2653e62281fab986d48efc91a808ea",
+  "id": "5c7b1143dc35056b2cba7941729d4f7485d0d68449edcae2d7bba67e2f9ff33c",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
@@ -9,9 +9,9 @@
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
     "manifest.webmanifest": "ce72a0e846f3d99285c543c1deba27b9c9508598c66f23474583f1f02d3591c4",
-    "icons/icon.svg": "48810e5769ea67e73bd79f14d27deb34b77be67af88e7cbf82a16d97f0f47557",
-    "icons/icon-192.png": "1e15a54bbf51c38282f5d501fb2fdffef9bca46aa6390d417cb8d41eda5dd8d6",
-    "icons/icon-512.png": "2a04a23cb76f80533fb8dda7a98b76562a75d9dcf812e6fb7927099f39645eca",
+    "icons/icon.svg": "6ff8d8b195bcf8b4769fefd51a9d3496009114efb895d9cd5bc4ea300ac1d42f",
+    "icons/icon-192.png": "bd941b674fb795fb0fb738b6804ce28784b426456e412126ccc06fd010c5ee62",
+    "icons/icon-512.png": "1a5730f640fb6788e6b2c927171dd28387715d9d0f5e9c2faa8813c3b80768e6",
     "js/app.js": "6f1e762336b563fdf660861de7ea82aa89fb8e265ab420f77bef1891f57c94e3",
     "js/commit.js": "a03407e778be6c3081eb9a4c8b7e25ef190810011b04dacd0beb71a4354e1453",
     "js/data.js": "75d5dfd69fc71cf4417a84c07dd78485382891d3507c0d4d9f9de84bc14b92b1",
