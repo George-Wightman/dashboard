@@ -1,7 +1,7 @@
 // What's on a day, and the numbers derived from it. Pure: a document and a day in, values out.
 
 import { addDays, weekday, weekStart, dayOfMonth, daysInMonth } from './dates.js';
-import { timeOff, excused, offCovers } from './calendar.js';
+import { timeOff, excused, offCovers, readPlannerConfig, isUncounted } from './calendar.js';
 import { blockers, completedBefore } from './workflow.js';
 import { plannedTaskDay, bookingsFor, localDate } from './plan-state.js';
 import { DUOLINGO_SOURCE } from './duolingo.js';
@@ -242,16 +242,18 @@ function neededOn(doc, item, day, idx, offs) {
 }
 
 // How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
-// times-a-week habit it didn't need; plus what George committed to at the 11:00 lock
+// times-a-week habit it didn't need or row in an uncounted area (calendar.js) left undone; plus what George committed to at the 11:00 lock
 // (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
 // time and a miss the second; deleting is a miss unless it was released as no longer needed (Claude's `archive` with his reason). A
 // task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
 export function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = rowsForDay(doc, day, idx, offs);
+  const { config } = readPlannerConfig(doc);
+  const free = (item) => isUncounted(doc, item, config);
   const counted = [];
   const optional = [];
   for (const r of rows) {
-    if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
+    if (!r.done && (free(r.item) || (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !neededOn(doc, r.item, day, idx, offs)))) optional.push(r);
     else counted.push(r);
   }
   const meals = mealsRow(doc, day, offs);
@@ -266,7 +268,7 @@ export function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
     const earlier = values(doc.calendar).filter((c) => c?.day < day && typeof c.id === 'string' && c.id.startsWith('commit:'));
     for (const id of commitment.tasks) {
       const item = doc.items?.[id];
-      if (!item || onDay.has(id)) continue;
+      if (!item || onDay.has(id) || free(item)) continue;
       if (doneDays(doc, id, idx).has(day)) continue;
       if (item.status !== 'active') {
         if (item.released) released.push({ item });

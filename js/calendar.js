@@ -14,6 +14,7 @@ export const CALENDAR_DEFAULTS = {
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
   priorityAreas: [],
+  uncountedAreas: [], // areas booked as reminders but never a miss, like ["Food"]: worth it if done
   areaColors: {},
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
@@ -91,6 +92,10 @@ export const CONFIG_CHECKS = {
     return v.map((l) => ({ habit: l.habit.trim(), calendar: l.calendar.trim(), title: l.title.trim() }));
   },
   priorityAreas: (v, field) => {
+    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
+    return v.map((s) => s.trim());
+  },
+  uncountedAreas: (v, field) => {
     if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
     return v.map((s) => s.trim());
   },
@@ -278,6 +283,12 @@ export const daysLeft = (days) => (days === 0 ? 'today' : days === 1 ? 'tomorrow
 // A priority: the item says so, or its area is one of the planner's priority areas.
 export function isPriority(doc, item, config = readPlannerConfig(doc).config) {
   return item.priority === true || config.priorityAreas.some((a) => norm(a) === norm(item.area));
+}
+
+// An area that never counts against a day (cooking: George cooks when he needs to, not because it's
+// booked). Its rows are still booked and still worth their hammers when done.
+export function isUncounted(doc, item, config = readPlannerConfig(doc).config) {
+  return config.uncountedAreas.some((a) => norm(a) === norm(item.area));
 }
 
 // Claude's brief for a day (a journal record, kind 'brief').

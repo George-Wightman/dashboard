@@ -4,7 +4,7 @@
 // honest day score (js/schedule.js). Pure.
 
 import { dayScore, doneIndex } from '../schedule.js';
-import { timeOff } from '../calendar.js';
+import { timeOff, isUncounted } from '../calendar.js';
 import { cardioQuotaId } from '../gym.js';
 import { rowHammers, lookups, FINISHED_BONUS, ROAD_MINUTES } from './engine.js';
 import { shortWeekday } from '../dates.js';
@@ -29,7 +29,7 @@ export function dayPoints(doc, day, map = null) {
   const rows = [
     ...s.doneRows.map((r) => row(r, 'earned', mealsNote(r))),
     ...s.open.map((r) => row(r, 'open', mealsNote(r))),
-    ...s.optional.map((r) => row(r, 'optional', 'Not needed today: worth it if you do it, no miss if not')),
+    ...s.optional.map((r) => row(r, 'optional', isUncounted(doc, r.item) ? 'Never counts as a miss: worth it if you do it' : 'Not needed today: worth it if you do it, no miss if not')),
     ...s.pushed.map((e) => row(e, 'pushed', `Moved to ${shortWeekday(e.to)}: left out today, a miss if it moves again`)),
     ...s.missed.map((e) => row(e, 'missed', 'Moved a second time: counts as a miss')),
     ...s.dropped.map((e) => row(e, 'missed', 'Deleted after the lock: counts as a miss')),
@@ -51,7 +51,7 @@ export function dayPoints(doc, day, map = null) {
 // The checklist as lines, for Claude's `map` read and catch-up.
 export function pointsLines(p) {
   const mark = { earned: '✓', open: '○', optional: '·', pushed: '↷', missed: '✗', released: '–' };
-  const out = [`Today's points: +${p.earned} so far${p.toEarn ? `, +${p.toEarn} still to earn` : ''}; ${p.bonus.earned ? `finished: +${p.bonus.amount} bonus` : p.bonus.possible ? `finish all ${p.total} (${p.left} to go) for +${p.bonus.amount}` : `fewer than 3 rows count, so no finished-day bonus`}.`];
+  const out = [`Today's points: +${p.earned} so far${p.toEarn ? `, +${p.toEarn} still to earn` : ''}; ${p.bonus.earned ? `finished: +${p.bonus.amount} bonus` : p.bonus.possible ? `finish all ${p.total} (${p.bonus.left} to go) for +${p.bonus.amount}` : `fewer than 3 rows count, so no finished-day bonus`}.`];
   for (const r of p.rows) out.push(`  ${mark[r.state]} ${r.title}${r.hammers ? ` +${r.hammers}` : ''}${r.note ? ` · ${r.note}` : ''}`);
   if (p.cardio.minutes) out.push(`  Cardio ${p.cardio.minutes}m: a road step per ${p.cardio.perStep} minutes.`);
   const open = p.rows.filter((r) => r.state === 'open').length;

@@ -204,7 +204,7 @@ test("directing in the reads: the brief, time off, ★ and notes on today; atten
   const list = READS.list(d, TODAY);
   assert.match(list, /^ {2}task "Book flights" #t3 · Sun 20 Sep · Travel · ★$/m);
   const planner = READS.planner(d, TODAY);
-  assert.match(planner, /^ {2}priorityAreas: Travel · areaColors: Travel → Grape$/m);
+  assert.match(planner, /^ {2}priorityAreas: Travel · uncountedAreas: none · areaColors: Travel → Grape$/m);
   assert.match(planner, /^ {2}Colours George's calendars take \(not for areas\): not known until the planner runs$/m);
   const attn = READS.attention(d, TODAY);
   assert.match(attn, /^Needs attention:$/m);

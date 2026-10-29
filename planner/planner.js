@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'fadad334';
+var PLANNER_BUILD = '68b76b7f';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1254,6 +1254,7 @@ const CALENDAR_DEFAULTS = {
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
   priorityAreas: [],
+  uncountedAreas: [], // areas booked as reminders but never a miss, like ["Food"]: worth it if done
   areaColors: {},
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
@@ -1331,6 +1332,10 @@ const CONFIG_CHECKS = {
     return v.map((l) => ({ habit: l.habit.trim(), calendar: l.calendar.trim(), title: l.title.trim() }));
   },
   priorityAreas: (v, field) => {
+    if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
+    return v.map((s) => s.trim());
+  },
+  uncountedAreas: (v, field) => {
     if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
     return v.map((s) => s.trim());
   },
@@ -1520,6 +1525,12 @@ function isPriority(doc, item, config = readPlannerConfig(doc).config) {
   return item.priority === true || config.priorityAreas.some((a) => norm(a) === norm(item.area));
 }
 
+// An area that never counts against a day (cooking: George cooks when he needs to, not because it's
+// booked). Its rows are still booked and still worth their hammers when done.
+function isUncounted(doc, item, config = readPlannerConfig(doc).config) {
+  return config.uncountedAreas.some((a) => norm(a) === norm(item.area));
+}
+
 // Claude's brief for a day (a journal record, kind 'brief').
 function briefFor(doc, day) {
   const rec = doc?.journal?.[`brief:${day}`];
@@ -1635,7 +1646,7 @@ function plannerSummary(doc, now) {
   lines.push('To change its settings, ask Claude — for example "plan between 8:30 and 6".');
   return { summary: s.paused ? 'paused' : `last ran ${momentLabel(last, now)}`, lines };
 }
-return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, briefFor, dayRecordId, dayRecord, plannerStatus, plannerLastRun, todaySlots, doingNow, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
+return { CALENDAR_DEFAULTS, COLOR_NAMES, colorName, clockMinutes, CONFIG_CHECKS, MERGED_SETTINGS, mergeSetting, checkConfigField, readPlannerConfig, timeOff, offCovers, excused, offWindows, offLine, checkTimeOff, offText, nextOffId, checkCountdown, nextCountdownId, countdowns, daysLeft, isPriority, isUncounted, briefFor, dayRecordId, dayRecord, plannerStatus, plannerLastRun, todaySlots, doingNow, plannerNotes, visibleNotes, clockLabel, momentLabel, staleSince, timedOrder, plannerSummary };
 })();
 
 // ---- js/checkins.js
@@ -1943,7 +1954,7 @@ const __js_schedule = (() => {
 // What's on a day, and the numbers derived from it. Pure: a document and a day in, values out.
 
 const { addDays, weekday, weekStart, dayOfMonth, daysInMonth } = __js_dates;
-const { timeOff, excused, offCovers } = __js_calendar;
+const { timeOff, excused, offCovers, readPlannerConfig, isUncounted } = __js_calendar;
 const { blockers, completedBefore } = __js_workflow;
 const { plannedTaskDay, bookingsFor, localDate } = __js_plan_state;
 const { DUOLINGO_SOURCE } = __js_duolingo;
@@ -2184,16 +2195,18 @@ function neededOn(doc, item, day, idx, offs) {
 }
 
 // How a day went (docs/superpowers/specs/2026-09-23-honest-day-score-design.md). Its rows, less any
-// times-a-week habit it didn't need; plus what George committed to at the 11:00 lock
+// times-a-week habit it didn't need or row in an uncounted area (calendar.js) left undone; plus what George committed to at the 11:00 lock
 // (js/commit.js) and has since moved or deleted. Moving is "pushed" — left out, but listed — the first
 // time and a miss the second; deleting is a miss unless it was released as no longer needed (Claude's `archive` with his reason). A
 // task still dated the day but carried on by the planner is left out: the day was overbooked, not him.
 function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
   const rows = rowsForDay(doc, day, idx, offs);
+  const { config } = readPlannerConfig(doc);
+  const free = (item) => isUncounted(doc, item, config);
   const counted = [];
   const optional = [];
   for (const r of rows) {
-    if (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !r.done && !neededOn(doc, r.item, day, idx, offs)) optional.push(r);
+    if (!r.done && (free(r.item) || (r.item.type === 'habit' && r.item.repeat?.kind === 'perWeek' && !neededOn(doc, r.item, day, idx, offs)))) optional.push(r);
     else counted.push(r);
   }
   const meals = mealsRow(doc, day, offs);
@@ -2208,7 +2221,7 @@ function dayScore(doc, day, idx = doneIndex(doc), offs = timeOff(doc)) {
     const earlier = values(doc.calendar).filter((c) => c?.day < day && typeof c.id === 'string' && c.id.startsWith('commit:'));
     for (const id of commitment.tasks) {
       const item = doc.items?.[id];
-      if (!item || onDay.has(id)) continue;
+      if (!item || onDay.has(id) || free(item)) continue;
       if (doneDays(doc, id, idx).has(day)) continue;
       if (item.status !== 'active') {
         if (item.released) released.push({ item });
@@ -6250,15 +6263,18 @@ function countedMinutes(doc) {
 }
 
 // The run task a run on `day` ticks ("Easy run", "Long run"): one dated or booked that day, not yet
-// ticked, first in his order. Hevy ticks the Gym; the watch's run used to reach only the cardio
-// minutes, and the morning's Easy run sat unticked (27 Oct 2026).
+// ticked, first in his order; else a run habit not yet ticked that day (runs became 2× a week on 29
+// Oct 2026). Hevy ticks the Gym; the watch's run used to reach only the cardio minutes, and the
+// morning's Easy run sat unticked (27 Oct 2026).
 const RUN_TASK = /\brun\b/i;
 function runTask(doc, day) {
-  const ticked = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
-  return Object.values(doc.items ?? {})
-    .filter((i) => i.type === 'task' && i.status === 'active' && RUN_TASK.test(i.title) && !ticked.has(i.id)
-      && (i.date === day || plannedTaskDay(doc, i) === day))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1))[0] ?? null;
+  const ticks = Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active');
+  const ticked = new Set(ticks.map((l) => l.itemId));
+  const tickedOn = new Set(ticks.filter((l) => l.day === day).map((l) => l.itemId));
+  const first = (list) => list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1))[0] ?? null;
+  const runs = Object.values(doc.items ?? {}).filter((i) => i.status === 'active' && RUN_TASK.test(i.title));
+  return first(runs.filter((i) => i.type === 'task' && !ticked.has(i.id) && (i.date === day || plannedTaskDay(doc, i) === day)))
+    ?? first(runs.filter((i) => i.type === 'habit' && !tickedOn.has(i.id) && (i.created ?? '') <= day));
 }
 const isRun = (r) => /RUN/i.test(r.type) || RUN_TASK.test(r.title);
 
@@ -8032,7 +8048,7 @@ const MAX_LEVEL = 3;
 const GOLDEN_RUN = 3;     // finished days in a row for a golden age
 const ROAD_MINUTES = 10;  // cardio minutes per road step
 const FINISHED_BONUS = 20;
-const MAX_CAMPS = 4;     // past this, a miss raids but sends no more
+const MAX_CAMPS = 4;     // one per track and one for home: a miss in a track with a camp raids but sends no more
 const FIND_VALUE = { coal: 20, wheat: 10, sheep: 10, deer: 10, horses: 10, pub: 15, pitwheel: 15, stone: 10, fish: 10 };
 const FIND_NAME = { coal: 'Coal seam', wheat: 'Wheat', sheep: 'Sheep', deer: 'Deer', horses: 'Horses', pub: 'A pub', pitwheel: 'An old pit wheel', stone: 'Stone', fish: 'Fish' };
 
@@ -8326,7 +8342,8 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
     }
     applyLevels();
     wonderCards(d);
-    // Barbarians: they creep towards what they're after; on a missed day they raid, and more come.
+    // Barbarians: they creep towards what they're after; on a missed day the camps of what was missed
+    // raid, and a missed track without a camp sends one.
     const campKeys = () => new Set(state.camps.map((c) => key(c.q, c.r)));
     for (const c of state.camps) {
       const goal = unkey(targetTile(state, c.target));
@@ -8337,26 +8354,31 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
       if (step && dist(step, goal) < here) [c.q, c.r] = step;
     }
     if (miss) {
+      // What was missed, by track ('home' for a row with no track). Only those camps raid, and each
+      // sends one camp at most: a skipped read costs the theatre, not the whole day (29 Oct 2026).
+      const missedItems = [...score.open.map((r) => r.item), ...score.missed.map((e) => e.item), ...score.dropped.map((e) => e.item)];
+      const missedTracks = [...new Set(missedItems.map((it) => P.trackOfArea[it.area] ?? 'home'))];
       for (const c of state.camps) {
+        if (!missedTracks.includes(c.track)) continue;
         const goal = unkey(targetTile(state, c.target));
         const victim = nbrs(c.q, c.r).filter((n) => state.owned.has(n) && n !== CENTRE && !state.pillaged.has(n))
           .sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0];
         if (victim) { state.pillaged.add(victim); event('raid', `Barbarians raid near ${P.byId.get(c.target)?.name ?? 'the centre'}`, { k: victim }); }
       }
-      const missedItems = [...score.open.map((r) => r.item), ...score.missed.map((e) => e.item), ...score.dropped.map((e) => e.item)];
-      const tr = missedItems.map((it) => P.trackOfArea[it.area]).find(Boolean);
-      const target = tr ? (map.tracks[tr].list.map(([id]) => id).find((id) => state.built[id]) ?? map.tracks[tr].list[0][0]) : (map.home && P.byId.has(map.home) ? map.home : 'centre');
-      const goal = unkey(targetTile(state, target));
-      const taken = campKeys();
-      let spot = null;
-      const far = ringsOut(4);
-      for (const want of [3, 4, 2]) {
-        const ring = [...far].filter(([k, n]) => n === want && !taken.has(k)).map(([k]) => k);
-        if (ring.length) { spot = ring.sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0]; break; }
-      }
-      if (spot && state.camps.length < MAX_CAMPS) {
+      for (const tr of missedTracks) {
+        if (state.camps.length >= MAX_CAMPS || state.camps.some((c) => c.track === tr)) continue;
+        const target = tr !== 'home' ? (map.tracks[tr].list.map(([id]) => id).find((id) => state.built[id]) ?? map.tracks[tr].list[0][0]) : (map.home && P.byId.has(map.home) ? map.home : 'centre');
+        const goal = unkey(targetTile(state, target));
+        const taken = campKeys();
+        let spot = null;
+        const far = ringsOut(4);
+        for (const want of [3, 4, 2]) {
+          const ring = [...far].filter(([k, n]) => n === want && !taken.has(k)).map(([k]) => k);
+          if (ring.length) { spot = ring.sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0]; break; }
+        }
+        if (!spot) continue;
         const [q, r] = unkey(spot);
-        state.camps.push({ q, r, target });
+        state.camps.push({ q, r, target, track: tr });
         event('camp', `Barbarians set out for ${P.byId.get(target)?.name ?? 'the centre'}`, { target });
       }
     } else if (finished && state.camps.length) {

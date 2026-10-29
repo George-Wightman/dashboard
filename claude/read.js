@@ -134,7 +134,7 @@ function plannerRead(doc, day) {
   out.push(`  areaCalendars: ${Object.entries(config.areaCalendars).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'} · defaultCalendar: ${config.defaultCalendar}`);
   out.push(`  habitEvents: ${config.habitEvents.map((l) => `${l.habit} → "${l.title}" on ${l.calendar}`).join(', ') || 'none'}`);
   out.push(`  ignore: ${config.ignore.join(', ') || 'nothing'}`);
-  out.push(`  priorityAreas: ${config.priorityAreas.join(', ') || 'none'} · areaColors: ${Object.entries(config.areaColors).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'}`);
+  out.push(`  priorityAreas: ${config.priorityAreas.join(', ') || 'none'} · uncountedAreas: ${config.uncountedAreas.join(', ') || 'none'} · areaColors: ${Object.entries(config.areaColors).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'}`);
   out.push(`  dayHours: ${Object.entries(config.dayHours).map(([d, [f, t]]) => `${d} ${f}–${t}`).join(', ') || 'none'}`);
   out.push(`  areaHours: ${Object.entries(config.areaHours).map(([a, [f, t]]) => `${a} ${f}–${t}`).join(', ') || 'none'}`);
   out.push(`  duolingo: ${config.duolingo || 'not set (Duolingo unchecked)'}`);
@@ -231,7 +231,7 @@ function day(doc, today, arg) {
   if (score.missed.length) out.push(`  Pushed a second time (counted as missed): ${named(score.missed)}`);
   if (score.dropped.length) out.push(`  Deleted after the lock (counted as missed): ${named(score.dropped)}`);
   if (score.released.length) out.push(`  Released as no longer needed: ${named(score.released, (e) => ` — ${e.item.released}`)}`);
-  if (score.optional.length) out.push(`  Optional (on pace for the week): ${named(score.optional)}`);
+  if (score.optional.length) out.push(`  Optional (on pace for the week, or an area that never counts): ${named(score.optional)}`);
   for (const { log, item, goal } of amounts) {
     const on = item ?? goal;
     const label = item ? item.unitLabel : goal?.unitLabel;

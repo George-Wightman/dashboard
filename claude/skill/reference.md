@@ -99,7 +99,8 @@ When George has a map, it ends with the map too (see `map`).
 ### `map`
 His Civ-style map, worked out from his day scores: tiles, tiles waiting to be claimed, a golden age
 (three finished days in a row), barbarian camps and what they're heading for (they come from what he
-missed: a missed gym heads for the gym), raided tiles, cards waiting to be placed, the next building
+missed: a missed gym heads for the gym; one camp per track, and on a missed day only the camps of
+what he missed raid), raided tiles, cards waiting to be placed, the next building
 on each track, and the last turn. Use it to encourage and to name what slipped ("barbarians are two
 tiles from the gym because it's been missed twice"). It lists how many places are still hidden,
 never which: they're his to discover, so don't tell him. You can't claim tiles or place cards for
@@ -294,7 +295,8 @@ their start), `areaCalendars` (`{"Job search": "Application"}`), `defaultCalenda
 name: where tasks of an area with no calendar go, and, unless it's main, a calendar whose own events
 become tasks), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` — a habit by id or the
 start of its title, and the events that are its sessions), `priorityAreas` (areas booked first and
-starred), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour names: Lavender, Sage, Grape,
+starred), `uncountedAreas` (areas booked as reminders that never count as a miss, like `["Food"]`:
+still worth their hammers when done), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour names: Lavender, Sage, Grape,
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
 take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `areaHours`
 (`{"Food": ["16:30", "20:00"]}` — an area booked only in its own hours, inside the day's hours or not:

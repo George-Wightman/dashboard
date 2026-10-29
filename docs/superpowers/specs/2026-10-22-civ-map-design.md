@@ -81,9 +81,11 @@ gold and tiles cost 30. A day with a miss ends it; days entirely off don't count
 
 **Barbarians.** A day with anything left undone sends a camp out of the fog, 3 tiles beyond the
 border, on the side of what was neglected: the zone or building of the track of the missed row (a missed gym
-heads for the gym), or home for a row with no track. Each turn every camp moves one tile towards its target.
+heads for the gym), or home for a row with no track; one camp per track (and one for home) at most.
+Each turn every camp moves one tile towards its target.
 On a missed day, a camp next to his border raids the owned tile nearest its target (the building
-itself if it's there): a raided tile is darkened, and the next 20 hammers repair it before anything
+itself if it's there), but only a camp whose track was missed that day: a skipped read costs the
+theatre, not the whole day (changed 29 Oct 2026, when four camps raiding at once ate every day's hammers): a raided tile is darkened, and the next 20 hammers repair it before anything
 else. A finished day drives off the nearest camp.
 
 **Roads.** Each 10 minutes on the cardio target lays one road step, along the shortest path through

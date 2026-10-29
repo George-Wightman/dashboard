@@ -108,6 +108,21 @@ test('a camp at the border raids on a miss; the next 20 hammers repair it; a fin
   assert.equal(fixed.camps.length, raided.camps.length - 1);
 });
 
+test('one camp per track, and on a miss only the camps of what was missed raid', () => {
+  const t = town();
+  // Reading missed every day: one camp for it, however many days.
+  for (let n = 0; n < 6; n++) t.done(n, t.all.filter((id) => id !== t.ids.read));
+  const s = run(t.store, day(6));
+  assert.equal(s.camps.length, 1);
+  assert.equal(s.camps[0].track, 'culture');
+  assert.ok(s.chronicle.some((e) => e.events.some((x) => x.kind === 'raid')));
+  // Now only a chore is missed: a home camp sets out, and the reading camp at the border holds off.
+  t.done(6, t.all.filter((id) => id !== t.ids.a));
+  const next = run(t.store, day(7));
+  assert.deepEqual(next.camps.map((c) => c.track).sort(), ['culture', 'home']);
+  assert.ok(!next.last.events.some((x) => x.kind === 'raid'));
+});
+
 test('25 cardio minutes lay two road steps and carry five', () => {
   const t = town();
   const cardio = t.store.addItem({ type: 'quota', title: 'Cardio', area: 'Health', target: 90, unit: 'minutes' });

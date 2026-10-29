@@ -151,15 +151,18 @@ export function countedMinutes(doc) {
 }
 
 // The run task a run on `day` ticks ("Easy run", "Long run"): one dated or booked that day, not yet
-// ticked, first in his order. Hevy ticks the Gym; the watch's run used to reach only the cardio
-// minutes, and the morning's Easy run sat unticked (27 Oct 2026).
+// ticked, first in his order; else a run habit not yet ticked that day (runs became 2× a week on 29
+// Oct 2026). Hevy ticks the Gym; the watch's run used to reach only the cardio minutes, and the
+// morning's Easy run sat unticked (27 Oct 2026).
 const RUN_TASK = /\brun\b/i;
 function runTask(doc, day) {
-  const ticked = new Set(Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active').map((l) => l.itemId));
-  return Object.values(doc.items ?? {})
-    .filter((i) => i.type === 'task' && i.status === 'active' && RUN_TASK.test(i.title) && !ticked.has(i.id)
-      && (i.date === day || plannedTaskDay(doc, i) === day))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1))[0] ?? null;
+  const ticks = Object.values(doc.logs ?? {}).filter((l) => l.kind === 'done' && l.status === 'active');
+  const ticked = new Set(ticks.map((l) => l.itemId));
+  const tickedOn = new Set(ticks.filter((l) => l.day === day).map((l) => l.itemId));
+  const first = (list) => list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1))[0] ?? null;
+  const runs = Object.values(doc.items ?? {}).filter((i) => i.status === 'active' && RUN_TASK.test(i.title));
+  return first(runs.filter((i) => i.type === 'task' && !ticked.has(i.id) && (i.date === day || plannedTaskDay(doc, i) === day)))
+    ?? first(runs.filter((i) => i.type === 'habit' && !tickedOn.has(i.id) && (i.created ?? '') <= day));
 }
 const isRun = (r) => /RUN/i.test(r.type) || RUN_TASK.test(r.title);
 

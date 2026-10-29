@@ -129,6 +129,17 @@ test("a run ticks that day's run task, once, when it happened; a walk doesn't, a
   assert.deepEqual(ticks(), []);
 });
 
+test('with no run task that day, a run ticks a run habit, once a day', async () => {
+  const { store, health, sync, now } = setup();
+  const easy = store.addItem({ type: 'habit', title: 'Easy run', area: 'Health', repeat: { kind: 'perWeek', n: 2 }, created: '2026-10-19' });
+  health.add('one', 'RUNNING', WED, '08:00', '08:20');
+  health.add('two', 'RUNNING', WED, '18:00', '18:20');
+  now.advance(60 * 60000);
+  await sync();
+  const ticks = Object.values(store.doc().logs).filter((l) => l.kind === 'done' && l.status === 'active');
+  assert.deepEqual(ticks.map((l) => [l.itemId, l.day]), [[easy.id, WED]]);
+});
+
 test('the access token is reused while it lasts; a refused filter is read without one', async () => {
   const { health, sync, logs, now } = setup();
   health.refuseFilter = true;

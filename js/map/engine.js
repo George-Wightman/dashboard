@@ -18,7 +18,7 @@ export const MAX_LEVEL = 3;
 export const GOLDEN_RUN = 3;     // finished days in a row for a golden age
 export const ROAD_MINUTES = 10;  // cardio minutes per road step
 export const FINISHED_BONUS = 20;
-export const MAX_CAMPS = 4;     // past this, a miss raids but sends no more
+export const MAX_CAMPS = 4;     // one per track and one for home: a miss in a track with a camp raids but sends no more
 export const FIND_VALUE = { coal: 20, wheat: 10, sheep: 10, deer: 10, horses: 10, pub: 15, pitwheel: 15, stone: 10, fish: 10 };
 export const FIND_NAME = { coal: 'Coal seam', wheat: 'Wheat', sheep: 'Sheep', deer: 'Deer', horses: 'Horses', pub: 'A pub', pitwheel: 'An old pit wheel', stone: 'Stone', fish: 'Fish' };
 
@@ -312,7 +312,8 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     }
     applyLevels();
     wonderCards(d);
-    // Barbarians: they creep towards what they're after; on a missed day they raid, and more come.
+    // Barbarians: they creep towards what they're after; on a missed day the camps of what was missed
+    // raid, and a missed track without a camp sends one.
     const campKeys = () => new Set(state.camps.map((c) => key(c.q, c.r)));
     for (const c of state.camps) {
       const goal = unkey(targetTile(state, c.target));
@@ -323,26 +324,31 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
       if (step && dist(step, goal) < here) [c.q, c.r] = step;
     }
     if (miss) {
+      // What was missed, by track ('home' for a row with no track). Only those camps raid, and each
+      // sends one camp at most: a skipped read costs the theatre, not the whole day (29 Oct 2026).
+      const missedItems = [...score.open.map((r) => r.item), ...score.missed.map((e) => e.item), ...score.dropped.map((e) => e.item)];
+      const missedTracks = [...new Set(missedItems.map((it) => P.trackOfArea[it.area] ?? 'home'))];
       for (const c of state.camps) {
+        if (!missedTracks.includes(c.track)) continue;
         const goal = unkey(targetTile(state, c.target));
         const victim = nbrs(c.q, c.r).filter((n) => state.owned.has(n) && n !== CENTRE && !state.pillaged.has(n))
           .sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0];
         if (victim) { state.pillaged.add(victim); event('raid', `Barbarians raid near ${P.byId.get(c.target)?.name ?? 'the centre'}`, { k: victim }); }
       }
-      const missedItems = [...score.open.map((r) => r.item), ...score.missed.map((e) => e.item), ...score.dropped.map((e) => e.item)];
-      const tr = missedItems.map((it) => P.trackOfArea[it.area]).find(Boolean);
-      const target = tr ? (map.tracks[tr].list.map(([id]) => id).find((id) => state.built[id]) ?? map.tracks[tr].list[0][0]) : (map.home && P.byId.has(map.home) ? map.home : 'centre');
-      const goal = unkey(targetTile(state, target));
-      const taken = campKeys();
-      let spot = null;
-      const far = ringsOut(4);
-      for (const want of [3, 4, 2]) {
-        const ring = [...far].filter(([k, n]) => n === want && !taken.has(k)).map(([k]) => k);
-        if (ring.length) { spot = ring.sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0]; break; }
-      }
-      if (spot && state.camps.length < MAX_CAMPS) {
+      for (const tr of missedTracks) {
+        if (state.camps.length >= MAX_CAMPS || state.camps.some((c) => c.track === tr)) continue;
+        const target = tr !== 'home' ? (map.tracks[tr].list.map(([id]) => id).find((id) => state.built[id]) ?? map.tracks[tr].list[0][0]) : (map.home && P.byId.has(map.home) ? map.home : 'centre');
+        const goal = unkey(targetTile(state, target));
+        const taken = campKeys();
+        let spot = null;
+        const far = ringsOut(4);
+        for (const want of [3, 4, 2]) {
+          const ring = [...far].filter(([k, n]) => n === want && !taken.has(k)).map(([k]) => k);
+          if (ring.length) { spot = ring.sort((a, b) => dist(unkey(a), goal) - dist(unkey(b), goal) || (a < b ? -1 : 1))[0]; break; }
+        }
+        if (!spot) continue;
         const [q, r] = unkey(spot);
-        state.camps.push({ q, r, target });
+        state.camps.push({ q, r, target, track: tr });
         event('camp', `Barbarians set out for ${P.byId.get(target)?.name ?? 'the centre'}`, { target });
       }
     } else if (finished && state.camps.length) {

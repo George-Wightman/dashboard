@@ -51,6 +51,22 @@ test('doing an optional habit still counts', () => {
   assert.deepEqual([s.done, s.total], [1, 1]);
 });
 
+test('a row in an uncounted area is never a miss, moved or not, but counts when done', () => {
+  const uncounted = { config: { id: 'config', status: 'active', uncountedAreas: ['Food'] } };
+  const cook = task('cook', WED, { area: 'Food' });
+  const open = doc({ items: [walk, cook], commits: commit(WED, ['cook']) });
+  open.calendar = { ...open.calendar, ...uncounted };
+  const s = dayScore(open, WED);
+  assert.deepEqual([s.done, s.total], [0, 1]);
+  assert.deepEqual(ids(s.optional), ['cook']);
+  const moved = doc({ items: [walk, { ...cook, date: THU }], commits: commit(WED, ['cook']) });
+  moved.calendar = { ...moved.calendar, ...uncounted };
+  assert.deepEqual(dayScore(moved, WED).pushed, []);
+  const cooked = doc({ items: [walk, cook], logs: [done('cook', WED)] });
+  cooked.calendar = { ...cooked.calendar, ...uncounted };
+  assert.deepEqual([dayScore(cooked, WED).done, dayScore(cooked, WED).total], [1, 2]);
+});
+
 // ---- Committed tasks ---------------------------------------------------------------------------
 
 test('moving a committed task to another day is pushed: out of the score, but listed', () => {
