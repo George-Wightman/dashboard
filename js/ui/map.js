@@ -4,13 +4,13 @@
 // The state comes from js/map/engine.js's replay; his choices are written as `game` records.
 
 import { h } from './dom.js';
-import { replay, claimable, placeable, makeCityOf, lookups, visibleOf, FIND_NAME, FIND_VALUE, REPAIR, LEVEL_STEP } from '../map/engine.js';
+import { replay, claimable, placeable, makeCityOf, lookups, visibleOf, findName, FIND_VALUE, REPAIR, LEVEL_STEP } from '../map/engine.js';
 import { key, unkey, DIRS } from '../map/hex.js';
 import {
   S, centre, fromUnits, corners, pts, TERRAIN, CENTRE_TOP, PLAZA, TRACK_COLOUR, seasonOf, seasonTop, groundSvg, clipSvg,
   decoSvg, findSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadSvg, bannerSvg, pinSvg, mix,
 } from './map-art.js';
-import { addDays, shortDate } from '../dates.js';
+import { addDays, shortDate, shortWeekday } from '../dates.js';
 import { dayPoints } from '../map/points.js';
 
 export const SEEN_KEY = 'dash_map_seen';
@@ -61,7 +61,7 @@ export function describeTile(state, map, k) {
     else { title = 'Something to build here'; lines.push('Finish a goal step to find out what'); }
   } else if (site) { title = site.name; if (site.note) lines.push(site.note); special = true; }
   if (!built) for (const b of L.builds) if (!state.built[b.id] && L.zones[b.id].has(k) && state.zonesSeen.has(b.id)) lines.push(`Good ground for ${b.name}`);
-  if (t.find && !state.claimedFinds.has(k)) lines.push(`${FIND_NAME[t.find] ?? 'A find'}: +${map.finds?.[t.find] ?? FIND_VALUE[t.find] ?? 10} hammers when you claim it`);
+  if (t.find && !state.claimedFinds.has(k)) lines.push(`${findName(map, t.find)}: +${map.finds?.[t.find] ?? FIND_VALUE[t.find] ?? 10} hammers when you claim it`);
   if (state.pillaged.has(k)) lines.push(`Raided: the next ${REPAIR} hammers repair it`);
   const camp = state.camps.find((c) => key(c.q, c.r) === k);
   if (camp) lines.push(`Barbarians, heading for ${L.byId.get(camp.target)?.name ?? 'the centre'}`);
@@ -82,6 +82,11 @@ export function tileLines(state, map, points = null) {
   }
   if (state.pillaged.size) out.push(`${plural(state.pillaged.size, 'raided tile')} to repair`);
   return out;
+}
+
+// In Salzburg each visit is a chapter (docs/superpowers/specs/2026-10-29-salzburg-era-design.md).
+export function chapterLabel(map, state) {
+  return map.place === 'salzburg' && state.chapter ? `Chapter ${state.chapter.n} · since ${shortWeekday(state.chapter.start)} ${shortDate(state.chapter.start)}` : null;
 }
 
 export function morningLine(entry) {
@@ -281,6 +286,7 @@ export function renderMapBig(ctx) {
     return h('div', { class: 'map-track', style: `--track:${TRACK_COLOUR[tr] ?? '#999'}` }, h('span', {}, label), h('span', { class: 'map-bar' }, h('i', { style: `width:${Math.max(0, Math.min(100, pct))}%` })));
   };
   const hud = h('div', { class: 'map-hud' },
+    chapterLabel(map, state) ? h('span', { class: 'map-chip' }, chapterLabel(map, state)) : null,
     h('span', { class: 'map-chip' }, `Turn ${state.turn}`),
     h('span', { class: 'map-chip' }, `${state.owned.size} tiles`),
     h('span', { class: `map-chip${state.ready ? ' gold' : ''}` }, `${state.ready} to claim`),

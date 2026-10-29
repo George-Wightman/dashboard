@@ -41,10 +41,11 @@ export const TERRAIN = {
   town: { name: 'Town', top: '#b9c48e' },
   shops: { name: 'Market', top: '#d3c3a4' },
   industry: { name: 'Works', top: '#aeaa9d' },
+  mountain: { name: 'Mountains', top: '#a3ab9b' },
 };
 export const CENTRE_TOP = '#d8c9a4';
-export const PLAZA = { learning: '#b4c8dc', sport: '#cfa595', culture: '#c5b1d2' };
-export const TRACK_COLOUR = { learning: '#7fb0e6', sport: '#e48a7c', culture: '#c09ad8' };
+export const PLAZA = { learning: '#b4c8dc', sport: '#cfa595', culture: '#c5b1d2', household: '#e3c48f', work: '#b9c2a4' };
+export const TRACK_COLOUR = { learning: '#7fb0e6', sport: '#e48a7c', culture: '#c09ad8', household: '#d9a548', work: '#8fa36a' };
 export const SNOW = '#eef3f6';
 
 export function seasonTop(top, season, terrain = '') {
@@ -174,6 +175,15 @@ export function decoSvg(terrain, x, y, { q = 0, r = 0, season = 'summer', clip =
     g += house(x - 9, y - 3, 0.75, '#6f6a66', '#efe1c4', season) + shop(x + 2, y + 5, 1);
   } else if (terrain === 'industry') {
     g += shed(x + 2, y + 4, 1.05);
+  } else if (terrain === 'mountain') {
+    // Grey peaks, snow on their tips all year and further down in winter.
+    const snow = season === 'winter' ? 0.62 : 0.3;
+    for (const [dx, dy, w, h] of [[-7, 4, 9, 17 + rand() * 4], [6, 2, 10, 21 + rand() * 5]]) {
+      const top = [x + dx, y + dy - h], l = [x + dx - w, y + dy], r = [x + dx + w, y + dy];
+      const at = (a, t) => [a[0] + (top[0] - a[0]) * (1 - t), a[1] + (top[1] - a[1]) * (1 - t)];
+      g += `<polygon points="${pts([l, top, r])}" fill="#8e958b"/><polygon points="${pts([top, r, [x + dx + w * 0.15, y + dy]])}" fill="#737a71"/>`
+        + `<polygon points="${pts([at(l, snow), top, at(r, snow), [x + dx + w * 0.1, at(r, snow)[1] + 1.6], [x + dx - w * 0.25, at(l, snow)[1] - 0.6]])}" fill="${SNOW}"/>`;
+    }
   }
   return g;
 }
@@ -194,6 +204,12 @@ export function findSvg(f, x, y) {
     case 'pub': return badge + `<rect x="${X(-6)}" y="${Y(-7)}" width="10" height="7" fill="#efe1c4"/><polygon points="${X(-7)},${Y(-7)} ${X(-1)},${Y(-11)} ${X(5)},${Y(-7)}" fill="#7a3a28"/><path d="M${X(5)} ${Y(-8)} h4 v2" stroke="#3d2c25" stroke-width=".8" fill="none"/><rect x="${X(7.4)}" y="${Y(-6)}" width="3.4" height="4" fill="#c0302b"/>`;
     case 'pitwheel': return badge + `<path d="M${X(-6)} ${Y(1)} l6 -14 l6 14" stroke="#7b7d5c" stroke-width="1.6" fill="none"/><circle cx="${X(0)}" cy="${Y(-13)}" r="4" fill="none" stroke="#c9cba6" stroke-width="1.4"/>`;
     case 'stone': return badge + `<polygon points="${X(-7)},${Y(1)} ${X(-5)},${Y(-4)} ${X(-1)},${Y(-5)} ${X(1)},${Y(1)}" fill="#a3a39a"/><polygon points="${X(0)},${Y(1)} ${X(2)},${Y(-6)} ${X(6)},${Y(-4)} ${X(7)},${Y(1)}" fill="#8b8b83"/>`;
+    case 'salt': return badge + `<polygon points="${X(-7)},${Y(1)} ${X(0)},${Y(-9)} ${X(7)},${Y(1)}" fill="#f4f1ea"/><polygon points="${X(0)},${Y(-9)} ${X(7)},${Y(1)} ${X(2)},${Y(1)}" fill="#d9d4c8"/><rect x="${X(-3)}" y="${Y(-5)}" width="2" height="2" fill="#ffffff" transform="rotate(45 ${X(-2)} ${Y(-4)})"/>`;
+    case 'cows': return badge + `<ellipse cx="${X(-1)}" cy="${Y(-5)}" rx="5.4" ry="3" fill="#f6f4ee"/><circle cx="${X(-3)}" cy="${Y(-6)}" r="1.5" fill="#2b2b2b"/><circle cx="${X(1.2)}" cy="${Y(-4.4)}" r="1.2" fill="#2b2b2b"/><path d="M${X(-4.5)} ${Y(-3)} v4 M${X(2.5)} ${Y(-3)} v4" stroke="#6b6158" stroke-width="1.1"/><ellipse cx="${X(5.2)}" cy="${Y(-6.4)}" rx="2.2" ry="1.7" fill="#e9c9b4"/><circle cx="${X(4.4)}" cy="${Y(-9.4)}" r="1" fill="#c9a43a"/>`;
+    case 'timber': return badge + [[-5, -2], [0, -2], [5, -2], [-2.5, -6], [2.5, -6]].map(([a, b]) => `<circle cx="${X(a)}" cy="${Y(b)}" r="2.6" fill="#a8743f"/><circle cx="${X(a)}" cy="${Y(b)}" r="1.1" fill="#d9b277"/>`).join('');
+    case 'trout': return `<path d="M${X(-6)} ${Y(-3)} q6 -4.6 10.6 0 q-4.6 4.6 -10.6 0 z M${X(4.4)} ${Y(-3)} l4 -3 v6 z" fill="#9fb3a2"/><path d="M${X(-5)} ${Y(-3)} q5 1.6 9.6 0" stroke="#e48aa0" stroke-width="1.1" fill="none"/><circle cx="${X(-1)}" cy="${Y(-4.8)}" r=".6" fill="#3e4a42"/><circle cx="${X(1.6)}" cy="${Y(-4.6)}" r=".6" fill="#3e4a42"/>`;
+    case 'marble': return badge + `<polygon points="${X(-6)},${Y(1)} ${X(-6)},${Y(-6)} ${X(0)},${Y(-9)} ${X(6)},${Y(-6)} ${X(6)},${Y(1)}" fill="#efe6e1"/><polygon points="${X(0)},${Y(-3)} ${X(6)},${Y(-6)} ${X(6)},${Y(1)} ${X(0)},${Y(1)}" fill="#d6c6c0"/><path d="M${X(-5)} ${Y(-4)} q3 1 5 -2 M${X(1)} ${Y(-1)} q2 -1 4 1" stroke="#c99c9a" stroke-width=".8" fill="none"/>`;
+    case 'beer': return badge + `<rect x="${X(-4)}" y="${Y(-9)}" width="7" height="9" rx="1" fill="#e8a93a"/><rect x="${X(-4.4)}" y="${Y(-11)}" width="7.8" height="3" rx="1.4" fill="#fbf6ea"/><path d="M${X(3)} ${Y(-7)} h2.4 v4 h-2.4" stroke="#c8d3d8" stroke-width="1.3" fill="none"/>`;
     case 'fish': return `<path d="M${X(-5)} ${Y(-3)} q5 -4 9 0 q-4 4 -9 0 z M${X(4)} ${Y(-3)} l4 -3 v6 z" fill="#f2a65a"/>`;
     default: return '';
   }

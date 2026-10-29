@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeStore } from './helpers.js';
 import { replay } from '../js/map/engine.js';
-import { describeTile, tileLines, morningLine, currentMap, mapSvg } from '../js/ui/map.js';
+import { describeTile, tileLines, morningLine, currentMap, mapSvg, chapterLabel } from '../js/ui/map.js';
+import { decoSvg, findSvg } from '../js/ui/map-art.js';
 import { mapTown } from './fixtures/map-town.js';
 
 const map = mapTown();
@@ -52,4 +53,20 @@ test('the board draws, with nothing that could run', () => {
   const svg = mapSvg(state, map, { today: map.start, world: true });
   assert.ok(svg.includes('TOWNSBY'));
   assert.ok(!/<script|\son[a-z]+=/i.test(svg));
+});
+
+test('a Salzburg map labels its chapter; Mansfield has none', () => {
+  const state = { chapter: { n: 2, start: '2027-01-04' } };
+  assert.equal(chapterLabel({ place: 'salzburg' }, state), 'Chapter 2 · since Mon 4 Jan');
+  assert.equal(chapterLabel({ place: 'uk' }, state), null);
+});
+
+test('a find is named by its map; mountain ground and each Salzburg find have drawings', () => {
+  const { store } = fresh();
+  const salty = mapTown({ tiles: mapTown().tiles.map((t) => (t.q === 2 && t.r === 0 ? { ...t, find: 'salt' } : t)), findNames: { salt: 'Salt' }, finds: { salt: 20 } });
+  store.putGame('claim:town:1,0', { city: 'town', q: 1, r: 0, day: map.start, at: `${map.start}T10:00:00.000Z` });
+  const state = replay({ doc: store.doc(), map: salty, today: map.start });
+  assert.ok(describeTile(state, salty, '2,0')[1].includes('Salt: +20 hammers when you claim it'));
+  assert.match(decoSvg('mountain', 0, 0), /<polygon/);
+  for (const f of ['salt', 'cows', 'timber', 'trout', 'marble', 'beer']) assert.notEqual(findSvg(f, 0, 0), '', f);
 });
