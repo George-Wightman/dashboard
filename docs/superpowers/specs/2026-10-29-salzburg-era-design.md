@@ -41,13 +41,16 @@ a solid month must feel finished on its own, and the same map carries on next vi
 
 ## How it works
 
-**The city.** Centred on his flat (the centre tile, named for its street area). Tiles about 0.5 km,
-not Mansfield's 1 km: Salzburg is compact, and at 1 km the old town would be two tiles. The land
+**The city.** Centred on his flat (the centre tile). Drawn like a tourist map, not to scale (George,
+29 Oct, after seeing the first build: "the city parts more spread out … the stuff further away, like
+the mountains, we can reduce that distance"): `a·ln(1 + d/s)` tiles at d km from the old town, so the
+old town's sights sit tiles apart and the villages, castles and mountains round the edge are pulled in.
+Small city hills cover only their own tile and the ring round it; there's no random-hill noise. The land
 reaches out to the mountains for later chapters. No coastline clip: Salzburg isn't on an island; the
 world view shows Austria in Europe. `place: 'salzburg'`, from 2026-11-07 to 2027-04-30.
 
 **Places he knows** show from the start or almost: the flat, his supermarket, the pull-up bar park.
-The rest — neighbourhoods, parks, the old town's sights, the buildings' spots, the wonder sites — are
+About two dozen more, from the old town out to the villages and the German border, and the rest — neighbourhoods, parks, the old town's sights, the buildings' spots, the wonder sites — are
 picked by Claude from the real map and stay hidden until he reaches them. The fortress and the
 mountains are wonder sites (he named them himself, so they can show as stars).
 

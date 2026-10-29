@@ -25,8 +25,21 @@ const toM = (lat, lon) => [(lon - C.lon) * mPerLon, (C.lat - lat) * mPerLat];
 // The land: true to scale at `kmPerTile`, with the middle opened out by `openOut` tiles.
 const KM = cfg.kmPerTile ?? 1, OPEN = cfg.openOut ?? 1.4;
 const tilesAt = (d) => d / 1000 / KM + OPEN * (1 - Math.exp(-d / 350));
-const local = ([x, y]) => { const d = Math.hypot(x, y); if (!d) return [0, 0]; const t = tilesAt(d); return [x / d * t, y / d * t]; };
-const unlocal = ([u, v]) => { const t = Math.hypot(u, v); if (!t) return [0, 0]; let lo = 0, hi = 80000; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (tilesAt(m) < t) lo = m; else hi = m; } return [u / t * lo, v / t * lo]; };
+let local = ([x, y]) => { const d = Math.hypot(x, y); if (!d) return [0, 0]; const t = tilesAt(d); return [x / d * t, y / d * t]; };
+let unlocal = ([u, v]) => { const t = Math.hypot(u, v); if (!t) return [0, 0]; let lo = 0, hi = 80000; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (tilesAt(m) < t) lo = m; else hi = m; } return [u / t * lo, v / t * lo]; };
+// A tourist map instead (cfg.fisheye: { lat, lon, a, s }): zoomed in round the city's heart, the
+// country further out drawn in closer — a·ln(1 + d/s) tiles at d km from the heart, the centre tile
+// still at 0,0. The land's disc is centred on the heart too.
+let landOrigin = [0, 0];
+if (cfg.fisheye) {
+  const F = toM(cfg.fisheye.lat, cfg.fisheye.lon), A = cfg.fisheye.a, SK = cfg.fisheye.s * 1000;
+  const fwd = ([x, y]) => { const d = Math.hypot(x, y); if (!d) return [0, 0]; const t = A * Math.log(1 + d / SK); return [x / d * t, y / d * t]; };
+  const back = ([u, v]) => { const t = Math.hypot(u, v); if (!t) return [0, 0]; const d = SK * (Math.exp(t / A) - 1); return [u / t * d, v / t * d]; };
+  const O = fwd([-F[0], -F[1]]);
+  local = ([x, y]) => { const f = fwd([x - F[0], y - F[1]]); return [f[0] - O[0], f[1] - O[1]]; };
+  unlocal = ([u, v]) => { const b = back([u + O[0], v + O[1]]); return [b[0] + F[0], b[1] + F[1]]; };
+  landOrigin = [-O[0], -O[1]];
+}
 // The world around it: a plain scale, so England and Europe look like themselves.
 const WORLD_KM = cfg.worldKmPerTile ?? 3;
 const world = ([x, y]) => [x / 1000 / WORLD_KM, y / 1000 / WORLD_KM];
@@ -69,10 +82,11 @@ for (const p of cfg.places) {
 // ---- the land: a lumpy disc with a lobe out to every place ----
 const tiles = new Map();
 const wobble = (a) => 1.6 * Math.sin(a * 3 + 1.3) + 1.1 * Math.sin(a * 5 + 4.1) + 0.7 * Math.sin(a * 7 + 2.2);
-const anchors = places.map((p) => { const [u, v] = unitOf(p.q, p.r); return { a: Math.atan2(v, u), d: Math.hypot(u, v) + (p.kind === 'wonder' ? 3 : 2) }; });
+const [LU, LV] = landOrigin, at0 = hexOf(landOrigin);
+const anchors = places.map((p) => { const [u, v] = unitOf(p.q, p.r); return { a: Math.atan2(v - LV, u - LU), d: Math.hypot(u - LU, v - LV) + (p.kind === 'wonder' ? 3 : 2) }; });
 const R = Math.ceil(Math.max(...anchors.map((a) => a.d)) + 4);
-for (let q = -2 * R; q <= 2 * R; q++) for (let r = -2 * R; r <= 2 * R; r++) {
-  const [u, v] = unitOf(q, r), a = Math.atan2(v, u), d = Math.hypot(u, v);
+for (let q = at0[0] - 2 * R; q <= at0[0] + 2 * R; q++) for (let r = at0[1] - 2 * R; r <= at0[1] + 2 * R; r++) {
+  const [u0, v0] = unitOf(q, r), u = u0 - LU, v = v0 - LV, a = Math.atan2(v, u), d = Math.hypot(u, v);
   let env = (cfg.landRadius ?? 8.5) + wobble(a);
   for (const an of anchors) { const da = Math.abs(((a - an.a) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI); env = Math.max(env, an.d * Math.max(0, Math.cos(Math.min(da * 2.2, Math.PI / 2)))); }
   if (d <= env) tiles.set(key(q, r), { q, r });
@@ -93,13 +107,13 @@ let osm;
 if (existsSync(osmPath)) osm = JSON.parse(readFileSync(osmPath, 'utf8'));
 else {
   const [S, W, N, E] = bbox, b = `${S},${W},${N},${E}`;
-  const q = `[out:json][timeout:180];(way["landuse"](${b});relation["landuse"](${b});way["natural"~"wood|water|heath|scrub"](${b});relation["natural"~"wood|water"](${b});way["leisure"~"park|golf_course|nature_reserve|pitch|recreation_ground"](${b});way["waterway"="river"](${b});way["railway"="rail"](${b});${cfg.mountains ? `node["natural"="peak"](${b});way["natural"~"bare_rock|scree|cliff"](${b});` : ''});out geom;`;
+  const q = `[out:json][timeout:180];(way["landuse"](${b});relation["landuse"](${b});way["natural"~"wood|water|heath|scrub"](${b});relation["natural"~"wood|water"](${b});way["leisure"~"park|golf_course|nature_reserve|pitch|recreation_ground"](${b});way["waterway"="river"](${b});way["railway"="rail"](${b});${cfg.mountains ? `node["natural"="peak"](${b});way["natural"~"bare_rock|scree"](${b});` : ''});out geom;`;
   const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'User-Agent': 'dashboard-map-builder' } });
   osm = await res.json();
   writeFileSync(osmPath, JSON.stringify(osm));
 }
 function category(t) {
-  if (['bare_rock', 'scree', 'cliff'].includes(t.natural)) return 'mountain';
+  if (['bare_rock', 'scree'].includes(t.natural)) return 'mountain';
   if (t.natural === 'water' || t.landuse === 'reservoir' || t.landuse === 'basin') return 'water';
   if (t.natural === 'wood' || t.landuse === 'forest') return 'forest';
   if (['industrial', 'quarry', 'landfill', 'brownfield'].includes(t.landuse)) return 'industry';
@@ -145,13 +159,13 @@ for (const t of tiles.values()) {
   if (!cat) cat = h < 0.38 ? 'farm' : h < 0.62 ? 'meadow' : h < 0.8 ? 'forest' : h < 0.93 ? 'hills' : 'town';
   if (cat === 'town' && d > 3 && h < 0.45) cat = h < 0.2 ? 'meadow' : h < 0.32 ? 'farm' : 'park';
   if (cat === 'shops' && d > 2) cat = 'town';
-  if (['meadow', 'farm'].includes(cat) && smooth(t.q, t.r) > 0.95) cat = 'hills';
+  if (cfg.noiseHills !== false && ['meadow', 'farm'].includes(cat) && smooth(t.q, t.r) > 0.95) cat = 'hills'; // off where real hills are known
   if (forestSide && unitOf(t.q, t.r)[0] > forestSide.u && hash(t.q, t.r, 2) < 0.5 && !['water', 'town'].includes(cat)) cat = 'forest';
   // Peaks (cfg.mountains): high ones make mountain round them, lower ones hills.
   if (cat !== 'water') for (const pk of peaks) {
     const near = Math.hypot(x - pk.at[0], y - pk.at[1]);
     if (pk.ele >= (cfg.mountainEle ?? 900) && near < (cfg.peakReach ?? 700)) cat = 'mountain';
-    else if (pk.ele >= 450 && near < 350 && cat !== 'mountain') cat = 'hills';
+    else if (pk.ele >= 450 && cat !== 'mountain' && hd(hexOf(local(pk.at)), [t.q, t.r]) <= 1) cat = 'hills'; // a hill: its own tile and the ring round it
   }
   t.terrain = cat;
 }
