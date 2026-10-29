@@ -266,6 +266,7 @@ export function renderMapBig(ctx) {
   const views = {
     land: () => boxAround(state.visible, S * (ar < 1 ? 2.5 : 4.5), ar),
     england: map.view?.england ? () => fit([...fromUnits(map.view.england.slice(0, 2)), ...fromUnits(map.view.england.slice(2))], ar) : null,
+    country: map.view?.country ? () => fit([...fromUnits(map.view.country.slice(0, 2)), ...fromUnits(map.view.country.slice(2))], ar) : null,
     europe: map.view?.europe ? () => fit([...fromUnits(map.view.europe.slice(0, 2)), ...fromUnits(map.view.europe.slice(2))], ar) : null,
   };
   ui.view ??= views.land();
@@ -302,14 +303,14 @@ export function renderMapBig(ctx) {
     return h('button', { class: 'map-card', type: 'button', 'aria-pressed': String(!!pressed), disabled: !ok,
       onclick: () => { ui.armed = pressed ? null : c; ctx.render(); } },
     art, h('span', {}, h('b', {}, name), h('small', {}, ok ? (pressed ? 'Now pick a glowing tile' : 'Tap, then pick a tile') : c.kind === 'wonder' ? 'Reach a wonder site first' : 'Reach its zone first')));
-  }) : h('p', { class: 'muted' }, 'No cards yet. Hebrew, the gym and reading earn buildings; a goal step earns a wonder.'));
+  }) : h('p', { class: 'muted' }, 'No cards yet. Each track earns buildings; a goal step earns a wonder.'));
   const zoom = h('div', { class: 'map-zoom' }, Object.entries(views).filter(([, f]) => f).map(([name, f]) =>
     h('button', { class: 'dl-btn', type: 'button', 'aria-pressed': String(ui.zoom === name),
       onclick: (e) => {
         ui.zoom = name;
         for (const b of e.currentTarget.parentElement.querySelectorAll('[aria-pressed]')) b.setAttribute('aria-pressed', String(b === e.currentTarget));
         animateView(ctx, svg, f());
-      } }, name === 'land' ? map.name : name === 'england' ? 'England' : 'Europe')),
+      } }, name === 'land' ? map.name : map.viewNames?.[name] ?? { england: 'England', country: 'Country', europe: 'Europe' }[name])),
   h('button', { class: 'dl-btn', type: 'button', onclick: () => playHistory(ctx, svg, { map, state, today }) }, 'Watch it grow'));
   return h('div', { class: 'map-big' }, hud, box, zoom, pointsSection(ctx.store.doc(), today, map), h('h3', {}, 'Cards'), cards, tracks, chronicle(state));
 }

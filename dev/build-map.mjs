@@ -93,12 +93,13 @@ let osm;
 if (existsSync(osmPath)) osm = JSON.parse(readFileSync(osmPath, 'utf8'));
 else {
   const [S, W, N, E] = bbox, b = `${S},${W},${N},${E}`;
-  const q = `[out:json][timeout:180];(way["landuse"](${b});relation["landuse"](${b});way["natural"~"wood|water|heath|scrub"](${b});relation["natural"~"wood|water"](${b});way["leisure"~"park|golf_course|nature_reserve|pitch|recreation_ground"](${b});way["waterway"="river"](${b});way["railway"="rail"](${b}););out geom;`;
+  const q = `[out:json][timeout:180];(way["landuse"](${b});relation["landuse"](${b});way["natural"~"wood|water|heath|scrub"](${b});relation["natural"~"wood|water"](${b});way["leisure"~"park|golf_course|nature_reserve|pitch|recreation_ground"](${b});way["waterway"="river"](${b});way["railway"="rail"](${b});${cfg.mountains ? `node["natural"="peak"](${b});way["natural"~"bare_rock|scree|cliff"](${b});` : ''});out geom;`;
   const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'User-Agent': 'dashboard-map-builder' } });
   osm = await res.json();
   writeFileSync(osmPath, JSON.stringify(osm));
 }
 function category(t) {
+  if (['bare_rock', 'scree', 'cliff'].includes(t.natural)) return 'mountain';
   if (t.natural === 'water' || t.landuse === 'reservoir' || t.landuse === 'basin') return 'water';
   if (t.natural === 'wood' || t.landuse === 'forest') return 'forest';
   if (['industrial', 'quarry', 'landfill', 'brownfield'].includes(t.landuse)) return 'industry';
@@ -109,10 +110,11 @@ function category(t) {
   if (t.landuse === 'meadow' || t.natural === 'heath' || t.natural === 'scrub') return 'meadow';
   return null;
 }
-const RANK = ['water', 'forest', 'industry', 'shops', 'town', 'park', 'farm', 'meadow'];
-const areas = [], lines = [];
+const RANK = ['water', 'mountain', 'forest', 'industry', 'shops', 'town', 'park', 'farm', 'meadow'];
+const areas = [], lines = [], peaks = [];
 for (const el of osm.elements ?? []) {
   const t = el.tags ?? {};
+  if (el.type === 'node') { if (t.natural === 'peak') peaks.push({ at: toM(el.lat, el.lon), ele: parseFloat(t.ele) || 0 }); continue; }
   let segs = [];
   if (el.type === 'way' && el.geometry) segs = [el.geometry.map((p) => toM(p.lat, p.lon))];
   else if (el.type === 'relation') segs = (el.members ?? []).filter((m) => m.geometry && m.role !== 'inner').map((m) => m.geometry.map((p) => toM(p.lat, p.lon)));
@@ -145,10 +147,17 @@ for (const t of tiles.values()) {
   if (cat === 'shops' && d > 2) cat = 'town';
   if (['meadow', 'farm'].includes(cat) && smooth(t.q, t.r) > 0.95) cat = 'hills';
   if (forestSide && unitOf(t.q, t.r)[0] > forestSide.u && hash(t.q, t.r, 2) < 0.5 && !['water', 'town'].includes(cat)) cat = 'forest';
+  // Peaks (cfg.mountains): high ones make mountain round them, lower ones hills.
+  if (cat !== 'water') for (const pk of peaks) {
+    const near = Math.hypot(x - pk.at[0], y - pk.at[1]);
+    if (pk.ele >= (cfg.mountainEle ?? 900) && near < (cfg.peakReach ?? 700)) cat = 'mountain';
+    else if (pk.ele >= 450 && near < 350 && cat !== 'mountain') cat = 'hills';
+  }
   t.terrain = cat;
 }
 for (const p of cfg.places) if (p.terrain) { const pl = places.find((x) => x.id === p.id); const t = tiles.get(key(pl.q, pl.r)); if (t) t.terrain = p.terrain; }
-const FIND = { forest: ['deer', 'deer', 'stone'], farm: ['wheat', 'wheat', 'horses'], meadow: ['sheep', 'sheep', 'horses'], hills: ['coal', 'stone', 'sheep'], town: ['pub', 'pub', 'pitwheel'], industry: ['coal', 'pitwheel'], water: ['fish'], park: [], shops: [] };
+const FIND_DEFAULT = { forest: ['deer', 'deer', 'stone'], farm: ['wheat', 'wheat', 'horses'], meadow: ['sheep', 'sheep', 'horses'], hills: ['coal', 'stone', 'sheep'], town: ['pub', 'pub', 'pitwheel'], industry: ['coal', 'pitwheel'], water: ['fish'], park: [], shops: [] };
+const FIND = { ...FIND_DEFAULT, ...(cfg.findsByTerrain ?? {}) };
 for (const t of tiles.values()) {
   if (taken.has(key(t.q, t.r)) || hd([t.q, t.r], [0, 0]) <= 1) continue;
   let list = FIND[t.terrain] ?? [];
@@ -190,7 +199,7 @@ const home = cfg.homeIsland ?? [-6.5, 49.8, 2, 59]; // lon/lat box of the home i
 const coast = [], europe = [];
 for (const g of land.objects.land.geometries) for (const poly of (g.type === 'Polygon' ? [g.arcs] : g.arcs)) for (const r of poly) {
   const pts = ringOf(r);
-  const isHome = pts.every(([lon, lat]) => lon > home[0] && lon < home[2] && lat > home[1] && lat < home[3]);
+  const isHome = cfg.coast !== false && pts.every(([lon, lat]) => lon > home[0] && lon < home[2] && lat > home[1] && lat < home[3]);
   const clipped = isHome ? pts : clipRing(pts, cfg.europeBox ?? [-13, 41, 24, 63]);
   if (clipped.length < 4) continue;
   let p = clipped.map(([lon, lat]) => world(toM(lat, lon)));
@@ -201,11 +210,12 @@ for (const g of land.objects.land.geometries) for (const poly of (g.type === 'Po
 // Keep the land on its island.
 const inRing = (ring, [x, y]) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
 const main = coast.reduce((a, b) => (b.length > a.length ? b : a), []);
-if (main.length) for (const [k, t] of tiles) if (!inRing(main, unitOf(t.q, t.r))) tiles.delete(k);
+if (cfg.coast !== false && main.length) for (const [k, t] of tiles) if (!inRing(main, unitOf(t.q, t.r))) tiles.delete(k);
 
 const pins = (cfg.pins ?? []).map((p) => ({ name: p.name, sub: p.sub ?? '', at: world(toM(p.lat, p.lon)).map((n) => +n.toFixed(2)), scale: p.scale ?? 3 }));
 const view = {};
 if (cfg.views?.england) view.england = [...world(toM(cfg.views.england[2], cfg.views.england[1])), ...world(toM(cfg.views.england[0], cfg.views.england[3]))].map((n) => +n.toFixed(1));
+if (cfg.views?.country) view.country = [...world(toM(cfg.views.country[2], cfg.views.country[1])), ...world(toM(cfg.views.country[0], cfg.views.country[3]))].map((n) => +n.toFixed(1));
 if (cfg.views?.europe) view.europe = [...world(toM(cfg.views.europe[2], cfg.views.europe[1])), ...world(toM(cfg.views.europe[0], cfg.views.europe[3]))].map((n) => +n.toFixed(1));
 
 // ---- drawings: each a standalone SVG, ground at y = 0 ----
@@ -216,7 +226,7 @@ for (const [id, draw] of Object.entries(art)) drawings[id] = `<svg xmlns="http:/
 const out = {
   id: cfg.id, name: cfg.name, place: cfg.place, start: cfg.start, end: cfg.end ?? null, home: cfg.home ?? null,
   centreName: cfg.centreName ?? cfg.name, centreScale: cfg.centreScale ?? 0.5,
-  tracks: cfg.tracks, finds: cfg.finds ?? undefined,
+  tracks: cfg.tracks, finds: cfg.finds ?? undefined, findNames: cfg.findNames ?? undefined, viewNames: cfg.viewNames ?? undefined,
   tiles: [...tiles.values()], places, lines: outLines, coast, europe, pins, view, art: drawings,
 };
 const text = JSON.stringify(out);
