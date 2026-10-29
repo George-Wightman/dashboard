@@ -18,13 +18,28 @@ export const MAX_LEVEL = 3;
 export const GOLDEN_RUN = 3;     // finished days in a row for a golden age
 export const ROAD_MINUTES = 10;  // cardio minutes per road step
 export const FINISHED_BONUS = 20;
-export const MAX_CAMPS = 4;     // one per track and one for home: a miss in a track with a camp raids but sends no more
 export const FIND_VALUE = { coal: 20, wheat: 10, sheep: 10, deer: 10, horses: 10, pub: 15, pitwheel: 15, stone: 10, fish: 10 };
 export const FIND_NAME = { coal: 'Coal seam', wheat: 'Wheat', sheep: 'Sheep', deer: 'Deer', horses: 'Horses', pub: 'A pub', pitwheel: 'An old pit wheel', stone: 'Stone', fish: 'Fish' };
 
 const values = (o) => Object.values(o ?? {});
 const CENTRE = key(0, 0);
 export const rowHammers = (row) => ((row.item.minutes ?? 0) >= 60 ? 20 : 10);
+// A Signify shift (planner/work.js): worth what a row of its length is, but never a miss.
+export const workHammers = (minutes) => (minutes >= 60 ? 20 : 10);
+// Camps: one per track and one for home. A miss in a track that has one raids but sends no more.
+export const campCap = (map) => Object.keys(map.tracks ?? {}).length + 1;
+// A find's name: the city's own (Salzburg's salt), else the engine's (Mansfield's).
+export const findName = (map, kind) => map.findNames?.[kind] ?? FIND_NAME[kind] ?? 'A find';
+
+// The shifts George worked, by day: the planner's `work:` records.
+export function workRecords(doc) {
+  const out = new Map();
+  for (const r of values(doc.calendar)) {
+    if (r?.status !== 'active' || !String(r.id).startsWith('work:') || typeof r.day !== 'string' || !Number.isFinite(r.minutes)) continue;
+    out.set(r.day, [...(out.get(r.day) ?? []), r.minutes]);
+  }
+  return out;
+}
 
 // Where George was each day: the `day:` stamps, each lasting until the next. With none yet, the UK.
 export function makeCityOf(doc, maps) {
@@ -105,7 +120,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     earned: new Set(), cards: [], built: {}, levels: {}, pendingLevels: {}, wonders: new Set(),
     camps: [], pillaged: new Set(), roads: [], roadNet: new Set([CENTRE]), roadSteps: 0, roadCarry: 0,
     found: new Set(), zonesSeen: new Set(), claimedFinds: new Set(),
-    chronicle: [], last: null, pending: [], history: snapshots ? [] : null,
+    chronicle: [], last: null, pending: [], history: snapshots ? [] : null, chapter: null,
   };
   const event = (kind, text, extra = {}) => state.pending.push({ kind, text, ...extra });
   const see = (quiet) => {
@@ -125,7 +140,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
       state.claimedFinds.add(k);
       const v = map.finds?.[t.find] ?? FIND_VALUE[t.find] ?? 10;
       state.pool += v;
-      event('find', `${FIND_NAME[t.find] ?? 'A find'}: +${v} hammers`, { k });
+      event('find', `${findName(map, t.find)}: +${v} hammers`, { k });
     }
     const p = P.at.get(k);
     if (p?.kind === 'found') event('reached', `${p.name} is yours`, { id: p.id });
@@ -223,6 +238,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     const d = m.doneOn ?? (typeof m.updated === 'string' ? m.updated.slice(0, 10) : null);
     if (d) wonderDays.set(d, (wonderDays.get(d) ?? 0) + 1);
   }
+  const work = workRecords(doc);
   const cardio = new Map();
   for (const l of values(doc.logs)) if (l.status === 'active' && l.kind === 'amount' && cardioId && l.itemId === cardioId) cardio.set(l.day, (cardio.get(l.day) ?? 0) + l.amount);
   const quoteOn = (d) => {
@@ -262,7 +278,10 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
 
   const settle = (d) => {
     const score = dayScore(doc, d, idx, offs);
-    if (score.total === 0) { wondersAndRoads(d); return; }
+    // Shifts count whatever else the day held: hammers and the work track, never a turn of their own.
+    const workH = (work.get(d) ?? []).reduce((n, m) => n + workHammers(m), 0);
+    if (state.track.work !== undefined) state.track.work += workH;
+    if (score.total === 0) { state.pool += workH; bank(); wondersAndRoads(d); return; }
     state.turn++;
     state.day = d;
     const finished = score.done === score.total && score.total >= 3;
@@ -274,7 +293,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     state.cost = state.golden.on ? GOLDEN_COST : COST;
     if (state.golden.on && !wasGolden) event('golden', 'A golden age begins');
     if (!state.golden.on && wasGolden) event('golden-end', 'The golden age ends');
-    let hammers = 0;
+    let hammers = workH;
     for (const row of score.doneRows) {
       const h = rowHammers(row);
       hammers += h;
@@ -336,7 +355,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
         if (victim) { state.pillaged.add(victim); event('raid', `Barbarians raid near ${P.byId.get(c.target)?.name ?? 'the centre'}`, { k: victim }); }
       }
       for (const tr of missedTracks) {
-        if (state.camps.length >= MAX_CAMPS || state.camps.some((c) => c.track === tr)) continue;
+        if (state.camps.length >= campCap(map) || state.camps.some((c) => c.track === tr)) continue;
         const target = tr !== 'home' ? (map.tracks[tr].list.map(([id]) => id).find((id) => state.built[id]) ?? map.tracks[tr].list[0][0]) : (map.home && P.byId.has(map.home) ? map.home : 'centre');
         const goal = unkey(targetTile(state, target));
         const taken = campKeys();
@@ -364,12 +383,17 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     if (state.history) state.history.push(snapshot(state));
   };
 
+  // Chapters: each run of days in this city is a visit.
+  let inCity = false;
   let ci = 0;
   for (let d = map.start; d <= today; d = addDays(d, 1)) {
+    const here = cityOf(d) === map.id;
+    if (here && !inCity) state.chapter = { n: (state.chapter?.n ?? 0) + 1, start: d };
+    inCity = here;
     // His choices for the day, in the order he made them; any that aren't legal then are ignored.
     while (ci < choices.length && choices[ci].day <= d) { if (choices[ci].day <= today) applyChoice(choices[ci]); ci++; }
     layRoads();
-    if (d < today && (!map.end || d <= map.end) && cityOf(d) === map.id) settle(d);
+    if (d < today && (!map.end || d <= map.end) && here) settle(d);
   }
   state.today = state.pending;
   state.pending = [];

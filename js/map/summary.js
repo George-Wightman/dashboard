@@ -3,6 +3,7 @@
 
 import { replay, makeCityOf, lookups } from './engine.js';
 import { distK } from './hex.js';
+import { shortWeekday, shortDate } from '../dates.js';
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -24,6 +25,8 @@ const nextOf = (state, def, L) => {
 export function mapSummary({ map, state }) {
   const L = lookups(map);
   const out = [`${map.name}: turn ${state.turn}, ${plural(state.owned.size, 'tile')} of ${L.tiles.size}. ${state.ready ? `${plural(state.ready, 'tile')} waiting to be claimed; ` : ''}${state.pool}/${state.cost} hammers to the next.`];
+  // A visit is a chapter in Salzburg, where he comes and goes (docs/superpowers/specs/2026-10-29-salzburg-era-design.md).
+  if (map.place === 'salzburg' && state.chapter) out.push(`Chapter ${state.chapter.n}, since ${shortWeekday(state.chapter.start)} ${shortDate(state.chapter.start)}: this visit.`);
   out.push(state.golden.on ? `Golden age: ${state.golden.run} finished days in a row (tiles cost ${state.cost}).` : `No golden age: ${plural(state.golden.run, 'finished day')} in a row (three starts one).`);
   for (const c of state.camps) {
     const away = Math.min(...[...state.owned].map((k) => distK(k, `${c.q},${c.r}`))) - 1;

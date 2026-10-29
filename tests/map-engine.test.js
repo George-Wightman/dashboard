@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeStore } from './helpers.js';
 import { addDays } from '../js/dates.js';
-import { replay, claimable, placeable, makeCityOf } from '../js/map/engine.js';
+import { replay, claimable, placeable, makeCityOf, campCap } from '../js/map/engine.js';
 import { mapTown } from './fixtures/map-town.js';
 
 const START = '2026-09-10';
@@ -121,6 +121,66 @@ test('one camp per track, and on a miss only the camps of what was missed raid',
   const next = run(t.store, day(7));
   assert.deepEqual(next.camps.map((c) => c.track).sort(), ['culture', 'home']);
   assert.ok(!next.last.events.some((x) => x.kind === 'raid'));
+});
+
+// A work track, as Salzburg has: shifts only, no areas.
+const withWork = (o = {}) => {
+  const m = mapTown(o);
+  return { ...m, places: [...m.places, { id: 'office', name: 'The Office', kind: 'build', track: 'work', q: 1, r: 2 }],
+    tracks: { ...m.tracks, work: { name: 'Work', areas: [], list: [['office', 50]] } } };
+};
+const shift = (store, id, d, minutes) => store.putCalendar(`work:${id}`, { day: d, minutes }, 'planner');
+
+test('a shift adds 20 hammers (10 under an hour) to the pool and the work track, and is never a miss', () => {
+  const t = town();
+  t.done(0);
+  shift(t.store, 'e1', day(0), 240);
+  shift(t.store, 'e2', day(0), 45);
+  const s = run(t.store, day(1), withWork());
+  assert.equal(s.last.hammers, 130);
+  assert.equal(s.track.work, 30);
+  assert.equal(s.camps.length, 0);
+});
+
+test('a day with only a shift earns its hammers without a turn', () => {
+  const t = town();
+  t.store.putCalendar('off:all', { start: day(0), end: day(0), reason: 'A day off' }, 'claude');
+  shift(t.store, 'e1', day(0), 240);
+  const s = run(t.store, day(1), withWork());
+  assert.equal(s.turn, 0);
+  assert.equal(s.pool, 20);
+  assert.equal(s.track.work, 20);
+});
+
+test('an archived shift earns nothing', () => {
+  const t = town();
+  t.store.putCalendar('off:all', { start: day(0), end: day(0), reason: 'A day off' }, 'claude');
+  shift(t.store, 'e1', day(0), 240);
+  t.store.putCalendar('work:e1', { status: 'archived' }, 'planner');
+  assert.equal(run(t.store, day(1), withWork()).pool, 0);
+});
+
+test('camps are capped at the number of tracks and one for home', () => {
+  assert.equal(campCap(mapTown()), 4);
+  assert.equal(campCap(withWork()), 5);
+});
+
+test('a find takes its name from the map, else the engine list', () => {
+  const t = town();
+  t.store.putGame('claim:town:2,0', { city: 'town', q: 2, r: 0, day: START, at: at(0) });
+  const named = run(t.store, START, mapTown({ findNames: { wheat: 'Golden wheat' } }));
+  assert.ok(named.today.some((e) => e.text === 'Golden wheat: +10 hammers'));
+  assert.ok(run(t.store, START).today.some((e) => e.text === 'Wheat: +10 hammers'));
+});
+
+test('a UK day between Salzburg days starts chapter 2', () => {
+  const t = town();
+  const salz = mapTown({ place: 'salzburg' });
+  const uk = mapTown({ id: 'uk1', place: 'uk' });
+  for (const [n, place] of [[0, 'salzburg'], [1, 'salzburg'], [2, 'salzburg'], [3, 'uk'], [4, 'salzburg']]) t.store.putGame(`day:${day(n)}`, { day: day(n), place });
+  const cityOf = makeCityOf(t.store.doc(), [salz, uk]);
+  assert.deepEqual(run(t.store, day(5), salz, { cityOf }).chapter, { n: 2, start: day(4) });
+  assert.deepEqual(run(t.store, day(2), salz, { cityOf }).chapter, { n: 1, start: day(0) });
 });
 
 test('25 cardio minutes lay two road steps and carry five', () => {

@@ -28,6 +28,14 @@ test("Claude's summary names tiles, camps and their target, and keeps hidden pla
   assert.doesNotMatch(text, /The Mill|Duck Pond/);
 });
 
+test('a Salzburg map names its chapter', () => {
+  const { store } = missedGym();
+  for (let n = 0; n < 3; n++) store.putGame(`day:${addDays(START, n)}`, { day: addDays(START, n), place: 'salzburg' });
+  const text = mapSummary(mapToday(store.doc(), [mapTown({ place: 'salzburg' })], addDays(START, 3))).join('\n');
+  assert.match(text, /^Chapter 1, since Thu 10 Sep: this visit\.$/m);
+  assert.doesNotMatch(mapSummary(mapToday(missedGym().store.doc(), [mapTown()], addDays(START, 3))).join('\n'), /Chapter/);
+});
+
 test('the Map widget shows the city, its tiles and what is waiting', () => {
   const { store } = missedGym();
   const g = glanceMap(mapToday(store.doc(), [mapTown()], addDays(START, 3)), 'https://example.test/');
