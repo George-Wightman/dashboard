@@ -6,11 +6,12 @@
 import { dayScore, doneIndex } from '../schedule.js';
 import { timeOff, isUncounted } from '../calendar.js';
 import { cardioQuotaId } from '../gym.js';
-import { rowHammers, lookups, FINISHED_BONUS, ROAD_MINUTES } from './engine.js';
+import { rowHammers, workHammers, lookups, FINISHED_BONUS, ROAD_MINUTES } from './engine.js';
 import { shortWeekday } from '../dates.js';
 
 const values = (o) => Object.values(o ?? {});
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const length = (m) => [m >= 60 ? `${Math.floor(m / 60)}h` : '', m % 60 ? `${m % 60}m` : ''].filter(Boolean).join(' ');
 
 // Each row: { id, title, area, track, hammers, state, note }. `state` is earned (ticked), open (still
 // to do: a miss if it isn't), optional (a times-a-week habit the week doesn't need today: worth its
@@ -34,6 +35,9 @@ export function dayPoints(doc, day, map = null) {
     ...s.missed.map((e) => row(e, 'missed', 'Moved a second time: counts as a miss')),
     ...s.dropped.map((e) => row(e, 'missed', 'Deleted after the lock: counts as a miss')),
     ...s.released.map((e) => row(e, 'released', e.item.released ? `No longer needed: ${e.item.released}` : 'No longer needed')),
+    // Signify shifts (planner/work.js): always earned, never part of done/total.
+    ...values(doc.calendar).filter((r) => r?.status === 'active' && String(r.id).startsWith('work:') && r.day === day && Number.isFinite(r.minutes))
+      .map((r) => ({ id: r.id, title: `Signify shift (${length(r.minutes)})`, area: '', track: map?.tracks?.work ? 'work' : null, hammers: workHammers(r.minutes), state: 'earned', note: 'A shift: never a miss' })),
   ];
   const earned = rows.filter((r) => r.state === 'earned').reduce((n, r) => n + r.hammers, 0);
   const toEarn = rows.filter((r) => r.state === 'open').reduce((n, r) => n + r.hammers, 0);

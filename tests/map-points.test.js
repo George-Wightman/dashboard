@@ -57,3 +57,15 @@ test('a finished day says it has the bonus', () => {
   assert.equal(p.earned, 40);
   assert.match(pointsLines(p)[0], /^Today's points: \+40 so far; finished: \+20 bonus\./);
 });
+
+test('a shift shows as earned work, never a miss', () => {
+  const doc = day({ items: [gym], logs: [done('gym', DAY)] });
+  doc.calendar['work:e1'] = { id: 'work:e1', status: 'active', day: DAY, minutes: 240 };
+  doc.calendar['work:e2'] = { id: 'work:e2', status: 'active', day: '2026-10-22', minutes: 240 };
+  const p = dayPoints(doc, DAY, mapTown());
+  const shift = p.rows.find((r) => r.id === 'work:e1');
+  assert.deepEqual([shift.state, shift.hammers, shift.title, shift.note], ['earned', 20, 'Signify shift (4h)', 'A shift: never a miss']);
+  assert.ok(!p.rows.some((r) => r.id === 'work:e2'));
+  assert.deepEqual([p.earned, p.done, p.total], [40, 1, 1]);
+  assert.ok(pointsLines(p).includes('  ✓ Signify shift (4h) +20 · A shift: never a miss'));
+});

@@ -1,5 +1,5 @@
 {
-  "id": "614172052502230678929fd7de04061111d2a3d1319284c6dd59f39e1dcb9338",
+  "id": "1f6d9c24aee6d5e603e61dc25d7283f6f9cef1141ae5aea3d50782d712f8f286",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
@@ -89,7 +89,7 @@
     "js/map/engine.js": "321d42b16c2392c7473fc9bb518ba98e9a2e7a0ea86b5e0a9834382b33598b53",
     "js/map/files.js": "55d4d68d3fe339a9a5f75fc918c3e1890fece613c5a5d5bf83bb06eb6d3dec2c",
     "js/map/summary.js": "2474984af9df955b38af09f716387c4cf0a9c84a9ad5ffbea57867fec1a321f9",
-    "js/map/points.js": "029675eb6ce334d8a31bef36f901951c555e5651ec4d9db67f276980e45e282b",
+    "js/map/points.js": "717ea5cb9a846fc6518dd358f47178ee9c072c6b9a2d497e185876bbc8cb519c",
     "js/ui/map.js": "d99d221a32b159c562d9c152e822643cde0807881fc7dc4a4cd595344f1dd884",
     "js/ui/map-art.js": "51b9e638edb822a1adec4c726e30a7a2717a3436c897befc19ec801515418a43"
   }
