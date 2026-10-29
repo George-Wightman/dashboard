@@ -295,7 +295,8 @@ their start), `areaCalendars` (`{"Job search": "Application"}`), `defaultCalenda
 name: where tasks of an area with no calendar go, and, unless it's main, a calendar whose own events
 become tasks), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` — a habit by id or the
 start of its title, and the events that are its sessions), `priorityAreas` (areas booked first and
-starred), `uncountedAreas` (areas booked as reminders that never count as a miss, like `["Food"]`:
+starred), `workCalendar` (the calendar whose events, once over, are Signify shifts that
+earn map hammers; `"Work"`), `uncountedAreas` (areas booked as reminders that never count as a miss, like `["Food"]`:
 still worth their hammers when done), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour names: Lavender, Sage, Grape,
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
 take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `areaHours`

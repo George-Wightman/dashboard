@@ -14,6 +14,7 @@ export const CALENDAR_DEFAULTS = {
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
   priorityAreas: [],
+  workCalendar: 'Work', // planner/work.js: its events, once over, are Signify shifts for the map
   uncountedAreas: [], // areas booked as reminders but never a miss, like ["Food"]: worth it if done
   areaColors: {},
   dayHours: {},
@@ -94,6 +95,10 @@ export const CONFIG_CHECKS = {
   priorityAreas: (v, field) => {
     if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
     return v.map((s) => s.trim());
+  },
+  workCalendar: (v, field) => {
+    if (!text(v)) throw new Error(`${field} should be a calendar name`);
+    return v.trim();
   },
   uncountedAreas: (v, field) => {
     if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);

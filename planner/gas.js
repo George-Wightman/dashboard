@@ -22,6 +22,7 @@ import { tagPrompt, readArea } from './tag.js';
 import { syncHevy } from './hevy.js';
 import { syncRoutines } from './routines.js';
 import { syncHealth } from './health.js';
+import { recordShifts } from './work.js';
 import { syncDuolingo } from './duolingo.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
@@ -340,7 +341,7 @@ export function createPlanner({
       let doc = store.doc();
       const { config } = readPlannerConfig(doc);
       const cals = calendars();
-      const { watched } = resolveCalendars(cals, config);
+      const { watched, find } = resolveCalendars(cals, config);
       const today = logicalDay(t, dayStartHour());
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
       const memory = readProperty(props(), 'DAYS');
@@ -355,6 +356,8 @@ export function createPlanner({
         const saved = await syncOnce({ store, client: session.client });
         if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
       }
+      // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
+      recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
       doc = store.doc();
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),

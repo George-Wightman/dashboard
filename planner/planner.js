@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'fcca73d6';
+var PLANNER_BUILD = '4d659dc9';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1254,6 +1254,7 @@ const CALENDAR_DEFAULTS = {
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
   priorityAreas: [],
+  workCalendar: 'Work', // planner/work.js: its events, once over, are Signify shifts for the map
   uncountedAreas: [], // areas booked as reminders but never a miss, like ["Food"]: worth it if done
   areaColors: {},
   dayHours: {},
@@ -1334,6 +1335,10 @@ const CONFIG_CHECKS = {
   priorityAreas: (v, field) => {
     if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
     return v.map((s) => s.trim());
+  },
+  workCalendar: (v, field) => {
+    if (!text(v)) throw new Error(`${field} should be a calendar name`);
+    return v.trim();
   },
   uncountedAreas: (v, field) => {
     if (!Array.isArray(v) || !v.every(text)) throw new Error(`${field} should be a list of area names`);
@@ -6352,6 +6357,53 @@ async function syncHealth({
 return { HEALTH, LOOKBACK_DAYS, healthRecord, healthLabel, countedMinutes, healthStatus, syncHealth };
 })();
 
+// ---- planner/work.js
+const __planner_work = (() => {
+// Signify shifts (docs/superpowers/specs/2026-10-29-salzburg-era-design.md): each event on his Work
+// calendar that has ended becomes a `work:<event id>` record in the calendar map, which the map
+// (js/map/engine.js) turns into hammers. Recorded from the first run onwards, never backfilled, so his
+// map doesn't change under him; a moved shift follows and a deleted one goes, for the days still
+// listed (yesterday onwards). Pure apart from the store.
+
+const { logicalDay, addDays } = __js_dates;
+
+const isShift = (r) => r?.status === 'active' && String(r.id).startsWith('work:');
+
+function recordShifts(store, events, { calendarId, today, now, dayStartHour = 4 }) {
+  if (!calendarId) return 0;
+  const status = store.doc().calendar?.['work-status'];
+  const startedOn = status?.startedOn ?? today;
+  if (!status?.startedOn) store.putCalendar('work-status', { startedOn });
+  const seen = new Set();
+  let n = 0;
+  for (const ev of events) {
+    if (ev.calendarId !== calendarId || ev.status === 'cancelled' || ev.transparency === 'transparent') continue;
+    const start = Date.parse(ev.start?.dateTime), end = Date.parse(ev.end?.dateTime);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end > now.getTime()) continue;
+    const day = logicalDay(new Date(start), dayStartHour);
+    if (day < startedOn) continue;
+    const id = `work:${ev.id}`;
+    seen.add(id);
+    const rec = {
+      status: 'active', day, start: new Date(start).toISOString(), end: new Date(end).toISOString(),
+      minutes: Math.round((end - start) / 60000), title: String(ev.summary ?? '').trim().slice(0, 80),
+    };
+    const had = store.doc().calendar?.[id];
+    if (had && Object.entries(rec).every(([k, v]) => had[k] === v)) continue;
+    store.putCalendar(id, rec);
+    n++;
+  }
+  const listedFrom = addDays(today, -1);
+  for (const r of Object.values(store.doc().calendar ?? {})) {
+    if (!isShift(r) || r.day < listedFrom || seen.has(r.id)) continue;
+    store.putCalendar(r.id, { status: 'archived' });
+    n++;
+  }
+  return n;
+}
+return { recordShifts };
+})();
+
 // ---- js/hebrewSync.js
 const __js_hebrewSync = (() => {
 // Read-only pull from the Hebrew app's own sync file (same shape of GitHub-file sync as js/sync.js,
@@ -8847,6 +8899,7 @@ const { tagPrompt, readArea } = __planner_tag;
 const { syncHevy } = __planner_hevy;
 const { syncRoutines } = __planner_routines;
 const { syncHealth } = __planner_health;
+const { recordShifts } = __planner_work;
 const { syncDuolingo } = __planner_duolingo;
 const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner_properties;
 const { processWorkflows } = __js_workflow;
@@ -9165,7 +9218,7 @@ function createPlanner({
       let doc = store.doc();
       const { config } = readPlannerConfig(doc);
       const cals = calendars();
-      const { watched } = resolveCalendars(cals, config);
+      const { watched, find } = resolveCalendars(cals, config);
       const today = logicalDay(t, dayStartHour());
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
       const memory = readProperty(props(), 'DAYS');
@@ -9180,6 +9233,8 @@ function createPlanner({
         const saved = await syncOnce({ store, client: session.client });
         if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
       }
+      // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
+      recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
       doc = store.doc();
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),
