@@ -15,6 +15,7 @@ import { HEBREW_IDS } from './hebrewSync.js';
 import { cardioQuotaId, gymHabitId } from './gym.js';
 import { nextSession, BACK } from './coach.js';
 import { mapToday, glanceMap } from './map/summary.js';
+import { hebrewVoice, hebrewInputFrom, HEBREW_DONE_MIN, HEBREW_APP } from './hebrew-voice.js';
 
 export const SITE = 'https://george-wightman.github.io/dashboard/';
 export const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week', 'map'];
@@ -69,9 +70,14 @@ function fuel(doc, today) {
   };
 }
 
-function hebrew(doc, today) {
+// The Hebrew widget (js/hebrew-voice.js): what it says in `voice`, and a tap opens the Hebrew app. The
+// title, number and lines stay for widget apps from before it. `hebrew` is the Hebrew app's own
+// progress when the planner could read it; today's busy events come from the planner's agenda.
+function hebrew(doc, today, now, maps, progress) {
+  const busy = (doc.calendar?.agenda?.busy ?? []).filter((e) => !e.allDay && localDate(e.start) === today);
+  const voice = hebrewVoice(hebrewInputFrom({ doc, now, today, progress, busy }));
   const minutes = active(doc, HEBREW_IDS.minutes);
-  if (!minutes) return null;
+  if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open: HEBREW_APP, voice };
   const total = Math.round(weekTotal(doc, minutes.id, today));
   const lines = [];
   for (const key of ['spoken', 'live']) {
@@ -83,12 +89,12 @@ function hebrew(doc, today) {
     const d = addDays(monday, i);
     if (d > today) return '·';
     const m = values(doc.logs).filter((l) => l.status === 'active' && l.itemId === minutes.id && l.kind === 'amount' && l.day === d).reduce((s, l) => s + l.amount, 0);
-    return m >= 30 ? '●' : m > 0 ? '◐' : duolingoOn(doc, HEBREW_IDS.habit, d) > 0 ? '◔' : '○';
+    return m >= HEBREW_DONE_MIN ? '●' : m > 0 ? '◐' : duolingoOn(doc, HEBREW_IDS.habit, d) > 0 ? '◔' : '○';
   }).join('');
   lines.push(`${strip}  Mon–Sun`);
   return {
     title: 'Hebrew', number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
-    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: open('hebrew'),
+    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: HEBREW_APP, voice,
   };
 }
 
@@ -159,11 +165,11 @@ const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goa
 
 // Every widget's content for `today` at `now`. A tile with nothing to show says so, rather than vanish
 // from a home screen it was put on.
-export function glanceOf(doc, today, now = new Date(), maps = []) {
+export function glanceOf(doc, today, now = new Date(), maps = [], hebrewProgress = null) {
   const tiles = {};
   for (const id of GLANCE_TILES) {
     let t = null;
-    try { t = MAKERS[id](doc, today, now, maps); } catch { t = null; }
+    try { t = MAKERS[id](doc, today, now, maps, hebrewProgress); } catch { t = null; }
     t ??= { title: TITLES[id], number: '', caption: '', lines: ['Nothing to show yet.'], open: open(id) };
     const more = t.lines.length - LINES;
     tiles[id] = { ...t, lines: more > 0 ? [...t.lines.slice(0, LINES - 1), `+ ${more + 1} more`] : t.lines };

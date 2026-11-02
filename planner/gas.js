@@ -586,7 +586,7 @@ export function createPlanner({
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
       text = req && typeof req === 'object' && 'glance' in req
-        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour() })
+        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: hebrewProgress })
         : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });

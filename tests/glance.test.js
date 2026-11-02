@@ -21,12 +21,12 @@ function doc() {
   return d;
 }
 
-test('every widget has content, and opens its tile big in the dashboard', () => {
+test('every widget has content, and opens its tile big in the dashboard (Hebrew: the Hebrew app)', () => {
   const g = glanceOf(doc(), TODAY, new Date(2026, 9, 21, 8, 0));
   assert.deepEqual(Object.keys(g.tiles), GLANCE_TILES);
   for (const [id, t] of Object.entries(g.tiles)) {
     assert.ok(t.title && Array.isArray(t.lines) && t.lines.length >= 1, id);
-    assert.equal(t.open, id === 'day' ? SITE : `${SITE}?big=${id}`);
+    assert.equal(t.open, id === 'day' ? SITE : id === 'hebrew' ? 'https://george-wightman.github.io/hebrew-reader/hebrew-reader.html' : `${SITE}?big=${id}`);
   }
   assert.equal(g.tiles.countdown.lines[0], 'Nothing to show yet.');
   assert.equal(g.tiles.week.title, 'This week');

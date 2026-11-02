@@ -34,7 +34,9 @@ function sameText(a, b) {
 }
 
 // `req` is the request already read as JSON ({ glance: key }). One reply out, a JSON string.
-export function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4 }) {
+// `hebrew(today)` reads the Hebrew app's own progress (planner/hebrew-progress.js); without it, or when
+// it fails, the Hebrew widget goes by the dashboard's own minutes.
+export function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4, hebrew = null }) {
   const reply = (obj) => JSON.stringify(obj);
   if (!repo || !token) return reply({ error: 'The planner has no GITHUB_TOKEN or SYNC_REPO' });
   if (typeof req?.glance !== 'string' || req.glance.length < 32) return reply({ error: 'The widget key is missing' });
@@ -51,5 +53,8 @@ export function handleGlance({ req, repo, token, request, sha256Hex, now = new D
   let doc;
   try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
   if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
-  return reply(glanceOf(doc, logicalDay(now, dayStartHour), now, readMaps(request, repo, headers)));
+  const today = logicalDay(now, dayStartHour);
+  let progress = null;
+  try { progress = hebrew?.(today) ?? null; } catch { progress = null; }
+  return reply(glanceOf(doc, today, now, readMaps(request, repo, headers), progress?.ok ? progress : null));
 }

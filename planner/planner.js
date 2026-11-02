@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '8f77a89f';
+var PLANNER_BUILD = 'eebceaa2';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8566,483 +8566,6 @@ async function readMaps(files, validMap) {
 return { mapToday, mapSummary, glanceMap, readMaps };
 })();
 
-// ---- js/glance.js
-const __js_glance = (() => {
-// The phone's home-screen widgets (android/): each a small copy of a Daylight tile — the day as a short
-// calendar, Fuel, Hebrew, Body, Goals, Countdown and This week. The planner's web app answers a widget
-// with this (planner/glance.js), so what a widget says can change without a new app on the phone: the
-// app only lays out a title, a big number with its caption, and a few lines, and opens the dashboard
-// on that tile, big, when tapped. Pure.
-
-const { todayRows, weekTotal, doneBetween, dayCompletion, goalProgress, duolingoOn } = __js_schedule;
-const { todaySlots, clockLabel, countdowns, daysLeft, excused } = __js_calendar;
-const { scheduleView, localDate } = __js_plan_state;
-const { movedSlot } = __js_timeline;
-const { mealsOn, dayProtein, weekKcal, fuelSettings, mealValue, slotName } = __js_food;
-const { formatProgress } = __js_parse;
-const { weekStart, addDays, shortWeekday, shortDate, longDate } = __js_dates;
-const { HEBREW_IDS } = __js_hebrewSync;
-const { cardioQuotaId, gymHabitId } = __js_gym;
-const { nextSession, BACK } = __js_coach;
-const { mapToday, glanceMap } = __js_map_summary;
-
-const SITE = 'https://george-wightman.github.io/dashboard/';
-const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week', 'map'];
-const LINES = 8;
-
-const values = (o) => Object.values(o ?? {});
-const active = (doc, id) => (doc.items?.[id]?.status === 'active' ? doc.items[id] : null);
-const open = (tile) => (tile === 'day' ? SITE : `${SITE}?big=${tile}`);
-const kcal = (n) => Math.round(n).toLocaleString('en-GB');
-
-// The day as a short calendar: what has a time today in order (shifts too), then how many have none.
-function day(doc, today, now) {
-  const rows = todayRows(doc, today).filter((r) => !r.suggested && !r.blocked && r.kind !== 'quota');
-  const slots = todaySlots(doc, today);
-  const timed = [];
-  let anytime = 0;
-  for (const r of rows) {
-    const s = movedSlot(r.item, slots.get(r.item.id), today);
-    if (s) timed.push({ start: s.start, end: s.end, text: r.item.title, done: r.done });
-    else if (!r.done) anytime++;
-  }
-  for (const c of scheduleView(doc, today).commitments) {
-    if (!c.allDay && localDate(c.start) === today) timed.push({ start: c.start, end: c.end, text: c.title, busy: true });
-  }
-  timed.sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
-  // What's over drops to one line, so the widget shows what's still to come.
-  const over = timed.filter((e) => Date.parse(e.end ?? e.start) <= +now);
-  const ahead = timed.filter((e) => !over.includes(e));
-  const next = ahead.find((e) => !e.done);
-  const lines = ahead.map((e) => `${e === next ? '▸ ' : ''}${clockLabel(e.start)}  ${e.done ? '✓ ' : ''}${e.text}${e.busy ? ' (until ' + clockLabel(e.end) + ')' : ''}`);
-  const overTasks = over.filter((e) => !e.busy);
-  if (overTasks.length) lines.unshift(`${overTasks.filter((e) => e.done).length} of ${overTasks.length} earlier done`);
-  if (anytime) lines.push(`+ ${anytime} any time today`);
-  const { done, total } = dayCompletion(doc, today);
-  return {
-    title: longDate(today).replace(/ \w+$/, ''), number: `${done}/${total}`, caption: 'done today',
-    lines: lines.length ? lines : ['Nothing on today.'], open: open('day'),
-  };
-}
-
-function fuel(doc, today) {
-  const { protein: target } = fuelSettings(doc);
-  const lines = mealsOn(doc, today).map((m) => {
-    const v = mealValue(m);
-    return `${slotName(m.slot)}: ${m.estimate?.name ?? m.text ?? ''}${v ? ` · ${v.protein} g` : ' · waiting'}`;
-  });
-  const { average } = weekKcal(doc, today);
-  if (average != null) lines.push(`This week ≈${kcal(average)} kcal a day`);
-  return {
-    title: 'Fuel', number: `${dayProtein(doc, today)} g`, caption: `of ${target} g protein today`,
-    lines: lines.length ? lines : ['Nothing logged yet today.'], open: open('fuel'),
-  };
-}
-
-function hebrew(doc, today) {
-  const minutes = active(doc, HEBREW_IDS.minutes);
-  if (!minutes) return null;
-  const total = Math.round(weekTotal(doc, minutes.id, today));
-  const lines = [];
-  for (const key of ['spoken', 'live']) {
-    const q = active(doc, HEBREW_IDS[key]);
-    if (q) lines.push(`${Math.round(weekTotal(doc, q.id, today))} of ${q.target} ${q.unitLabel || q.title}`);
-  }
-  const monday = weekStart(today);
-  const strip = Array.from({ length: 7 }, (_, i) => {
-    const d = addDays(monday, i);
-    if (d > today) return '·';
-    const m = values(doc.logs).filter((l) => l.status === 'active' && l.itemId === minutes.id && l.kind === 'amount' && l.day === d).reduce((s, l) => s + l.amount, 0);
-    return m >= 30 ? '●' : m > 0 ? '◐' : duolingoOn(doc, HEBREW_IDS.habit, d) > 0 ? '◔' : '○';
-  }).join('');
-  lines.push(`${strip}  Mon–Sun`);
-  return {
-    title: 'Hebrew', number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
-    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: open('hebrew'),
-  };
-}
-
-function body(doc, today) {
-  const lines = [];
-  const gym = active(doc, gymHabitId(doc));
-  if (gym?.repeat?.kind === 'perWeek') {
-    const monday = weekStart(today);
-    lines.push(`Gym ${doneBetween(doc, gym.id, monday, addDays(monday, 7))} of ${gym.repeat.n} this week`);
-  }
-  const next = nextSession(doc, today);
-  if (next) lines.push(`Next: ${next.title} · ${next.date === today ? 'today' : `${shortWeekday(next.date)} ${shortDate(next.date)}`}`);
-  const back = doc.gym?.[`back:${today}`];
-  if (back?.status === 'active' && BACK[back.score]) lines.push(`Back this morning: ${BACK[back.score]}`);
-  const cardio = active(doc, cardioQuotaId(doc));
-  if (!cardio && !lines.length) return null;
-  return {
-    title: 'Body', number: cardio ? String(Math.round(weekTotal(doc, cardio.id, today))) : '',
-    caption: cardio ? `of ${cardio.target} cardio min this week` : '', lines, open: open('body'),
-  };
-}
-
-function goals(doc) {
-  const list = values(doc.goals).filter((g) => g.status === 'active' && g.id !== HEBREW_IDS.goal)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (!list.length) return null;
-  const lines = list.map((g) => {
-    const p = goalProgress(doc, g);
-    const by = g.targetDate ? ` · by ${shortDate(g.targetDate)}` : '';
-    return `${g.title}: ${p.numeric ? `${p.pct}%` : `${p.done} of ${p.total}`}${by}`;
-  });
-  return { title: 'Goals', number: String(list.length), caption: list.length === 1 ? 'goal on the go' : 'goals on the go', lines, open: open('goals') };
-}
-
-function countdown(doc, today) {
-  const list = countdowns(doc, today);
-  if (!list.length) return null;
-  const [first, ...rest] = list;
-  return {
-    title: 'Countdown', number: first.days > 1 ? String(first.days) : daysLeft(first.days), caption: `${first.days > 1 ? 'days to ' : ''}${first.title}`,
-    lines: rest.map((c) => `${c.title} · ${daysLeft(c.days)} · ${shortWeekday(c.day)} ${shortDate(c.day)}`), open: open('countdown'),
-  };
-}
-
-// The weekly targets the Hebrew and Body widgets don't already show.
-function week(doc, today) {
-  const cardio = cardioQuotaId(doc);
-  const targets = values(doc.items)
-    .filter((i) => i.type === 'quota' && i.status === 'active' && i.id !== cardio && i.goalId !== HEBREW_IDS.goal && !excused(doc, i, today))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (!targets.length) return null;
-  const met = targets.filter((q) => weekTotal(doc, q.id, today) >= q.target).length;
-  return {
-    title: 'This week', number: `${met}/${targets.length}`, caption: 'targets met',
-    lines: targets.map((q) => `${q.title}: ${formatProgress(weekTotal(doc, q.id, today), q.target, q.unit)}${q.unit === 'count' && q.unitLabel ? ` ${q.unitLabel}` : ''}`),
-    open: open('week'),
-  };
-}
-
-// The map (js/map/summary.js): only when the planner could read the private map files.
-function map(doc, today, now, maps) {
-  const got = mapToday(doc, maps, today);
-  return got ? glanceMap(got, SITE) : null;
-}
-
-const MAKERS = { day, fuel, hebrew, body, goals, countdown, week, map };
-const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goals: 'Goals', countdown: 'Countdown', week: 'This week', map: 'Map' };
-
-// Every widget's content for `today` at `now`. A tile with nothing to show says so, rather than vanish
-// from a home screen it was put on.
-function glanceOf(doc, today, now = new Date(), maps = []) {
-  const tiles = {};
-  for (const id of GLANCE_TILES) {
-    let t = null;
-    try { t = MAKERS[id](doc, today, now, maps); } catch { t = null; }
-    t ??= { title: TITLES[id], number: '', caption: '', lines: ['Nothing to show yet.'], open: open(id) };
-    const more = t.lines.length - LINES;
-    tiles[id] = { ...t, lines: more > 0 ? [...t.lines.slice(0, LINES - 1), `+ ${more + 1} more`] : t.lines };
-  }
-  return { at: now.toISOString(), day: today, tiles };
-}
-return { SITE, GLANCE_TILES, glanceOf };
-})();
-
-// ---- js/map/files.js
-const __js_map_files = (() => {
-// The map's private files (docs/superpowers/specs/2026-10-22-civ-map-design.md): `map/index.json`
-// lists the cities and `map/<city>.json` is each one's land, places and drawings, all in the private
-// sync repo, read with the same key as data.json. The last good copies are kept on this device so the
-// map works offline. And the day's place: which country George was in, stamped once a day.
-
-const { CENTRAL } = __js_travel;
-
-const MAPS_KEY = 'dash_maps';
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const ID = /^[a-z0-9-]{1,40}$/;
-const KINDS = ['found', 'build', 'wonder'];
-const int = (v) => Number.isInteger(v) && Math.abs(v) < 1000;
-const str = (v, max = 200) => typeof v === 'string' && v.length <= max;
-// A drawing is an SVG and nothing that could run.
-const safeArt = (s) => str(s, 200000) && /^<svg[\s>]/.test(s) && !/<script|<foreignObject|\son[a-z]+\s*=|javascript:/i.test(s);
-
-function validMap(m) {
-  if (!m || typeof m !== 'object') return false;
-  if (!ID.test(m.id ?? '') || !str(m.name, 60) || !['uk', 'salzburg'].includes(m.place) || !DAY.test(m.start ?? '')) return false;
-  if (m.end != null && !DAY.test(m.end)) return false;
-  if (!Array.isArray(m.tiles) || !m.tiles.length || !m.tiles.every((t) => t && int(t.q) && int(t.r) && str(t.terrain, 20))) return false;
-  if (!m.tiles.some((t) => t.q === 0 && t.r === 0)) return false;
-  if (!Array.isArray(m.places) || !m.places.every((p) => p && ID.test(p.id ?? '') && str(p.name, 60) && KINDS.includes(p.kind) && int(p.q) && int(p.r))) return false;
-  if (!m.tracks || typeof m.tracks !== 'object') return false;
-  const builds = new Set(m.places.filter((p) => p.kind === 'build').map((p) => p.id));
-  for (const t of Object.values(m.tracks)) {
-    if (!t || !Array.isArray(t.areas) || !Array.isArray(t.list) || !t.list.length
-      || !t.list.every((e) => Array.isArray(e) && builds.has(e[0]) && Number.isFinite(e[1]))) return false;
-  }
-  if (m.art != null && (typeof m.art !== 'object' || !Object.values(m.art).every(safeArt))) return false;
-  return true;
-}
-
-function loadCachedMaps(storage) {
-  try {
-    const saved = JSON.parse(storage.getItem(MAPS_KEY));
-    return Array.isArray(saved?.maps) ? saved.maps.filter(validMap) : [];
-  } catch {
-    return [];
-  }
-}
-
-// `clientFor(path)` gives a { get } like js/sync.js's createGitHubClient: null when the file isn't there.
-async function refreshMaps({ clientFor, storage }) {
-  const index = await clientFor('map/index.json').get();
-  const ids = Array.isArray(index?.doc?.cities) ? index.doc.cities.filter((id) => ID.test(id)) : [];
-  const maps = [];
-  // A city that can't be fetched (a blip) throws, so the cached maps stay; one that's malformed is left out.
-  for (const id of ids) {
-    const file = await clientFor(`map/${id}.json`).get();
-    if (file && validMap(file.doc) && file.doc.id === id) maps.push(file.doc);
-  }
-  try { storage.setItem(MAPS_KEY, JSON.stringify({ at: new Date().toISOString(), maps })); } catch { /* too big for this device: kept for this visit only */ }
-  return maps;
-}
-
-// The first open of a day says where George is: Central European time is Salzburg, anywhere else the UK.
-function ensureDayPlace(store, day, timeZone) {
-  const id = `day:${day}`;
-  if (store.doc().game?.[id]) return null;
-  return store.putGame(id, { day, place: CENTRAL.test(timeZone ?? '') ? 'salzburg' : 'uk' });
-}
-return { MAPS_KEY, safeArt, validMap, loadCachedMaps, refreshMaps, ensureDayPlace };
-})();
-
-// ---- planner/glance.js
-const __planner_glance = (() => {
-// The widgets' way in (android/, js/glance.js): the phone asks the planner's web app for a summary of
-// the day and the tiles, and gets only that — no way to read the data itself, and none to change it.
-// Synchronous, like the relay (planner/relay.js): a web app's doPost can't wait on a promise, so the
-// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp). Its own key,
-// checked against glance.json in the sync repo, so the widgets can be switched off without the relay.
-
-const { glanceOf } = __js_glance;
-const { logicalDay } = __js_dates;
-const { isDoc } = __js_doc;
-const { decodeBase64 } = __js_sync;
-const { API } = __planner_relay;
-const { validMap } = __js_map_files;
-
-const GLANCE_FILE = 'glance.json';
-
-// The map's private files (js/map/files.js), for the Map widget: none when there are none, or any fails.
-function readMaps(request, repo, headers) {
-  const raw = (path) => {
-    const res = request(`${API}/repos/${repo}/contents/${path}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
-    if (res.status !== 200) return null;
-    try { return JSON.parse(res.text); } catch { return null; }
-  };
-  const index = raw('map/index.json');
-  const ids = Array.isArray(index?.cities) ? index.cities.filter((id) => /^[a-z0-9-]{1,40}$/.test(id)) : [];
-  return ids.map((id) => raw(`map/${id}.json`)).filter((m) => validMap(m));
-}
-
-function sameText(a, b) {
-  const x = String(a);
-  const y = String(b);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x.charCodeAt(i) || 0) ^ (y.charCodeAt(i) || 0);
-  return diff === 0;
-}
-
-// `req` is the request already read as JSON ({ glance: key }). One reply out, a JSON string.
-function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4 }) {
-  const reply = (obj) => JSON.stringify(obj);
-  if (!repo || !token) return reply({ error: 'The planner has no GITHUB_TOKEN or SYNC_REPO' });
-  if (typeof req?.glance !== 'string' || req.glance.length < 32) return reply({ error: 'The widget key is missing' });
-  const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
-  const stored = request(`${API}/repos/${repo}/contents/${GLANCE_FILE}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github+json' } });
-  if (stored.status === 404) return reply({ error: 'The widgets are switched off: there is no glance.json in the sync repo' });
-  if (stored.status !== 200) return reply({ error: `The widgets couldn't read glance.json (GitHub ${stored.status})` });
-  let hash = '';
-  try { hash = String(JSON.parse(decodeBase64(String(JSON.parse(stored.text).content ?? ''))).sha256 ?? ''); } catch { /* refused below */ }
-  if (!/^[0-9a-f]{64}$/.test(hash) || !sameText(sha256Hex(req.glance), hash)) return reply({ error: 'The planner refused the widget key' });
-  // The raw file, whatever its size (the contents API stops giving it inline past 1 MB).
-  const data = request(`${API}/repos/${repo}/contents/data.json`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
-  if (data.status !== 200) return reply({ error: `The widgets couldn't read the dashboard (GitHub ${data.status})` });
-  let doc;
-  try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
-  if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
-  return reply(glanceOf(doc, logicalDay(now, dayStartHour), now, readMaps(request, repo, headers)));
-}
-return { GLANCE_FILE, handleGlance };
-})();
-
-// ---- planner/ticks.js
-const __planner_ticks = (() => {
-// Ticking from Google Calendar, so George never has to open the dashboard to say he did something
-// (2 Nov 2026: opening the app had become a task of its own, and once skipped it stopped altogether).
-// Two ways: drag a block to when he did it, once that time is over; or tap the ✓ link in its
-// description, which the planner's web app answers (doGet).
-
-const { logicalDay, shortWeekday, shortDate } = __js_dates;
-const { P } = __planner_events;
-
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const WEB_APP = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
-
-// One tick per item and day, with a fixed id: made once, so a tick George takes off in the app
-// stays off however often the block is dragged or the link tapped.
-const tickLogId = (itemId, day) => `calendar-done-${itemId}-${day}`;
-
-const tickable = (item) => item && item.status === 'active' && (item.type === 'task' || item.type === 'habit')
-  && !item.details?.outcomeForm?.length;
-
-const doneOn = (doc, itemId, day) => Object.values(doc.logs ?? {}).some((l) =>
-  l.itemId === itemId && l.kind === 'done' && l.status === 'active' && l.day === day);
-
-function tick(store, item, day, fields) {
-  const id = tickLogId(item.id, day);
-  if (store.doc().logs?.[id] || doneOn(store.doc(), item.id, day)) return false;
-  store.putLog(id, { itemId: item.id, kind: 'done', day, source: 'calendar', ...fields });
-  return true;
-}
-
-// A planner block George has just dragged (it isn't where the planner last put it) to a time that's
-// already over: he's saying when he did it. Each of its items is ticked for the day it landed on, at
-// that time. Dragging into the future is still just a move. 2 Nov 2026: he dragged "Maya's
-// storybook" back to the afternoon he'd spent on it; the planner called the day missed, deleted the
-// block and booked another today, again and again.
-function importDrags(store, events, { now, dayStartHour = 4 }) {
-  const nowMs = now.getTime();
-  const ticked = [];
-  const landed = events.filter((raw) => {
-    const p = raw.extendedProperties?.private ?? {};
-    if (p[P.mine] !== '1' || raw.status === 'cancelled' || ['done', 'partial'].includes(p[P.state])) return false;
-    const start = Date.parse(raw.start?.dateTime ?? '');
-    const end = Date.parse(raw.end?.dateTime ?? '');
-    const [was, wasEnd] = String(p[P.at] ?? '').split('/').map((s) => Date.parse(s));
-    if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(was)) return false;
-    return (start !== was || end !== wasEnd) && end <= nowMs;
-  });
-  if (!landed.length) return ticked;
-  store.transaction(() => {
-    for (const raw of landed) {
-      const from = new Date(raw.start.dateTime);
-      const day = logicalDay(from, dayStartHour);
-      for (const id of String(raw.extendedProperties.private[P.items] ?? '').split(',').filter(Boolean)) {
-        const item = store.doc().items?.[id];
-        if (tickable(item) && tick(store, item, day, { from: from.toISOString(), at: new Date(raw.end.dateTime).toISOString() })) {
-          ticked.push({ itemId: id, day });
-        }
-      }
-    }
-  }, { summary: 'Ticked from Google Calendar (a block dragged to when it was done)', source: 'calendar' });
-  return ticked;
-}
-
-// The web app's address, from the phone widgets' record (claude/glance-setup.mjs puts it there) or
-// the WEB_APP_URL script property. None: blocks go without the link.
-function webAppUrl(doc, property) {
-  const url = [property, doc?.calendar?.widgets?.url].map((u) => String(u ?? '').trim()).find((u) => WEB_APP.test(u));
-  return url ?? null;
-}
-
-const signature = (hmacHex, itemId, day) => hmacHex(`tick|${itemId}|${day}`).slice(0, 32);
-
-// The ✓ link for one item on one day, signed so only the planner's own links tick anything.
-function tickLink(base, hmacHex, itemId, day) {
-  return `${base}?tick=${encodeURIComponent(itemId)}&day=${day}&sig=${signature(hmacHex, itemId, day)}`;
-}
-
-function sameText(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-// A tap on a ✓ link: { ok, text }, the text being the page George sees. Never throws.
-function handleTick({ params, store, hmacHex, now }) {
-  const itemId = String(params?.tick ?? '');
-  const day = String(params?.day ?? '');
-  const sig = String(params?.sig ?? '');
-  if (!itemId || !DAY.test(day) || !sameText(sig, signature(hmacHex, itemId, day))) {
-    return { ok: false, text: "That link isn't one the planner made, so nothing was ticked." };
-  }
-  const item = store.doc().items?.[itemId];
-  const when = `${shortWeekday(day)} ${shortDate(day)}`;
-  if (!tickable(item)) return { ok: false, text: "That's no longer on your list, so nothing was ticked." };
-  if (doneOn(store.doc(), itemId, day)) return { ok: true, text: `✓ "${item.title}" is already ticked for ${when}.` };
-  if (store.doc().logs?.[tickLogId(itemId, day)]) {
-    return { ok: false, text: `"${item.title}" was ticked for ${when} and then unticked in the dashboard, so it's been left unticked.` };
-  }
-  store.transaction(() => tick(store, item, day, { at: now.toISOString() }),
-    { summary: `Ticked "${item.title}" from its calendar link`, source: 'calendar' });
-  return { ok: true, text: `✓ Ticked "${item.title}" for ${when}. Your calendar catches up within ten minutes.` };
-}
-return { tickLogId, importDrags, webAppUrl, tickLink, handleTick };
-})();
-
-// ---- planner/hebrew-progress.js
-const __planner_hebrew_progress = (() => {
-// The Hebrew app's own sync file (progress.json in hebrew-reader-sync), read by the planner itself:
-// until now only the dashboard app on a device pulled it, so the planner never knew whether he'd
-// practised, and George has stopped opening the dashboard. Synchronous, like the relay — the
-// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp) and `gunzip(base64)
-// → text` (Utilities.ungzip), so the widgets' doPost can use it too. Never throws.
-
-const { API } = __planner_relay;
-const { addDays } = __js_dates;
-
-const HEBREW_REPO = 'George-Wightman/hebrew-reader-sync';
-
-const objectAt = (keys, name) => {
-  try {
-    const v = JSON.parse(keys?.[name] ?? 'null');
-    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-  } catch { return {}; }
-};
-
-// The strong band on the latest day up to `day` that reports one.
-function strongBy(stats, day) {
-  const days = Object.keys(stats).filter((d) => d <= day).sort();
-  for (let i = days.length - 1; i >= 0; i--) {
-    const n = stats[days[i]]?.bands?.strong;
-    if (typeof n === 'number') return n;
-  }
-  return 0;
-}
-
-// { ok: true, days: { [day]: { sec, sessions } }, strongGain, push: [{ id, endpoint, p256dh, auth }] }
-// or { ok: false, error }. `today` sets the week for strongGain.
-function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today }) {
-  if (!token) return { ok: false, error: 'No token for the Hebrew app\'s sync repo' };
-  let res;
-  try {
-    res = request(`${API}/repos/${repo}/contents/progress.json`, { method: 'GET',
-      headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', Accept: 'application/vnd.github.raw+json' } });
-  } catch (e) {
-    return { ok: false, error: `Couldn't reach the Hebrew app's sync repo (${e?.message ?? e})` };
-  }
-  if (res.status === 404 || res.status === 403 || res.status === 401) {
-    return { ok: false, error: `The planner's token can't see ${repo} (GitHub ${res.status}): put a read-only token for it in the HEBREW_TOKEN script property` };
-  }
-  if (res.status !== 200) return { ok: false, error: `Couldn't read the Hebrew app's progress (GitHub ${res.status})` };
-  let keys;
-  try {
-    const envelope = JSON.parse(res.text);
-    if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error('not an envelope');
-    keys = JSON.parse(gunzip(envelope.body)).keys;
-  } catch {
-    return { ok: false, error: 'The Hebrew app\'s progress.json isn\'t a sync file the planner can read' };
-  }
-  const stats = objectAt(keys, 'hvr_stats');
-  const days = {};
-  for (const [day, s] of Object.entries(stats)) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days[day] = { sec: Math.max(0, Number(s?.sec) || 0), sessions: Math.max(0, Number(s?.sessions) || 0) };
-  }
-  const push = Object.entries(objectAt(keys, 'hvr_push'))
-    .filter(([, p]) => p && !p.off && typeof p.endpoint === 'string' && /^https:\/\//.test(p.endpoint) && typeof p.p256dh === 'string' && typeof p.auth === 'string')
-    .map(([id, p]) => ({ id: `hvr:${id}`, endpoint: p.endpoint, p256dh: p.p256dh, auth: p.auth, label: 'Hebrew app' }));
-  const strongGain = today ? Math.max(0, strongBy(stats, today) - strongBy(stats, addDays(today, -7))) : 0;
-  return { ok: true, days, strongGain, push };
-}
-return { HEBREW_REPO, readHebrewProgress };
-})();
-
 // ---- js/hebrew-voice.js
 const __js_hebrew_voice = (() => {
 // What the Hebrew widget and its pings say (docs/superpowers/specs/2026-11-02-hebrew-nudges-design.md).
@@ -9222,6 +8745,494 @@ function hebrewInputFrom({ doc, now, today, progress = null, busy = [] }) {
   };
 }
 return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewLevel, hebrewVoice, duePing, hebrewInputFrom };
+})();
+
+// ---- js/glance.js
+const __js_glance = (() => {
+// The phone's home-screen widgets (android/): each a small copy of a Daylight tile — the day as a short
+// calendar, Fuel, Hebrew, Body, Goals, Countdown and This week. The planner's web app answers a widget
+// with this (planner/glance.js), so what a widget says can change without a new app on the phone: the
+// app only lays out a title, a big number with its caption, and a few lines, and opens the dashboard
+// on that tile, big, when tapped. Pure.
+
+const { todayRows, weekTotal, doneBetween, dayCompletion, goalProgress, duolingoOn } = __js_schedule;
+const { todaySlots, clockLabel, countdowns, daysLeft, excused } = __js_calendar;
+const { scheduleView, localDate } = __js_plan_state;
+const { movedSlot } = __js_timeline;
+const { mealsOn, dayProtein, weekKcal, fuelSettings, mealValue, slotName } = __js_food;
+const { formatProgress } = __js_parse;
+const { weekStart, addDays, shortWeekday, shortDate, longDate } = __js_dates;
+const { HEBREW_IDS } = __js_hebrewSync;
+const { cardioQuotaId, gymHabitId } = __js_gym;
+const { nextSession, BACK } = __js_coach;
+const { mapToday, glanceMap } = __js_map_summary;
+const { hebrewVoice, hebrewInputFrom, HEBREW_DONE_MIN, HEBREW_APP } = __js_hebrew_voice;
+
+const SITE = 'https://george-wightman.github.io/dashboard/';
+const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week', 'map'];
+const LINES = 8;
+
+const values = (o) => Object.values(o ?? {});
+const active = (doc, id) => (doc.items?.[id]?.status === 'active' ? doc.items[id] : null);
+const open = (tile) => (tile === 'day' ? SITE : `${SITE}?big=${tile}`);
+const kcal = (n) => Math.round(n).toLocaleString('en-GB');
+
+// The day as a short calendar: what has a time today in order (shifts too), then how many have none.
+function day(doc, today, now) {
+  const rows = todayRows(doc, today).filter((r) => !r.suggested && !r.blocked && r.kind !== 'quota');
+  const slots = todaySlots(doc, today);
+  const timed = [];
+  let anytime = 0;
+  for (const r of rows) {
+    const s = movedSlot(r.item, slots.get(r.item.id), today);
+    if (s) timed.push({ start: s.start, end: s.end, text: r.item.title, done: r.done });
+    else if (!r.done) anytime++;
+  }
+  for (const c of scheduleView(doc, today).commitments) {
+    if (!c.allDay && localDate(c.start) === today) timed.push({ start: c.start, end: c.end, text: c.title, busy: true });
+  }
+  timed.sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  // What's over drops to one line, so the widget shows what's still to come.
+  const over = timed.filter((e) => Date.parse(e.end ?? e.start) <= +now);
+  const ahead = timed.filter((e) => !over.includes(e));
+  const next = ahead.find((e) => !e.done);
+  const lines = ahead.map((e) => `${e === next ? '▸ ' : ''}${clockLabel(e.start)}  ${e.done ? '✓ ' : ''}${e.text}${e.busy ? ' (until ' + clockLabel(e.end) + ')' : ''}`);
+  const overTasks = over.filter((e) => !e.busy);
+  if (overTasks.length) lines.unshift(`${overTasks.filter((e) => e.done).length} of ${overTasks.length} earlier done`);
+  if (anytime) lines.push(`+ ${anytime} any time today`);
+  const { done, total } = dayCompletion(doc, today);
+  return {
+    title: longDate(today).replace(/ \w+$/, ''), number: `${done}/${total}`, caption: 'done today',
+    lines: lines.length ? lines : ['Nothing on today.'], open: open('day'),
+  };
+}
+
+function fuel(doc, today) {
+  const { protein: target } = fuelSettings(doc);
+  const lines = mealsOn(doc, today).map((m) => {
+    const v = mealValue(m);
+    return `${slotName(m.slot)}: ${m.estimate?.name ?? m.text ?? ''}${v ? ` · ${v.protein} g` : ' · waiting'}`;
+  });
+  const { average } = weekKcal(doc, today);
+  if (average != null) lines.push(`This week ≈${kcal(average)} kcal a day`);
+  return {
+    title: 'Fuel', number: `${dayProtein(doc, today)} g`, caption: `of ${target} g protein today`,
+    lines: lines.length ? lines : ['Nothing logged yet today.'], open: open('fuel'),
+  };
+}
+
+// The Hebrew widget (js/hebrew-voice.js): what it says in `voice`, and a tap opens the Hebrew app. The
+// title, number and lines stay for widget apps from before it. `hebrew` is the Hebrew app's own
+// progress when the planner could read it; today's busy events come from the planner's agenda.
+function hebrew(doc, today, now, maps, progress) {
+  const busy = (doc.calendar?.agenda?.busy ?? []).filter((e) => !e.allDay && localDate(e.start) === today);
+  const voice = hebrewVoice(hebrewInputFrom({ doc, now, today, progress, busy }));
+  const minutes = active(doc, HEBREW_IDS.minutes);
+  if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open: HEBREW_APP, voice };
+  const total = Math.round(weekTotal(doc, minutes.id, today));
+  const lines = [];
+  for (const key of ['spoken', 'live']) {
+    const q = active(doc, HEBREW_IDS[key]);
+    if (q) lines.push(`${Math.round(weekTotal(doc, q.id, today))} of ${q.target} ${q.unitLabel || q.title}`);
+  }
+  const monday = weekStart(today);
+  const strip = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(monday, i);
+    if (d > today) return '·';
+    const m = values(doc.logs).filter((l) => l.status === 'active' && l.itemId === minutes.id && l.kind === 'amount' && l.day === d).reduce((s, l) => s + l.amount, 0);
+    return m >= HEBREW_DONE_MIN ? '●' : m > 0 ? '◐' : duolingoOn(doc, HEBREW_IDS.habit, d) > 0 ? '◔' : '○';
+  }).join('');
+  lines.push(`${strip}  Mon–Sun`);
+  return {
+    title: 'Hebrew', number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
+    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: HEBREW_APP, voice,
+  };
+}
+
+function body(doc, today) {
+  const lines = [];
+  const gym = active(doc, gymHabitId(doc));
+  if (gym?.repeat?.kind === 'perWeek') {
+    const monday = weekStart(today);
+    lines.push(`Gym ${doneBetween(doc, gym.id, monday, addDays(monday, 7))} of ${gym.repeat.n} this week`);
+  }
+  const next = nextSession(doc, today);
+  if (next) lines.push(`Next: ${next.title} · ${next.date === today ? 'today' : `${shortWeekday(next.date)} ${shortDate(next.date)}`}`);
+  const back = doc.gym?.[`back:${today}`];
+  if (back?.status === 'active' && BACK[back.score]) lines.push(`Back this morning: ${BACK[back.score]}`);
+  const cardio = active(doc, cardioQuotaId(doc));
+  if (!cardio && !lines.length) return null;
+  return {
+    title: 'Body', number: cardio ? String(Math.round(weekTotal(doc, cardio.id, today))) : '',
+    caption: cardio ? `of ${cardio.target} cardio min this week` : '', lines, open: open('body'),
+  };
+}
+
+function goals(doc) {
+  const list = values(doc.goals).filter((g) => g.status === 'active' && g.id !== HEBREW_IDS.goal)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!list.length) return null;
+  const lines = list.map((g) => {
+    const p = goalProgress(doc, g);
+    const by = g.targetDate ? ` · by ${shortDate(g.targetDate)}` : '';
+    return `${g.title}: ${p.numeric ? `${p.pct}%` : `${p.done} of ${p.total}`}${by}`;
+  });
+  return { title: 'Goals', number: String(list.length), caption: list.length === 1 ? 'goal on the go' : 'goals on the go', lines, open: open('goals') };
+}
+
+function countdown(doc, today) {
+  const list = countdowns(doc, today);
+  if (!list.length) return null;
+  const [first, ...rest] = list;
+  return {
+    title: 'Countdown', number: first.days > 1 ? String(first.days) : daysLeft(first.days), caption: `${first.days > 1 ? 'days to ' : ''}${first.title}`,
+    lines: rest.map((c) => `${c.title} · ${daysLeft(c.days)} · ${shortWeekday(c.day)} ${shortDate(c.day)}`), open: open('countdown'),
+  };
+}
+
+// The weekly targets the Hebrew and Body widgets don't already show.
+function week(doc, today) {
+  const cardio = cardioQuotaId(doc);
+  const targets = values(doc.items)
+    .filter((i) => i.type === 'quota' && i.status === 'active' && i.id !== cardio && i.goalId !== HEBREW_IDS.goal && !excused(doc, i, today))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!targets.length) return null;
+  const met = targets.filter((q) => weekTotal(doc, q.id, today) >= q.target).length;
+  return {
+    title: 'This week', number: `${met}/${targets.length}`, caption: 'targets met',
+    lines: targets.map((q) => `${q.title}: ${formatProgress(weekTotal(doc, q.id, today), q.target, q.unit)}${q.unit === 'count' && q.unitLabel ? ` ${q.unitLabel}` : ''}`),
+    open: open('week'),
+  };
+}
+
+// The map (js/map/summary.js): only when the planner could read the private map files.
+function map(doc, today, now, maps) {
+  const got = mapToday(doc, maps, today);
+  return got ? glanceMap(got, SITE) : null;
+}
+
+const MAKERS = { day, fuel, hebrew, body, goals, countdown, week, map };
+const TITLES = { day: 'Today', fuel: 'Fuel', hebrew: 'Hebrew', body: 'Body', goals: 'Goals', countdown: 'Countdown', week: 'This week', map: 'Map' };
+
+// Every widget's content for `today` at `now`. A tile with nothing to show says so, rather than vanish
+// from a home screen it was put on.
+function glanceOf(doc, today, now = new Date(), maps = [], hebrewProgress = null) {
+  const tiles = {};
+  for (const id of GLANCE_TILES) {
+    let t = null;
+    try { t = MAKERS[id](doc, today, now, maps, hebrewProgress); } catch { t = null; }
+    t ??= { title: TITLES[id], number: '', caption: '', lines: ['Nothing to show yet.'], open: open(id) };
+    const more = t.lines.length - LINES;
+    tiles[id] = { ...t, lines: more > 0 ? [...t.lines.slice(0, LINES - 1), `+ ${more + 1} more`] : t.lines };
+  }
+  return { at: now.toISOString(), day: today, tiles };
+}
+return { SITE, GLANCE_TILES, glanceOf };
+})();
+
+// ---- js/map/files.js
+const __js_map_files = (() => {
+// The map's private files (docs/superpowers/specs/2026-10-22-civ-map-design.md): `map/index.json`
+// lists the cities and `map/<city>.json` is each one's land, places and drawings, all in the private
+// sync repo, read with the same key as data.json. The last good copies are kept on this device so the
+// map works offline. And the day's place: which country George was in, stamped once a day.
+
+const { CENTRAL } = __js_travel;
+
+const MAPS_KEY = 'dash_maps';
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const ID = /^[a-z0-9-]{1,40}$/;
+const KINDS = ['found', 'build', 'wonder'];
+const int = (v) => Number.isInteger(v) && Math.abs(v) < 1000;
+const str = (v, max = 200) => typeof v === 'string' && v.length <= max;
+// A drawing is an SVG and nothing that could run.
+const safeArt = (s) => str(s, 200000) && /^<svg[\s>]/.test(s) && !/<script|<foreignObject|\son[a-z]+\s*=|javascript:/i.test(s);
+
+function validMap(m) {
+  if (!m || typeof m !== 'object') return false;
+  if (!ID.test(m.id ?? '') || !str(m.name, 60) || !['uk', 'salzburg'].includes(m.place) || !DAY.test(m.start ?? '')) return false;
+  if (m.end != null && !DAY.test(m.end)) return false;
+  if (!Array.isArray(m.tiles) || !m.tiles.length || !m.tiles.every((t) => t && int(t.q) && int(t.r) && str(t.terrain, 20))) return false;
+  if (!m.tiles.some((t) => t.q === 0 && t.r === 0)) return false;
+  if (!Array.isArray(m.places) || !m.places.every((p) => p && ID.test(p.id ?? '') && str(p.name, 60) && KINDS.includes(p.kind) && int(p.q) && int(p.r))) return false;
+  if (!m.tracks || typeof m.tracks !== 'object') return false;
+  const builds = new Set(m.places.filter((p) => p.kind === 'build').map((p) => p.id));
+  for (const t of Object.values(m.tracks)) {
+    if (!t || !Array.isArray(t.areas) || !Array.isArray(t.list) || !t.list.length
+      || !t.list.every((e) => Array.isArray(e) && builds.has(e[0]) && Number.isFinite(e[1]))) return false;
+  }
+  if (m.art != null && (typeof m.art !== 'object' || !Object.values(m.art).every(safeArt))) return false;
+  return true;
+}
+
+function loadCachedMaps(storage) {
+  try {
+    const saved = JSON.parse(storage.getItem(MAPS_KEY));
+    return Array.isArray(saved?.maps) ? saved.maps.filter(validMap) : [];
+  } catch {
+    return [];
+  }
+}
+
+// `clientFor(path)` gives a { get } like js/sync.js's createGitHubClient: null when the file isn't there.
+async function refreshMaps({ clientFor, storage }) {
+  const index = await clientFor('map/index.json').get();
+  const ids = Array.isArray(index?.doc?.cities) ? index.doc.cities.filter((id) => ID.test(id)) : [];
+  const maps = [];
+  // A city that can't be fetched (a blip) throws, so the cached maps stay; one that's malformed is left out.
+  for (const id of ids) {
+    const file = await clientFor(`map/${id}.json`).get();
+    if (file && validMap(file.doc) && file.doc.id === id) maps.push(file.doc);
+  }
+  try { storage.setItem(MAPS_KEY, JSON.stringify({ at: new Date().toISOString(), maps })); } catch { /* too big for this device: kept for this visit only */ }
+  return maps;
+}
+
+// The first open of a day says where George is: Central European time is Salzburg, anywhere else the UK.
+function ensureDayPlace(store, day, timeZone) {
+  const id = `day:${day}`;
+  if (store.doc().game?.[id]) return null;
+  return store.putGame(id, { day, place: CENTRAL.test(timeZone ?? '') ? 'salzburg' : 'uk' });
+}
+return { MAPS_KEY, safeArt, validMap, loadCachedMaps, refreshMaps, ensureDayPlace };
+})();
+
+// ---- planner/glance.js
+const __planner_glance = (() => {
+// The widgets' way in (android/, js/glance.js): the phone asks the planner's web app for a summary of
+// the day and the tiles, and gets only that — no way to read the data itself, and none to change it.
+// Synchronous, like the relay (planner/relay.js): a web app's doPost can't wait on a promise, so the
+// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp). Its own key,
+// checked against glance.json in the sync repo, so the widgets can be switched off without the relay.
+
+const { glanceOf } = __js_glance;
+const { logicalDay } = __js_dates;
+const { isDoc } = __js_doc;
+const { decodeBase64 } = __js_sync;
+const { API } = __planner_relay;
+const { validMap } = __js_map_files;
+
+const GLANCE_FILE = 'glance.json';
+
+// The map's private files (js/map/files.js), for the Map widget: none when there are none, or any fails.
+function readMaps(request, repo, headers) {
+  const raw = (path) => {
+    const res = request(`${API}/repos/${repo}/contents/${path}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+    if (res.status !== 200) return null;
+    try { return JSON.parse(res.text); } catch { return null; }
+  };
+  const index = raw('map/index.json');
+  const ids = Array.isArray(index?.cities) ? index.cities.filter((id) => /^[a-z0-9-]{1,40}$/.test(id)) : [];
+  return ids.map((id) => raw(`map/${id}.json`)).filter((m) => validMap(m));
+}
+
+function sameText(a, b) {
+  const x = String(a);
+  const y = String(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x.charCodeAt(i) || 0) ^ (y.charCodeAt(i) || 0);
+  return diff === 0;
+}
+
+// `req` is the request already read as JSON ({ glance: key }). One reply out, a JSON string.
+// `hebrew(today)` reads the Hebrew app's own progress (planner/hebrew-progress.js); without it, or when
+// it fails, the Hebrew widget goes by the dashboard's own minutes.
+function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4, hebrew = null }) {
+  const reply = (obj) => JSON.stringify(obj);
+  if (!repo || !token) return reply({ error: 'The planner has no GITHUB_TOKEN or SYNC_REPO' });
+  if (typeof req?.glance !== 'string' || req.glance.length < 32) return reply({ error: 'The widget key is missing' });
+  const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  const stored = request(`${API}/repos/${repo}/contents/${GLANCE_FILE}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github+json' } });
+  if (stored.status === 404) return reply({ error: 'The widgets are switched off: there is no glance.json in the sync repo' });
+  if (stored.status !== 200) return reply({ error: `The widgets couldn't read glance.json (GitHub ${stored.status})` });
+  let hash = '';
+  try { hash = String(JSON.parse(decodeBase64(String(JSON.parse(stored.text).content ?? ''))).sha256 ?? ''); } catch { /* refused below */ }
+  if (!/^[0-9a-f]{64}$/.test(hash) || !sameText(sha256Hex(req.glance), hash)) return reply({ error: 'The planner refused the widget key' });
+  // The raw file, whatever its size (the contents API stops giving it inline past 1 MB).
+  const data = request(`${API}/repos/${repo}/contents/data.json`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+  if (data.status !== 200) return reply({ error: `The widgets couldn't read the dashboard (GitHub ${data.status})` });
+  let doc;
+  try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
+  if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
+  const today = logicalDay(now, dayStartHour);
+  let progress = null;
+  try { progress = hebrew?.(today) ?? null; } catch { progress = null; }
+  return reply(glanceOf(doc, today, now, readMaps(request, repo, headers), progress?.ok ? progress : null));
+}
+return { GLANCE_FILE, handleGlance };
+})();
+
+// ---- planner/ticks.js
+const __planner_ticks = (() => {
+// Ticking from Google Calendar, so George never has to open the dashboard to say he did something
+// (2 Nov 2026: opening the app had become a task of its own, and once skipped it stopped altogether).
+// Two ways: drag a block to when he did it, once that time is over; or tap the ✓ link in its
+// description, which the planner's web app answers (doGet).
+
+const { logicalDay, shortWeekday, shortDate } = __js_dates;
+const { P } = __planner_events;
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const WEB_APP = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+
+// One tick per item and day, with a fixed id: made once, so a tick George takes off in the app
+// stays off however often the block is dragged or the link tapped.
+const tickLogId = (itemId, day) => `calendar-done-${itemId}-${day}`;
+
+const tickable = (item) => item && item.status === 'active' && (item.type === 'task' || item.type === 'habit')
+  && !item.details?.outcomeForm?.length;
+
+const doneOn = (doc, itemId, day) => Object.values(doc.logs ?? {}).some((l) =>
+  l.itemId === itemId && l.kind === 'done' && l.status === 'active' && l.day === day);
+
+function tick(store, item, day, fields) {
+  const id = tickLogId(item.id, day);
+  if (store.doc().logs?.[id] || doneOn(store.doc(), item.id, day)) return false;
+  store.putLog(id, { itemId: item.id, kind: 'done', day, source: 'calendar', ...fields });
+  return true;
+}
+
+// A planner block George has just dragged (it isn't where the planner last put it) to a time that's
+// already over: he's saying when he did it. Each of its items is ticked for the day it landed on, at
+// that time. Dragging into the future is still just a move. 2 Nov 2026: he dragged "Maya's
+// storybook" back to the afternoon he'd spent on it; the planner called the day missed, deleted the
+// block and booked another today, again and again.
+function importDrags(store, events, { now, dayStartHour = 4 }) {
+  const nowMs = now.getTime();
+  const ticked = [];
+  const landed = events.filter((raw) => {
+    const p = raw.extendedProperties?.private ?? {};
+    if (p[P.mine] !== '1' || raw.status === 'cancelled' || ['done', 'partial'].includes(p[P.state])) return false;
+    const start = Date.parse(raw.start?.dateTime ?? '');
+    const end = Date.parse(raw.end?.dateTime ?? '');
+    const [was, wasEnd] = String(p[P.at] ?? '').split('/').map((s) => Date.parse(s));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(was)) return false;
+    return (start !== was || end !== wasEnd) && end <= nowMs;
+  });
+  if (!landed.length) return ticked;
+  store.transaction(() => {
+    for (const raw of landed) {
+      const from = new Date(raw.start.dateTime);
+      const day = logicalDay(from, dayStartHour);
+      for (const id of String(raw.extendedProperties.private[P.items] ?? '').split(',').filter(Boolean)) {
+        const item = store.doc().items?.[id];
+        if (tickable(item) && tick(store, item, day, { from: from.toISOString(), at: new Date(raw.end.dateTime).toISOString() })) {
+          ticked.push({ itemId: id, day });
+        }
+      }
+    }
+  }, { summary: 'Ticked from Google Calendar (a block dragged to when it was done)', source: 'calendar' });
+  return ticked;
+}
+
+// The web app's address, from the phone widgets' record (claude/glance-setup.mjs puts it there) or
+// the WEB_APP_URL script property. None: blocks go without the link.
+function webAppUrl(doc, property) {
+  const url = [property, doc?.calendar?.widgets?.url].map((u) => String(u ?? '').trim()).find((u) => WEB_APP.test(u));
+  return url ?? null;
+}
+
+const signature = (hmacHex, itemId, day) => hmacHex(`tick|${itemId}|${day}`).slice(0, 32);
+
+// The ✓ link for one item on one day, signed so only the planner's own links tick anything.
+function tickLink(base, hmacHex, itemId, day) {
+  return `${base}?tick=${encodeURIComponent(itemId)}&day=${day}&sig=${signature(hmacHex, itemId, day)}`;
+}
+
+function sameText(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// A tap on a ✓ link: { ok, text }, the text being the page George sees. Never throws.
+function handleTick({ params, store, hmacHex, now }) {
+  const itemId = String(params?.tick ?? '');
+  const day = String(params?.day ?? '');
+  const sig = String(params?.sig ?? '');
+  if (!itemId || !DAY.test(day) || !sameText(sig, signature(hmacHex, itemId, day))) {
+    return { ok: false, text: "That link isn't one the planner made, so nothing was ticked." };
+  }
+  const item = store.doc().items?.[itemId];
+  const when = `${shortWeekday(day)} ${shortDate(day)}`;
+  if (!tickable(item)) return { ok: false, text: "That's no longer on your list, so nothing was ticked." };
+  if (doneOn(store.doc(), itemId, day)) return { ok: true, text: `✓ "${item.title}" is already ticked for ${when}.` };
+  if (store.doc().logs?.[tickLogId(itemId, day)]) {
+    return { ok: false, text: `"${item.title}" was ticked for ${when} and then unticked in the dashboard, so it's been left unticked.` };
+  }
+  store.transaction(() => tick(store, item, day, { at: now.toISOString() }),
+    { summary: `Ticked "${item.title}" from its calendar link`, source: 'calendar' });
+  return { ok: true, text: `✓ Ticked "${item.title}" for ${when}. Your calendar catches up within ten minutes.` };
+}
+return { tickLogId, importDrags, webAppUrl, tickLink, handleTick };
+})();
+
+// ---- planner/hebrew-progress.js
+const __planner_hebrew_progress = (() => {
+// The Hebrew app's own sync file (progress.json in hebrew-reader-sync), read by the planner itself:
+// until now only the dashboard app on a device pulled it, so the planner never knew whether he'd
+// practised, and George has stopped opening the dashboard. Synchronous, like the relay — the
+// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp) and `gunzip(base64)
+// → text` (Utilities.ungzip), so the widgets' doPost can use it too. Never throws.
+
+const { API } = __planner_relay;
+const { addDays } = __js_dates;
+
+const HEBREW_REPO = 'George-Wightman/hebrew-reader-sync';
+
+const objectAt = (keys, name) => {
+  try {
+    const v = JSON.parse(keys?.[name] ?? 'null');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch { return {}; }
+};
+
+// The strong band on the latest day up to `day` that reports one.
+function strongBy(stats, day) {
+  const days = Object.keys(stats).filter((d) => d <= day).sort();
+  for (let i = days.length - 1; i >= 0; i--) {
+    const n = stats[days[i]]?.bands?.strong;
+    if (typeof n === 'number') return n;
+  }
+  return 0;
+}
+
+// { ok: true, days: { [day]: { sec, sessions } }, strongGain, push: [{ id, endpoint, p256dh, auth }] }
+// or { ok: false, error }. `today` sets the week for strongGain.
+function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today }) {
+  if (!token) return { ok: false, error: 'No token for the Hebrew app\'s sync repo' };
+  let res;
+  try {
+    res = request(`${API}/repos/${repo}/contents/progress.json`, { method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', Accept: 'application/vnd.github.raw+json' } });
+  } catch (e) {
+    return { ok: false, error: `Couldn't reach the Hebrew app's sync repo (${e?.message ?? e})` };
+  }
+  if (res.status === 404 || res.status === 403 || res.status === 401) {
+    return { ok: false, error: `The planner's token can't see ${repo} (GitHub ${res.status}): put a read-only token for it in the HEBREW_TOKEN script property` };
+  }
+  if (res.status !== 200) return { ok: false, error: `Couldn't read the Hebrew app's progress (GitHub ${res.status})` };
+  let keys;
+  try {
+    const envelope = JSON.parse(res.text);
+    if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error('not an envelope');
+    keys = JSON.parse(gunzip(envelope.body)).keys;
+  } catch {
+    return { ok: false, error: 'The Hebrew app\'s progress.json isn\'t a sync file the planner can read' };
+  }
+  const stats = objectAt(keys, 'hvr_stats');
+  const days = {};
+  for (const [day, s] of Object.entries(stats)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days[day] = { sec: Math.max(0, Number(s?.sec) || 0), sessions: Math.max(0, Number(s?.sessions) || 0) };
+  }
+  const push = Object.entries(objectAt(keys, 'hvr_push'))
+    .filter(([, p]) => p && !p.off && typeof p.endpoint === 'string' && /^https:\/\//.test(p.endpoint) && typeof p.p256dh === 'string' && typeof p.auth === 'string')
+    .map(([id, p]) => ({ id: `hvr:${id}`, endpoint: p.endpoint, p256dh: p.p256dh, auth: p.auth, label: 'Hebrew app' }));
+  const strongGain = today ? Math.max(0, strongBy(stats, today) - strongBy(stats, addDays(today, -7))) : 0;
+  return { ok: true, days, strongGain, push };
+}
+return { HEBREW_REPO, readHebrewProgress };
 })();
 
 // ---- planner/hebrew-nudges.js
@@ -9867,7 +9878,7 @@ function createPlanner({
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
       text = req && typeof req === 'object' && 'glance' in req
-        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour() })
+        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: hebrewProgress })
         : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });

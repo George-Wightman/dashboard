@@ -55,3 +55,15 @@ test('the planner\'s doPost answers the widgets from Apps Script, and still rela
   const relayed = JSON.parse(planner.relay({ postData: { contents: JSON.stringify({ key: 'z'.repeat(43), path: '/repos/o/r/contents/data.json' }) } }).text);
   assert.match(relayed.error, /relay/);
 });
+
+test('the Hebrew widget speaks, opens the Hebrew app, and uses the Hebrew app\'s own progress when it can', () => {
+  const gh = github();
+  const plain = ask(gh, { glance: KEY }).tiles.hebrew;
+  const read = (progress) => JSON.parse(handleGlance({ req: { glance: KEY }, repo: 'o/r', token: 'T', request: gh.request, sha256Hex,
+    now: new Date(2026, 9, 21, 15, 10), hebrew: () => progress })).tiles.hebrew;
+  const fromApp = read({ ok: true, days: { '2026-10-21': { sec: 2000, sessions: 2 } }, strongGain: 0, push: [] });
+  assert.equal(fromApp.voice.level, 'gold');
+  assert.equal(fromApp.open, 'https://george-wightman.github.io/hebrew-reader/hebrew-reader.html');
+  assert.equal(read({ ok: false, error: 'no token' }).voice.level, 'none', 'falls back to the dashboard');
+  assert.equal(plain.voice.week.length, 7);
+});
