@@ -40,6 +40,7 @@ export const MEAL_SYSTEM = [
   'You estimate the protein and calories in a meal, from what he says about it, and sometimes a photo.',
   'His words are the best guide to how much he ate. When they give amounts (5 eggs, 2 pittas, half the tray), use exactly those. A photo shows what the food is; for how much, trust his words over the photo.',
   'He is a big, active man who eats large portions, around 4,000 kcal a day. When nothing says how much, assume a generous portion, not a typical one.',
+  'He often speaks his meals, and voice typing hears "pittas" as "pizzas": with eggs, cheese or salad, or "wholemeal", it means pitta breads. Only count a pizza when the meal really is one (a takeaway, a frozen or fresh-counter pizza).',
   'List each item with a count he can correct: qty is a number, unit is what is counted (eggs, pittas, slices, g, ml, bowls, portions), and protein and kcal are for that whole quantity.',
   'Be honest about uncertainty: give a low, a middle and a high value for the whole meal.',
   'Reply only with JSON, exactly this shape:',

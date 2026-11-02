@@ -139,6 +139,8 @@ test('a count steps by one, a half below one, and 25 for grams', () => {
 
 test('the prompt trusts his words for amounts and gives his usual meals for scale', () => {
   assert.match(MEAL_SYSTEM, /trust his words over the photo/);
+  // 29 Oct 2026: "3 wholemeal pizzas" (pittas, by voice) came to 1,800 kcal of a 3,010 kcal lunch.
+  assert.match(MEAL_SYSTEM, /hears "pittas" as "pizzas"/);
   assert.match(MEAL_SYSTEM, /"qty"/);
   const p = mealPrompt({ text: '5 eggs', at: new Date(2026, 9, 20, 8, 0), hasPhoto: false, usual: [{ name: 'Big egg breakfast', protein: 52, kcal: 1030 }] });
   assert.match(p, /For scale, his usual meals: Big egg breakfast: 52 g protein, 1030 kcal/);
