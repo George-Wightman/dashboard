@@ -31,6 +31,7 @@ import { createCheckins } from './checkins.js';
 import { createNudges } from './nudges.js';
 import { handleRelay } from './relay.js';
 import { handleGlance } from './glance.js';
+import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -51,17 +52,27 @@ export function createPlanner({
   Utilities = null, pushCrypto = null, clockMs = () => Date.now(), ContentService = null,
   sha256Hex = (text) => Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.newBlob(String(text)).getBytes())
     .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
+  hmacHex = (text, key) => Utilities.computeHmacSha256Signature(Utilities.newBlob(String(text)).getBytes(), Utilities.newBlob(String(key)).getBytes())
+    .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
+  newSecret = () => Utilities.getUuid() + Utilities.getUuid(),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
   const put = (k, v) => props().setProperty(k, String(v));
   const drop = (k) => props().deleteProperty(k);
-  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
+  const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
     return Number.isInteger(n) && n >= 0 && n <= 12 ? n : 4;
   };
+
+  // The ✓ links' key (planner/ticks.js), made the first time it's needed.
+  function signer() {
+    let secret = get('TICK_SECRET');
+    if (!secret) { secret = newSecret(); put('TICK_SECRET', secret); }
+    return (text) => hmacHex(text, secret);
+  }
 
   function calendars() {
     const out = [];
@@ -346,6 +357,8 @@ export function createPlanner({
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
       const memory = readProperty(props(), 'DAYS');
       const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
+      // A block dragged to when he did it ticks it, before the drag is read as a move.
+      importDrags(store, events, { now: t, dayStartHour: dayStartHour() });
       reconcileCalendar(store, events, removed);
       adoptEvents(store, events, { calendars: cals, config, today, lastDay: addDays(today, config.days - 1) });
       // The 11:00 fallback for locking the day's list, when the app hasn't (js/commit.js).
@@ -359,9 +372,11 @@ export function createPlanner({
       // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
       recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
       doc = store.doc();
+      const base = webAppUrl(doc, get('WEB_APP_URL'));
+      const sign = base ? signer() : null;
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),
-        memory,
+        memory, tickUrl: base ? (id, day) => tickLink(base, sign, id, day) : null,
       });
       // Check the storage budget before mutating Calendar; reserve room for Google's event IDs.
       propertyParts(fillIds(result.days, Object.fromEntries(result.actions.filter((a) => a.key).map((a) => [a.key, 'x'.repeat(128)]))));
@@ -540,5 +555,30 @@ export function createPlanner({
     return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
   }
 
-  return { run, install, pause, resume, removeAll, relay };
+  // The web app's doGet: a tap on a block's ✓ link. Ticks the item and saves at once; the calendar
+  // follows at the next run. Never throws: George sees a line saying what happened.
+  async function tick(e) {
+    const lock = LockService.getScriptLock();
+    let text;
+    if (!lock.tryLock(30000)) text = 'The planner is busy — tap the link again in a minute.';
+    else {
+      try {
+        const session = await open();
+        const res = handleTick({ params: e?.parameter ?? {}, store: session.store, hmacHex: signer(), now: now() });
+        text = res.text;
+        if (session.changed()) {
+          const saved = await syncOnce({ store: session.store, client: session.client });
+          if (!saved.ok) text = `Couldn't save the tick: ${clean(saved.error)}. Tap the link again.`;
+        }
+      } catch (err) {
+        text = `Couldn't tick it: ${clean(err?.message ?? err)}`;
+      } finally {
+        lock.releaseLock();
+      }
+    }
+    if (!ContentService) return text;
+    return ContentService.createTextOutput(text);
+  }
+
+  return { run, install, pause, resume, removeAll, relay, tick };
 }

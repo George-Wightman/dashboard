@@ -83,44 +83,42 @@ test('three finished days start a golden age: the third costs 30; a miss ends it
   assert.equal(after.cost, 40);
 });
 
-test('a missed gym sends barbarians for the gym, one step a turn', () => {
+// 2 Nov 2026: barbarians came for every row left open, so days he'd done the work and not ticked
+// it raided his city. Now only a blank day brings them, and any day with something done sends one off.
+test('a day with something done sends no barbarians; a blank day sends them for what was missed, one step a turn', () => {
   const t = town();
   t.done(0, t.all.filter((id) => id !== t.ids.gym));
-  const s = run(t.store, day(1));
-  assert.equal(s.camps.length, 1);
-  assert.equal(s.camps[0].target, 'gym');
-  const first = [s.camps[0].q, s.camps[0].r];
-  t.done(1, t.all.filter((id) => id !== t.ids.gym));
-  const s2 = run(t.store, day(2));
-  const moved = s2.camps.find((c) => c.target === 'gym');
-  assert.notDeepEqual([moved.q, moved.r], first);
+  assert.equal(run(t.store, day(1)).camps.length, 0);
+  // Day 1: nothing done.
+  const s = run(t.store, day(2));
+  assert.ok(s.camps.some((c) => c.target === 'gym'));
+  assert.equal(new Set(s.camps.map((c) => c.track)).size, s.camps.length);
+  const before = new Map(s.camps.map((c) => [c.track, [c.q, c.r]]));
+  t.done(2, [t.ids.read]);
+  const s2 = run(t.store, day(3));
+  assert.equal(s2.camps.length, s.camps.length - 1);
+  assert.ok(!s2.last.events.some((x) => x.kind === 'raid'));
+  assert.ok(s2.camps.some((c) => String(before.get(c.track)) !== String([c.q, c.r])));
 });
 
-test('a camp at the border raids on a miss; the next 20 hammers repair it; a finished day drives one off', () => {
+test('a camp at the border raids on a blank day; the next 20 hammers repair it; a day with something done drives one off', () => {
   const t = town();
-  for (let n = 0; n < 4; n++) t.done(n, t.all.filter((id) => id !== t.ids.gym));
-  const raided = run(t.store, day(4));
+  t.done(0);
+  // Days 1 to 4: nothing done.
+  const raided = run(t.store, day(5));
   assert.ok(raided.pillaged.size >= 1);
   assert.ok(raided.chronicle.some((e) => e.events.some((x) => x.kind === 'raid')));
-  t.done(4);
-  const fixed = run(t.store, day(5));
+  t.done(5);
+  const fixed = run(t.store, day(6));
   assert.ok(fixed.pillaged.size < raided.pillaged.size);
   assert.equal(fixed.camps.length, raided.camps.length - 1);
 });
 
-test('one camp per track, and on a miss only the camps of what was missed raid', () => {
+test('one camp per track however many blank days', () => {
   const t = town();
-  // Reading missed every day: one camp for it, however many days.
-  for (let n = 0; n < 6; n++) t.done(n, t.all.filter((id) => id !== t.ids.read));
   const s = run(t.store, day(6));
-  assert.equal(s.camps.length, 1);
-  assert.equal(s.camps[0].track, 'culture');
-  assert.ok(s.chronicle.some((e) => e.events.some((x) => x.kind === 'raid')));
-  // Now only a chore is missed: a home camp sets out, and the reading camp at the border holds off.
-  t.done(6, t.all.filter((id) => id !== t.ids.a));
-  const next = run(t.store, day(7));
-  assert.deepEqual(next.camps.map((c) => c.track).sort(), ['culture', 'home']);
-  assert.ok(!next.last.events.some((x) => x.kind === 'raid'));
+  assert.ok(s.camps.length <= campCap(mapTown()));
+  assert.equal(new Set(s.camps.map((c) => c.track)).size, s.camps.length);
 });
 
 // A work track, as Salzburg has: shifts only, no areas.

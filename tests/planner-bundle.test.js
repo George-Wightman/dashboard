@@ -25,7 +25,7 @@ test('the bundle runs with none of the browser globals, as in Apps Script', asyn
     { id: 'b', type: 'task', title: 'Send it', area: 'Job search', date: addDays(today, 1), order: 2 },
   ] }));
   const cal = new FakeCalendar();
-  const env = appsScript({ cal, repo, props: { GITHUB_TOKEN: 'ghp_dummy', SYNC_REPO: 'o/r' } });
+  const env = appsScript({ cal, repo, props: { GITHUB_TOKEN: 'ghp_dummy', SYNC_REPO: 'o/r', WEB_APP_URL: 'https://script.google.com/macros/s/abc/exec' } });
   const sandbox = { Calendar: env.Calendar, UrlFetchApp: env.UrlFetchApp, Utilities: env.Utilities, PropertiesService: env.PropertiesService, LockService: env.LockService, ScriptApp: env.ScriptApp, Logger: env.Logger };
   const context = vm.createContext(sandbox);
   for (const name of ['fetch', 'TextEncoder', 'structuredClone', 'crypto', 'btoa']) {
@@ -33,10 +33,12 @@ test('the bundle runs with none of the browser globals, as in Apps Script', asyn
   }
   new vm.Script(code).runInContext(context);
   assert.equal(context.PLANNER_BUILD, build);
-  assert.deepEqual(Object.keys(context.Planner), ['run', 'install', 'pause', 'resume', 'removeAll', 'relay']);
+  assert.deepEqual(Object.keys(context.Planner), ['run', 'install', 'pause', 'resume', 'removeAll', 'relay', 'tick']);
   // As a calendar edit, so it runs whatever the hour (a timed run between 00:10 and 06:00 is 'night').
   assert.equal(await context.Planner.run({ calendarId: 'primary' }), 'ok');
   assert.ok(cal.mine().length >= 1);
+  // The ✓ links are signed inside Apps Script too.
+  assert.ok(cal.mine().some((e) => /^✓ Done\? Tap: https:\/\/script\.google\.com\/macros\/s\/abc\/exec\?tick=\w+&day=[\d-]+&sig=[0-9a-f]{32}$/m.test(e.description)));
   assert.equal(repo.doc().calendar.status.version, build);
   // Check-ins ran inside the bundle too: the notification key made, nothing wrong, and no mind.json.
   assert.match(repo.doc().calendar['push-config'].publicKey, /^[\w-]{87}$/);

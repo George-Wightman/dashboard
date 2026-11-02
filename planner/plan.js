@@ -32,7 +32,8 @@ export function blockTitle(base, state, done = 0, total = 0) {
 
 // A block as a Google event. `notes` lead the description (the items' notes); the title stays the
 // title. `colorId` is the area's colour, or a rough block's pale one; none means the calendar's own.
-export function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [], input = null, parts = 1 }) {
+// `ticks` are the ✓ links (planner/ticks.js), one line each, before the dashboard's own link.
+export function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [], input = null, parts = 1, ticks = [] }) {
   const rough = state === 'rough';
   const props = {
     [P.mine]: '1', [P.key]: key, [P.items]: items.join(','), [P.title]: base,
@@ -42,7 +43,7 @@ export function blockBody({ key, base, title, start, end, items, state, colorId 
   if (input) Object.assign(props, { [P.input]: JSON.stringify(input), [P.summary]: title, [P.parts]: String(parts) });
   return {
     summary: title,
-    description: [...notes, ...(items.length === 1 ? ['Open task / mark complete: https://george-wightman.github.io/dashboard/?task=' + encodeURIComponent(items[0])] : []), ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
+    description: [...notes, ...ticks, ...(items.length === 1 ? ['Open task / mark complete: https://george-wightman.github.io/dashboard/?task=' + encodeURIComponent(items[0])] : []), ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
     start: { dateTime: iso(start) },
     end: { dateTime: iso(end) },
     ...(colorId ? { colorId } : {}),
@@ -72,7 +73,7 @@ export function fillIds(days, byKey) {
   return out;
 }
 
-export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors = {}, memory = {} }) {
+export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors = {}, memory = {}, tickUrl = null }) {
   const { config, problems: configProblems } = readPlannerConfig(doc);
   const problems = new Set(configProblems);
   const notes = [];
@@ -97,9 +98,16 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
   const links = habitLinks(doc, config, find, problems);
   const items = doc.items ?? {};
   const itemIds = Object.keys(items);
+  // A ✓ link for each item still to do, for the day the block is on: one tap in the calendar ticks it.
+  const tickLines = (spec) => {
+    if (!tickUrl || HISTORY.has(spec.state) || !spec.items?.length) return [];
+    const day = logicalDay(new Date(spec.start), dayStartHour);
+    return spec.items.filter((id) => items[id]).map((id) =>
+      `${spec.items.length === 1 ? '✓ Done? Tap' : `✓ ${items[id].title}`}: ${tickUrl(id, day)}`);
+  };
   const bodyFor = (spec) => {
     const item = spec.items?.length === 1 ? items[spec.items[0]] : null;
-    return blockBody({ ...spec, input: item?.type === 'task' ? taskInput(item) : null,
+    return blockBody({ ...spec, ticks: tickLines(spec), input: item?.type === 'task' ? taskInput(item) : null,
       parts: item?.time ? 1 : Math.ceil((item?.minutes ?? config.defaultMinutes) / config.maxBlockMinutes) });
   };
   const offs = timeOff(doc);
@@ -369,8 +377,10 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     }
 
     // A task's block from yesterday, still waiting for its tick, takes one made today: he ticks at the
-    // end of the day or the morning after, from today's list.
-    const ticks = ids.map((id) => tickOf(id, items[id]?.type === 'task' && kd < today ? today : kd));
+    // end of the day or the morning after, from today's list. A habit's block is that day's go at
+    // it, for the day it's on: dragged back to the day he did it, it's that day's tick it waits for.
+    const blockDay = logicalDay(ev.start, dayStartHour);
+    const ticks = ids.map((id) => tickOf(id, items[id]?.type === 'task' ? (kd < today ? today : kd) : blockDay));
     const doneCount = ticks.filter((t) => t.finished).length;
     const lastTick = ticks.reduce((m, t) => (t.at != null && (m == null || t.at > m) ? t.at : m), null);
     const allDone = ids.length > 0 && doneCount === ids.length;

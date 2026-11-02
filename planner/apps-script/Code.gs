@@ -26,3 +26,7 @@ function removeAll() { return say_(load_().removeAll()); }
 // Claude's way in when its own sandbox can't reach GitHub: Deploy > New deployment > Web app,
 // execute as you, anyone can access. The key it checks lives in the sync repo (relay.json).
 function doPost(e) { return load_().relay(e); }
+
+// The ✓ link in each calendar block: one tap ticks it. Same web app, so after adding this line
+// choose Deploy > Manage deployments > edit > Version: New version (the address stays the same).
+function doGet(e) { return load_().tick(e); }

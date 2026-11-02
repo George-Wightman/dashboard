@@ -331,8 +331,10 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     }
     applyLevels();
     wonderCards(d);
-    // Barbarians: they creep towards what they're after; on a missed day the camps of what was missed
-    // raid, and a missed track without a camp sends one.
+    // Barbarians: they creep towards what they're after; on a blank day (nothing done at all) the camps
+    // of what was missed raid, and a missed track without a camp sends one. A day with anything done
+    // drives one off. 2 Nov 2026: raids for every row left open punished days he'd done the work and
+    // not ticked it, and he stopped opening the dashboard.
     const campKeys = () => new Set(state.camps.map((c) => key(c.q, c.r)));
     for (const c of state.camps) {
       const goal = unkey(targetTile(state, c.target));
@@ -342,7 +344,8 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
         .map(unkey).sort((a, b) => dist(a, goal) - dist(b, goal) || a[0] - b[0] || a[1] - b[1])[0];
       if (step && dist(step, goal) < here) [c.q, c.r] = step;
     }
-    if (miss) {
+    const blank = miss && score.done === 0;
+    if (blank) {
       // What was missed, by track ('home' for a row with no track). Only those camps raid, and each
       // sends one camp at most: a skipped read costs the theatre, not the whole day (29 Oct 2026).
       const missedItems = [...score.open.map((r) => r.item), ...score.missed.map((e) => e.item), ...score.dropped.map((e) => e.item)];
@@ -370,7 +373,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
         state.camps.push({ q, r, target, track: tr });
         event('camp', `Barbarians set out for ${P.byId.get(target)?.name ?? 'the centre'}`, { target });
       }
-    } else if (finished && state.camps.length) {
+    } else if (score.done > 0 && state.camps.length) {
       state.camps.sort((a, b) => dist([a.q, a.r], [0, 0]) - dist([b.q, b.r], [0, 0]));
       const gone = state.camps.shift();
       event('camp-gone', `Barbarians driven off`, { target: gone.target });

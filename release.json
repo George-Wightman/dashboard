@@ -1,5 +1,5 @@
 {
-  "id": "efa7ca8f9a330a5950c537951cbd4bd987edfd1f695d629911b0553b9aeba696",
+  "id": "38c950064182f4a43f2e6512402395f48f157ab87f23f69d72a2c0800b5a7f26",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
@@ -86,10 +86,10 @@
     "js/stt.js": "915d384d980c6d42cef51b08387e0fc946a22077a1b96f5cab3f2467236706a0",
     "js/stt-worker.js": "0dc335148a29049a02ef73f0b5f2b07c14558f1cffd8e79fb19d0baff53127aa",
     "js/map/hex.js": "0a6f49b322848397a07cc86c6f49020af743d0157661664e39d2cb5fd5d318fe",
-    "js/map/engine.js": "321d42b16c2392c7473fc9bb518ba98e9a2e7a0ea86b5e0a9834382b33598b53",
+    "js/map/engine.js": "43210b731abbae625c373a95ad6e635faa49c50e1734fc10558f2925ec2ca76e",
     "js/map/files.js": "55d4d68d3fe339a9a5f75fc918c3e1890fece613c5a5d5bf83bb06eb6d3dec2c",
     "js/map/summary.js": "2474984af9df955b38af09f716387c4cf0a9c84a9ad5ffbea57867fec1a321f9",
-    "js/map/points.js": "717ea5cb9a846fc6518dd358f47178ee9c072c6b9a2d497e185876bbc8cb519c",
+    "js/map/points.js": "3008295a9be0973d9d978af164c6e4d3046f32c414e5ba34275a6d67c1e2b119",
     "js/ui/map.js": "6079c85c28afc113dc61ef236d177c1282e69fed155cab134b760110088d95dd",
     "js/ui/map-art.js": "4f48bb3ceb004387bc46973f2b28528ec805657c37c17bba113019832550185a"
   }

@@ -59,6 +59,6 @@ export function pointsLines(p) {
   for (const r of p.rows) out.push(`  ${mark[r.state]} ${r.title}${r.hammers ? ` +${r.hammers}` : ''}${r.note ? ` · ${r.note}` : ''}`);
   if (p.cardio.minutes) out.push(`  Cardio ${p.cardio.minutes}m: a road step per ${p.cardio.perStep} minutes.`);
   const open = p.rows.filter((r) => r.state === 'open').length;
-  out.push(`  Not counted: weekly targets (Cardio builds roads instead); a goal step earns a wonder card.${open ? ` ${plural(open, 'row')} open: a day with anything left undone sends barbarians.` : ''}`);
+  out.push(`  Not counted: weekly targets (Cardio builds roads instead); a goal step earns a wonder card.${open ? ` ${plural(open, 'row')} open: barbarians come only on a day with nothing done; one done row drives one off.` : ''}`);
   return out;
 }

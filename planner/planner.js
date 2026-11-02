@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '4d659dc9';
+var PLANNER_BUILD = '6658378b';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -4868,7 +4868,8 @@ function blockTitle(base, state, done = 0, total = 0) {
 
 // A block as a Google event. `notes` lead the description (the items' notes); the title stays the
 // title. `colorId` is the area's colour, or a rough block's pale one; none means the calendar's own.
-function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [], input = null, parts = 1 }) {
+// `ticks` are the ✓ links (planner/ticks.js), one line each, before the dashboard's own link.
+function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [], input = null, parts = 1, ticks = [] }) {
   const rough = state === 'rough';
   const props = {
     [P.mine]: '1', [P.key]: key, [P.items]: items.join(','), [P.title]: base,
@@ -4878,7 +4879,7 @@ function blockBody({ key, base, title, start, end, items, state, colorId = null,
   if (input) Object.assign(props, { [P.input]: JSON.stringify(input), [P.summary]: title, [P.parts]: String(parts) });
   return {
     summary: title,
-    description: [...notes, ...(items.length === 1 ? ['Open task / mark complete: https://george-wightman.github.io/dashboard/?task=' + encodeURIComponent(items[0])] : []), ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
+    description: [...notes, ...ticks, ...(items.length === 1 ? ['Open task / mark complete: https://george-wightman.github.io/dashboard/?task=' + encodeURIComponent(items[0])] : []), ...items.map((id) => `dashboard:${id}`), DESCRIPTION_LINE].join('\n'),
     start: { dateTime: iso(start) },
     end: { dateTime: iso(end) },
     ...(colorId ? { colorId } : {}),
@@ -4908,7 +4909,7 @@ function fillIds(days, byKey) {
   return out;
 }
 
-function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors = {}, memory = {} }) {
+function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors = {}, memory = {}, tickUrl = null }) {
   const { config, problems: configProblems } = readPlannerConfig(doc);
   const problems = new Set(configProblems);
   const notes = [];
@@ -4933,9 +4934,16 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   const links = habitLinks(doc, config, find, problems);
   const items = doc.items ?? {};
   const itemIds = Object.keys(items);
+  // A ✓ link for each item still to do, for the day the block is on: one tap in the calendar ticks it.
+  const tickLines = (spec) => {
+    if (!tickUrl || HISTORY.has(spec.state) || !spec.items?.length) return [];
+    const day = logicalDay(new Date(spec.start), dayStartHour);
+    return spec.items.filter((id) => items[id]).map((id) =>
+      `${spec.items.length === 1 ? '✓ Done? Tap' : `✓ ${items[id].title}`}: ${tickUrl(id, day)}`);
+  };
   const bodyFor = (spec) => {
     const item = spec.items?.length === 1 ? items[spec.items[0]] : null;
-    return blockBody({ ...spec, input: item?.type === 'task' ? taskInput(item) : null,
+    return blockBody({ ...spec, ticks: tickLines(spec), input: item?.type === 'task' ? taskInput(item) : null,
       parts: item?.time ? 1 : Math.ceil((item?.minutes ?? config.defaultMinutes) / config.maxBlockMinutes) });
   };
   const offs = timeOff(doc);
@@ -5205,8 +5213,10 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     }
 
     // A task's block from yesterday, still waiting for its tick, takes one made today: he ticks at the
-    // end of the day or the morning after, from today's list.
-    const ticks = ids.map((id) => tickOf(id, items[id]?.type === 'task' && kd < today ? today : kd));
+    // end of the day or the morning after, from today's list. A habit's block is that day's go at
+    // it, for the day it's on: dragged back to the day he did it, it's that day's tick it waits for.
+    const blockDay = logicalDay(ev.start, dayStartHour);
+    const ticks = ids.map((id) => tickOf(id, items[id]?.type === 'task' ? (kd < today ? today : kd) : blockDay));
     const doneCount = ticks.filter((t) => t.finished).length;
     const lastTick = ticks.reduce((m, t) => (t.at != null && (m == null || t.at > m) ? t.at : m), null);
     const allDone = ids.length > 0 && doneCount === ids.length;
@@ -8413,8 +8423,10 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
     }
     applyLevels();
     wonderCards(d);
-    // Barbarians: they creep towards what they're after; on a missed day the camps of what was missed
-    // raid, and a missed track without a camp sends one.
+    // Barbarians: they creep towards what they're after; on a blank day (nothing done at all) the camps
+    // of what was missed raid, and a missed track without a camp sends one. A day with anything done
+    // drives one off. 2 Nov 2026: raids for every row left open punished days he'd done the work and
+    // not ticked it, and he stopped opening the dashboard.
     const campKeys = () => new Set(state.camps.map((c) => key(c.q, c.r)));
     for (const c of state.camps) {
       const goal = unkey(targetTile(state, c.target));
@@ -8424,7 +8436,8 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
         .map(unkey).sort((a, b) => dist(a, goal) - dist(b, goal) || a[0] - b[0] || a[1] - b[1])[0];
       if (step && dist(step, goal) < here) [c.q, c.r] = step;
     }
-    if (miss) {
+    const blank = miss && score.done === 0;
+    if (blank) {
       // What was missed, by track ('home' for a row with no track). Only those camps raid, and each
       // sends one camp at most: a skipped read costs the theatre, not the whole day (29 Oct 2026).
       const missedItems = [...score.open.map((r) => r.item), ...score.missed.map((e) => e.item), ...score.dropped.map((e) => e.item)];
@@ -8452,7 +8465,7 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
         state.camps.push({ q, r, target, track: tr });
         event('camp', `Barbarians set out for ${P.byId.get(target)?.name ?? 'the centre'}`, { target });
       }
-    } else if (finished && state.camps.length) {
+    } else if (score.done > 0 && state.camps.length) {
       state.camps.sort((a, b) => dist([a.q, a.r], [0, 0]) - dist([b.q, b.r], [0, 0]));
       const gone = state.camps.shift();
       event('camp-gone', `Barbarians driven off`, { target: gone.target });
@@ -8873,6 +8886,112 @@ function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), 
 return { GLANCE_FILE, handleGlance };
 })();
 
+// ---- planner/ticks.js
+const __planner_ticks = (() => {
+// Ticking from Google Calendar, so George never has to open the dashboard to say he did something
+// (2 Nov 2026: opening the app had become a task of its own, and once skipped it stopped altogether).
+// Two ways: drag a block to when he did it, once that time is over; or tap the ✓ link in its
+// description, which the planner's web app answers (doGet).
+
+const { logicalDay, shortWeekday, shortDate } = __js_dates;
+const { P } = __planner_events;
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const WEB_APP = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+
+// One tick per item and day, with a fixed id: made once, so a tick George takes off in the app
+// stays off however often the block is dragged or the link tapped.
+const tickLogId = (itemId, day) => `calendar-done-${itemId}-${day}`;
+
+const tickable = (item) => item && item.status === 'active' && (item.type === 'task' || item.type === 'habit')
+  && !item.details?.outcomeForm?.length;
+
+const doneOn = (doc, itemId, day) => Object.values(doc.logs ?? {}).some((l) =>
+  l.itemId === itemId && l.kind === 'done' && l.status === 'active' && l.day === day);
+
+function tick(store, item, day, fields) {
+  const id = tickLogId(item.id, day);
+  if (store.doc().logs?.[id] || doneOn(store.doc(), item.id, day)) return false;
+  store.putLog(id, { itemId: item.id, kind: 'done', day, source: 'calendar', ...fields });
+  return true;
+}
+
+// A planner block George has just dragged (it isn't where the planner last put it) to a time that's
+// already over: he's saying when he did it. Each of its items is ticked for the day it landed on, at
+// that time. Dragging into the future is still just a move. 2 Nov 2026: he dragged "Maya's
+// storybook" back to the afternoon he'd spent on it; the planner called the day missed, deleted the
+// block and booked another today, again and again.
+function importDrags(store, events, { now, dayStartHour = 4 }) {
+  const nowMs = now.getTime();
+  const ticked = [];
+  const landed = events.filter((raw) => {
+    const p = raw.extendedProperties?.private ?? {};
+    if (p[P.mine] !== '1' || raw.status === 'cancelled' || ['done', 'partial'].includes(p[P.state])) return false;
+    const start = Date.parse(raw.start?.dateTime ?? '');
+    const end = Date.parse(raw.end?.dateTime ?? '');
+    const [was, wasEnd] = String(p[P.at] ?? '').split('/').map((s) => Date.parse(s));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(was)) return false;
+    return (start !== was || end !== wasEnd) && end <= nowMs;
+  });
+  if (!landed.length) return ticked;
+  store.transaction(() => {
+    for (const raw of landed) {
+      const from = new Date(raw.start.dateTime);
+      const day = logicalDay(from, dayStartHour);
+      for (const id of String(raw.extendedProperties.private[P.items] ?? '').split(',').filter(Boolean)) {
+        const item = store.doc().items?.[id];
+        if (tickable(item) && tick(store, item, day, { from: from.toISOString(), at: new Date(raw.end.dateTime).toISOString() })) {
+          ticked.push({ itemId: id, day });
+        }
+      }
+    }
+  }, { summary: 'Ticked from Google Calendar (a block dragged to when it was done)', source: 'calendar' });
+  return ticked;
+}
+
+// The web app's address, from the phone widgets' record (claude/glance-setup.mjs puts it there) or
+// the WEB_APP_URL script property. None: blocks go without the link.
+function webAppUrl(doc, property) {
+  const url = [property, doc?.calendar?.widgets?.url].map((u) => String(u ?? '').trim()).find((u) => WEB_APP.test(u));
+  return url ?? null;
+}
+
+const signature = (hmacHex, itemId, day) => hmacHex(`tick|${itemId}|${day}`).slice(0, 32);
+
+// The ✓ link for one item on one day, signed so only the planner's own links tick anything.
+function tickLink(base, hmacHex, itemId, day) {
+  return `${base}?tick=${encodeURIComponent(itemId)}&day=${day}&sig=${signature(hmacHex, itemId, day)}`;
+}
+
+function sameText(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// A tap on a ✓ link: { ok, text }, the text being the page George sees. Never throws.
+function handleTick({ params, store, hmacHex, now }) {
+  const itemId = String(params?.tick ?? '');
+  const day = String(params?.day ?? '');
+  const sig = String(params?.sig ?? '');
+  if (!itemId || !DAY.test(day) || !sameText(sig, signature(hmacHex, itemId, day))) {
+    return { ok: false, text: "That link isn't one the planner made, so nothing was ticked." };
+  }
+  const item = store.doc().items?.[itemId];
+  const when = `${shortWeekday(day)} ${shortDate(day)}`;
+  if (!tickable(item)) return { ok: false, text: "That's no longer on your list, so nothing was ticked." };
+  if (doneOn(store.doc(), itemId, day)) return { ok: true, text: `✓ "${item.title}" is already ticked for ${when}.` };
+  if (store.doc().logs?.[tickLogId(itemId, day)]) {
+    return { ok: false, text: `"${item.title}" was ticked for ${when} and then unticked in the dashboard, so it's been left unticked.` };
+  }
+  store.transaction(() => tick(store, item, day, { at: now.toISOString() }),
+    { summary: `Ticked "${item.title}" from its calendar link`, source: 'calendar' });
+  return { ok: true, text: `✓ Ticked "${item.title}" for ${when}. Your calendar catches up within ten minutes.` };
+}
+return { tickLogId, importDrags, webAppUrl, tickLink, handleTick };
+})();
+
 // ---- planner/gas.js
 const __planner_gas = (() => {
 // The planner inside Google Apps Script. George's calendars come through the Calendar advanced
@@ -8908,6 +9027,7 @@ const { createCheckins } = __planner_checkins;
 const { createNudges } = __planner_nudges;
 const { handleRelay } = __planner_relay;
 const { handleGlance } = __planner_glance;
+const { importDrags, webAppUrl, tickLink, handleTick } = __planner_ticks;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -8928,17 +9048,27 @@ function createPlanner({
   Utilities = null, pushCrypto = null, clockMs = () => Date.now(), ContentService = null,
   sha256Hex = (text) => Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.newBlob(String(text)).getBytes())
     .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
+  hmacHex = (text, key) => Utilities.computeHmacSha256Signature(Utilities.newBlob(String(text)).getBytes(), Utilities.newBlob(String(key)).getBytes())
+    .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
+  newSecret = () => Utilities.getUuid() + Utilities.getUuid(),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
   const put = (k, v) => props().setProperty(k, String(v));
   const drop = (k) => props().deleteProperty(k);
-  const clean = (text) => scrubText(String(text), [get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
+  const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
     return Number.isInteger(n) && n >= 0 && n <= 12 ? n : 4;
   };
+
+  // The ✓ links' key (planner/ticks.js), made the first time it's needed.
+  function signer() {
+    let secret = get('TICK_SECRET');
+    if (!secret) { secret = newSecret(); put('TICK_SECRET', secret); }
+    return (text) => hmacHex(text, secret);
+  }
 
   function calendars() {
     const out = [];
@@ -9223,6 +9353,8 @@ function createPlanner({
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
       const memory = readProperty(props(), 'DAYS');
       const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
+      // A block dragged to when he did it ticks it, before the drag is read as a move.
+      importDrags(store, events, { now: t, dayStartHour: dayStartHour() });
       reconcileCalendar(store, events, removed);
       adoptEvents(store, events, { calendars: cals, config, today, lastDay: addDays(today, config.days - 1) });
       // The 11:00 fallback for locking the day's list, when the app hasn't (js/commit.js).
@@ -9236,9 +9368,11 @@ function createPlanner({
       // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
       recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
       doc = store.doc();
+      const base = webAppUrl(doc, get('WEB_APP_URL'));
+      const sign = base ? signer() : null;
       const result = plan({
         doc, now: t, dayStartHour: dayStartHour(), calendars: cals, events, eventColors: eventColors(),
-        memory,
+        memory, tickUrl: base ? (id, day) => tickLink(base, sign, id, day) : null,
       });
       // Check the storage budget before mutating Calendar; reserve room for Google's event IDs.
       propertyParts(fillIds(result.days, Object.fromEntries(result.actions.filter((a) => a.key).map((a) => [a.key, 'x'.repeat(128)]))));
@@ -9417,7 +9551,32 @@ function createPlanner({
     return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
   }
 
-  return { run, install, pause, resume, removeAll, relay };
+  // The web app's doGet: a tap on a block's ✓ link. Ticks the item and saves at once; the calendar
+  // follows at the next run. Never throws: George sees a line saying what happened.
+  async function tick(e) {
+    const lock = LockService.getScriptLock();
+    let text;
+    if (!lock.tryLock(30000)) text = 'The planner is busy — tap the link again in a minute.';
+    else {
+      try {
+        const session = await open();
+        const res = handleTick({ params: e?.parameter ?? {}, store: session.store, hmacHex: signer(), now: now() });
+        text = res.text;
+        if (session.changed()) {
+          const saved = await syncOnce({ store: session.store, client: session.client });
+          if (!saved.ok) text = `Couldn't save the tick: ${clean(saved.error)}. Tap the link again.`;
+        }
+      } catch (err) {
+        text = `Couldn't tick it: ${clean(err?.message ?? err)}`;
+      } finally {
+        lock.releaseLock();
+      }
+    }
+    if (!ContentService) return text;
+    return ContentService.createTextOutput(text);
+  }
+
+  return { run, install, pause, resume, removeAll, relay, tick };
 }
 return { createPlanner };
 })();
