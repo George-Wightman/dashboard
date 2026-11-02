@@ -39,14 +39,6 @@ test("final review: nudges follow George's clock where he is, not the planner's"
   assert.equal(n.title, 'Legs A at 17:30');
 });
 
-test('final review: the Hebrew nudge says what is logged so far, since the Reader syncs from his devices', () => {
-  const store = makeStore({ now: clock(utc('20:10')) });
-  store.addItem({ id: 'hebrew-minutes', type: 'quota', title: 'Hebrew learning time', unit: 'minutes', target: 420 });
-  store.setBack(NOV, 0);
-  const n = dueNudges(store.doc(), utc('20:10'), 4).find((x) => x.id.startsWith('hebrew'));
-  assert.equal(n.body, 'Hebrew logged so far today: 0 of 60 minutes.');
-});
-
 test("final review: Claude's reads say their own times are the planner's, and other clock settings move too", () => {
   const note = zoneNote({ plannerZone: 'Europe/London', deviceZone: 'Europe/Vienna', at: utc('12:00') });
   assert.match(note, /Times in these reads are London time: add an hour when you tell him/);

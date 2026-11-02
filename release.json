@@ -1,5 +1,5 @@
 {
-  "id": "6b35a7a04203b2cb358473d0b24f8494a599ecee87d13d882430be0b17566272",
+  "id": "9daca4ad915523243677c1bf73dbf88a8c332551d5118009db3b448bf958c7f7",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
@@ -23,6 +23,7 @@
     "js/merge.js": "d829d0ffc0843bd4048a1f5781bedb1ea07e254708f4605caf41107b1e3bbe87",
     "js/sync.js": "b1238bfbfaa14a8ea9b716f322de5d5a3764e63312cf3ab1cf7b91e66c7ca4a4",
     "js/hebrewSync.js": "a88a6ba27fd86c3d93c27ac75acb22d641267a82fe4585b23e01879d4a90acfe",
+    "js/hebrew-voice.js": "a4a0fdbd15bc36e30874f01a38d3ed9b7b4b933742d29b6bce6a540e8a6d9ae5",
     "js/duolingo.js": "12cff0df7d7af5a2ecb5088ba65570ce16a889c1397ad7b0b220d18917763cc7",
     "js/gemini.js": "b127b58ec9f2b6e686288335910b2f06e142d59ea21e260c819982b769f1912e",
     "js/look.js": "015529f6ad7a58470451c4a5a4686f4793c328f66d569964c0e3eac1d35f72f4",
@@ -75,7 +76,7 @@
     "js/ui/coach.js": "c3461d40d682447abd43ef3988cb66bad4c7c559fb92104e8992dd64ac375d3b",
     "js/ui/hebrewlog.js": "d649444492ea6f6786268ebe011bb833b75d978cf99e16db66c7fc0f4e2d6715",
     "js/travel.js": "7d8f5f622fc64fbf6bd8d35801f2e0fdf30f3794748ec3983190160fbe06df5f",
-    "js/nudges.js": "8357b6ae31095ba622cc2e0a8a689a4210c1f9dfae8069f572bee7938abbe0f5",
+    "js/nudges.js": "c650bf8ab5b608ab73867041515f3022986dfd72570e9daf175bfaa2a32ad3fa",
     "js/review.js": "f8ab2449958bf945d99af808eb5568d7cde9d05027b1b33b8e163e1cb3ef5560",
     "js/ui/review.js": "681eccd930ee009f6b23948f6e3fb075511e85f20695c23faff831ff876d274f",
     "js/ui/noteslot.js": "39a25bfbafa3fbbba2fcbf3a16b780b5ca7dc1afaecda5f450a1391775a0497b",

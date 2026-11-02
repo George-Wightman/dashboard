@@ -136,16 +136,6 @@ test('Duolingo today keeps today in the streak and shows on the row', () => {
   assert.equal(row.duolingo, 12);
 });
 
-test("the evening Hebrew push still comes, and says Duolingo's XP", () => {
-  const store = makeStore({ now: clock(at(20, 7)) });
-  store.addItem({ id: 'hebrew-minutes', type: 'quota', title: 'Hebrew learning time', unit: 'minutes', target: 420 });
-  store.addItem({ id: 'hebrew-habit', type: 'habit', title: 'Hebrew practice', repeat: { kind: 'daily' } });
-  store.setBack('2026-10-20', 0);
-  store.putLog('duolingo:2026-10-20', { itemId: 'hebrew-habit', kind: 'amount', amount: 25, day: '2026-10-20', source: 'duolingo' });
-  const n = dueNudges(store.doc(), at(20, 20, 5), 4).find((x) => x.id === 'hebrew:2026-10-20');
-  assert.equal(n.body, 'Hebrew logged so far today: 0 of 60 minutes. Duolingo: 25 XP.');
-});
-
 test('the phone widget marks a Duolingo-only day smaller than Reader minutes', () => {
   const minutes = { id: 'hebrew-minutes', type: 'quota', title: 'Hebrew learning time', unit: 'minutes', target: 420, created: '2026-10-01' };
   const doc = fixture({ items: [HABIT, minutes], logs: [

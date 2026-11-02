@@ -40,16 +40,11 @@ test('the lunch nudge: from 14:00 to 17:00 with no lunch logged, and only once h
   assert.deepEqual(ids(store.doc(), at(14, 10)), []);
 });
 
-test("the Hebrew nudge: at 20:00 if today's minutes are short of a seventh of the week's target", () => {
+test('no Hebrew nudge from the dashboard: Hebrew has its own, from the Hebrew app', () => {
   const { store, heb } = withData();
   store.setBack(DAY, 0);
-  store.logAmount({ itemId: heb.id, amount: 40, day: DAY });
-  const [n] = dueNudges(store.doc(), at(20, 5), 4);
-  assert.equal(n.id, `hebrew:${DAY}`);
-  assert.equal(n.body, 'Hebrew logged so far today: 40 of 60 minutes.');
-  assert.equal(n.url, './?do=hebrew');
-  store.logAmount({ itemId: heb.id, amount: 20, day: DAY });
-  assert.deepEqual(ids(store.doc(), at(20, 5)), []);
+  store.logAmount({ itemId: heb.id, amount: 5, day: DAY });
+  assert.ok(!ids(store.doc(), at(20, 5)).some((id) => id.startsWith('hebrew:')));
 });
 
 test("the session nudge: half an hour before a coach's session, saying the routine is in Hevy", () => {

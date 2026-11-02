@@ -1,14 +1,13 @@
 // Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
 // sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
-// The back question in the morning, an unlogged lunch, Hebrew short of the day's share in the
-// evening, and a coach's session half an hour ahead. Pure: a document and a moment in.
+// The back question in the morning, an unlogged lunch, and a coach's session half an hour ahead.
+// Hebrew has its own, from the Hebrew app (planner/hebrew-nudges.js). Pure: a document and a moment in.
 
 import { addDays } from './dates.js';
 import { wallClock, deviceZone } from './travel.js';
 import { mealsOn } from './food.js';
 import { readPlannerConfig, dayRecord } from './calendar.js';
 import { sessionTasks, routineFor } from './coach.js';
-import { duolingoLogId } from './duolingo.js';
 
 export const NUDGES_PER_DAY = 4;
 const SESSION_AHEAD_MIN = 35;
@@ -39,22 +38,6 @@ function lunchNudge(doc, t, day, clk) {
   return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
 }
 
-function hebrewNudge(doc, t, day, clk) {
-  if (!between(clk, 20 * 60, 22 * 60 + 30)) return null;
-  const q = doc.items?.['hebrew-minutes'];
-  if (!q || q.status !== 'active' || q.type !== 'quota' || !(q.target > 0)) return null;
-  const share = Math.round(q.target / 7);
-  const minutes = Math.round(Object.values(doc.logs ?? {})
-    .filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === q.id && l.day === day)
-    .reduce((n, l) => n + (Number(l.amount) || 0), 0));
-  if (minutes >= share) return null;
-  // "Logged so far": the Hebrew Reader's minutes arrive when the dashboard syncs on one of his devices.
-  // Duolingo doesn't count towards them, but it's said, so the push isn't news to him.
-  const duo = doc.logs?.[duolingoLogId(day)];
-  const xp = duo?.status === 'active' && duo.kind === 'amount' ? ` Duolingo: ${duo.amount} XP.` : '';
-  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.${xp}`, url: './?do=hebrew' };
-}
-
 function sessionNudges(doc, t, day, zone) {
   const blocks = dayRecord(doc, day)?.blocks ?? [];
   const out = [];
@@ -79,5 +62,5 @@ export function dueNudges(doc, t, dayStartHour = 4) {
   const zone = deviceZone(doc);
   const clk = wallClock(t, zone);
   const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
-  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), hebrewNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
+  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
 }

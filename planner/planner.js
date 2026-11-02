@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '6d2a57e1';
+var PLANNER_BUILD = '8f77a89f';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -7566,15 +7566,14 @@ return { CENTRAL, zoneOffset, deviceZone, zoneWarning, zoneNote, wallClock, shif
 const __js_nudges = (() => {
 // Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
 // sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
-// The back question in the morning, an unlogged lunch, Hebrew short of the day's share in the
-// evening, and a coach's session half an hour ahead. Pure: a document and a moment in.
+// The back question in the morning, an unlogged lunch, and a coach's session half an hour ahead.
+// Hebrew has its own, from the Hebrew app (planner/hebrew-nudges.js). Pure: a document and a moment in.
 
 const { addDays } = __js_dates;
 const { wallClock, deviceZone } = __js_travel;
 const { mealsOn } = __js_food;
 const { readPlannerConfig, dayRecord } = __js_calendar;
 const { sessionTasks, routineFor } = __js_coach;
-const { duolingoLogId } = __js_duolingo;
 
 const NUDGES_PER_DAY = 4;
 const SESSION_AHEAD_MIN = 35;
@@ -7605,22 +7604,6 @@ function lunchNudge(doc, t, day, clk) {
   return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
 }
 
-function hebrewNudge(doc, t, day, clk) {
-  if (!between(clk, 20 * 60, 22 * 60 + 30)) return null;
-  const q = doc.items?.['hebrew-minutes'];
-  if (!q || q.status !== 'active' || q.type !== 'quota' || !(q.target > 0)) return null;
-  const share = Math.round(q.target / 7);
-  const minutes = Math.round(Object.values(doc.logs ?? {})
-    .filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === q.id && l.day === day)
-    .reduce((n, l) => n + (Number(l.amount) || 0), 0));
-  if (minutes >= share) return null;
-  // "Logged so far": the Hebrew Reader's minutes arrive when the dashboard syncs on one of his devices.
-  // Duolingo doesn't count towards them, but it's said, so the push isn't news to him.
-  const duo = doc.logs?.[duolingoLogId(day)];
-  const xp = duo?.status === 'active' && duo.kind === 'amount' ? ` Duolingo: ${duo.amount} XP.` : '';
-  return { id: `hebrew:${day}`, title: 'Hebrew', body: `Hebrew logged so far today: ${minutes} of ${share} minutes.${xp}`, url: './?do=hebrew' };
-}
-
 function sessionNudges(doc, t, day, zone) {
   const blocks = dayRecord(doc, day)?.blocks ?? [];
   const out = [];
@@ -7645,7 +7628,7 @@ function dueNudges(doc, t, dayStartHour = 4) {
   const zone = deviceZone(doc);
   const clk = wallClock(t, zone);
   const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
-  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), hebrewNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
+  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
 }
 return { NUDGES_PER_DAY, QUIET, quietAt, dueNudges };
 })();
@@ -8993,6 +8976,307 @@ function handleTick({ params, store, hmacHex, now }) {
 return { tickLogId, importDrags, webAppUrl, tickLink, handleTick };
 })();
 
+// ---- planner/hebrew-progress.js
+const __planner_hebrew_progress = (() => {
+// The Hebrew app's own sync file (progress.json in hebrew-reader-sync), read by the planner itself:
+// until now only the dashboard app on a device pulled it, so the planner never knew whether he'd
+// practised, and George has stopped opening the dashboard. Synchronous, like the relay — the
+// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp) and `gunzip(base64)
+// → text` (Utilities.ungzip), so the widgets' doPost can use it too. Never throws.
+
+const { API } = __planner_relay;
+const { addDays } = __js_dates;
+
+const HEBREW_REPO = 'George-Wightman/hebrew-reader-sync';
+
+const objectAt = (keys, name) => {
+  try {
+    const v = JSON.parse(keys?.[name] ?? 'null');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch { return {}; }
+};
+
+// The strong band on the latest day up to `day` that reports one.
+function strongBy(stats, day) {
+  const days = Object.keys(stats).filter((d) => d <= day).sort();
+  for (let i = days.length - 1; i >= 0; i--) {
+    const n = stats[days[i]]?.bands?.strong;
+    if (typeof n === 'number') return n;
+  }
+  return 0;
+}
+
+// { ok: true, days: { [day]: { sec, sessions } }, strongGain, push: [{ id, endpoint, p256dh, auth }] }
+// or { ok: false, error }. `today` sets the week for strongGain.
+function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today }) {
+  if (!token) return { ok: false, error: 'No token for the Hebrew app\'s sync repo' };
+  let res;
+  try {
+    res = request(`${API}/repos/${repo}/contents/progress.json`, { method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', Accept: 'application/vnd.github.raw+json' } });
+  } catch (e) {
+    return { ok: false, error: `Couldn't reach the Hebrew app's sync repo (${e?.message ?? e})` };
+  }
+  if (res.status === 404 || res.status === 403 || res.status === 401) {
+    return { ok: false, error: `The planner's token can't see ${repo} (GitHub ${res.status}): put a read-only token for it in the HEBREW_TOKEN script property` };
+  }
+  if (res.status !== 200) return { ok: false, error: `Couldn't read the Hebrew app's progress (GitHub ${res.status})` };
+  let keys;
+  try {
+    const envelope = JSON.parse(res.text);
+    if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error('not an envelope');
+    keys = JSON.parse(gunzip(envelope.body)).keys;
+  } catch {
+    return { ok: false, error: 'The Hebrew app\'s progress.json isn\'t a sync file the planner can read' };
+  }
+  const stats = objectAt(keys, 'hvr_stats');
+  const days = {};
+  for (const [day, s] of Object.entries(stats)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days[day] = { sec: Math.max(0, Number(s?.sec) || 0), sessions: Math.max(0, Number(s?.sessions) || 0) };
+  }
+  const push = Object.entries(objectAt(keys, 'hvr_push'))
+    .filter(([, p]) => p && !p.off && typeof p.endpoint === 'string' && /^https:\/\//.test(p.endpoint) && typeof p.p256dh === 'string' && typeof p.auth === 'string')
+    .map(([id, p]) => ({ id: `hvr:${id}`, endpoint: p.endpoint, p256dh: p.p256dh, auth: p.auth, label: 'Hebrew app' }));
+  const strongGain = today ? Math.max(0, strongBy(stats, today) - strongBy(stats, addDays(today, -7))) : 0;
+  return { ok: true, days, strongGain, push };
+}
+return { HEBREW_REPO, readHebrewProgress };
+})();
+
+// ---- js/hebrew-voice.js
+const __js_hebrew_voice = (() => {
+// What the Hebrew widget and its pings say (docs/superpowers/specs/2026-11-02-hebrew-nudges-design.md).
+// George enjoys Hebrew once he's in it; what fails is the first step, so this is a mate on his home
+// screen: light, a bit cheeky, honest about missed days, quiet once he's done. Everything said is
+// written here, up front, with slots filled from his data: no AI at send time. Pure — the planner and
+// the widget's glance both call it, so they never disagree.
+
+const { addDays, weekStart, daysBetween } = __js_dates;
+const { wallClock, deviceZone } = __js_travel;
+const { countdowns } = __js_calendar;
+const { duolingoOn } = __js_schedule;
+const { HEBREW_IDS } = __js_hebrewSync;
+
+const HEBREW_APP = 'https://george-wightman.github.io/hebrew-reader/hebrew-reader.html';
+const HEBREW_DONE_MIN = 15;
+const HEBREW_GOLD_MIN = 30;
+const MOMENTS = [['morning', '09:30'], ['afternoon', '15:00'], ['evening', '19:00']];
+const LAST_PING = '21:30';
+const HEBREW_PINGS_PER_DAY = 3;
+const HOLD_MIN = 10;      // after a busy event ends, before the ping
+const FREE_FOR_MIN = 60;  // how long "you're free now" stays the line
+
+const minutesOf = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const clockOf = (d) => d.getHours() * 60 + d.getMinutes();
+const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+// 'none' (no session), 'bit' (some, under 15 min), 'done' (15+), 'gold' (30+).
+function hebrewLevel(day) {
+  const sec = Number(day?.sec) || 0;
+  if (sec >= HEBREW_GOLD_MIN * 60) return 'gold';
+  if (sec >= HEBREW_DONE_MIN * 60) return 'done';
+  return sec > 0 || (Number(day?.sessions) || 0) > 0 ? 'bit' : 'none';
+}
+
+// [line, aside] pairs. `{n}`, `{k}`, `{m}`, `{title}`, `{end}` are filled in.
+const LINES = {
+  morning: [['Nothing yet. Loads of day left.', 'Half an hour with your coffee and it\'s done.'],
+    ['Morning. Nothing in yet, and the day is yours.', 'Get it in early and forget about it.']],
+  afternoon: [['You\'ve got half an hour. I know you have.', 'Do it now, before it\'s 10pm and you can\'t be bothered.'],
+    ['Still not done, and it\'s only getting later.', 'Thirty minutes now beats lying about it at ten.'],
+    ['Afternoon. This is the window.', 'You always enjoy it once you\'re in.']],
+  evening: [['Last call. Ten minutes keeps the road going.', 'You always enjoy it once you\'re in.'],
+    ['Evening. This is the bit where you usually bail.', 'Don\'t. Ten minutes, then you\'re done.']],
+  missed: [['{n} days off the road, mate. Come on.', 'Ten minutes, just to get started.'],
+    ['{n} days off the road, mate. Come on.', 'You enjoy it once you start. So start.']],
+  busy: [['{title} till {end}.', 'Hebrew\'s waiting when you\'re out.']],
+  shiftFree: [['Shift\'s done. You\'ve got time now.', 'Get it in before the evening takes it.']],
+  free: [['{title}\'s done. You\'ve got time now.', 'Get it in before the evening takes it.']],
+  bit: [['You did a bit. Fancy a few more?', 'Five more minutes makes it count properly.']],
+  done: [['Done. That\'s {k} this week.', '{m} minutes{strong}. Nice.'], ['Well done, that\'s today.', '{m} minutes{strong}. Same again tomorrow.']],
+  gold: [['Half an hour. That\'s the good stuff.', '{m} minutes today{strong}.']],
+};
+const HEBREW = { morning: 'בוקר טוב', afternoon: 'יאללה', evening: 'ערב טוב', missed: 'נו, באמת', busy: 'אחר כך',
+  shiftFree: 'עכשיו', free: 'עכשיו', bit: 'עוד קצת', done: 'כל הכבוד', gold: 'מצוין' };
+
+// A different pair each day for the same moment (consecutive days never repeat when there are two).
+function pick(set, today) {
+  const list = LINES[set];
+  return list[((daysBetween('2026-01-01', today) % list.length) + list.length) % list.length];
+}
+const fill = (text, slots) => text.replace(/\{(\w+)\}/g, (_, k) => String(slots[k] ?? ''));
+
+function momentAt(now) {
+  let current = null;
+  for (const [name, time] of MOMENTS) if (clockOf(now) >= minutesOf(time)) current = name;
+  return current;
+}
+
+const isShift = (e) => /work/i.test(e.calendar ?? '') || /signify|shift/i.test(e.title ?? '');
+
+// Today's busy events against `now`: the one he's in, and one that ended in the last hour.
+function busyState(busy, now) {
+  const t = now.getTime();
+  const spans = (busy ?? []).map((e) => ({ ...e, s: Date.parse(e.start), e: Date.parse(e.end) })).filter((e) => e.s < e.e);
+  const inside = spans.filter((e) => e.s <= t && t < e.e).sort((a, b) => b.e - a.e)[0] ?? null;
+  const ended = spans.filter((e) => e.e <= t && t < e.e + FREE_FOR_MIN * 60000).sort((a, b) => b.e - a.e)[0] ?? null;
+  return { inside, ended };
+}
+
+// The widget: { level, label, hebrew, line, aside, night, week, missed, open }.
+// `today` is the planner's logical day (a 00:30 session belongs to the day before); `days` maps each
+// day to the Hebrew app's { sec, sessions }; `duolingo` lists the days with Duolingo XP; `busy` is
+// today's busy events.
+function hebrewVoice({ now, today, days = {}, duolingo = [], busy = [], countdown = null, strongGain = 0 }) {
+  const level = hebrewLevel(days[today]);
+  const duo = new Set(duolingo);
+  const stateOf = (d) => {
+    const l = hebrewLevel(days[d]);
+    if (l !== 'none') return l;
+    return duo.has(d) ? 'duo' : 'miss';
+  };
+  const monday = weekStart(today);
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(monday, i);
+    if (d > today) return 'ahead';
+    if (d === today) return level === 'none' ? 'today' : level;
+    return stateOf(d);
+  });
+  // Back to the last day that counted, but never before the first day there's any record of: before
+  // he started, nothing was missed.
+  const first = [...Object.keys(days), ...duo].sort()[0] ?? today;
+  let missed = 0;
+  for (let d = addDays(today, -1); d >= first && stateOf(d) === 'miss'; d = addDays(d, -1)) missed++;
+  const counted = week.filter((s) => ['bit', 'done', 'gold'].includes(s)).length;
+  const minutes = Math.round((Number(days[today]?.sec) || 0) / 60);
+  const strong = strongGain > 0 ? `, ${strongGain} word${strongGain === 1 ? '' : 's'} to strong this week` : '';
+  const { inside, ended } = busyState(busy, now);
+
+  let set;
+  if (level !== 'none') set = level;
+  else if (inside) set = 'busy';
+  else if (ended) set = isShift(ended) ? 'shiftFree' : 'free';
+  else if (missed >= 2) set = 'missed';
+  else set = momentAt(now) ?? 'morning';
+  let [line, aside] = pick(set, today);
+  const slots = { n: missed, k: counted, m: minutes, strong, title: (inside ?? ended)?.title ?? '', end: inside ? hhmm(new Date(inside.e)) : '' };
+  line = fill(line, slots);
+  aside = fill(aside, slots);
+  if (level === 'none' && duo.has(today) && set === 'evening') aside = 'Duolingo\'s done; ten minutes of the real thing?';
+
+  const label = missed >= 2 && level === 'none' ? `${missed} days off the road`
+    : countdown && countdown.days > 0 && countdown.days <= 14 ? `${countdown.title} in ${countdown.days} day${countdown.days === 1 ? '' : 's'}`
+      : `${counted} of 7 this week`;
+  const hour = now.getHours();
+  return { level, label, hebrew: HEBREW[set], line, aside, night: hour >= 19 || hour < 7, week, missed, open: HEBREW_APP };
+}
+
+// The ping due now, or null. `sent` is today's already-sent ids. One per moment while nothing is
+// done, held while he's busy and for ten minutes after; the gentle one once after a bit; none once
+// done, after 21:30, before 07:00, or past three.
+function duePing(input, sent = []) {
+  const { now, today } = input;
+  const v = hebrewVoice(input);
+  if (v.level === 'done' || v.level === 'gold') return null;
+  const t = clockOf(now);
+  if (t < 7 * 60 || t >= minutesOf(LAST_PING) || sent.length >= HEBREW_PINGS_PER_DAY) return null;
+  const moment = momentAt(now);
+  if (!moment) return null;
+  const id = v.level === 'bit' ? `heb:${today}:bit` : `heb:${today}:${moment}`;
+  if (sent.includes(id)) return null;
+  const { inside, ended } = busyState(input.busy, now);
+  if (inside || (ended && now.getTime() < Date.parse(ended.end) + HOLD_MIN * 60000)) return null;
+  return { id, title: 'Hebrew', body: `${v.line} ${v.aside}`.slice(0, 140), url: HEBREW_APP };
+}
+
+// The input both callers build: his wall clock (the moments are his times, wherever he is; the planner
+// runs on London's), the Hebrew app's own days when the planner could read them, else the dashboard's
+// Hebrew minutes, his Duolingo days, the nearest countdown, and today's busy events (shifted with the
+// clock, so they still line up with it).
+function hebrewInputFrom({ doc, now, today, progress = null, busy = [] }) {
+  const wall = wallClock(now, deviceZone(doc));
+  const [y, mo, d] = wall.date.split('-').map(Number);
+  const local = new Date(y, mo - 1, d, Math.floor(wall.minutes / 60), wall.minutes % 60, now.getSeconds());
+  const shift = local.getTime() - now.getTime();
+  const moved = (iso) => new Date(Date.parse(iso) + shift).toISOString();
+  let days = progress?.days;
+  if (!days) {
+    days = {};
+    for (const l of Object.values(doc.logs ?? {})) {
+      if (l.status !== 'active' || l.kind !== 'amount' || l.itemId !== HEBREW_IDS.minutes) continue;
+      const day = days[l.day] ??= { sec: 0, sessions: 0 };
+      day.sec += (Number(l.amount) || 0) * 60;
+      day.sessions = day.sec > 0 ? 1 : 0;
+    }
+  }
+  const duolingo = [];
+  for (let i = 0; i < 21; i++) {
+    const day = addDays(today, -i);
+    if (duolingoOn(doc, HEBREW_IDS.habit, day) > 0) duolingo.push(day);
+  }
+  const [countdown = null] = countdowns(doc, today);
+  return {
+    now: local, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
+    countdown: countdown ? { title: countdown.title, days: countdown.days } : null,
+    busy: busy.filter((e) => e?.start && e?.end).map((e) => ({ ...e, start: moved(e.start), end: moved(e.end) })),
+  };
+}
+return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewLevel, hebrewVoice, duePing, hebrewInputFrom };
+})();
+
+// ---- planner/hebrew-nudges.js
+const __planner_hebrew_nudges = (() => {
+// Hebrew's own pings (docs/superpowers/specs/2026-11-02-hebrew-nudges-design.md): to the devices that
+// turned on Reminders in the Hebrew app, which publishes them in its sync file, so a tap opens the
+// Hebrew app and nothing depends on the dashboard. What's said and when is js/hebrew-voice.js; this
+// only sends, each ping once, at most three a day (a budget of its own, apart from the dashboard's),
+// and never again to a device that's gone. Kept in script properties. Nothing here stops the planner.
+
+const { duePing } = __js_hebrew_voice;
+const { makePusher } = __planner_checkins;
+const { gasCrypto } = __planner_webpush;
+
+function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, crypto = null, t }) {
+  const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
+  const read = (key, fallback) => { try { return JSON.parse(props.get(key) ?? 'null') ?? fallback; } catch { return fallback; } };
+
+  // `devices` from planner/hebrew-progress.js, `input` from hebrewInputFrom. Returns
+  // { sent, devices, error } for the dashboard's hebrew:status.
+  function send({ devices, input }) {
+    let state = read('HEBREW_NUDGES', null);
+    if (state?.day !== input.today || !Array.isArray(state.sent)) state = { day: input.today, sent: [] };
+    const gone = new Set(read('HEBREW_GONE', []));
+    const live = devices.filter((d) => !gone.has(d.endpoint));
+    if (!live.length) return { sent: 0, devices: 0, error: 'Reminders are off: turn them on in the Hebrew app' };
+    const privateKey = props.get('VAPID_PRIVATE');
+    const publicKey = props.get('VAPID_PUBLIC');
+    if (!tools || !privateKey || !publicKey) return { sent: 0, devices: live.length, error: 'The planner has no push keys yet' };
+    const ping = duePing(input, state.sent);
+    if (!ping) return { sent: 0, devices: live.length, error: null };
+    let error = null;
+    let sent = 0;
+    try {
+      const push = makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t });
+      const r = push(live, { title: ping.title, body: ping.body, url: ping.url, tag: ping.id });
+      for (const id of r.gone) gone.add(live.find((d) => d.id === id)?.endpoint);
+      if (r.failed.length) { error = r.failed.join('; '); log(`Hebrew pings: ${error}`); }
+      if (r.ok) sent = 1;
+    } catch (e) {
+      error = `Couldn't send the Hebrew ping (${e?.message ?? e})`;
+      log(error);
+    }
+    // Tried once, whatever happened: a ping is never sent twice.
+    state.sent.push(ping.id);
+    props.put('HEBREW_NUDGES', JSON.stringify(state));
+    props.put('HEBREW_GONE', JSON.stringify([...gone].filter(Boolean).slice(-20)));
+    return { sent, devices: live.filter((d) => !gone.has(d.endpoint)).length, error };
+  }
+
+  return { send };
+}
+return { createHebrewNudges };
+})();
+
 // ---- planner/gas.js
 const __planner_gas = (() => {
 // The planner inside Google Apps Script. George's calendars come through the Calendar advanced
@@ -9029,6 +9313,9 @@ const { createNudges } = __planner_nudges;
 const { handleRelay } = __planner_relay;
 const { handleGlance } = __planner_glance;
 const { importDrags, webAppUrl, tickLink, handleTick } = __planner_ticks;
+const { readHebrewProgress, HEBREW_REPO } = __planner_hebrew_progress;
+const { createHebrewNudges } = __planner_hebrew_nudges;
+const { hebrewInputFrom } = __js_hebrew_voice;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -9052,12 +9339,13 @@ function createPlanner({
   hmacHex = (text, key) => Utilities.computeHmacSha256Signature(Utilities.newBlob(String(text)).getBytes(), Utilities.newBlob(String(key)).getBytes())
     .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
   newSecret = () => Utilities.getUuid() + Utilities.getUuid(),
+  gunzip = (b64) => Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(b64), 'application/x-gzip')).getDataAsString('UTF-8'),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
   const put = (k, v) => props().setProperty(k, String(v));
   const drop = (k) => props().deleteProperty(k);
-  const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
+  const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('HEBREW_TOKEN'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
@@ -9069,6 +9357,35 @@ function createPlanner({
     let secret = get('TICK_SECRET');
     if (!secret) { secret = newSecret(); put('TICK_SECRET', secret); }
     return (text) => hmacHex(text, secret);
+  }
+
+  // A blocking GitHub request, as the relay and the widgets make them.
+  const fetchSync = (url, init) => {
+    const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true });
+    return { status: res.getResponseCode(), text: res.getContentText() };
+  };
+  // The Hebrew app's own progress (planner/hebrew-progress.js), with its own token if it has one.
+  const hebrewProgress = (today) => readHebrewProgress({ request: fetchSync, repo: get('HEBREW_REPO') || HEBREW_REPO,
+    token: get('HEBREW_TOKEN') || get('GITHUB_TOKEN'), gunzip, today });
+
+  // Hebrew's own pings (planner/hebrew-nudges.js). The status goes in the dashboard only when it
+  // changes, so a quiet run writes nothing. Never stops the planner.
+  function hebrewPings(store, t, today, events, cals) {
+    const progress = hebrewProgress(today);
+    const busy = events.filter((e) => e.status !== 'cancelled' && e.transparency !== 'transparent' && e.start?.dateTime && e.end?.dateTime
+      && e.extendedProperties?.private?.[P.mine] !== '1' && logicalDay(new Date(e.start.dateTime), 0) === today)
+      .map((e) => ({ title: e.summary || 'Busy', calendar: cals.find((c) => c.id === e.calendarId)?.name ?? '', start: e.start.dateTime, end: e.end.dateTime }));
+    const input = hebrewInputFrom({ doc: store.doc(), now: t, today, progress: progress.ok ? progress : null, busy });
+    const r = createHebrewNudges({ UrlFetchApp, Utilities, props: { get, put }, log, crypto: pushCrypto, t })
+      .send({ devices: progress.ok ? progress.push : [], input });
+    const lastError = progress.ok ? r.error : progress.error;
+    const prev = store.doc().calendar?.['hebrew:status'];
+    const same = prev?.status === 'active' && prev.day === today && prev.devices === r.devices && prev.lastError === lastError;
+    if (r.sent || !same) {
+      store.putCalendar('hebrew:status', { day: today, lastRun: t.toISOString(), sent: (same ? prev.sent ?? 0 : 0) + r.sent, devices: r.devices, lastError }, 'planner');
+      return true;
+    }
+    return false;
   }
 
   function calendars() {
@@ -9420,6 +9737,12 @@ function createPlanner({
         checkins = null;
         log(clean(`Check-ins stopped: ${err?.message ?? err}`));
       }
+      // Hebrew's own pings, before the save, so their status goes in the same push.
+      try {
+        hebrewPings(store, t, today, events, cals);
+      } catch (err) {
+        log(clean(`Hebrew pings failed: ${err?.message ?? err}`));
+      }
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
@@ -9448,6 +9771,7 @@ function createPlanner({
       } catch (err) {
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
+
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
     } catch (err) {

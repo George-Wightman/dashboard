@@ -32,6 +32,9 @@ import { createNudges } from './nudges.js';
 import { handleRelay } from './relay.js';
 import { handleGlance } from './glance.js';
 import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
+import { readHebrewProgress, HEBREW_REPO } from './hebrew-progress.js';
+import { createHebrewNudges } from './hebrew-nudges.js';
+import { hebrewInputFrom } from '../js/hebrew-voice.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -55,12 +58,13 @@ export function createPlanner({
   hmacHex = (text, key) => Utilities.computeHmacSha256Signature(Utilities.newBlob(String(text)).getBytes(), Utilities.newBlob(String(key)).getBytes())
     .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
   newSecret = () => Utilities.getUuid() + Utilities.getUuid(),
+  gunzip = (b64) => Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(b64), 'application/x-gzip')).getDataAsString('UTF-8'),
 }) {
   const props = () => PropertiesService.getScriptProperties();
   const get = (k) => props().getProperty(k);
   const put = (k, v) => props().setProperty(k, String(v));
   const drop = (k) => props().deleteProperty(k);
-  const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
+  const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('HEBREW_TOKEN'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
@@ -72,6 +76,35 @@ export function createPlanner({
     let secret = get('TICK_SECRET');
     if (!secret) { secret = newSecret(); put('TICK_SECRET', secret); }
     return (text) => hmacHex(text, secret);
+  }
+
+  // A blocking GitHub request, as the relay and the widgets make them.
+  const fetchSync = (url, init) => {
+    const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true });
+    return { status: res.getResponseCode(), text: res.getContentText() };
+  };
+  // The Hebrew app's own progress (planner/hebrew-progress.js), with its own token if it has one.
+  const hebrewProgress = (today) => readHebrewProgress({ request: fetchSync, repo: get('HEBREW_REPO') || HEBREW_REPO,
+    token: get('HEBREW_TOKEN') || get('GITHUB_TOKEN'), gunzip, today });
+
+  // Hebrew's own pings (planner/hebrew-nudges.js). The status goes in the dashboard only when it
+  // changes, so a quiet run writes nothing. Never stops the planner.
+  function hebrewPings(store, t, today, events, cals) {
+    const progress = hebrewProgress(today);
+    const busy = events.filter((e) => e.status !== 'cancelled' && e.transparency !== 'transparent' && e.start?.dateTime && e.end?.dateTime
+      && e.extendedProperties?.private?.[P.mine] !== '1' && logicalDay(new Date(e.start.dateTime), 0) === today)
+      .map((e) => ({ title: e.summary || 'Busy', calendar: cals.find((c) => c.id === e.calendarId)?.name ?? '', start: e.start.dateTime, end: e.end.dateTime }));
+    const input = hebrewInputFrom({ doc: store.doc(), now: t, today, progress: progress.ok ? progress : null, busy });
+    const r = createHebrewNudges({ UrlFetchApp, Utilities, props: { get, put }, log, crypto: pushCrypto, t })
+      .send({ devices: progress.ok ? progress.push : [], input });
+    const lastError = progress.ok ? r.error : progress.error;
+    const prev = store.doc().calendar?.['hebrew:status'];
+    const same = prev?.status === 'active' && prev.day === today && prev.devices === r.devices && prev.lastError === lastError;
+    if (r.sent || !same) {
+      store.putCalendar('hebrew:status', { day: today, lastRun: t.toISOString(), sent: (same ? prev.sent ?? 0 : 0) + r.sent, devices: r.devices, lastError }, 'planner');
+      return true;
+    }
+    return false;
   }
 
   function calendars() {
@@ -423,6 +456,12 @@ export function createPlanner({
         checkins = null;
         log(clean(`Check-ins stopped: ${err?.message ?? err}`));
       }
+      // Hebrew's own pings, before the save, so their status goes in the same push.
+      try {
+        hebrewPings(store, t, today, events, cals);
+      } catch (err) {
+        log(clean(`Hebrew pings failed: ${err?.message ?? err}`));
+      }
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
@@ -451,6 +490,7 @@ export function createPlanner({
       } catch (err) {
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
+
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
     } catch (err) {

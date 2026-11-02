@@ -5,6 +5,10 @@
 // the widget's glance both call it, so they never disagree.
 
 import { addDays, weekStart, daysBetween } from './dates.js';
+import { wallClock, deviceZone } from './travel.js';
+import { countdowns } from './calendar.js';
+import { duolingoOn } from './schedule.js';
+import { HEBREW_IDS } from './hebrewSync.js';
 
 export const HEBREW_APP = 'https://george-wightman.github.io/hebrew-reader/hebrew-reader.html';
 export const HEBREW_DONE_MIN = 15;
@@ -136,4 +140,37 @@ export function duePing(input, sent = []) {
   const { inside, ended } = busyState(input.busy, now);
   if (inside || (ended && now.getTime() < Date.parse(ended.end) + HOLD_MIN * 60000)) return null;
   return { id, title: 'Hebrew', body: `${v.line} ${v.aside}`.slice(0, 140), url: HEBREW_APP };
+}
+
+// The input both callers build: his wall clock (the moments are his times, wherever he is; the planner
+// runs on London's), the Hebrew app's own days when the planner could read them, else the dashboard's
+// Hebrew minutes, his Duolingo days, the nearest countdown, and today's busy events (shifted with the
+// clock, so they still line up with it).
+export function hebrewInputFrom({ doc, now, today, progress = null, busy = [] }) {
+  const wall = wallClock(now, deviceZone(doc));
+  const [y, mo, d] = wall.date.split('-').map(Number);
+  const local = new Date(y, mo - 1, d, Math.floor(wall.minutes / 60), wall.minutes % 60, now.getSeconds());
+  const shift = local.getTime() - now.getTime();
+  const moved = (iso) => new Date(Date.parse(iso) + shift).toISOString();
+  let days = progress?.days;
+  if (!days) {
+    days = {};
+    for (const l of Object.values(doc.logs ?? {})) {
+      if (l.status !== 'active' || l.kind !== 'amount' || l.itemId !== HEBREW_IDS.minutes) continue;
+      const day = days[l.day] ??= { sec: 0, sessions: 0 };
+      day.sec += (Number(l.amount) || 0) * 60;
+      day.sessions = day.sec > 0 ? 1 : 0;
+    }
+  }
+  const duolingo = [];
+  for (let i = 0; i < 21; i++) {
+    const day = addDays(today, -i);
+    if (duolingoOn(doc, HEBREW_IDS.habit, day) > 0) duolingo.push(day);
+  }
+  const [countdown = null] = countdowns(doc, today);
+  return {
+    now: local, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
+    countdown: countdown ? { title: countdown.title, days: countdown.days } : null,
+    busy: busy.filter((e) => e?.start && e?.end).map((e) => ({ ...e, start: moved(e.start), end: moved(e.end) })),
+  };
 }
