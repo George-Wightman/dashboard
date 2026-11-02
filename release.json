@@ -1,10 +1,10 @@
 {
-  "id": "f07d436ae2e1e00b54b6a172321bd514a8ac4d8cdbdb483d23dd491ca2d2c47b",
+  "id": "ea0a25a4a32118be919ddc517b7bcfc23fe3a66597f1d28974fe6b90a08f5925",
   "files": {
     "./": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "index.html": "d925e36871a8b49706ee7b0c48becf94fb3274ae473aa927ec2a73efd7b4fb69",
     "styles.css": "82757c6e1a2f8af994dc37b125a00f8bf62b90d7bafe61e98bb1dbfa5f674836",
-    "styles/daylight.css": "3ed565c3b5cb90f3552d13f1ad3dae499b3b6baf4cd9abaeb07096d3385a8970",
+    "styles/daylight.css": "2a3dbb123e7e400cf33f2d23f30dffb5d8e7906e85d63876262e1853679cb4f2",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
@@ -76,8 +76,8 @@
     "js/ui/coach.js": "c3461d40d682447abd43ef3988cb66bad4c7c559fb92104e8992dd64ac375d3b",
     "js/ui/hebrewlog.js": "d649444492ea6f6786268ebe011bb833b75d978cf99e16db66c7fc0f4e2d6715",
     "js/travel.js": "7d8f5f622fc64fbf6bd8d35801f2e0fdf30f3794748ec3983190160fbe06df5f",
-    "js/eu.js": "0fbd855d1489dd64d27168d7dbdb32ae78eb820200c18d608ce12be567b4bf75",
-    "js/ui/eu.js": "f96067dd779bfb4b5bf61b534a2b146ddacc12629259a226aadf01c1616c62c7",
+    "js/eu.js": "3314b696c4b8f0d2c8dfc54fbc887be99617027ae01274d386d9a59223fa6f3e",
+    "js/ui/eu.js": "bdcf0891202c8439da59e3ddc470411167b61cb597e365f88afa439eb215bc07",
     "js/nudges.js": "c650bf8ab5b608ab73867041515f3022986dfd72570e9daf175bfaa2a32ad3fa",
     "js/review.js": "f8ab2449958bf945d99af808eb5568d7cde9d05027b1b33b8e163e1cb3ef5560",
     "js/ui/review.js": "681eccd930ee009f6b23948f6e3fb075511e85f20695c23faff831ff876d274f",

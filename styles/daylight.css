@@ -613,7 +613,8 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .eu-facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 15px; }
 .eu-warn { color: var(--dl-eu-over); font-weight: 600; }
 .big.eu .eu-warn { margin: 0 0 12px; }
-.eu-summary { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0 0 14px; }
+.eu-top { position: sticky; top: 0; z-index: 2; background: var(--dl-card); margin: 0 -4px; padding: 4px 4px 2px; border-bottom: 1px solid var(--dl-line); }
+.eu-summary { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0 0 10px; }
 .eu-stat { display: grid; min-width: 110px; }
 .eu-n { font: 800 34px/1 var(--dl-display); }
 .eu-t { font-size: 13px; color: var(--dl-muted); }

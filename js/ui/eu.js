@@ -109,15 +109,17 @@ export function renderEuBig(ctx) {
     setTimeout(() => document.querySelector(`#widget-sheet [data-month="${anchor}"]`)?.scrollIntoView({ block: 'start' }));
   }
 
+  // The totals and the day's line stay pinned at the top while the months scroll under them.
   return h('div', { class: 'big eu' },
-    h('div', { class: 'eu-summary' },
-      stat(s.used, 'used, last 180 days'), stat(s.left, 'left today'), stat(s.planned, 'planned ahead'), stat(s.stay, 'longest stay if you went tomorrow')),
-    s.over ? h('p', { class: 'eu-warn' }, `Your plans go over 90 on ${dayText(s.over)}. Red days are the ones over.`) : null,
+    h('div', { class: 'eu-top' },
+      h('div', { class: 'eu-summary' },
+        stat(s.used, 'used, last 180 days'), stat(s.left, 'left today'), stat(s.planned, 'planned ahead'), stat(s.spare, 'left to plan')),
+      s.over ? h('p', { class: 'eu-warn' }, `Your plans go over 90 on ${dayText(s.over)}. Red days are the ones over.`) : null,
+      line),
     h('div', { class: 'eu-legend' },
       h('span', { class: 'eu-key eu-in' }, 'In the EU'), h('span', { class: 'eu-key eu-plan' }, 'Planned'),
       h('span', { class: 'eu-key eu-over' }, 'Over 90 that day'), h('span', { class: 'eu-key eu-back' }, 'A day comes back')),
     h('p', { class: 'muted eu-how' }, 'Click a day, or press and drag across a stretch. On a phone, hold a day then tap the last one. Mark the days you fly in and out too: they count.'),
-    line,
     grid);
 }
 

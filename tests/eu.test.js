@@ -50,6 +50,15 @@ test('euSummary: used, left, next visit, first day over, and when days come back
   assert.equal(s.here, null);
   assert.equal(s.over, '2026-09-30');
   assert.equal(s.back, addDays('2026-06-13', 180));
+  assert.equal(s.spare, 0, 'the plans already go over');
+});
+
+test('euSummary: days left to plan, taking the planned ones', () => {
+  const store = makeStore();
+  setEuDays(store, dayRange('2026-08-01', '2026-08-30'), true);  // 30 used
+  setEuDays(store, dayRange('2026-10-10', '2026-10-19'), true);  // 10 planned
+  const s = euSummary(store.doc(), TODAY);
+  assert.deepEqual([s.used, s.left, s.planned, s.spare], [30, 60, 10, 50]);
 });
 
 test('euSummary: the visit he is on now', () => {

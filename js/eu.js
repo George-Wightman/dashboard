@@ -58,6 +58,8 @@ export function euVisits(days, from) {
 // used/left: days used and left today. planned: marked days after today. next: the next visit not
 // yet started (or null). over: the first planned day that goes over 90 (or null). back: the next
 // day an old day drops out of the window (or null). stay: the longest stay starting tomorrow.
+// spare: days left to plan, taking the planned ones: 90 less the most counted on any day from today
+// on, so it's never more than he can add without some day going over.
 export function euSummary(doc, today, ahead = 365) {
   const days = euDays(doc);
   const used = euCount(days, today);
@@ -74,8 +76,10 @@ export function euSummary(doc, today, ahead = 365) {
     if (days.has(addDays(d, -EU_WINDOW))) back = d;
   }
   const next = euVisits(days, today).find((v) => v.start > today) ?? null;
+  let peak = used;
+  for (let d = addDays(today, 1); d <= end; d = addDays(d, 1)) peak = Math.max(peak, euCount(days, d));
   const here = days.has(today) ? euVisits(days, addDays(today, -1)).find((v) => v.start <= today) ?? null : null;
-  return { used, left: Math.max(0, EU_LIMIT - used), planned, next, here, over, back, stay: longestStay(days, addDays(today, 1)) };
+  return { used, left: Math.max(0, EU_LIMIT - used), planned, next, here, over, back, stay: longestStay(days, addDays(today, 1)), spare: Math.max(0, EU_LIMIT - peak) };
 }
 
 // Every day from `from` to `to`, either way round.
