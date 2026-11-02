@@ -5,10 +5,14 @@ import { pathToFileURL } from 'node:url';
 
 const root = new URL('../', import.meta.url);
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+// Pages serves what git holds, which is LF. A Windows checkout's working copy can be CRLF, and hashing
+// that published hashes no served file matched, so every device refused the update (2 Nov 2026).
+const TEXT = /\.(js|mjs|css|html|json|webmanifest|svg|txt|md)$|^\.\/$/;
+const served = (path, bytes) => (TEXT.test(path) ? Buffer.from(String(bytes).replace(/\r\n/g, '\n')) : bytes);
 export function releaseManifest(read = (path) => readFileSync(new URL(path, root))) {
   const sw = String(read('sw.js')).replace(/\r\n/g, '\n');
   const shell = [...sw.match(/const SHELL = \[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  const files = Object.fromEntries(shell.map((path) => [path, hash(read(path === './' ? 'index.html' : path))]));
+  const files = Object.fromEntries(shell.map((path) => [path, hash(served(path, read(path === './' ? 'index.html' : path)))]));
   return { id: hash(JSON.stringify(files) + sw), files };
 }
 
