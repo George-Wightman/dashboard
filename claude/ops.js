@@ -677,6 +677,20 @@ function meal(store, op) {
     store.updateMeal(id, { correction: { by: 'claude', protein, kcal, why: why.slice(0, 200), at: store.now().toISOString() } });
     return `Corrected ${q(rec.estimate?.name ?? rec.text ?? 'the meal')} to ${protein} g protein, ${kcal} kcal`;
   }
+  // A meal he tells Claude about, logged as if he'd said it in the app: his words, estimated by Gemini
+  // on whichever device opens the app next (2 Nov 2026: four days dumped in one chat).
+  if (op.log != null) {
+    const words = String(op.log).trim();
+    if (!words) throw new Error('meal log needs his words, e.g. {"op": "meal", "log": "5 fried eggs, 2 pittas", "day": "yesterday", "time": "12:30"}');
+    if (op.time == null) throw new Error('meal log needs the time he ate it ("12:30"), so it lands on the right meal');
+    const day = toDay(op.day ?? 'today', store.today());
+    const [y, m, d] = day.split('-').map(Number);
+    const [hh, mm] = clockOf(op.time).split(':').map(Number);
+    const at = new Date(y, m - 1, d, hh, mm);
+    if (at > store.now()) throw new Error('A meal can’t be logged for a time that hasn’t come yet');
+    store.addMeal({ at, text: words });
+    return `Logged ${q(words.length > 60 ? words.slice(0, 59) + '…' : words)} for ${dayName(day, store.today())} at ${clockOf(op.time)}; Gemini estimates it when the app next opens`;
+  }
   if (op.usual) {
     const u = store.saveUsual({ name: op.usual.name, protein: amount(op.usual.protein, 'protein'), kcal: amount(op.usual.kcal, 'kcal') });
     return `Saved the usual meal ${q(u.name)}: ${u.protein} g, ${u.kcal} kcal`;
@@ -811,7 +825,7 @@ function session(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   details: ['id', 'set'],
-  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel'],
+  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log'],
   session: ['id', 'date', 'time', 'title', 'session'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],

@@ -45,7 +45,7 @@ test('the meal op corrects a meal with a reason, saves a usual meal, and sets Fu
   runOp(store, { op: 'meal', fuel: { maintenanceKcal: 3100 } });
   assert.equal(store.doc().meals['fuel:settings'].maintenanceKcal, 3100);
   assert.throws(() => runOp(store, { op: 'meal' }), /meal needs/);
-  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel']);
+  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log']);
 });
 
 test('the meal op moves a meal logged the morning after to when he ate it, never into the future', () => {
@@ -101,4 +101,16 @@ test('photo downloads a meal photo to a file and says where; a meal without one 
   assert.equal(written[0].text, 'JPEGBYTES');
   const none = await run(['photo', 'meal:bbbb2222']);
   assert.match(none.text, /hasn't been uploaded yet/);
+});
+
+test('the meal op logs a meal from his words, at his time, waiting for Gemini as if he had said it in the app', () => {
+  const store = makeStore({ now: clock(new Date(2026, 9, 20, 21, 0)) });
+  assert.match(runOp(store, { op: 'meal', log: 'Big KFC: five chicken on the bone, chips, hot wings', day: 'yesterday', time: '19:30' }),
+    /^Logged "Big KFC: five chicken on the bone, chips, hot wings" for .+ at 19:30; Gemini estimates it/);
+  const m = Object.values(store.doc().meals).find((x) => x.kind === 'meal');
+  assert.deepEqual({ day: m.day, slot: m.slot, state: m.state, text: m.text, photoState: m.photoState },
+    { day: '2026-10-19', slot: 'dinner', state: 'pending', text: 'Big KFC: five chicken on the bone, chips, hot wings', photoState: null });
+  assert.throws(() => runOp(store, { op: 'meal', log: 'granola', time: '22:00' }), /hasn’t come yet/);
+  assert.throws(() => runOp(store, { op: 'meal', log: 'granola' }), /needs the time/);
+  assert.throws(() => runOp(store, { op: 'meal', log: ' ', time: '08:00' }), /needs his words/);
 });
