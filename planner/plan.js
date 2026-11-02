@@ -2,13 +2,13 @@
 // planner's day records out. Pure — planner/gas.js reads the calendars, applies the changes and
 // keeps the records. The rules are the design's (docs/superpowers/specs/2026-09-14-calendar-planner-design.md):
 // blocks by area, around fixed events, exact for the first days and rough after; never moved once
-// George has moved them; trimmed, or moved to the tick, when he ticks; left where they were, pale,
+// George has moved them; trimmed, or moved to the tick, when he ticks; left where they were
 // when over and unticked, until the next day's hours begin; removed then if still unticked.
 
 import { addDays, logicalDay, daysBetween, shortWeekday } from '../js/dates.js';
 import { readPlannerConfig, timeOff, offWindows, offCovers, COLOR_NAMES, colorName } from '../js/calendar.js';
 import { at, localDay, iso, MINUTE } from './time.js';
-import { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, roughColor, nearestColor, paleOf } from './events.js';
+import { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, nearestColor } from './events.js';
 import { norm, resolveCalendars, calendarFor, habitLinks } from './calendars.js';
 import { taskInput, dayClosed } from '../js/plan-state.js';
 import { demand, fixedTasks } from './demand.js';
@@ -31,7 +31,7 @@ export function blockTitle(base, state, done = 0, total = 0) {
 }
 
 // A block as a Google event. `notes` lead the description (the items' notes); the title stays the
-// title. `colorId` is the area's colour, or a rough block's pale one; none means the calendar's own.
+// title. `colorId` is the area's colour; none means the calendar's own.
 // `ticks` are the ✓ links (planner/ticks.js), one line each, before the dashboard's own link.
 export function blockBody({ key, base, title, start, end, items, state, colorId = null, pinned = false, notes = [], input = null, parts = 1, ticks = [] }) {
   const rough = state === 'rough';
@@ -137,11 +137,8 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     problems.add(`${name} is taken by your ${takenBy.get(id)} calendar — free: ${free.join(', ')}`);
     return null;
   };
-  const colourFor = (area, state, cal) => {
-    const id = areaColorId(area, cal);
-    if (state === 'rough') return id ? paleOf(id) : roughColor(cal?.backgroundColor, eventColors);
-    return id;
-  };
+  // Every block wears its area's full colour, rough or not (2 Nov 2026: pale ones read as cancelled).
+  const colourFor = (area, cal) => areaColorId(area, cal);
   // A block's area from its key (a task with a time, or a record of a missed one, takes its task's).
   const areaOfKey = (key, ids) => {
     const seg = String(key).split('|')[1] ?? '';
@@ -324,8 +321,8 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     if (start > nowMs && ids.length && ids.every((id) => items[id]?.scheduleHold || items[id]?.status !== 'active' || linkedByGeorge.has(id))) {
       actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id }); fixedWanted.delete(key); continue;
     }
-    const settle = (span, nextState, title, coverIds = ids, nextBase = base, look = nextState) => {
-      const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), look, calendars.find((c) => c.id === ev.calendarId));
+    const settle = (span, nextState, title, coverIds = ids, nextBase = base) => {
+      const colorId = HISTORY.has(state) ? ev.colorId : colourFor(areaOfKey(key, ids), calendars.find((c) => c.id === ev.calendarId));
       // A pinned block wears the pin, so George can see why it isn't moving and take it off again.
       // Only the event carries it; the recorded title stays clean for the dashboard to mark itself.
       // Only a task, though: taking the marker off is read back on tasks alone, and a marker he
@@ -419,11 +416,11 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       } else if (!ids.length) {
         settle({ start, end }, 'done', base);
       } else if (logicalDay(ev.start, dayStartHour) >= today || (logicalDay(ev.start, dayStartHour) === yesterday && nowMs < morning)) {
-        // Over and not ticked: waiting for its tick, pale, until his next day's hours begin. It used to
+        // Over and not ticked: waiting for its tick, where it was, until his next day's hours begin. It used to
         // go the moment it ended, booked again later or the next day, and the task left that day's
         // list with it — when he hadn't ticked yet, not when he hadn't done it (27 Oct 2026).
         const nextState = state === 'rough' ? 'exact' : state;
-        settle({ start, end }, nextState, blockTitle(base, nextState), ids, base, 'rough');
+        settle({ start, end }, nextState, blockTitle(base, nextState));
       } else {
         actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
         for (const id of ids) {
@@ -467,7 +464,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const cal = calendarFor(f.area, config, find, problems);
     if (!cal) continue;
     const migration = migrate(migrationFor([f.itemId], f.key));
-    actions.push({ op: 'insert', ...migration, calendarId: cal.id, key: f.key, body: bodyFor({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed', colorId: colourFor(f.area, 'fixed', cal), notes: noteLines([f.itemId]) }) });
+    actions.push({ op: 'insert', ...migration, calendarId: cal.id, key: f.key, body: bodyFor({ key: f.key, base: f.title, title: f.title, start: f.start, end: f.end, items: [f.itemId], state: 'fixed', colorId: colourFor(f.area, cal), notes: noteLines([f.itemId]) }) });
     busy(f.start, f.end, f.title);
     cover(f.day, [f.itemId]);
     useKey(f.day, f.key);
@@ -522,7 +519,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       const key = `${d}|done|${m.itemId}`;
       const span = booked ?? recordSpan(t.at, m.minutes * MINUTE, null);
       const title = blockTitle(items[m.itemId].title, 'done');
-      actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', 'done', cal), notes: noteLines([m.itemId]) }) });
+      actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', cal), notes: noteLines([m.itemId]) }) });
       busy(span.start, span.end, title);
       cover(d, [m.itemId]);
       useKey(d, key);
@@ -743,7 +740,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     const cal = calendarFor(b.area, config, find, problems);
     if (!cal) continue;
     const title = blockTitle(b.base, state);
-    const body = bodyFor({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: colourFor(b.area, state, cal), notes: noteLines(b.items) });
+    const body = bodyFor({ key: b.key, base: b.base, title, start, end, items: b.items, state, colorId: colourFor(b.area, cal), notes: noteLines(b.items) });
     const ex = keep.get(b.key);
     const migration = ex ? {} : migrate(migrationFor(b.items, b.key));
     keep.delete(b.key);

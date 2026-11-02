@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { at, localDay, iso, MINUTE } from '../planner/time.js';
-import { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds, roughColor } from '../planner/events.js';
+import { P, normEvent, atText, movedByGeorge, habitPinned, linkedIds } from '../planner/events.js';
 import { norm, resolveCalendars, calendarFor, habitLinks } from '../planner/calendars.js';
 import { QUARTER, ceilQuarter, fits, earliestFit, nearestFit } from '../planner/place.js';
 import { CALENDAR_DEFAULTS } from '../js/calendar.js';
@@ -62,13 +62,9 @@ test('movedByGeorge and habitPinned: where the planner put it versus where it is
   assert.equal(habitPinned(inst(moved, at('2026-09-15', '09:30'), { [P.at]: atText(moved, new Date(moved.getTime() + 45 * MINUTE)) })), false, 'moved by the planner');
 });
 
-test('linkedIds and roughColor', () => {
+test('linkedIds', () => {
   assert.deepEqual(linkedIds('Prep\ndashboard:a1b2c3d4\ndashboard:task-chase-gss'), ['a1b2c3d4', 'task-chase-gss']);
   assert.deepEqual(linkedIds(''), []);
-  assert.equal(roughColor('#f83a22', COLORS), '4', 'red calendar → Tomato → Flamingo');
-  assert.equal(roughColor('#4986e7', COLORS), '1', 'blue → Blueberry → Lavender');
-  assert.equal(roughColor('#a4bdfc', COLORS), '8', 'already a light colour → Graphite');
-  assert.equal(roughColor('not a colour', COLORS), '8');
 });
 
 test('resolveCalendars: ignored by the start of the name, found by name ignoring case and spaces', () => {

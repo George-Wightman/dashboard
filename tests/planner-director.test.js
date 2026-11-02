@@ -58,18 +58,18 @@ test('priority areas are booked first', () => {
   assert.deepEqual(summaries(first), ['2026-09-15 09:00–09:30 Write the day out', '2026-09-15 09:45–11:15 Chase the GSS outcome']);
 });
 
-test("an area's colour on its blocks, pale when rough; removing it restores the calendar's", () => {
+test("an area's colour on its blocks, rough ones too; removing it restores the calendar's", () => {
   const items = [task('dayout', 'Write the day out', 'Assessment centre', TUE), task('mock', 'Mock interview', 'Assessment centre', THU)];
   const cal = new FakeCalendar();
   const r = step(cal, docWith(items, { config: { areaColors: { 'Assessment centre': 'Blueberry' } } }), at(TUE, '08:00'));
   assert.equal(cal.byTitle('Write the day out').colorId, '9');
-  assert.equal(cal.byTitle('~ Mock interview').colorId, '1');
+  assert.equal(cal.byTitle('~ Mock interview').colorId, '9');
   assert.deepEqual(r.takenColors, ['Basil', 'Lavender', 'Tomato']);
   const again = step(cal, docWith(items, { config: { areaColors: { 'Assessment centre': 'Blueberry' } } }), at(TUE, '08:05'), r.days);
   assert.deepEqual(again.actions, []);
   step(cal, docWith(items), at(TUE, '08:10'), again.days);
   assert.equal(cal.byTitle('Write the day out').colorId, undefined);
-  assert.equal(cal.byTitle('~ Mock interview').colorId, '4');
+  assert.equal(cal.byTitle('~ Mock interview').colorId, undefined);
 });
 
 test("a colour one of George's calendars already has is not used, and Claude is told what's free", () => {

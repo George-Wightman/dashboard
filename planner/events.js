@@ -59,10 +59,6 @@ export function linkedIds(description) {
   return [...String(description ?? '').matchAll(/dashboard:([\w:.-]+)/g)].map((m) => m[1]);
 }
 
-// Google's event colours pair up dark and light. A rough block takes the light partner of the event
-// colour nearest its calendar's colour — Graphite when that colour is already a light one.
-const PALE = { 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '5', 7: '1', 8: '8', 9: '1', 10: '2', 11: '4' };
-
 function rgb(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? ''));
   if (!m) return null;
@@ -83,15 +79,4 @@ export function nearestColor(calendarHex, eventColors) {
     if (d < bestDistance) { best = id; bestDistance = d; }
   }
   return best;
-}
-
-// An event colour's light partner; Graphite when it is already a light one.
-export function paleOf(id) {
-  const pale = PALE[id] ?? '8';
-  return pale === String(id) ? '8' : pale;
-}
-
-export function roughColor(calendarHex, eventColors) {
-  const best = nearestColor(calendarHex, eventColors);
-  return best == null ? '8' : paleOf(best);
 }

@@ -63,7 +63,7 @@ test('first run: individually named tasks around fixed events, exact today and t
     '2026-09-17 09:00–09:30 ~ Read the NatCen pack',
   ]);
   const rough = cal.byTitle('~ Read the NatCen pack');
-  assert.equal(rough.colorId, '4');
+  assert.equal(rough.colorId, undefined);
   assert.deepEqual(rough.reminders, { useDefault: false, overrides: [] });
   const exact = cal.byTitle('Trace the pharma figure');
   assert.equal(exact.colorId, undefined);
@@ -184,16 +184,16 @@ test('ticked before its block: the block moves to end at the tick', () => {
 });
 
 // 27 Oct 2026: a block that ended unticked went at once and the task was booked again later, or the
-// next day — when George just hadn't ticked yet. It now waits, pale, where it was, until the next
+// next day — when George just hadn't ticked yet. It now waits where it was, until the next
 // day's hours begin.
-test('over and unticked: the block stays where it was, pale, and nothing is booked again', () => {
+test('over and unticked: the block stays where it was, in full colour, and nothing is booked again', () => {
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
   const later = step(cal, doc, now(TUE, '14:00'), first.days);
-  assert.deepEqual(later.actions.map((a) => a.op), ['patch']);
+  assert.deepEqual(later.actions, []);
   const e = cal.byTitle('Chase the GSS outcome');
   assert.equal(span(e), '13:15–13:45');
-  assert.equal(e.colorId, '4');
+  assert.equal(e.colorId, undefined);
   assert.equal(e.extendedProperties.private.dashState, 'exact');
   assert.equal(cal.mine().filter((x) => x.summary.includes('Chase')).length, 1);
   assert.deepEqual(later.days[TUE].missed, []);
