@@ -87,6 +87,7 @@ object Widgets {
     // The widget for one tile: its colours, title, the time it was fetched (tap to fetch again), the
     // big number and caption, and its lines. A tap anywhere else opens the tile in the dashboard.
     fun views(ctx: Context, tileId: String, tile: Tile?, fetchedAt: Long, error: String?, connected: Boolean): RemoteViews {
+        if (tileId == "hebrew" && connected && tile?.voice != null) return hebrewViews(ctx, tile, tile.voice, fetchedAt, error)
         val v = RemoteViews(ctx.packageName, R.layout.widget_tile)
         v.setInt(R.id.root, "setBackgroundResource", BACKGROUND.getValue(tileId))
         val ink = INK.getValue(tileId)
@@ -119,6 +120,58 @@ object Widgets {
         ))
         v.setOnClickPendingIntent(R.id.updated, PendingIntent.getBroadcast(
             ctx, tileId.hashCode() + 1, Intent(ctx, PROVIDERS.getValue(tileId)).setAction(ACTION_REFRESH),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        ))
+        return v
+    }
+
+    private val DOTS = intArrayOf(R.id.dot0, R.id.dot1, R.id.dot2, R.id.dot3, R.id.dot4, R.id.dot5, R.id.dot6)
+
+    // The Hebrew widget, in the Hebrew app's paper and ink (its style guide: gold only for what he
+    // did, teal only for today). Day or night by the planner's clock, not the phone's dark mode.
+    fun hebrewViews(ctx: Context, tile: Tile, voice: Voice, fetchedAt: Long, error: String?): RemoteViews {
+        val v = RemoteViews(ctx.packageName, R.layout.widget_hebrew)
+        val n = voice.night
+        fun c(day: Int, night: Int) = ctx.getColor(if (n) night else day)
+        val ink = c(R.color.heb_ink_day, R.color.heb_ink_night)
+        val muted = c(R.color.heb_muted_day, R.color.heb_muted_night)
+        val gold = c(R.color.heb_gold_day, R.color.heb_gold_night)
+        val teal = c(R.color.heb_teal_day, R.color.heb_teal_night)
+        v.setInt(R.id.heb_root, "setBackgroundResource", if (n) R.drawable.bg_hebrew_night else R.drawable.bg_hebrew_day)
+        v.setTextViewText(R.id.heb_label, voice.label)
+        v.setTextViewText(R.id.heb_word, voice.hebrew)
+        v.setTextViewText(R.id.heb_line, voice.line)
+        v.setTextViewText(R.id.heb_aside, voice.aside)
+        v.setTextColor(R.id.heb_label, muted)
+        v.setTextColor(R.id.heb_word, muted)
+        v.setTextColor(R.id.heb_line, if (voice.level == "gold") gold else ink)
+        v.setTextColor(R.id.heb_aside, muted)
+        v.setTextColor(R.id.updated, muted)
+        for ((i, id) in DOTS.withIndex()) {
+            val state = voice.week.getOrNull(i) ?: "ahead"
+            val (shape, colour) = when (state) {
+                "gold" -> R.drawable.dot_ring_fill to gold
+                "done" -> R.drawable.dot_fill to gold
+                "bit" -> R.drawable.dot_half to gold
+                "duo" -> R.drawable.dot_half to muted
+                "miss" -> R.drawable.dot_dashed to muted
+                "today" -> R.drawable.dot_ring_bold to teal
+                else -> R.drawable.dot_ring to muted
+            }
+            v.setImageViewResource(id, shape)
+            v.setInt(id, "setColorFilter", colour)
+            v.setInt(id, "setImageAlpha", if (state == "ahead") 140 else 255)
+        }
+        v.setViewVisibility(R.id.heb_gold_bar, if (voice.level == "gold") View.VISIBLE else View.GONE)
+        v.setInt(R.id.heb_gold_bar, "setColorFilter", gold)
+        val stamp = if (fetchedAt > 0) SimpleDateFormat("HH:mm", Locale.UK).format(Date(fetchedAt)) else ""
+        v.setTextViewText(R.id.updated, if (error != null) "$stamp ⚠ ↻" else "$stamp ↻")
+        v.setOnClickPendingIntent(R.id.heb_root, PendingIntent.getActivity(
+            ctx, "hebrew".hashCode(), Intent(Intent.ACTION_VIEW, Uri.parse(tile.open)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        ))
+        v.setOnClickPendingIntent(R.id.updated, PendingIntent.getBroadcast(
+            ctx, "hebrew".hashCode() + 1, Intent(ctx, HebrewWidget::class.java).setAction(ACTION_REFRESH),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         ))
         return v

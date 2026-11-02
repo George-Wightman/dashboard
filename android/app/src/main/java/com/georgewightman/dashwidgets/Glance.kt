@@ -9,12 +9,19 @@ import java.net.URL
 // What the widgets show, as the planner's web app sends it (js/glance.js): for each tile a title, a
 // big number with its caption, a few lines, and the dashboard link a tap opens. The app only lays
 // these out, so what a widget says changes on the dashboard's side without a new app.
-data class Tile(val title: String, val number: String, val caption: String, val lines: List<String>, val open: String)
+data class Tile(val title: String, val number: String, val caption: String, val lines: List<String>, val open: String, val voice: Voice? = null)
+
+// The Hebrew widget's words (js/hebrew-voice.js): a small label, a Hebrew word, the line and its
+// aside, how the day stands (none, bit, done, gold), whether it's the night look, and the week's seven
+// days (gold, done, bit, duo, miss, today, ahead).
+data class Voice(val label: String, val hebrew: String, val line: String, val aside: String, val level: String, val night: Boolean, val week: List<String>)
 
 class GlanceException(message: String) : Exception(message)
 
 object Glance {
     const val SITE = "https://george-wightman.github.io/dashboard/"
+    // The Hebrew app: the one other place a widget may open.
+    const val HEBREW_APP = "https://george-wightman.github.io/hebrew-reader/"
     val TILES = listOf("day", "fuel", "hebrew", "body", "goals", "countdown", "week", "map")
     // Not more often than this, however many widgets ask at once.
     private const val FRESH_MS = 5 * 60 * 1000L
@@ -35,8 +42,16 @@ object Glance {
                 number = t.optString("number"),
                 caption = t.optString("caption"),
                 lines = if (lines == null) emptyList() else (0 until lines.length()).map { lines.getString(it) },
-                // Only ever the dashboard: a setup link from somewhere else can't make a tap open any page it likes.
-                open = t.optString("open", SITE).let { if (it.startsWith(SITE)) it else SITE },
+                // Only ever the dashboard or the Hebrew app: a setup link from somewhere else can't make a tap open any page it likes.
+                open = t.optString("open", SITE).let { if (it.startsWith(SITE) || it.startsWith(HEBREW_APP)) it else SITE },
+                voice = t.optJSONObject("voice")?.let { v ->
+                    val week = v.optJSONArray("week")
+                    Voice(
+                        label = v.optString("label"), hebrew = v.optString("hebrew"), line = v.optString("line"), aside = v.optString("aside"),
+                        level = v.optString("level", "none"), night = v.optBoolean("night"),
+                        week = if (week == null) emptyList() else (0 until week.length()).map { week.getString(it) },
+                    )
+                },
             )
         }
         return out

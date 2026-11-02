@@ -8,6 +8,12 @@
       "port": 8080
     },
     {
+      "name": "hebrew-reader",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8778", "--directory", "C:/Users/gwigh/My Drive (georgewight03@gmail.com)/Hebrew Learning"],
+      "port": 8778
+    },
+    {
       "name": "dashboard-8081",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8081"],

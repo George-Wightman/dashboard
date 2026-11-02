@@ -48,6 +48,8 @@ class WidgetsTest {
         val tiles = Glance.parse("""{"tiles":{"fuel":{"title":"Fuel","open":"https://evil.example/?big=fuel"},"goals":{"title":"Goals","open":"intent://x#Intent;end"}}}""")
         assertEquals(Glance.SITE, tiles.getValue("fuel").open)
         assertEquals(Glance.SITE, tiles.getValue("goals").open)
+        val hebrew = Glance.parse("""{"tiles":{"hebrew":{"title":"Hebrew","open":"https://george-wightman.github.io/hebrew-reader/hebrew-reader.html"}}}""")
+        assertEquals("https://george-wightman.github.io/hebrew-reader/hebrew-reader.html", hebrew.getValue("hebrew").open)
     }
 
     @Test(expected = GlanceException::class) fun aRefusalIsAnError() {
@@ -87,6 +89,31 @@ class WidgetsTest {
                 // Something to read: lines, or the big number (a countdown to one date has only that).
                 assertTrue(id, view.findViewById<TextView>(R.id.lines).text.isNotEmpty() || view.findViewById<TextView>(R.id.number).text.isNotEmpty())
             }
+        }
+    }
+
+    // The Hebrew widget with its words (js/hebrew-voice.js), in each of its looks. Invented, like SAMPLE.
+    private fun hebrewSample(level: String, night: Boolean) = """{"tiles":{"hebrew":{"title":"Hebrew","number":"0:45","caption":"of 3.5 h this week","lines":[],
+"open":"https://george-wightman.github.io/hebrew-reader/hebrew-reader.html",
+"voice":{"label":"3 of 7 this week","hebrew":"יאללה","line":"You've got half an hour. I know you have.","aside":"Do it now, before it's 10pm and you can't be bothered.",
+"level":"$level","night":$night,"week":["done","gold","miss","duo","bit","today","ahead"]}}}}"""
+
+    @Test fun theHebrewWidgetSpeaksAndOpensTheHebrewApp() {
+        val out = File("build/widget-shots").apply { mkdirs() }
+        for ((name, level, night) in listOf(Triple("day", "none", false), Triple("night", "none", true), Triple("gold", "gold", false))) {
+            val tile = Glance.parse(hebrewSample(level, night)).getValue("hebrew")
+            assertEquals("https://george-wightman.github.io/hebrew-reader/hebrew-reader.html", tile.open)
+            assertEquals(7, tile.voice!!.week.size)
+            val view = Widgets.views(ctx, "hebrew", tile, 1_761_029_604_000L, null, connected = true).apply(ctx, FrameLayout(ctx))
+            val w = 340 * 3
+            val h = 170 * 3
+            view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+            view.layout(0, 0, w, h)
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bmp))
+            File(out, "hebrew-voice-$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            assertEquals("You've got half an hour. I know you have.", view.findViewById<TextView>(R.id.heb_line).text.toString())
+            assertEquals(if (level == "gold") View.VISIBLE else View.GONE, view.findViewById<View>(R.id.heb_gold_bar).visibility)
         }
     }
 

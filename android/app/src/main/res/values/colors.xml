@@ -15,4 +15,14 @@
     <color name="on_map">#EAF0F4</color>
     <color name="accent">#3F3A9E</color>
     <color name="icon_bg">#FFF3E3</color>
+    <!-- The Hebrew widget, in the Hebrew app's own palette (its docs/style-guide.md). Day and night are
+         chosen by the planner's clock, so both sets live here rather than in values-night. -->
+    <color name="heb_ink_day">#2A2620</color>
+    <color name="heb_ink_night">#ECE3CF</color>
+    <color name="heb_muted_day">#6B665C</color>
+    <color name="heb_muted_night">#A89E89</color>
+    <color name="heb_gold_day">#B3803A</color>
+    <color name="heb_gold_night">#D6A55A</color>
+    <color name="heb_teal_day">#0D6E6E</color>
+    <color name="heb_teal_night">#52B8AA</color>
 </resources>
