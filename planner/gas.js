@@ -5,7 +5,7 @@
 
 import { createStore, DATA_KEY, SETTINGS_KEY } from '../js/data.js';
 import { emptyDoc, isDoc } from '../js/doc.js';
-import { createGitHubClient, syncOnce } from '../js/sync.js';
+import { createGitHubClient, syncOnce, encodeBase64, decodeBase64 } from '../js/sync.js';
 import { readPlannerConfig, dayRecordId, plannerStatus, CALENDAR_DEFAULTS } from '../js/calendar.js';
 import { scrubText } from '../js/flags.js';
 import { MODELS, ENDPOINT, readReply } from '../js/gemini.js';
@@ -555,29 +555,43 @@ export function createPlanner({
     return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
   }
 
-  // The web app's doGet: a tap on a block's ✓ link. Ticks the item and saves at once; the calendar
-  // follows at the next run. Never throws: George sees a line saying what happened.
-  async function tick(e) {
+  // The web app's doGet: a tap on a block's ✓ link. Apps Script can't wait for a promise in doGet (2 Nov
+  // 2026: "the returned value is not a supported return type"), so this reads and writes data.json
+  // straight through UrlFetchApp, as the relay does: read, tick, write with its sha, again on a clash.
+  // The calendar follows at the next run. Never throws: George sees a line saying what happened.
+  function tick(e) {
+    const say = (text) => (ContentService ? ContentService.createTextOutput(text) : text);
     const lock = LockService.getScriptLock();
-    let text;
-    if (!lock.tryLock(30000)) text = 'The planner is busy — tap the link again in a minute.';
-    else {
-      try {
-        const session = await open();
-        const res = handleTick({ params: e?.parameter ?? {}, store: session.store, hmacHex: signer(), now: now() });
-        text = res.text;
-        if (session.changed()) {
-          const saved = await syncOnce({ store: session.store, client: session.client });
-          if (!saved.ok) text = `Couldn't save the tick: ${clean(saved.error)}. Tap the link again.`;
-        }
-      } catch (err) {
-        text = `Couldn't tick it: ${clean(err?.message ?? err)}`;
-      } finally {
-        lock.releaseLock();
+    if (!lock.tryLock(30000)) return say('The planner is busy — tap the link again in a minute.');
+    try {
+      const repo = get('SYNC_REPO');
+      const url = `https://api.github.com/repos/${repo}/contents/data.json`;
+      const headers = { Authorization: `Bearer ${get('GITHUB_TOKEN')}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+      const call = (method, to, body) => {
+        const res = UrlFetchApp.fetch(to, { method, headers, muteHttpExceptions: true, ...(body ? { payload: JSON.stringify(body), contentType: 'application/json' } : {}) });
+        return { status: res.getResponseCode(), json: () => JSON.parse(res.getContentText()) };
+      };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const got = call('get', url);
+        if (got.status !== 200) return say(`Couldn't read the dashboard (GitHub ${got.status}). Tap the link again.`);
+        const file = got.json();
+        // Over 1 MB, the Contents API leaves the content out: read it as a blob.
+        const content = file.content && file.encoding !== 'none' ? file.content : call('get', `https://api.github.com/repos/${repo}/git/blobs/${file.sha}`).json().content;
+        const store = createStore({ storage: new MemoryStorage({ [DATA_KEY]: decodeBase64(content), [SETTINGS_KEY]: JSON.stringify({ dayStartHour: dayStartHour() }) }), now });
+        let changed = false;
+        store.subscribe((reason) => { if (reason === 'local') changed = true; });
+        const res = handleTick({ params: e?.parameter ?? {}, store, hmacHex: signer(), now: now() });
+        if (!changed) return say(res.text);
+        const put = call('put', url, { message: 'sync', content: encodeBase64(JSON.stringify(store.doc())), sha: file.sha });
+        if (put.status === 200 || put.status === 201) return say(res.text);
+        if (put.status !== 409 && put.status !== 422) return say(`Couldn't save the tick (GitHub ${put.status}). Tap the link again.`);
       }
+      return say('Another device kept writing at the same moment — tap the link again.');
+    } catch (err) {
+      return say(`Couldn't tick it: ${clean(err?.message ?? err)}`);
+    } finally {
+      lock.releaseLock();
     }
-    if (!ContentService) return text;
-    return ContentService.createTextOutput(text);
   }
 
   return { run, install, pause, resume, removeAll, relay, tick };

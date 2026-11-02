@@ -87,12 +87,12 @@ test('each block carries a signed ✓ link that ticks it in one tap', async () =
   const parameter = Object.fromEntries(link.searchParams);
   assert.deepEqual({ tick: parameter.tick, day: parameter.day }, { tick: 'email', day: TUE });
 
-  assert.match(await planner.tick({ parameter: { ...parameter, sig: 'f'.repeat(32) } }), /isn't one the planner made/);
+  assert.match(planner.tick({ parameter: { ...parameter, sig: 'f'.repeat(32) } }), /isn't one the planner made/);
   assert.ok(!Object.values(repo.doc().logs ?? {}).some((l) => l.itemId === 'email'));
 
-  assert.match(await planner.tick({ parameter }), /^✓ Ticked "Email Sarah" for Tue 15 Sep/);
+  assert.match(planner.tick({ parameter }), /^✓ Ticked "Email Sarah" for Tue 15 Sep/);
   assert.equal(repo.doc().logs['calendar-done-email-' + TUE].status, 'active');
-  assert.match(await planner.tick({ parameter }), /already ticked/);
+  assert.match(planner.tick({ parameter }), /already ticked/);
 });
 
 test('no web app address: no link, and nothing else changes', async () => {

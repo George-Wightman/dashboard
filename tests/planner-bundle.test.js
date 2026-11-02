@@ -37,6 +37,10 @@ test('the bundle runs with none of the browser globals, as in Apps Script', asyn
   // As a calendar edit, so it runs whatever the hour (a timed run between 00:10 and 06:00 is 'night').
   assert.equal(await context.Planner.run({ calendarId: 'primary' }), 'ok');
   assert.ok(cal.mine().length >= 1);
+  // A tap answers at once: Apps Script's doGet can't wait for a promise.
+  const tapped = context.Planner.tick({ parameter: { tick: 'a', day: today, sig: '0'.repeat(32) } });
+  assert.equal(typeof tapped, 'string');
+  assert.match(tapped, /isn't one the planner made/);
   // The ✓ links are signed inside Apps Script too.
   assert.ok(cal.mine().some((e) => /^✓ Done\? Tap: https:\/\/script\.google\.com\/macros\/s\/abc\/exec\?tick=\w+&day=[\d-]+&sig=[0-9a-f]{32}$/m.test(e.description)));
   assert.equal(repo.doc().calendar.status.version, build);
