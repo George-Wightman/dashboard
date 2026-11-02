@@ -18,6 +18,7 @@ import { resolveId, shortId } from './ids.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
+import { setEuDays, dayRange, euSummary, EU_LIMIT } from '../js/eu.js';
 
 const extraDetails = (op) => op.details === undefined ? {} : { details: checkDetails(op.details) };
 
@@ -630,6 +631,24 @@ function countdown(store, op) {
   return `Counting down to ${q(c.title)} on ${dayName(c.day, today)} (${daysLeft(daysBetween(today, c.day))}) · #${id}`;
 }
 
+// Days in the EU (js/eu.js): marks the days from `from` to `to` (both counted, as the rule counts
+// the days he flies in and out), or unmarks them with `clear`. Past days are days he was there,
+// later ones a visit he's planning. Says how that leaves the 90.
+function eu(store, op) {
+  const today = store.today();
+  if (op.from == null) throw new Error('Marking EU days needs "from" (and "to" for more than one day)');
+  const from = toDay(op.from, today);
+  const to = op.to == null ? from : toDay(op.to, today);
+  if (to < from) throw new Error('"to" is before "from"');
+  if (dayRange(from, to).length > 366) throw new Error('That is more than a year of days — check the dates');
+  const on = op.clear !== true;
+  const n = setEuDays(store, dayRange(from, to), on, CLAUDE);
+  const s = euSummary(store.doc(), today);
+  const what = from === to ? dayName(from, today) : `${dayName(from, today)} to ${dayName(to, today)}`;
+  return `${on ? 'Marked' : 'Cleared'} ${what} as ${on ? 'in the EU' : 'not in the EU'} (${n} day${n === 1 ? '' : 's'} changed) · ${s.used} of ${EU_LIMIT} used today, ${s.left} left`
+    + (s.over ? ` · plans go over 90 on ${dayName(s.over, today)}` : s.planned ? ' · plans fit' : '');
+}
+
 // Today's brief (or another day's): one or two lines on what matters and why.
 function brief(store, op) {
   const text = str(op.text);
@@ -849,6 +868,7 @@ export const FIELDS = {
   off: ['start', 'end', 'areas', 'reason', 'cancel'],
   brief: ['text', 'day'],
   countdown: ['title', 'day', 'cancel'],
+  eu: ['from', 'to', 'clear'],
 };
 
 // Plan entries retain the same practical controls as their standalone counterparts.
@@ -905,7 +925,7 @@ export const OPS = {
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
   log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym,
-  details, rule, report, review, meal, session,
+  details, rule, report, review, meal, session, eu,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff

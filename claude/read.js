@@ -14,6 +14,7 @@ import {
 } from '../js/calendar.js';
 import { attention } from '../js/attention.js';
 import { zoneNote, deviceZone } from '../js/travel.js';
+import { euDays, euSummary, EU_LIMIT } from '../js/eu.js';
 import {
   gymConfig, gymStatus, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
 } from '../js/gym.js';
@@ -105,8 +106,21 @@ function week(doc, day) {
   if (counting.length) out.push('Counting down to:', ...counting.map((c) => `  ${q(c.title)} · ${dayName(c.day, day)} (${daysLeft(c.days)}) ${tag(c.id)}`));
   const offs = timeOff(doc).filter((o) => o.end.slice(0, 10) >= day);
   if (offs.length) out.push('Time off coming:', ...offs.map((o) => `  ${offText(o)} ${tag(o.id)}`));
+  out.push(...euLines(doc, day));
   out.push(...calendarLines(doc, day));
   return out.join('\n');
+}
+
+// Days in the EU (js/eu.js), when he's marked any: where he stands under the 90-in-180 rule.
+function euLines(doc, day) {
+  if (!euDays(doc).size) return [];
+  const s = euSummary(doc, day);
+  const span = (v) => (v.start === v.end ? dayName(v.start, day) : `${dayName(v.start, day)} to ${dayName(v.end, day)}`);
+  return [`EU days (90 in any 180): ${s.used} of ${EU_LIMIT} used today, ${s.left} left`
+    + (s.here ? ` · in the EU now until ${dayName(s.here.end, day)}` : '')
+    + (s.next ? ` · next visit ${span(s.next)} (${s.next.days} days)` : '')
+    + (s.over ? ` · PLANS GO OVER 90 on ${dayName(s.over, day)}` : s.planned ? ` · ${s.planned} planned days fit` : '')
+    + (s.back ? ` · days start coming back ${dayName(s.back, day)}` : '')];
 }
 
 // What the planner booked for the next seven days, from its day records (js/calendar.js).
@@ -356,6 +370,8 @@ function catchup(doc, today, arg, now = new Date()) {
   if (notes.length) out.push("The planner's notes today:", ...notes.map((x) => `  ${x}`));
   const needs = attention(doc, today);
   if (needs.length) out.push('Needs attention:', ...needs.map((x) => `  ${x}`));
+  // EU days only when his plans go over the 90 (the week read always has them).
+  if (euDays(doc).size && euSummary(doc, today).over) out.push(...euLines(doc, today));
   const open = openFlags(doc).length;
   if (open) out.push(`${open} open flag${open === 1 ? '' : 's'} in all (flags).`);
   return out.join('\n');

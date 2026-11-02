@@ -1,5 +1,5 @@
-// Daylight's tiles beside the timeline: Needs you, Body, Hebrew, Goals, Your weeks, Countdown and
-// This week. Each is a coloured card with one job; most reuse the classic widget's content (restyled
+// Daylight's tiles beside the timeline: Needs you, Body, Hebrew, Goals, Your weeks, Countdown, EU
+// days and This week. Each is a coloured card with one job; most reuse the classic widget's content (restyled
 // by styles/daylight.css), Body and Hebrew add a big number on top (js/tiles.js), and those with a
 // long view open it big with ⤢. In Arrange mode tiles can be dragged (or nudged with ↑ ↓ on touch and
 // narrow windows), hidden, and brought back. The arrangement is this device's own (js/tiles.js).
@@ -20,6 +20,7 @@ import { noteBlock } from './noteslot.js';
 import { hebrewMinutesId } from '../tiles.js';
 import { openBig } from './big.js';
 import { renderMapTile, renderMapBig } from './map.js';
+import { renderEuTile, renderEuBig } from './eu.js';
 
 // Parts of a tile one under the other, or nothing when none has anything to show.
 const stacked = (...parts) => {
@@ -62,6 +63,8 @@ export const TILES = [
   { id: 'goals', title: 'Goals', area: 'goals', render: renderGoals },
   { id: 'weeks', title: 'Your weeks', area: 'weeks', render: renderHistory, big: renderHistoryBig },
   { id: 'countdown', title: 'Countdown', area: 'countdown', render: renderCountdown },
+  // Days in the EU (js/ui/eu.js): the calendar to mark them is its big view.
+  { id: 'eu', title: 'EU days', area: 'eu', render: (ctx) => renderEuTile({ ...ctx, openEu: () => openBig(ctx, BY_ID.get('eu')) }), big: renderEuBig },
   // The map (js/ui/map.js): its picture opens it big too. A map that can't draw says so in its own
   // tile rather than taking the rest of the screen with it.
   {

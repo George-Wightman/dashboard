@@ -39,6 +39,10 @@
   --dl-busy-1: #F6EEE3;
   --dl-busy-2: #F1E7D9;
   --dl-shadow: #F3E3CF;
+  --dl-eu: #2B4CB8;
+  --dl-on-eu: #FFFFFF;
+  --dl-eu-soft: #E6ECFA;
+  --dl-eu-over: #C8423A;
   --dl-display: 'Bricolage Grotesque', ui-rounded, system-ui, 'Segoe UI', sans-serif;
   --dl-text: 'Figtree', system-ui, 'Segoe UI', sans-serif;
   --dl-hebrew-font: 'Rubik', 'Segoe UI', 'Arial Hebrew', sans-serif;
@@ -91,6 +95,10 @@
   --dl-busy-1: #1C1A36;
   --dl-busy-2: #221F40;
   --dl-shadow: #0E0C20;
+  --dl-eu: #7F9BF0;
+  --dl-on-eu: #10163A;
+  --dl-eu-soft: #1E2550;
+  --dl-eu-over: #F0806F;
   color-scheme: dark;
 }
 
@@ -286,6 +294,7 @@
 .tile[data-area="needs"] { --tile-bg: var(--dl-needs); --tile-ink: var(--dl-on-needs); box-shadow: none; grid-column: 1 / -1; }
 .tile[data-area="goals"] { --tile-bg: var(--dl-goals); box-shadow: none; }
 .tile[data-area="countdown"] { --tile-bg: var(--dl-soft); box-shadow: none; }
+.tile[data-area="eu"] { --tile-bg: var(--dl-eu-soft); box-shadow: none; }
 /* The classic widget inside a tile takes the tile's colours. */
 .tile { --ink: var(--tile-ink); --muted: color-mix(in srgb, var(--tile-ink) 78%, var(--tile-bg)); --panel: color-mix(in srgb, var(--tile-ink) 10%, var(--tile-bg)); --border: color-mix(in srgb, var(--tile-ink) 22%, var(--tile-bg)); }
 .tile[data-area="hebrew"] { --accent: #FFD36B; --gold: #FFD36B; --lvl1: rgba(255, 211, 107, .25); --lvl2: rgba(255, 211, 107, .5); --lvl3: rgba(255, 211, 107, .75); --lvl4: #FFD36B; }
@@ -594,3 +603,38 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .map-chronicle ol { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
 .map-chronicle li { display: block; line-height: 1.45; }
 .map-chronicle q { display: block; margin-top: 2px; font-style: italic; color: var(--dl-muted); }
+
+/* ---- EU days (js/ui/eu.js) ---------------------------------------------------------------------- */
+
+.eu-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: color-mix(in srgb, var(--dl-eu) 16%, var(--dl-card)); }
+.eu-bar i { display: block; height: 100%; }
+.eu-bar-used, .eu-d.eu-in, .eu-key.eu-in::before { background: var(--dl-eu); }
+.eu-bar-plan, .eu-d.eu-plan, .eu-key.eu-plan::before { background: repeating-linear-gradient(45deg, var(--dl-eu) 0 3px, color-mix(in srgb, var(--dl-eu) 45%, var(--dl-card)) 3px 6px); }
+.eu-facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 15px; }
+.eu-warn { color: var(--dl-eu-over); font-weight: 600; }
+.big.eu .eu-warn { margin: 0 0 12px; }
+.eu-summary { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0 0 14px; }
+.eu-stat { display: grid; min-width: 110px; }
+.eu-n { font: 800 34px/1 var(--dl-display); }
+.eu-t { font-size: 13px; color: var(--dl-muted); }
+.eu-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--dl-muted); }
+.eu-key::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -2px; }
+.eu-key.eu-over::before { background: var(--dl-eu-over); }
+.eu-key.eu-back::before { background: var(--dl-line); box-shadow: inset 0 -3px 0 var(--dl-gold); }
+.eu-how { font-size: 13px; margin: 8px 0 4px; }
+.eu-line { min-height: 1.5em; margin: 6px 0 12px; }
+.eu-months { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px 22px; user-select: none; -webkit-user-select: none; }
+.eu-month h4 { margin: 0 0 6px; font: 700 15px/1.2 var(--dl-display); }
+.eu-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.eu-dow { font-size: 11px; color: var(--dl-muted); text-align: center; }
+.eu-d { aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--dl-ink) 5%, transparent); color: var(--dl-ink); font: 600 12px/1 var(--dl-text); display: flex; align-items: center; justify-content: center; cursor: pointer; touch-action: pan-y; -webkit-touch-callout: none; }
+.eu-d.eu-before { background: none; color: color-mix(in srgb, var(--dl-muted) 55%, transparent); cursor: default; }
+.eu-d.eu-in, .eu-d.eu-plan { color: var(--dl-on-eu); }
+.eu-d.eu-over { background: var(--dl-eu-over); color: #fff; }
+.eu-d.eu-back { box-shadow: inset 0 -3px 0 var(--dl-gold); }
+.eu-d.eu-today { outline: 2px solid var(--dl-gold); outline-offset: -2px; font-weight: 800; }
+.eu-d.eu-pick { background: color-mix(in srgb, var(--dl-eu) 70%, var(--dl-card)); color: var(--dl-on-eu); }
+.eu-d.eu-pick.eu-unpick { background: color-mix(in srgb, var(--dl-ink) 14%, transparent); color: var(--dl-muted); text-decoration: line-through; }
+@media (hover: hover) { .eu-d:not(.eu-before):hover { box-shadow: 0 0 0 2px var(--dl-ink); } }
+/* One long calendar: the sheet's two columns would split the months out of order. */
+.sheet .big.eu, .big.eu { column-count: auto; columns: auto; }

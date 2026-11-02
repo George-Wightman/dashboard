@@ -51,7 +51,7 @@ are safe. Several ops in one `apply` are one sync:
 
 Ops: `task`, `habit`, `target`, `goal`, `milestone`, `plan`, `done`, `undone`, `log`, `edit`,
 `archive`, `accept`, `dismiss`, `flag`, `handoff`, `undo`, `planner`, `off`, `brief`, `countdown`, `gym`,
-`session`, `meal`.
+`session`, `meal`, `eu`.
 Additional controls: `details`, `rule`, `report`, `review`; inspect their capabilities before use.
 Every field is in `reference.md` in this folder — read it before using anything beyond a plain task, tick
 or log.

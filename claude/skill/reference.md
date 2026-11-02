@@ -19,6 +19,7 @@ Pick the row, not the whole file. The detail for each command is below.
 | Mark a day, or some hours, off | `planner` | `off` |
 | Write the line at the top of George's day | `today` | `brief` |
 | Count down to a date (the assessment centre, a birthday) | `week` | `countdown` |
+| Mark days in the EU, or a visit he's planning (90 days in any 180) | `week` | `eu` |
 | Break a big job into stages | `goals` | `plan` |
 | See what needs you | `attention` | `edit`, `off`, `brief` |
 | Check his training | `gym` | `gym` settings, the Gym habit's `notes` |
@@ -328,6 +329,13 @@ tasks on it. The planner rebooks work between days, so a brief naming tasks simp
 `{"op": "countdown", "title": "Assessment centre", "day": "2026-10-05"}` — a date George is counting
 down to, shown with the days left in his Countdown widget; nothing is booked for it. `week` lists them
 with their ids; `{"op": "countdown", "cancel": "count:2026-10-05:1"}` stops one.
+
+### `eu`
+`{"op": "eu", "from": "2026-11-20", "to": "2026-12-04"}` — marks those days in his EU days tile, both
+ends included (the days he flies in and out count under the 90-in-180 rule). Past days are days he was
+there; later ones are a visit he's planning. `"clear": true` unmarks them instead. One day: just
+`from`. The reply and the `week` read say how many of the 90 he's used, his next visit, and the first
+day his plans go over 90, if they do. Tell him when they do, and when he'd have days back.
 
 ### `gym`
 Hevy's settings on the dashboard (nothing is ever sent to Hevy). `{"op": "gym", "cardioQuota":
