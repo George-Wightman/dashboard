@@ -80,8 +80,10 @@ object Widgets {
 
     fun draw(ctx: Context, mgr: AppWidgetManager, tileId: String, ids: IntArray) {
         if (ids.isEmpty()) return
-        val views = views(ctx, tileId, Glance.cached(ctx)[tileId], Glance.fetchedAt(ctx), Glance.lastError(ctx), Glance.connected(ctx))
+        val tile = Glance.cached(ctx)[tileId]
+        val views = views(ctx, tileId, tile, Glance.fetchedAt(ctx), Glance.lastError(ctx), Glance.connected(ctx))
         for (id in ids) mgr.updateAppWidget(id, views)
+        if (tileId == "hebrew") scheduleHebrew(ctx, tile?.voice?.card)
     }
 
     // The widget for one tile: its colours, title, the time it was fetched (tap to fetch again), the
@@ -128,7 +130,9 @@ object Widgets {
     private val DOTS = intArrayOf(R.id.dot0, R.id.dot1, R.id.dot2, R.id.dot3, R.id.dot4, R.id.dot5, R.id.dot6)
 
     // The Hebrew widget, in the Hebrew app's paper and ink (its style guide: gold only for what he
-    // did, teal only for today). Day or night by the planner's clock, not the phone's dark mode.
+    // did, teal only for today). Day or night by the planner's clock, not the phone's dark mode. One
+    // card at a time (word, phrase, encouragement, a big number, the week's numbers); the sections it
+    // doesn't use are hidden, so it suits a tall widget as well as a wide one.
     fun hebrewViews(ctx: Context, tile: Tile, voice: Voice, fetchedAt: Long, error: String?): RemoteViews {
         val v = RemoteViews(ctx.packageName, R.layout.widget_hebrew)
         val n = voice.night
@@ -137,16 +141,34 @@ object Widgets {
         val muted = c(R.color.heb_muted_day, R.color.heb_muted_night)
         val gold = c(R.color.heb_gold_day, R.color.heb_gold_night)
         val teal = c(R.color.heb_teal_day, R.color.heb_teal_night)
+        val card = voice.card ?: Card("cheer", voice.label, voice.hebrew, voice.line, voice.aside, "", "", "", "", emptyList(), 0L)
         v.setInt(R.id.heb_root, "setBackgroundResource", if (n) R.drawable.bg_hebrew_night else R.drawable.bg_hebrew_day)
-        v.setTextViewText(R.id.heb_label, voice.label)
-        v.setTextViewText(R.id.heb_word, voice.hebrew)
-        v.setTextViewText(R.id.heb_line, voice.line)
-        v.setTextViewText(R.id.heb_aside, voice.aside)
-        v.setTextColor(R.id.heb_label, muted)
-        v.setTextColor(R.id.heb_word, muted)
-        v.setTextColor(R.id.heb_line, if (voice.level == "gold") gold else ink)
-        v.setTextColor(R.id.heb_aside, muted)
-        v.setTextColor(R.id.updated, muted)
+
+        fun text(id: Int, value: String, colour: Int) {
+            v.setTextViewText(id, value)
+            v.setTextColor(id, colour)
+            v.setViewVisibility(id, if (value.isBlank()) View.GONE else View.VISIBLE)
+        }
+        text(R.id.heb_label, (if (error != null) "⚠ " else "") + card.label, muted)
+        text(R.id.heb_word, card.hebrew, muted)
+        val isWord = card.kind == "word" || card.kind == "phrase"
+        val isBig = card.big.isNotBlank()
+        text(R.id.heb_big, card.big, if (card.kind == "gold") gold else ink)
+        text(R.id.heb_line, if (isWord || card.kind == "numbers") "" else card.line, if (card.kind == "gold") gold else ink)
+        text(R.id.heb_he, if (isWord) card.he else "", ink)
+        text(R.id.heb_tr, if (isWord) card.tr else "", muted)
+        text(R.id.heb_en, if (isWord) card.en else "", ink)
+        text(R.id.heb_aside, if (isWord) "" else card.aside, muted)
+        // A big number or a word sits in the middle; the rest reads from the top.
+        v.setViewVisibility(R.id.heb_top_space, if (isBig || isWord) View.VISIBLE else View.GONE)
+        val stats = if (card.kind == "numbers") card.stats else emptyList()
+        v.setViewVisibility(R.id.heb_stats, if (stats.isEmpty()) View.GONE else View.VISIBLE)
+        val statIds = listOf(R.id.stat_n0 to R.id.stat_t0, R.id.stat_n1 to R.id.stat_t1, R.id.stat_n2 to R.id.stat_t2)
+        for ((i, ids) in statIds.withIndex()) {
+            val s = stats.getOrNull(i)
+            text(ids.first, s?.first ?: "", if (i == 0) gold else ink)
+            text(ids.second, s?.second ?: "", muted)
+        }
         for ((i, id) in DOTS.withIndex()) {
             val state = voice.week.getOrNull(i) ?: "ahead"
             val (shape, colour) = when (state) {
@@ -162,19 +184,32 @@ object Widgets {
             v.setInt(id, "setColorFilter", colour)
             v.setInt(id, "setImageAlpha", if (state == "ahead") 140 else 255)
         }
+        for (id in DAYS) v.setTextColor(id, muted)
         v.setViewVisibility(R.id.heb_gold_bar, if (voice.level == "gold") View.VISIBLE else View.GONE)
         v.setInt(R.id.heb_gold_bar, "setColorFilter", gold)
-        val stamp = if (fetchedAt > 0) SimpleDateFormat("HH:mm", Locale.UK).format(Date(fetchedAt)) else ""
-        v.setTextViewText(R.id.updated, if (error != null) "$stamp ⚠ ↻" else "$stamp ↻")
         v.setOnClickPendingIntent(R.id.heb_root, PendingIntent.getActivity(
             ctx, "hebrew".hashCode(), Intent(Intent.ACTION_VIEW, Uri.parse(tile.open)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         ))
-        v.setOnClickPendingIntent(R.id.updated, PendingIntent.getBroadcast(
-            ctx, "hebrew".hashCode() + 1, Intent(ctx, HebrewWidget::class.java).setAction(ACTION_REFRESH),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        ))
+        v.setOnClickPendingIntent(R.id.heb_head, refreshIntent(ctx))
         return v
+    }
+
+    private val DAYS = intArrayOf(R.id.day0, R.id.day1, R.id.day2, R.id.day3, R.id.day4, R.id.day5, R.id.day6)
+
+    private fun refreshIntent(ctx: Context): PendingIntent = PendingIntent.getBroadcast(
+        ctx, "hebrew".hashCode() + 1, Intent(ctx, HebrewWidget::class.java).setAction(ACTION_REFRESH),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    // When the Hebrew card says it should change (a new slot, a shift ending), ask again then rather
+    // than whenever Android next wakes the widget (every 30 minutes at best). An inexact alarm: a few
+    // minutes late is fine, and it needs no permission.
+    fun scheduleHebrew(ctx: Context, card: Card?) {
+        val at = card?.nextAt ?: 0L
+        if (at <= System.currentTimeMillis()) return
+        val alarms = ctx.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        alarms.set(android.app.AlarmManager.RTC, at + 30_000L, refreshIntent(ctx))
     }
 
     private fun showNumber(v: RemoteViews, on: Boolean) = v.setViewVisibility(R.id.number_row, if (on) View.VISIBLE else View.GONE)

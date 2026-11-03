@@ -92,29 +92,53 @@ class WidgetsTest {
         }
     }
 
-    // The Hebrew widget with its words (js/hebrew-voice.js), in each of its looks. Invented, like SAMPLE.
-    private fun hebrewSample(level: String, night: Boolean) = """{"tiles":{"hebrew":{"title":"Hebrew","number":"0:45","caption":"of 3.5 h this week","lines":[],
+    // The Hebrew widget with its words (js/hebrew-voice.js) and each kind of card. Invented, like SAMPLE.
+    private fun hebrewSample(level: String, night: Boolean, card: String) = """{"tiles":{"hebrew":{"title":"Hebrew","number":"0:45","caption":"of 3.5 h this week","lines":[],
 "open":"https://george-wightman.github.io/hebrew-reader/hebrew-reader.html",
 "voice":{"label":"3 of 7 this week","hebrew":"יאללה","line":"You've got half an hour. I know you have.","aside":"Do it now, before it's 10pm and you can't be bothered.",
-"level":"$level","night":$night,"week":["done","gold","miss","duo","bit","today","ahead"]}}}}"""
+"level":"$level","night":$night,"week":["done","gold","miss","duo","bit","today","ahead"],"card":$card}}}}"""
 
-    @Test fun theHebrewWidgetSpeaksAndOpensTheHebrewApp() {
+    private val CARDS = mapOf(
+        "cheer" to """{"kind":"cheer","label":"3 of 7 this week","hebrew":"יאללה","line":"You've got half an hour. I know you have.","aside":"Do it now, before it's 10pm and you can't be bothered.","nextAt":"2030-01-01T11:00:00.000Z"}""",
+        "word" to """{"kind":"word","label":"Word of the day","hebrew":"מילה","word":{"he":"מטבח","tr":"mitbakh","en":"kitchen"},"nextAt":"2030-01-01T11:00:00.000Z"}""",
+        "phrase" to """{"kind":"phrase","label":"Salzburg in 3 days","hebrew":"משפט","word":{"he":"מה שלומך?","tr":"ma shlomekh?","en":"how are you? (to her)"}}""",
+        "numbers" to """{"kind":"numbers","label":"This week","hebrew":"השבוע","stats":[{"n":"1:05","t":"of Hebrew this week"},{"n":"3","t":"days practised"},{"n":"+4","t":"words to strong"}],"aside":"Ahead of where you were last week."}""",
+        "poster" to """{"kind":"poster","label":"3 days off the road","hebrew":"נו, באמת","big":"3","line":"days off the road, mate. Come on.","aside":"Ten minutes, just to get started."}""",
+        "gold" to """{"kind":"gold","label":"4 of 7 this week","hebrew":"מצוין","big":"34","line":"minutes. That's the good stuff.","aside":"4 words to strong. Same again tomorrow."}""",
+    )
+
+    private fun shoot(view: View, w: Int, h: Int, file: File) {
+        view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+        view.layout(0, 0, w, h)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bmp))
+        file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test fun theHebrewWidgetDrawsEachCardTallAndWide() {
         val out = File("build/widget-shots").apply { mkdirs() }
-        for ((name, level, night) in listOf(Triple("day", "none", false), Triple("night", "none", true), Triple("gold", "gold", false))) {
-            val tile = Glance.parse(hebrewSample(level, night)).getValue("hebrew")
+        for ((kind, json) in CARDS) {
+            val night = kind == "poster"
+            val level = if (kind == "gold") "gold" else "none"
+            val tile = Glance.parse(hebrewSample(level, night, json)).getValue("hebrew")
             assertEquals("https://george-wightman.github.io/hebrew-reader/hebrew-reader.html", tile.open)
-            assertEquals(7, tile.voice!!.week.size)
+            assertEquals(kind, tile.voice!!.card!!.kind)
             val view = Widgets.views(ctx, "hebrew", tile, 1_761_029_604_000L, null, connected = true).apply(ctx, FrameLayout(ctx))
-            val w = 340 * 3
-            val h = 170 * 3
-            view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
-            view.layout(0, 0, w, h)
-            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            view.draw(Canvas(bmp))
-            File(out, "hebrew-voice-$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            assertEquals("You've got half an hour. I know you have.", view.findViewById<TextView>(R.id.heb_line).text.toString())
+            // His home screen: two columns by four rows. And the wide one, for anyone who has it so.
+            shoot(view, 175 * 3, 400 * 3, File(out, "hebrew-tall-$kind.png"))
+            shoot(view, 340 * 3, 170 * 3, File(out, "hebrew-wide-$kind.png"))
+            when (kind) {
+                "word", "phrase" -> {
+                    assertEquals(View.VISIBLE, view.findViewById<View>(R.id.heb_he).visibility)
+                    assertEquals(View.GONE, view.findViewById<View>(R.id.heb_line).visibility)
+                }
+                "numbers" -> assertEquals("1:05", view.findViewById<TextView>(R.id.stat_n0).text.toString())
+                "poster", "gold" -> assertEquals(View.VISIBLE, view.findViewById<View>(R.id.heb_big).visibility)
+                else -> assertEquals("You've got half an hour. I know you have.", view.findViewById<TextView>(R.id.heb_line).text.toString())
+            }
             assertEquals(if (level == "gold") View.VISIBLE else View.GONE, view.findViewById<View>(R.id.heb_gold_bar).visibility)
         }
+        assertTrue(Glance.parse(hebrewSample("none", false, CARDS.getValue("word"))).getValue("hebrew").voice!!.card!!.nextAt > 0)
     }
 
     @Test fun beforeConnectingItSaysHow() {

@@ -14,7 +14,12 @@ data class Tile(val title: String, val number: String, val caption: String, val 
 // The Hebrew widget's words (js/hebrew-voice.js): a small label, a Hebrew word, the line and its
 // aside, how the day stands (none, bit, done, gold), whether it's the night look, and the week's seven
 // days (gold, done, bit, duo, miss, today, ahead).
-data class Voice(val label: String, val hebrew: String, val line: String, val aside: String, val level: String, val night: Boolean, val week: List<String>)
+data class Voice(val label: String, val hebrew: String, val line: String, val aside: String, val level: String, val night: Boolean, val week: List<String>, val card: Card? = null)
+
+// The card the tall widget shows now (js/hebrew-voice.js hebrewCard): cheer, poster, gold, done, word,
+// phrase or numbers, what it says, and when it should change (ms since 1970, 0 for no time).
+data class Card(val kind: String, val label: String, val hebrew: String, val line: String, val aside: String, val big: String,
+    val he: String, val tr: String, val en: String, val stats: List<Pair<String, String>>, val nextAt: Long)
 
 class GlanceException(message: String) : Exception(message)
 
@@ -50,6 +55,17 @@ object Glance {
                         label = v.optString("label"), hebrew = v.optString("hebrew"), line = v.optString("line"), aside = v.optString("aside"),
                         level = v.optString("level", "none"), night = v.optBoolean("night"),
                         week = if (week == null) emptyList() else (0 until week.length()).map { week.getString(it) },
+                        card = v.optJSONObject("card")?.let { c ->
+                            val word = c.optJSONObject("word")
+                            val stats = c.optJSONArray("stats")
+                            Card(
+                                kind = c.optString("kind", "cheer"), label = c.optString("label"), hebrew = c.optString("hebrew"),
+                                line = c.optString("line"), aside = c.optString("aside"), big = c.optString("big"),
+                                he = word?.optString("he") ?: "", tr = word?.optString("tr") ?: "", en = word?.optString("en") ?: "",
+                                stats = if (stats == null) emptyList() else (0 until stats.length()).map { stats.getJSONObject(it).let { s -> s.optString("n") to s.optString("t") } },
+                                nextAt = try { java.time.Instant.parse(c.optString("nextAt")).toEpochMilli() } catch (e: Exception) { 0L },
+                            )
+                        },
                     )
                 },
             )
