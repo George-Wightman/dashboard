@@ -4,6 +4,13 @@ Home-screen widgets for the dashboard: **Today** (the day as a short calendar), 
 **Body**, **Goals**, **Countdown** and **This week**. Each is a small copy of a Daylight tile; a tap
 opens that tile big in the dashboard (`?big=fuel`), and a tap on its time fetches it again.
 
+**Hebrew** is its own thing (docs/superpowers/specs/2026-11-02-hebrew-nudges-design.md): the Hebrew
+app's paper and ink, one card at a time (a word or phrase of the day, encouragement, the week's numbers,
+a gold day), the week as seven dots along the bottom, and a tap opens the Hebrew app. The card comes
+from `js/hebrew-voice.js` with a `nextAt`, and the widget sets an alarm to ask again then, so it changes
+when a slot turns or a shift ends rather than whenever Android wakes it. Tap the label to fetch again.
+It's laid out to fit a tall widget (2 × 4) as well as a wide one.
+
 ## How it works
 
 - The planner's web app (the same address as Claude's relay) answers `{"glance": key}` with a summary:
