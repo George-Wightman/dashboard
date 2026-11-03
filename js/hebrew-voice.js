@@ -169,8 +169,112 @@ export function hebrewInputFrom({ doc, now, today, progress = null, busy = [] })
   }
   const [countdown = null] = countdowns(doc, today);
   return {
-    now: local, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
+    now: local, shift, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
+    words: progress?.words ?? [], liveWeek: progress?.liveWeek ?? 0, level: progress?.level ?? null,
     countdown: countdown ? { title: countdown.title, days: countdown.days } : null,
     busy: busy.filter((e) => e?.start && e?.end).map((e) => ({ ...e, start: moved(e.start), end: moved(e.end) })),
   };
+}
+
+// ---- The widget's card -----------------------------------------------------------------------------
+// The tall widget shows one card at a time and changes it through the day (George, 3 Nov 2026: "every
+// time I look at it, something different", but not every five minutes). Four slots a day, the order
+// different each day; a word and a phrase of the day; encouragement while it isn't done (the poster
+// when days have been missed); the week's numbers, only ever what he's gained; gold on a 30-minute day.
+// Calendar-aware: while he's busy it shows the word or phrase, not a push; when something ends, the
+// encouragement comes to the front for an hour. `nextAt` says when the card should change, so the
+// widget can ask again then rather than whenever Android wakes it.
+
+const SLOT_STARTS = [11 * 60, 15 * 60, 19 * 60, 23 * 60];
+const ROTATION = ['cheer', 'word', 'phrase', 'numbers'];
+const dayIndex = (today) => daysBetween('2026-01-01', today);
+const fmtMinutes = (m) => (m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}` : `${m} min`);
+
+// The day's pick from a list: the same all day, a different one tomorrow.
+const ofTheDay = (list, today, salt) => (list.length ? list[(dayIndex(today) * 7 + salt) % list.length] : null);
+
+// A word he's learning, so he can recognise it: progressing first (one he nearly has), then weak.
+function wordOfTheDay(words, today) {
+  const pool = words.filter((w) => w.band === 'progressing');
+  return ofTheDay(pool.length >= 5 ? pool : words.filter((w) => w.band === 'progressing' || w.band === 'weak'), today, 0);
+}
+
+// His level's phrases first (from the Hebrew app's own course), easier ones if there are none.
+function phraseOfTheDay(phrases, level, today) {
+  const at = phrases.filter((p) => p.lvl === level);
+  return ofTheDay(at.length ? at : phrases.filter((p) => !level || p.lvl <= level), today, 3);
+}
+
+// What he's gained this week, never what he's short of. Empty when there's nothing yet.
+function weekNumbers(input) {
+  const { today, days = {} } = input;
+  const monday = weekStart(today);
+  let sec = 0;
+  let practised = 0;
+  let lastSec = 0;
+  for (let i = 0; i <= daysBetween(monday, today); i++) {
+    const d = addDays(monday, i);
+    sec += Number(days[d]?.sec) || 0;
+    if (hebrewLevel(days[d]) !== 'none') practised++;
+    lastSec += Number(days[addDays(d, -7)]?.sec) || 0;
+  }
+  const stats = [];
+  const minutes = Math.round(sec / 60);
+  if (minutes > 0) stats.push({ n: fmtMinutes(minutes), t: 'of Hebrew this week' });
+  if (practised > 0) stats.push({ n: String(practised), t: practised === 1 ? 'day practised' : 'days practised' });
+  if (input.strongGain > 0) stats.push({ n: `+${input.strongGain}`, t: input.strongGain === 1 ? 'word to strong' : 'words to strong' });
+  if (input.liveWeek > 0) stats.push({ n: String(input.liveWeek), t: input.liveWeek === 1 ? 'word said live' : 'words said live' });
+  const aside = sec > lastSec && lastSec > 0 ? 'Ahead of where you were last week.' : 'Every session moves a word along.';
+  return { stats: stats.slice(0, 3), aside };
+}
+
+// `extras.phrases` is the course's phrases ({ he, tr, en, lvl }). Returns the card:
+// { kind, label, hebrew, line?, aside?, big?, word?: { he, tr, en }, stats?, nextAt } with nextAt in
+// real time (ISO).
+export function hebrewCard(input, { phrases = [] } = {}) {
+  const v = hebrewVoice(input);
+  const { now, today } = input;
+  const t = clockOf(now);
+  const slot = SLOT_STARTS.findIndex((s) => t < s);
+  const word = wordOfTheDay(input.words ?? [], today);
+  const phrase = phraseOfTheDay(phrases, input.level, today);
+  const numbers = weekNumbers(input);
+  const { inside, ended } = busyState(input.busy, now);
+  const shift = input.shift ?? 0;
+  const real = (ms) => new Date(ms - shift).toISOString();
+
+  // When the card should next change: the next slot, the end of what he's in, or the end of the
+  // hour after something ended.
+  const nextTimes = [];
+  const nextSlot = SLOT_STARTS.find((s) => t < s);
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  nextTimes.push(midnight + (nextSlot ?? 24 * 60 + 7 * 60) * 60000);
+  if (inside) nextTimes.push(Date.parse(inside.end));
+  if (ended) nextTimes.push(Date.parse(ended.end) + FREE_FOR_MIN * 60000);
+  const nextAt = real(Math.min(...nextTimes.filter((x) => x > now.getTime())));
+
+  const order = ROTATION.map((_, i) => ROTATION[(i + dayIndex(today)) % ROTATION.length]);
+  const pending = v.level === 'none' || v.level === 'bit';
+  let pick = order[slot === -1 ? 3 : slot];
+  if (pending && v.missed >= 2 && (slot <= 0 || pick === 'cheer')) pick = 'cheer';
+  if (pending && ended && !inside) pick = 'cheer';
+  if (pending && inside && pick === 'cheer') pick = word ? 'word' : 'phrase';
+  const available = (k) => (k === 'word' ? !!word : k === 'phrase' ? !!phrase : k === 'numbers' ? numbers.stats.length > 0 : true);
+  if (!available(pick)) pick = order.find(available) ?? 'cheer';
+
+  const base = { label: v.label, hebrew: v.hebrew, nextAt };
+  if (pick === 'word') return { ...base, kind: 'word', label: 'Word of the day', hebrew: 'מילה', word: { he: word.he, tr: word.tr, en: word.en } };
+  if (pick === 'phrase') {
+    const label = input.countdown && input.countdown.days > 0 && input.countdown.days <= 14 ? `${input.countdown.title} in ${input.countdown.days} day${input.countdown.days === 1 ? '' : 's'}` : 'Phrase of the day';
+    return { ...base, kind: 'phrase', label, hebrew: 'משפט', word: { he: phrase.he, tr: phrase.tr, en: phrase.en } };
+  }
+  if (pick === 'numbers') return { ...base, kind: 'numbers', label: 'This week', hebrew: 'השבוע', stats: numbers.stats, aside: numbers.aside };
+  // The encouragement: what the voice says, as a poster when days have gone by, gold or done once it's in.
+  const minutes = Math.round((Number(input.days?.[today]?.sec) || 0) / 60);
+  if (v.level === 'gold') return { ...base, kind: 'gold', big: String(minutes), line: 'minutes. That\'s the good stuff.', aside: v.aside };
+  if (v.level === 'done') return { ...base, kind: 'done', line: v.line, aside: v.aside };
+  if (v.missed >= 2 && v.level === 'none' && !inside && !ended) {
+    return { ...base, kind: 'poster', big: String(v.missed), line: 'days off the road, mate. Come on.', aside: v.aside };
+  }
+  return { ...base, kind: 'cheer', line: v.line, aside: v.aside };
 }

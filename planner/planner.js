@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '445d2474';
+var PLANNER_BUILD = 'd01e6cb9';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8721,12 +8721,116 @@ function hebrewInputFrom({ doc, now, today, progress = null, busy = [] }) {
   }
   const [countdown = null] = countdowns(doc, today);
   return {
-    now: local, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
+    now: local, shift, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
+    words: progress?.words ?? [], liveWeek: progress?.liveWeek ?? 0, level: progress?.level ?? null,
     countdown: countdown ? { title: countdown.title, days: countdown.days } : null,
     busy: busy.filter((e) => e?.start && e?.end).map((e) => ({ ...e, start: moved(e.start), end: moved(e.end) })),
   };
 }
-return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewLevel, hebrewVoice, duePing, hebrewInputFrom };
+
+// ---- The widget's card -----------------------------------------------------------------------------
+// The tall widget shows one card at a time and changes it through the day (George, 3 Nov 2026: "every
+// time I look at it, something different", but not every five minutes). Four slots a day, the order
+// different each day; a word and a phrase of the day; encouragement while it isn't done (the poster
+// when days have been missed); the week's numbers, only ever what he's gained; gold on a 30-minute day.
+// Calendar-aware: while he's busy it shows the word or phrase, not a push; when something ends, the
+// encouragement comes to the front for an hour. `nextAt` says when the card should change, so the
+// widget can ask again then rather than whenever Android wakes it.
+
+const SLOT_STARTS = [11 * 60, 15 * 60, 19 * 60, 23 * 60];
+const ROTATION = ['cheer', 'word', 'phrase', 'numbers'];
+const dayIndex = (today) => daysBetween('2026-01-01', today);
+const fmtMinutes = (m) => (m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}` : `${m} min`);
+
+// The day's pick from a list: the same all day, a different one tomorrow.
+const ofTheDay = (list, today, salt) => (list.length ? list[(dayIndex(today) * 7 + salt) % list.length] : null);
+
+// A word he's learning, so he can recognise it: progressing first (one he nearly has), then weak.
+function wordOfTheDay(words, today) {
+  const pool = words.filter((w) => w.band === 'progressing');
+  return ofTheDay(pool.length >= 5 ? pool : words.filter((w) => w.band === 'progressing' || w.band === 'weak'), today, 0);
+}
+
+// His level's phrases first (from the Hebrew app's own course), easier ones if there are none.
+function phraseOfTheDay(phrases, level, today) {
+  const at = phrases.filter((p) => p.lvl === level);
+  return ofTheDay(at.length ? at : phrases.filter((p) => !level || p.lvl <= level), today, 3);
+}
+
+// What he's gained this week, never what he's short of. Empty when there's nothing yet.
+function weekNumbers(input) {
+  const { today, days = {} } = input;
+  const monday = weekStart(today);
+  let sec = 0;
+  let practised = 0;
+  let lastSec = 0;
+  for (let i = 0; i <= daysBetween(monday, today); i++) {
+    const d = addDays(monday, i);
+    sec += Number(days[d]?.sec) || 0;
+    if (hebrewLevel(days[d]) !== 'none') practised++;
+    lastSec += Number(days[addDays(d, -7)]?.sec) || 0;
+  }
+  const stats = [];
+  const minutes = Math.round(sec / 60);
+  if (minutes > 0) stats.push({ n: fmtMinutes(minutes), t: 'of Hebrew this week' });
+  if (practised > 0) stats.push({ n: String(practised), t: practised === 1 ? 'day practised' : 'days practised' });
+  if (input.strongGain > 0) stats.push({ n: `+${input.strongGain}`, t: input.strongGain === 1 ? 'word to strong' : 'words to strong' });
+  if (input.liveWeek > 0) stats.push({ n: String(input.liveWeek), t: input.liveWeek === 1 ? 'word said live' : 'words said live' });
+  const aside = sec > lastSec && lastSec > 0 ? 'Ahead of where you were last week.' : 'Every session moves a word along.';
+  return { stats: stats.slice(0, 3), aside };
+}
+
+// `extras.phrases` is the course's phrases ({ he, tr, en, lvl }). Returns the card:
+// { kind, label, hebrew, line?, aside?, big?, word?: { he, tr, en }, stats?, nextAt } with nextAt in
+// real time (ISO).
+function hebrewCard(input, { phrases = [] } = {}) {
+  const v = hebrewVoice(input);
+  const { now, today } = input;
+  const t = clockOf(now);
+  const slot = SLOT_STARTS.findIndex((s) => t < s);
+  const word = wordOfTheDay(input.words ?? [], today);
+  const phrase = phraseOfTheDay(phrases, input.level, today);
+  const numbers = weekNumbers(input);
+  const { inside, ended } = busyState(input.busy, now);
+  const shift = input.shift ?? 0;
+  const real = (ms) => new Date(ms - shift).toISOString();
+
+  // When the card should next change: the next slot, the end of what he's in, or the end of the
+  // hour after something ended.
+  const nextTimes = [];
+  const nextSlot = SLOT_STARTS.find((s) => t < s);
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  nextTimes.push(midnight + (nextSlot ?? 24 * 60 + 7 * 60) * 60000);
+  if (inside) nextTimes.push(Date.parse(inside.end));
+  if (ended) nextTimes.push(Date.parse(ended.end) + FREE_FOR_MIN * 60000);
+  const nextAt = real(Math.min(...nextTimes.filter((x) => x > now.getTime())));
+
+  const order = ROTATION.map((_, i) => ROTATION[(i + dayIndex(today)) % ROTATION.length]);
+  const pending = v.level === 'none' || v.level === 'bit';
+  let pick = order[slot === -1 ? 3 : slot];
+  if (pending && v.missed >= 2 && (slot <= 0 || pick === 'cheer')) pick = 'cheer';
+  if (pending && ended && !inside) pick = 'cheer';
+  if (pending && inside && pick === 'cheer') pick = word ? 'word' : 'phrase';
+  const available = (k) => (k === 'word' ? !!word : k === 'phrase' ? !!phrase : k === 'numbers' ? numbers.stats.length > 0 : true);
+  if (!available(pick)) pick = order.find(available) ?? 'cheer';
+
+  const base = { label: v.label, hebrew: v.hebrew, nextAt };
+  if (pick === 'word') return { ...base, kind: 'word', label: 'Word of the day', hebrew: 'מילה', word: { he: word.he, tr: word.tr, en: word.en } };
+  if (pick === 'phrase') {
+    const label = input.countdown && input.countdown.days > 0 && input.countdown.days <= 14 ? `${input.countdown.title} in ${input.countdown.days} day${input.countdown.days === 1 ? '' : 's'}` : 'Phrase of the day';
+    return { ...base, kind: 'phrase', label, hebrew: 'משפט', word: { he: phrase.he, tr: phrase.tr, en: phrase.en } };
+  }
+  if (pick === 'numbers') return { ...base, kind: 'numbers', label: 'This week', hebrew: 'השבוע', stats: numbers.stats, aside: numbers.aside };
+  // The encouragement: what the voice says, as a poster when days have gone by, gold or done once it's in.
+  const minutes = Math.round((Number(input.days?.[today]?.sec) || 0) / 60);
+  if (v.level === 'gold') return { ...base, kind: 'gold', big: String(minutes), line: 'minutes. That\'s the good stuff.', aside: v.aside };
+  if (v.level === 'done') return { ...base, kind: 'done', line: v.line, aside: v.aside };
+  if (v.missed >= 2 && v.level === 'none' && !inside && !ended) {
+    return { ...base, kind: 'poster', big: String(v.missed), line: 'days off the road, mate. Come on.', aside: v.aside };
+  }
+  return { ...base, kind: 'cheer', line: v.line, aside: v.aside };
+}
+return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewLevel, hebrewVoice, duePing, hebrewInputFrom, hebrewCard };
 })();
 
 // ---- js/glance.js
@@ -8748,7 +8852,7 @@ const { HEBREW_IDS } = __js_hebrewSync;
 const { cardioQuotaId, gymHabitId } = __js_gym;
 const { nextSession, BACK } = __js_coach;
 const { mapToday, glanceMap } = __js_map_summary;
-const { hebrewVoice, hebrewInputFrom, HEBREW_DONE_MIN, HEBREW_APP } = __js_hebrew_voice;
+const { hebrewVoice, hebrewCard, hebrewInputFrom, HEBREW_DONE_MIN, HEBREW_APP } = __js_hebrew_voice;
 
 const SITE = 'https://george-wightman.github.io/dashboard/';
 const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week', 'map'];
@@ -8808,7 +8912,9 @@ function fuel(doc, today) {
 // progress when the planner could read it; today's busy events come from the planner's agenda.
 function hebrew(doc, today, now, maps, progress) {
   const busy = (doc.calendar?.agenda?.busy ?? []).filter((e) => !e.allDay && localDate(e.start) === today);
-  const voice = hebrewVoice(hebrewInputFrom({ doc, now, today, progress, busy }));
+  const input = hebrewInputFrom({ doc, now, today, progress, busy });
+  // The tall widget's card for now (word, phrase, encouragement, numbers, gold), beside the voice.
+  const voice = { ...hebrewVoice(input), card: hebrewCard(input, { phrases: progress?.phrases ?? [] }) };
   const minutes = active(doc, HEBREW_IDS.minutes);
   if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open: HEBREW_APP, voice };
   const total = Math.round(weekTotal(doc, minutes.id, today));
@@ -9180,7 +9286,30 @@ function strongBy(stats, day) {
   return 0;
 }
 
-// { ok: true, days: { [day]: { sec, sessions } }, strongGain, push: [{ id, endpoint, p256dh, auth }] }
+// The Hebrew app's own strength bands for one side of a word (its srsStrength, without the parts that
+// only change scheduling): weak, progressing or strong, or new when it's never been answered.
+function wordBand(rec) {
+  if (!rec || !rec.n) return 'new';
+  const recent = rec.rn > 0 ? (rec.rmiss || 0) / rec.rn : (rec.miss || 0) / rec.n;
+  if (rec.diff >= 6.5 || (rec.n >= 2 && (rec.miss || 0) / rec.n >= 0.4)) return 'weak';
+  if (rec.stab >= 21 && rec.diff <= 5 && recent <= 0.15) return 'strong';
+  return 'progressing';
+}
+
+// The course's phrases (content/nodes.json on the Hebrew app's site, public): { he, tr, en, lvl }.
+const HEBREW_CONTENT = 'https://george-wightman.github.io/hebrew-reader/content/nodes.json';
+function readHebrewPhrases({ request }) {
+  try {
+    const res = request(HEBREW_CONTENT, { method: 'GET', headers: {} });
+    if (res.status !== 200) return [];
+    return (JSON.parse(res.text).items ?? [])
+      .filter((i) => i && i.type === 'sentence' && i.he && i.tr && i.en && String(i.he).length <= 40)
+      .map((i) => ({ he: i.he, tr: i.tr, en: i.en, lvl: Number(i.lvl) || 1 }));
+  } catch { return []; }
+}
+
+// { ok: true, days: { [day]: { sec, sessions } }, strongGain, words, level, liveWeek,
+//   push: [{ id, endpoint, p256dh, auth }] }
 // or { ok: false, error }. `today` sets the week for strongGain.
 function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today }) {
   if (!token) return { ok: false, error: 'No token for the Hebrew app\'s sync repo' };
@@ -9212,9 +9341,21 @@ function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today 
     .filter(([, p]) => p && !p.off && typeof p.endpoint === 'string' && /^https:\/\//.test(p.endpoint) && typeof p.p256dh === 'string' && typeof p.auth === 'string')
     .map(([id, p]) => ({ id: `hvr:${id}`, endpoint: p.endpoint, p256dh: p.p256dh, auth: p.auth, label: 'Hebrew app' }));
   const strongGain = today ? Math.max(0, strongBy(stats, today) - strongBy(stats, addDays(today, -7))) : 0;
-  return { ok: true, days, strongGain, push };
+  // The words he's learning (answered at least once), for the word of the day.
+  const library = objectAt(keys, 'hvr_library');
+  const srs = objectAt(keys, 'hvr_srs');
+  const words = Object.entries(library)
+    .filter(([he, w]) => w && typeof w.tr === 'string' && typeof w.en === 'string' && w.tr && w.en && he.length <= 24)
+    .map(([he, w]) => ({ he, tr: w.tr, en: w.en, band: wordBand(srs[he]?.prod) }))
+    .filter((w) => w.band !== 'new');
+  const level = Number(objectAt(keys, 'hvr_level').at) || null;
+  const weekFrom = today ? addDays(today, -6) : null;
+  const pad = (n) => String(n).padStart(2, '0');
+  const dayOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  const liveWeek = weekFrom ? Object.values(objectAt(keys, 'hvr_coachlanded')).filter((ts) => typeof ts === 'number' && dayOf(ts) >= weekFrom && dayOf(ts) <= today).length : 0;
+  return { ok: true, days, strongGain, words, level, liveWeek, push };
 }
-return { HEBREW_REPO, readHebrewProgress };
+return { HEBREW_REPO, wordBand, HEBREW_CONTENT, readHebrewPhrases, readHebrewProgress };
 })();
 
 // ---- planner/hebrew-nudges.js
@@ -9306,7 +9447,7 @@ const { createNudges } = __planner_nudges;
 const { handleRelay } = __planner_relay;
 const { handleGlance } = __planner_glance;
 const { importDrags, webAppUrl, tickLink, handleTick } = __planner_ticks;
-const { readHebrewProgress, HEBREW_REPO } = __planner_hebrew_progress;
+const { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } = __planner_hebrew_progress;
 const { createHebrewNudges } = __planner_hebrew_nudges;
 const { hebrewInputFrom } = __js_hebrew_voice;
 
@@ -9860,7 +10001,7 @@ function createPlanner({
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
       text = req && typeof req === 'object' && 'glance' in req
-        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: hebrewProgress })
+        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) })
         : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });

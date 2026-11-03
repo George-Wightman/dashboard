@@ -32,7 +32,7 @@ import { createNudges } from './nudges.js';
 import { handleRelay } from './relay.js';
 import { handleGlance } from './glance.js';
 import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
-import { readHebrewProgress, HEBREW_REPO } from './hebrew-progress.js';
+import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } from './hebrew-progress.js';
 import { createHebrewNudges } from './hebrew-nudges.js';
 import { hebrewInputFrom } from '../js/hebrew-voice.js';
 
@@ -586,7 +586,7 @@ export function createPlanner({
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
       text = req && typeof req === 'object' && 'glance' in req
-        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: hebrewProgress })
+        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) })
         : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });

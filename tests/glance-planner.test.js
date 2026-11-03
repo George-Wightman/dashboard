@@ -66,4 +66,6 @@ test('the Hebrew widget speaks, opens the Hebrew app, and uses the Hebrew app\'s
   assert.equal(fromApp.open, 'https://george-wightman.github.io/hebrew-reader/hebrew-reader.html');
   assert.equal(read({ ok: false, error: 'no token' }).voice.level, 'none', 'falls back to the dashboard');
   assert.equal(plain.voice.week.length, 7);
+  assert.ok(['cheer', 'poster', 'numbers', 'word', 'phrase', 'gold', 'done'].includes(fromApp.voice.card.kind));
+  assert.match(fromApp.voice.card.nextAt, /^\d{4}-\d{2}-\d{2}T/);
 });

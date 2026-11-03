@@ -15,7 +15,7 @@ import { HEBREW_IDS } from './hebrewSync.js';
 import { cardioQuotaId, gymHabitId } from './gym.js';
 import { nextSession, BACK } from './coach.js';
 import { mapToday, glanceMap } from './map/summary.js';
-import { hebrewVoice, hebrewInputFrom, HEBREW_DONE_MIN, HEBREW_APP } from './hebrew-voice.js';
+import { hebrewVoice, hebrewCard, hebrewInputFrom, HEBREW_DONE_MIN, HEBREW_APP } from './hebrew-voice.js';
 
 export const SITE = 'https://george-wightman.github.io/dashboard/';
 export const GLANCE_TILES = ['day', 'fuel', 'hebrew', 'body', 'goals', 'countdown', 'week', 'map'];
@@ -75,7 +75,9 @@ function fuel(doc, today) {
 // progress when the planner could read it; today's busy events come from the planner's agenda.
 function hebrew(doc, today, now, maps, progress) {
   const busy = (doc.calendar?.agenda?.busy ?? []).filter((e) => !e.allDay && localDate(e.start) === today);
-  const voice = hebrewVoice(hebrewInputFrom({ doc, now, today, progress, busy }));
+  const input = hebrewInputFrom({ doc, now, today, progress, busy });
+  // The tall widget's card for now (word, phrase, encouragement, numbers, gold), beside the voice.
+  const voice = { ...hebrewVoice(input), card: hebrewCard(input, { phrases: progress?.phrases ?? [] }) };
   const minutes = active(doc, HEBREW_IDS.minutes);
   if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open: HEBREW_APP, voice };
   const total = Math.round(weekTotal(doc, minutes.id, today));
