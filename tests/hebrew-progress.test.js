@@ -57,3 +57,9 @@ test('no push key yet: no devices, and nothing else breaks', () => {
   const p = readHebrewProgress({ request: serve(200, envelope({ hvr_stats: '{}' })).request, token: 'T', gunzip, today: '2026-09-16' });
   assert.deepEqual([p.ok, p.push, p.days, p.strongGain], [true, [], {}, 0]);
 });
+
+test('says which device last wrote the sync file, so the pings can be checked against it', () => {
+  const body = JSON.stringify({ app: 'hebrew-reader', enc: 'gzip', device: 'ts4pkg', body: gzipSync(Buffer.from(JSON.stringify({ keys: {} }))).toString('base64') });
+  assert.equal(readHebrewProgress({ request: serve(200, body).request, token: 'T', gunzip }).device, 'ts4pkg');
+  assert.equal(readHebrewProgress({ request: serve(200, envelope({})).request, token: 'T', gunzip }).device, null);
+});

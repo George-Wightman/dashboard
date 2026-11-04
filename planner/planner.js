@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'd01e6cb9';
+var PLANNER_BUILD = '860912fd';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8568,6 +8568,15 @@ const HEBREW_GOLD_MIN = 30;
 const MOMENTS = [['morning', '09:30'], ['afternoon', '15:00'], ['evening', '19:00']];
 const LAST_PING = '21:30';
 const HEBREW_PINGS_PER_DAY = 3;
+// One line for Claude's planner read from the planner's `hebrew:status`, or null before its first run:
+// what went today, or what's wrong (wrong device, reminders off, no token).
+function hebrewPingsLine(doc, when = (iso) => iso) {
+  const s = doc?.calendar?.['hebrew:status'];
+  if (!s || s.status !== 'active') return null;
+  if (s.lastError) return `Hebrew pings: ${s.lastError}`;
+  return `Hebrew pings: ${s.sent ?? 0} sent on ${s.day} to ${s.devices} device${s.devices === 1 ? '' : 's'} · last checked ${s.lastRun ? when(s.lastRun) : 'never'}`;
+}
+
 const HOLD_MIN = 10;      // after a busy event ends, before the ping
 const FREE_FOR_MIN = 60;  // how long "you're free now" stays the line
 
@@ -8830,7 +8839,7 @@ function hebrewCard(input, { phrases = [] } = {}) {
   }
   return { ...base, kind: 'cheer', line: v.line, aside: v.aside };
 }
-return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewLevel, hebrewVoice, duePing, hebrewInputFrom, hebrewCard };
+return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewPingsLine, hebrewLevel, hebrewVoice, duePing, hebrewInputFrom, hebrewCard };
 })();
 
 // ---- js/glance.js
@@ -9309,7 +9318,8 @@ function readHebrewPhrases({ request }) {
 }
 
 // { ok: true, days: { [day]: { sec, sessions } }, strongGain, words, level, liveWeek,
-//   push: [{ id, endpoint, p256dh, auth }] }
+//   push: [{ id, endpoint, p256dh, auth }], device } — device is the one that last wrote the file
+//   (the one he last practised on), or null in an older file.
 // or { ok: false, error }. `today` sets the week for strongGain.
 function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today }) {
   if (!token) return { ok: false, error: 'No token for the Hebrew app\'s sync repo' };
@@ -9325,10 +9335,12 @@ function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today 
   }
   if (res.status !== 200) return { ok: false, error: `Couldn't read the Hebrew app's progress (GitHub ${res.status})` };
   let keys;
+  let device = null;
   try {
     const envelope = JSON.parse(res.text);
     if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error('not an envelope');
     keys = JSON.parse(gunzip(envelope.body)).keys;
+    if (typeof envelope.device === 'string' && envelope.device) device = envelope.device;
   } catch {
     return { ok: false, error: 'The Hebrew app\'s progress.json isn\'t a sync file the planner can read' };
   }
@@ -9353,7 +9365,7 @@ function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today 
   const pad = (n) => String(n).padStart(2, '0');
   const dayOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const liveWeek = weekFrom ? Object.values(objectAt(keys, 'hvr_coachlanded')).filter((ts) => typeof ts === 'number' && dayOf(ts) >= weekFrom && dayOf(ts) <= today).length : 0;
-  return { ok: true, days, strongGain, words, level, liveWeek, push };
+  return { ok: true, days, strongGain, words, level, liveWeek, push, device };
 }
 return { HEBREW_REPO, wordBand, HEBREW_CONTENT, readHebrewPhrases, readHebrewProgress };
 })();
@@ -9374,9 +9386,11 @@ function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log = () => 
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
   const read = (key, fallback) => { try { return JSON.parse(props.get(key) ?? 'null') ?? fallback; } catch { return fallback; } };
 
-  // `devices` from planner/hebrew-progress.js, `input` from hebrewInputFrom. Returns
+  // `devices` and `practising` (its `device`) from planner/hebrew-progress.js, `input` from
+  // hebrewInputFrom. Reminders on a device he no longer practises on are still sent, but said, since
+  // "1 device" once hid that every ping was going to the laptop (4 Nov 2026). Returns
   // { sent, devices, error } for the dashboard's hebrew:status.
-  function send({ devices, input }) {
+  function send({ devices, input, practising = null }) {
     let state = read('HEBREW_NUDGES', null);
     if (state?.day !== input.today || !Array.isArray(state.sent)) state = { day: input.today, sent: [] };
     const gone = new Set(read('HEBREW_GONE', []));
@@ -9385,8 +9399,11 @@ function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log = () => 
     const privateKey = props.get('VAPID_PRIVATE');
     const publicKey = props.get('VAPID_PUBLIC');
     if (!tools || !privateKey || !publicKey) return { sent: 0, devices: live.length, error: 'The planner has no push keys yet' };
+    const elsewhere = practising && !live.some((d) => d.id === `hvr:${practising}`)
+      ? `Reminders aren't on for the device you last practised on (${practising}), only ${live.map((d) => d.id.replace(/^hvr:/, '')).join(', ')}: turn them on in the Hebrew app there`
+      : null;
     const ping = duePing(input, state.sent);
-    if (!ping) return { sent: 0, devices: live.length, error: null };
+    if (!ping) return { sent: 0, devices: live.length, error: elsewhere };
     let error = null;
     let sent = 0;
     try {
@@ -9403,7 +9420,7 @@ function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log = () => 
     state.sent.push(ping.id);
     props.put('HEBREW_NUDGES', JSON.stringify(state));
     props.put('HEBREW_GONE', JSON.stringify([...gone].filter(Boolean).slice(-20)));
-    return { sent, devices: live.filter((d) => !gone.has(d.endpoint)).length, error };
+    return { sent, devices: live.filter((d) => !gone.has(d.endpoint)).length, error: error ?? elsewhere };
   }
 
   return { send };
@@ -9511,7 +9528,7 @@ function createPlanner({
       .map((e) => ({ title: e.summary || 'Busy', calendar: cals.find((c) => c.id === e.calendarId)?.name ?? '', start: e.start.dateTime, end: e.end.dateTime }));
     const input = hebrewInputFrom({ doc: store.doc(), now: t, today, progress: progress.ok ? progress : null, busy });
     const r = createHebrewNudges({ UrlFetchApp, Utilities, props: { get, put }, log, crypto: pushCrypto, t })
-      .send({ devices: progress.ok ? progress.push : [], input });
+      .send({ devices: progress.ok ? progress.push : [], practising: progress.ok ? progress.device : null, input });
     const lastError = progress.ok ? r.error : progress.error;
     const prev = store.doc().calendar?.['hebrew:status'];
     const same = prev?.status === 'active' && prev.day === today && prev.devices === r.devices && prev.lastError === lastError;

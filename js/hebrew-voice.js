@@ -16,6 +16,15 @@ export const HEBREW_GOLD_MIN = 30;
 export const MOMENTS = [['morning', '09:30'], ['afternoon', '15:00'], ['evening', '19:00']];
 export const LAST_PING = '21:30';
 export const HEBREW_PINGS_PER_DAY = 3;
+// One line for Claude's planner read from the planner's `hebrew:status`, or null before its first run:
+// what went today, or what's wrong (wrong device, reminders off, no token).
+export function hebrewPingsLine(doc, when = (iso) => iso) {
+  const s = doc?.calendar?.['hebrew:status'];
+  if (!s || s.status !== 'active') return null;
+  if (s.lastError) return `Hebrew pings: ${s.lastError}`;
+  return `Hebrew pings: ${s.sent ?? 0} sent on ${s.day} to ${s.devices} device${s.devices === 1 ? '' : 's'} · last checked ${s.lastRun ? when(s.lastRun) : 'never'}`;
+}
+
 const HOLD_MIN = 10;      // after a busy event ends, before the ping
 const FREE_FOR_MIN = 60;  // how long "you're free now" stays the line
 

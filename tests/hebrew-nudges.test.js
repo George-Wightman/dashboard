@@ -62,3 +62,17 @@ test('no devices: nothing sent, and it says reminders are off', () => {
   const s = setup();
   assert.deepEqual(s.send(at(9, 31), []), { sent: 0, devices: 0, error: 'Reminders are off: turn them on in the Hebrew app' });
 });
+
+test('reminders on another device than the one he practises on: still sent, but it says so', () => {
+  const s = setup();
+  const laptop = device('laptop');
+  const send = (practising) => createHebrewNudges({ UrlFetchApp: { fetchAll: (reqs) => reqs.map(() => ({ getResponseCode: () => 201 })) }, props: s.props, crypto: nodeCrypto, t: at(9, 31) })
+    .send({ devices: [laptop], practising, input: { now: at(9, 31), today: DAY, days: {}, duolingo: [], busy: [], countdown: null, strongGain: 0 } });
+  const r = send('phone');
+  assert.equal(r.sent, 1);
+  assert.match(r.error, /aren't on for the device you last practised on \(phone\).*laptop/);
+  s.props.put('HEBREW_NUDGES', 'null');
+  assert.equal(send('laptop').error, null);
+  s.props.put('HEBREW_NUDGES', 'null');
+  assert.equal(send(null).error, null, 'an older sync file with no device says nothing');
+});

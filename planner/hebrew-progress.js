@@ -49,7 +49,8 @@ export function readHebrewPhrases({ request }) {
 }
 
 // { ok: true, days: { [day]: { sec, sessions } }, strongGain, words, level, liveWeek,
-//   push: [{ id, endpoint, p256dh, auth }] }
+//   push: [{ id, endpoint, p256dh, auth }], device } — device is the one that last wrote the file
+//   (the one he last practised on), or null in an older file.
 // or { ok: false, error }. `today` sets the week for strongGain.
 export function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today }) {
   if (!token) return { ok: false, error: 'No token for the Hebrew app\'s sync repo' };
@@ -65,10 +66,12 @@ export function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip,
   }
   if (res.status !== 200) return { ok: false, error: `Couldn't read the Hebrew app's progress (GitHub ${res.status})` };
   let keys;
+  let device = null;
   try {
     const envelope = JSON.parse(res.text);
     if (envelope?.enc !== 'gzip' || typeof envelope.body !== 'string') throw new Error('not an envelope');
     keys = JSON.parse(gunzip(envelope.body)).keys;
+    if (typeof envelope.device === 'string' && envelope.device) device = envelope.device;
   } catch {
     return { ok: false, error: 'The Hebrew app\'s progress.json isn\'t a sync file the planner can read' };
   }
@@ -93,5 +96,5 @@ export function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip,
   const pad = (n) => String(n).padStart(2, '0');
   const dayOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const liveWeek = weekFrom ? Object.values(objectAt(keys, 'hvr_coachlanded')).filter((ts) => typeof ts === 'number' && dayOf(ts) >= weekFrom && dayOf(ts) <= today).length : 0;
-  return { ok: true, days, strongGain, words, level, liveWeek, push };
+  return { ok: true, days, strongGain, words, level, liveWeek, push, device };
 }

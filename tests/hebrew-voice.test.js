@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hebrewLevel, hebrewVoice, duePing, HEBREW_APP } from '../js/hebrew-voice.js';
+import { hebrewLevel, hebrewVoice, duePing, hebrewPingsLine, HEBREW_APP } from '../js/hebrew-voice.js';
 
 process.env.TZ = 'Europe/London';
 
@@ -104,4 +104,11 @@ test('personal touches: a countdown that matters, Duolingo done, words to strong
   assert.match(duo.aside, /Duolingo's done/);
   const strong = hebrewVoice(input({ days: { [WED]: { sec: 1000, sessions: 1 } }, strongGain: 4 }));
   assert.match(strong.aside, /4 words to strong this week/);
+});
+
+test("the pings' line for Claude's planner read: what went today, or what's wrong", () => {
+  const doc = (s) => ({ calendar: s ? { 'hebrew:status': { status: 'active', ...s } } : {} });
+  assert.equal(hebrewPingsLine(doc(null)), null);
+  assert.equal(hebrewPingsLine(doc({ day: '2026-11-04', lastRun: 'X', sent: 3, devices: 1, lastError: null })), 'Hebrew pings: 3 sent on 2026-11-04 to 1 device · last checked X');
+  assert.equal(hebrewPingsLine(doc({ day: '2026-11-04', lastRun: 'X', sent: 0, devices: 1, lastError: 'Boom' })), 'Hebrew pings: Boom');
 });

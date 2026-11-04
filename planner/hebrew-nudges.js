@@ -12,9 +12,11 @@ export function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log =
   const tools = crypto ?? (Utilities ? gasCrypto(Utilities) : null);
   const read = (key, fallback) => { try { return JSON.parse(props.get(key) ?? 'null') ?? fallback; } catch { return fallback; } };
 
-  // `devices` from planner/hebrew-progress.js, `input` from hebrewInputFrom. Returns
+  // `devices` and `practising` (its `device`) from planner/hebrew-progress.js, `input` from
+  // hebrewInputFrom. Reminders on a device he no longer practises on are still sent, but said, since
+  // "1 device" once hid that every ping was going to the laptop (4 Nov 2026). Returns
   // { sent, devices, error } for the dashboard's hebrew:status.
-  function send({ devices, input }) {
+  function send({ devices, input, practising = null }) {
     let state = read('HEBREW_NUDGES', null);
     if (state?.day !== input.today || !Array.isArray(state.sent)) state = { day: input.today, sent: [] };
     const gone = new Set(read('HEBREW_GONE', []));
@@ -23,8 +25,11 @@ export function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log =
     const privateKey = props.get('VAPID_PRIVATE');
     const publicKey = props.get('VAPID_PUBLIC');
     if (!tools || !privateKey || !publicKey) return { sent: 0, devices: live.length, error: 'The planner has no push keys yet' };
+    const elsewhere = practising && !live.some((d) => d.id === `hvr:${practising}`)
+      ? `Reminders aren't on for the device you last practised on (${practising}), only ${live.map((d) => d.id.replace(/^hvr:/, '')).join(', ')}: turn them on in the Hebrew app there`
+      : null;
     const ping = duePing(input, state.sent);
-    if (!ping) return { sent: 0, devices: live.length, error: null };
+    if (!ping) return { sent: 0, devices: live.length, error: elsewhere };
     let error = null;
     let sent = 0;
     try {
@@ -41,7 +46,7 @@ export function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log =
     state.sent.push(ping.id);
     props.put('HEBREW_NUDGES', JSON.stringify(state));
     props.put('HEBREW_GONE', JSON.stringify([...gone].filter(Boolean).slice(-20)));
-    return { sent, devices: live.filter((d) => !gone.has(d.endpoint)).length, error };
+    return { sent, devices: live.filter((d) => !gone.has(d.endpoint)).length, error: error ?? elsewhere };
   }
 
   return { send };

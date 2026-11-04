@@ -96,7 +96,7 @@ export function createPlanner({
       .map((e) => ({ title: e.summary || 'Busy', calendar: cals.find((c) => c.id === e.calendarId)?.name ?? '', start: e.start.dateTime, end: e.end.dateTime }));
     const input = hebrewInputFrom({ doc: store.doc(), now: t, today, progress: progress.ok ? progress : null, busy });
     const r = createHebrewNudges({ UrlFetchApp, Utilities, props: { get, put }, log, crypto: pushCrypto, t })
-      .send({ devices: progress.ok ? progress.push : [], input });
+      .send({ devices: progress.ok ? progress.push : [], practising: progress.ok ? progress.device : null, input });
     const lastError = progress.ok ? r.error : progress.error;
     const prev = store.doc().calendar?.['hebrew:status'];
     const same = prev?.status === 'active' && prev.day === today && prev.devices === r.devices && prev.lastError === lastError;

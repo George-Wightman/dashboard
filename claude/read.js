@@ -20,6 +20,7 @@ import {
 } from '../js/gym.js';
 import { checkinsSince } from '../js/checkins.js';
 import { duolingoStatusLine } from '../js/duolingo.js';
+import { hebrewPingsLine } from '../js/hebrew-voice.js';
 import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES } from '../js/food.js';
 import { BACK, backScores, sessionTasks, sessionLines, routinesOf, routineFor, sessionWorkout, readyMarks } from '../js/coach.js';
 
@@ -154,6 +155,8 @@ function plannerRead(doc, day) {
   out.push(`  duolingo: ${config.duolingo || 'not set (Duolingo unchecked)'}`);
   const duo = config.duolingo ? duolingoStatusLine(doc, when) : null;
   if (duo) out.push(`  ${duo}`);
+  const pings = hebrewPingsLine(doc, when);
+  if (pings) out.push(`  ${pings}`);
   out.push(`  Colours George's calendars take (not for areas): ${s?.takenColors?.length ? s.takenColors.join(', ') : 'not known until the planner runs'}`);
   // George's calendars by name, because without them anyone looking at his calendar from outside the
   // dashboard has to guess what they're called — and guessing one out of seven once had a whole
