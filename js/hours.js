@@ -170,3 +170,10 @@ export function payForecast(doc, today, from, to) {
   }
   return out;
 }
+
+// 1st, 2nd, 3rd, 23rd, 11th…
+export function ordinal(n) {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] ?? 'th'}`;
+}

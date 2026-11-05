@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '53a16be7';
+var PLANNER_BUILD = 'd4f5c221';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -6571,7 +6571,14 @@ function payForecast(doc, today, from, to) {
   }
   return out;
 }
-return { UPCOMING_ID, PAY_ID, countId, payslipId, DEFAULT_PAY, isShiftTitle, paySettings, nextMonth, prevMonth, payPeriodOf, paydayOf, shifts, payslips, netRatio, grossFor, hoursSummary, payForecast };
+
+// 1st, 2nd, 3rd, 23rd, 11th…
+function ordinal(n) {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] ?? 'th'}`;
+}
+return { UPCOMING_ID, PAY_ID, countId, payslipId, DEFAULT_PAY, isShiftTitle, paySettings, nextMonth, prevMonth, payPeriodOf, paydayOf, shifts, payslips, netRatio, grossFor, hoursSummary, payForecast, ordinal };
 })();
 
 // ---- planner/hours.js

@@ -97,6 +97,13 @@ one starts there (it says so on its last line). At most the last seven days. The
 covers yesterday and today. `catchup 3` reads the last three days and leaves the marker where it is.
 When George has a map, it ends with the map too (see `map`).
 
+### `hours`
+His Signify hours and pay (Money's Hours section), from the Work calendar: the pay rules, hours in
+this pay period, the next pay with the hours booked or done in it and roughly what it'll be, his
+average week, each payslip's paid hours against the calendar's hours in that period (a gap means a
+missing shift or a pay mistake), shifts booked ahead, and Work events not counted because their
+title isn't a shift. He says the calendar is accurate: a shift on it happened.
+
 ### `map`
 His Civ-style map, worked out from his day scores: tiles, tiles waiting to be claimed, a golden age
 (three finished days in a row), barbarian camps and what they're heading for (they come from what he
@@ -153,6 +160,18 @@ With a topic — `calendar`, `planning`, `gym` or `food` — a short playbook fo
 first, what to change, and what never to touch. **Read the playbook before you start**, not after
 something has gone wrong. Each is a page, and each exists because a session got that job badly wrong
 without it.
+
+### `hours`
+One part per op. `{"op": "hours", "pay": {"rate": 12, "holidayPct": 12.07, "cutoff": 23}}` — the
+hourly rate, holiday pay on top (%), and the last day of the month whose hours that month's payslip
+pays. `{"op": "hours", "payslip": {"period": "2026-10", "paid": "2026-10-30", "hours": 20,
+"holiday": 28.97, "gross": 268.97, "tax": 0, "ni": 0, "net": 268.97}}` — read off a payslip PDF he
+gives you; never record his NI number, address or employee id. `{"op": "hours", "shifts": [{"eventId":
+"…", "start": "…", "end": "…", "title": "…"}]}` — imports shifts from before the planner started
+recording them (read them from the Work calendar with the calendar connector); ones the planner
+already has are skipped. `{"op": "hours", "count": {"eventId": "…", "on": true}}` — counts an event
+whose title isn't a shift (or `false` leaves a shift out). Never touch `work:` records: they're the
+map's hammers.
 
 ### `gym`
 Training from Hevy: whether it's connected (and any problem), each key lift (estimated 1RM, last top

@@ -15,6 +15,7 @@ import {
 import { attention } from '../js/attention.js';
 import { zoneNote, deviceZone } from '../js/travel.js';
 import { euDays, euSummary, EU_LIMIT } from '../js/eu.js';
+import { hoursSummary, ordinal } from '../js/hours.js';
 import {
   gymConfig, gymStatus, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
 } from '../js/gym.js';
@@ -580,6 +581,27 @@ function foodLine(doc, first, today) {
     waiting ? `${waiting} waiting` : null].filter(Boolean).join(' · ');
 }
 
+// ---- Hours (js/hours.js) ----------------------------------------------------------------------------
+
+const gbp = (n) => (n == null ? '?' : `£${n.toFixed(2)}`);
+function hoursRead(doc, today) {
+  const s = hoursSummary(doc, today);
+  const out = [header(doc, today)];
+  out.push(s.pay.rate == null
+    ? 'Pay: no rate set yet — set it with {"op": "hours", "pay": {"rate": …, "holidayPct": …, "cutoff": …}}'
+    : `Pay: ${gbp(s.pay.rate)} an hour + ${s.pay.holidayPct}% holiday, hours paid up to the ${ordinal(s.pay.cutoff)}, paid the month's last weekday${s.ratio < 1 ? ` · recent payslips keep ${Math.round(s.ratio * 100)}% after tax` : ''}`);
+  out.push(`This pay period (${s.period}): ${s.periodHours} h so far`);
+  out.push(`Next pay (${s.expected.period}, ~${dayName(s.expected.payday, today)}): ${s.expected.hours} h booked or done${s.expected.net != null ? `, about ${gbp(s.expected.net)}` : ''}`);
+  out.push(`Average over the last 8 full weeks: ${s.weeklyAverage} h a week`);
+  if (s.slips.length) {
+    out.push('Payslips (paid hours vs calendar hours in that period):');
+    for (const p of s.slips) out.push(`  ${p.period}: paid ${p.hours} h, calendar ${p.calendarHours} h${p.diff ? ` (${p.diff > 0 ? '+' : ''}${p.diff})` : ''} · ${gbp(p.net)} net`);
+  }
+  if (s.upcoming.length) out.push(`Booked ahead: ${s.upcoming.map((x) => `${dayName(x.day, today)} ${Math.round(x.minutes / 6) / 10} h`).join(' · ')}`);
+  if (s.notCounted.length) out.push(`Not counted (title isn't a shift): ${s.notCounted.map((x) => `${x.day} "${x.title}" [${x.eventId}]`).join(' · ')}`);
+  return out.join('\n');
+}
+
 export const READS = {
   inspect: (doc, today, ref) => {
     if (!ref) return header(doc, today) + '\ninspect needs the ID from find or list';
@@ -597,7 +619,7 @@ export const READS = {
     'Goal reviews:', ...Object.values(doc.reviews ?? {}).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 10).map((r) => `${tag(r.id)} ${r.result.state}: ${r.result.summary ?? r.result.message ?? r.reason}`),
     'Pending reviews require the planner and its GEMINI_KEY. Review suggestions wait for acceptance.'
   ].join('\n'),
-  today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead, food: foodRead, back: backRead,
+  today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead, food: foodRead, back: backRead, hours: hoursRead,
   // What older copies of the skill still ask for.
   journal: checkins,
 };

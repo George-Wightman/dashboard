@@ -19,6 +19,7 @@ import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
 import { setEuDays, dayRange, euSummary, EU_LIMIT } from '../js/eu.js';
+import { hoursSummary, paySettings, countId, payslipId, PAY_ID, ordinal } from '../js/hours.js';
 
 const extraDetails = (op) => op.details === undefined ? {} : { details: checkDetails(op.details) };
 
@@ -649,6 +650,65 @@ function eu(store, op) {
     + (s.over ? ` · plans go over 90 on ${dayName(s.over, today)}` : s.planned ? ' · plans fit' : '');
 }
 
+// Hours (js/hours.js): import shifts from before the planner recorded them, record a payslip, set the
+// pay rules, or count an event in or out. One part per op; the reply says where the hours stand.
+const PERIOD_RE = /^\d{4}-\d{2}$/;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const money2 = (v, what) => {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`${what} must be a number of pounds, 0 or more`);
+  return Math.round(n * 100) / 100;
+};
+function hours(store, op) {
+  const today = store.today();
+  const parts = ['shifts', 'payslip', 'pay', 'count'].filter((k) => op[k] != null);
+  if (parts.length !== 1) throw new Error('An hours op takes exactly one of "shifts", "payslip", "pay" or "count"');
+  let said;
+  if (op.shifts) {
+    if (!Array.isArray(op.shifts) || !op.shifts.length) throw new Error('"shifts" is a list of {eventId, start, end, title}');
+    const cal = store.doc().calendar ?? {};
+    let added = 0, skipped = 0;
+    store.transaction(() => {
+      for (const s of op.shifts) {
+        const eventId = str(s?.eventId);
+        const start = Date.parse(s?.start), end = Date.parse(s?.end);
+        if (!eventId || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new Error(`A shift needs eventId, start and end (ISO times): ${JSON.stringify(s)}`);
+        if (cal[`work:${eventId}`]?.status === 'active') { skipped++; continue; }
+        const day = DAY_RE.test(s.day ?? '') ? s.day : new Date(start).toISOString().slice(0, 10);
+        store.putCalendar(`hours:${eventId}`, { status: 'active', day, start: new Date(start).toISOString(), end: new Date(end).toISOString(), minutes: Math.round((end - start) / 60000), title: str(s.title).slice(0, 80) }, CLAUDE);
+        added++;
+      }
+    });
+    said = `Imported ${added} shift${added === 1 ? '' : 's'}${skipped ? ` (${skipped} already recorded by the planner)` : ''}`;
+  } else if (op.payslip) {
+    const p = op.payslip;
+    if (!PERIOD_RE.test(p.period ?? '')) throw new Error('A payslip needs "period" as YYYY-MM (the month it pays)');
+    if (p.paid != null && !DAY_RE.test(p.paid)) throw new Error('"paid" is the date paid, YYYY-MM-DD');
+    const rec = { status: 'active', period: p.period, paid: p.paid ?? null, hours: money2(p.hours, 'hours'), holiday: money2(p.holiday ?? 0, 'holiday'),
+      gross: money2(p.gross, 'gross'), tax: money2(p.tax ?? 0, 'tax'), ni: money2(p.ni ?? 0, 'ni'), net: money2(p.net, 'net') };
+    store.putCalendar(payslipId(p.period), rec, CLAUDE);
+    said = `Payslip for ${p.period}: ${rec.hours} h, £${rec.net.toFixed(2)} paid`;
+  } else if (op.pay) {
+    const cur = paySettings(store.doc());
+    const next = { ...cur };
+    if (op.pay.rate != null) next.rate = money2(op.pay.rate, 'rate');
+    if (op.pay.holidayPct != null) next.holidayPct = money2(op.pay.holidayPct, 'holidayPct');
+    if (op.pay.cutoff != null) {
+      if (!Number.isInteger(op.pay.cutoff) || op.pay.cutoff < 1 || op.pay.cutoff > 31) throw new Error('"cutoff" is a day of the month, 1 to 31');
+      next.cutoff = op.pay.cutoff;
+    }
+    store.putCalendar(PAY_ID, { status: 'active', ...next }, CLAUDE);
+    said = `Pay: £${next.rate?.toFixed(2) ?? '?'} an hour + ${next.holidayPct}% holiday, hours paid up to the ${ordinal(next.cutoff)}`;
+  } else {
+    const eventId = str(op.count.eventId);
+    if (!eventId || typeof op.count.on !== 'boolean') throw new Error('"count" is {eventId, on: true|false}');
+    store.putCalendar(countId(eventId), { status: 'active', count: op.count.on }, CLAUDE);
+    said = `${op.count.on ? 'Counting' : 'Not counting'} event ${eventId} as a shift`;
+  }
+  const s = hoursSummary(store.doc(), today);
+  return `${said} · next pay (${s.expected.period}): ${s.expected.hours} h${s.expected.net != null ? `, about £${s.expected.net.toFixed(2)}` : ''}`;
+}
+
 // Today's brief (or another day's): one or two lines on what matters and why.
 function brief(store, op) {
   const text = str(op.text);
@@ -869,6 +929,7 @@ export const FIELDS = {
   brief: ['text', 'day'],
   countdown: ['title', 'day', 'cancel'],
   eu: ['from', 'to', 'clear'],
+  hours: ['shifts', 'payslip', 'pay', 'count'],
 };
 
 // Plan entries retain the same practical controls as their standalone counterparts.
@@ -925,7 +986,7 @@ export const OPS = {
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
   log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym,
-  details, rule, report, review, meal, session, eu,
+  details, rule, report, review, meal, session, eu, hours,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff
