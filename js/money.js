@@ -168,10 +168,11 @@ export function compare(money, doc, { a, b, eu = false } = {}) {
 export function moneySummary(money, doc, today) {
   const f = money ? potForecast({ money, doc, today }) : { rows: [], atStart: null, start: startDay(doc) };
   const row = f.rows.find((r) => r.month === monthOf(today));
-  const spent = money ? monthActuals(money, monthOf(today)).total : null;
+  const now = money ? monthActuals(money, monthOf(today)) : null;
+  const spent = now && now.days ? now.total : null;
   const avg = money ? averageSpend(money, today).total : null;
   const h = hoursSummary(doc, today);
-  return { start: f.start, atStart: f.atStart, spent, planned: row ? row.spend : avg || null, nextPay: h.expected, rows: f.rows };
+  return { start: f.start, atStart: f.atStart, spent, seenDays: now?.days ?? 0, planned: row ? row.spend : avg || null, nextPay: h.expected, rows: f.rows };
 }
 
 export const gbp = (p, { pennies = false } = {}) => {

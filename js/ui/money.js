@@ -59,7 +59,8 @@ export function renderMoneyTile(ctx) {
   return h('div', { class: 'tile-stack mo-tile' },
     h('p', { class: 'tile-hero' }, h('span', { class: 'tile-num' }, gbp(s.atStart)), h('span', { class: 'tile-cap' }, `at the start, ${monthName(s.start.slice(0, 7), true)}`)),
     h('ul', { class: 'mo-facts' }, payLine,
-      s.spent != null ? h('li', {}, 'This month ', h('b', {}, gbp(s.spent)), s.planned ? ` of ~${gbp(s.planned)}` : '') : null));
+      s.spent != null ? h('li', {}, 'This month ', h('b', {}, gbp(s.spent)), s.planned ? ` of ~${gbp(s.planned)}` : '')
+        : s.planned ? h('li', {}, 'This month ', h('b', {}, `~${gbp(s.planned)}`), ' planned') : null));
 }
 
 // The pot, month by month: solid where the statements are, dashed where it's planned.
@@ -222,7 +223,7 @@ export function renderMoneyBig(ctx) {
     h('div', { class: 'mo-stats' },
       stat(gbp(s.atStart), `at the start, ${dayText(start)}`),
       stat(s.nextPay.net != null ? `~${pounds2(s.nextPay.net)}` : `${s.nextPay.hours} h`, `next pay, ${dayText(s.nextPay.payday)}`),
-      money ? stat(gbp(s.spent), `spent in ${monthName(today.slice(0, 7))} so far`) : null),
+      money ? (s.spent != null ? stat(gbp(s.spent), `spent in ${monthName(today.slice(0, 7))}, ${s.seenDays} days on statements`) : stat(`~${gbp(s.planned)}`, `planned for ${monthName(today.slice(0, 7))}`)) : null),
     !money ? h('p', { class: 'mo-empty' }, 'No statements yet. In a chat on the laptop, give Claude your bank statements (PDFs) and say "add these to Money". Only daily totals per category are saved; the statements stay on your laptop.') : null,
     money ? bigSection('Your money to the start', potChart(s.rows, start) ?? h('p', { class: 'muted' }, 'Needs a balance from a statement to draw.'),
       h('p', { class: 'muted mo-note' }, `Solid is from your statements (up to ${shortDate(lastCovered(money))}); dashed is the plan: your pay from Hours, spending at your recent average${avg?.months ? ` (${gbp(avg.total)} a month)` : ''}.`)) : null,
