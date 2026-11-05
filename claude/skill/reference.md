@@ -104,6 +104,12 @@ average week, each payslip's paid hours against the calendar's hours in that per
 missing shift or a pay mistake), shifts booked ahead, and Work events not counted because their
 title isn't a shift. He says the calendar is accurate: a shift on it happened.
 
+### `money`
+His money (`reference money` first, the playbook): the start date, the next pay, what he'll have at
+the start, his average month by category, month by month to the start (`~` is planned), this month so
+far, Salzburg against the UK per week, and plan lines. `money-import <file.json>` merges a ledger you
+built from his statements into money.json.
+
 ### `map`
 His Civ-style map, worked out from his day scores: tiles, tiles waiting to be claimed, a golden age
 (three finished days in a row), barbarian camps and what they're heading for (they come from what he

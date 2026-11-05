@@ -22,6 +22,7 @@ import { join, dirname } from 'node:path';
 import { mapToday, mapSummary, readMaps } from '../js/map/summary.js';
 import { validMap } from '../js/map/files.js';
 import { dayPoints, pointsLines } from '../js/map/points.js';
+import { readMoney, moneyLines, importMoney } from './money.js';
 
 // The map in words, then today's points row by row: what's counting and what isn't.
 const mapLines = (doc, today, got) => [...mapSummary(got), ...pointsLines(dayPoints(doc, today, got.map))];
@@ -29,11 +30,12 @@ const saveFile = (path, bytes) => { mkdirSync(dirname(path), { recursive: true }
 
 // Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
 // what never to touch. Served from the clone like the reference, so they can't go stale.
-export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews', 'food'];
+export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews', 'food', 'money'];
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · reference [topic] · handoffs · handoff <name>',
+  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · reference [topic] · handoffs · handoff <name>',
+  'Money ledger: money-import <file.json> merges a ledger built from his statements (reference money)',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
   'Discover: capabilities [topic|op] · inspect <id> · workflows. Test any JSON batch with preview before apply; preview writes nothing.',
@@ -184,7 +186,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -257,6 +259,22 @@ export async function main({
       const got = mapToday(store.doc(), await readMaps(files, validMap).catch(() => []), store.today());
       say(got ? mapLines(store.doc(), store.today(), got).join('\n') : 'There is no map yet: the sync repo has no map files.');
       return finish(0);
+    }
+
+    // Money (claude/money.js): the ledger beside data.json, read or merged into.
+    if (command === 'money') {
+      try {
+        say(moneyLines(await readMoney(files), store.doc(), store.today()).join('\n'));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+    if (command === 'money-import') {
+      try {
+        const path = rest.join(' ').trim();
+        if (!path) throw new Error('money-import needs the path of a JSON file');
+        say(await importMoney(files, readText(path)));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
     }
 
     if (command !== 'apply' && command !== 'preview') {

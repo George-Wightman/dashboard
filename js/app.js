@@ -37,6 +37,9 @@ import { chooseZoneRecord } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles, loadNotePlace, saveNotePlace } from './tiles.js';
 import { renderNoteSlot } from './ui/noteslot.js';
 import { loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
+import { loadCached, refreshFile } from './private.js';
+import { MONEY_PATH, MONEY_KEY, validMoney } from './money.js';
+import { LONDON_PATH, LONDON_KEY, validLondon } from './london.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -68,6 +71,9 @@ let notePlace = loadNotePlace(localStorage);
 // The map's private files (js/map/files.js): the last good copies, refreshed with sync now and then.
 let maps = loadCachedMaps(localStorage);
 let mapsAt = 0;
+// Money's ledger and London's areas (js/private.js): private files too, read on the same half-hour beat.
+let money = loadCached(localStorage, MONEY_KEY, validMoney);
+let london = loadCached(localStorage, LONDON_KEY, validLondon);
 const MAPS_EVERY = 30 * 60 * 1000;
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
@@ -143,6 +149,9 @@ const ctx = {
   tiles: () => tiles,
   // The map's cities (js/ui/map.js): none until the sync repo has map files.
   maps: () => maps,
+  // Money's ledger (js/money.js) and London's areas (js/london.js): null until the sync repo has them.
+  money: () => money,
+  london: () => london,
   // Where the note for Claude sits on Daylight (js/ui/noteslot.js).
   notePlace: () => notePlace,
   setNotePlace(next) {
@@ -371,7 +380,10 @@ async function runMapSync() {
   if (FAKE || !token || !repo || navigator.onLine === false || Date.now() - mapsAt < MAPS_EVERY) return;
   mapsAt = Date.now();
   try {
-    maps = await refreshMaps({ clientFor: (path) => createGitHubClient({ token, repo, path }), storage: localStorage });
+    const clientFor = (path) => createGitHubClient({ token, repo, path });
+    maps = await refreshMaps({ clientFor, storage: localStorage });
+    money = await refreshFile({ clientFor, storage: localStorage, key: MONEY_KEY, path: MONEY_PATH, valid: validMoney }).catch(() => money);
+    london = await refreshFile({ clientFor, storage: localStorage, key: LONDON_KEY, path: LONDON_PATH, valid: validLondon }).catch(() => london);
     if (canRun()) render();
   } catch { /* offline or refused: the cached maps stay */ }
 }
