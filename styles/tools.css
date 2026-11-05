@@ -32,6 +32,11 @@
 .mo-hatch-bg { fill: color-mix(in srgb, var(--dl-muted) 18%, var(--dl-card)); }
 .mo-hatch-fg { fill: color-mix(in srgb, var(--dl-muted) 55%, var(--dl-card)); }
 .mo-hbar { fill: var(--viz-1); }
+.mo-in { fill: var(--viz-3); background: var(--viz-3); }
+.mo-in-once { fill: color-mix(in srgb, var(--viz-3) 45%, var(--dl-card)); background: color-mix(in srgb, var(--viz-3) 45%, var(--dl-card)); }
+.mo-out { fill: var(--viz-2); background: var(--viz-2); }
+.mo-net { fill: var(--dl-ink); font-weight: 700; }
+.mo-net.neg { fill: var(--dl-carry-ink); }
 .mo-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; padding: 0; list-style: none; font-size: 13px; color: var(--dl-muted); }
 .mo-legend i, .mo-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .mo-plan-swatch { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--dl-muted) 55%, var(--dl-card)) 0 3px, color-mix(in srgb, var(--dl-muted) 18%, var(--dl-card)) 3px 6px); }

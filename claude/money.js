@@ -2,7 +2,7 @@
 // statements. The ledger is the private sync repo's money.json, beside data.json; an import merges
 // into it (days, income and balances by day, plan lines by month and label, covered stretches join).
 
-import { MONEY_PATH, validMoney, mergeMoney, potForecast, averageSpend, monthActuals, compare, categoryLabel, gbp, startDay, emptyMoney, lastCovered } from '../js/money.js';
+import { MONEY_PATH, validMoney, mergeMoney, potForecast, averageSpend, monthActuals, compare, categoryLabel, gbp, startDay, emptyMoney, lastCovered, inOut } from '../js/money.js';
 import { hoursSummary } from '../js/hours.js';
 
 export async function readMoney(files) {
@@ -23,6 +23,13 @@ export function moneyLines(money, doc, today) {
   if (!money) {
     out.push('No ledger yet: read his bank statements and import one with `money-import <file.json>` (see reference money).');
     return out;
+  }
+  const io = inOut(money);
+  if (io) {
+    const sign = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
+    out.push(`In and out since ${io.from}${money.since ? '' : ' (no `since` set: from the first statement day)'}: in ${gbp(io.totals.in)} (one-off ${gbp(io.totals.oneOff)}) · out ${gbp(io.totals.spend)} · net ${sign(io.totals.net)} · without one-offs ${sign(io.totals.netRegular)}`);
+    for (const r of io.rows) out.push(`  ${r.month}: in ${gbp(r.in)}${r.oneOff ? ` (one-off ${gbp(r.oneOff)})` : ''} · out ${gbp(r.spend)} · net ${sign(r.net)}`);
+    if (io.base && io.now) out.push(`Pot ${gbp(io.base.total)} on ${io.base.day} → ${gbp(io.now.total)} on ${io.now.day}${io.outside ? `; ${sign(io.outside)} of that change isn't income or spending (shares, savings)` : ''}`);
   }
   const f = potForecast({ money, doc, today });
   out.push(`Statements cover up to ${lastCovered(money) ?? '—'} · what he'll have at the start: ${gbp(f.atStart)}`);

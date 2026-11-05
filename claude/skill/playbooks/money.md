@@ -37,6 +37,9 @@ Then write a JSON file **outside any repo** (your scratchpad) and import it:
 }
 ```
 
+`"since": "2026-05-01"` (optional) is the day his *In and out* view counts from; add a balance for
+the day before it so the view shows where he started. `"since": null` clears it.
+
 `bash run.sh money-import <file.json>`. All amounts are **whole pence**. Days in `days` replace
 what's there for that day, so import a whole statement at a time. Then `bash run.sh money` checks
 it.

@@ -46,6 +46,7 @@ export function validMoney(m) {
   if (!Array.isArray(m.balances) || !m.balances.every((b) => b && DAY.test(b.day ?? '') && pence(b.total))) return false;
   if (!Array.isArray(m.plan) || !m.plan.every((p) => p && MONTH.test(p.month ?? '') && pence(p.amount) && ['spend', 'income'].includes(p.kind) && typeof p.label === 'string' && (p.cat == null || CATEGORY_IDS.includes(p.cat)))) return false;
   if (!Array.isArray(m.covered) || !m.covered.every((c) => c && DAY.test(c.from ?? '') && DAY.test(c.to ?? '') && c.from <= c.to)) return false;
+  if (m.since != null && !DAY.test(m.since)) return false;
   return true;
 }
 
@@ -136,6 +137,42 @@ export function potForecast({ money, doc, today }) {
   return { rows, atStart: pot, start };
 }
 
+// Pay and anything that repeats (interest) is regular; a one-off or a refund isn't.
+const isOneOff = (i) => !!i.oneOff || i.kind === 'refund';
+
+// What came in and went out each month from `money.since` (the day he counts from; the first
+// statement day if unset) to the last statement day, with one-off money apart so his regular months
+// show. `base` is the pot the day before `since` and `now` the latest pot, when statements give them;
+// `outside` is the part of the pot's change that isn't income or spending (money moved into shares or
+// savings, say).
+export function inOut(money) {
+  const firstDay = money.covered.reduce((m, c) => (m == null || c.from < m ? c.from : m), null);
+  const to = lastCovered(money);
+  if (!firstDay || !to) return null;
+  const from = money.since && money.since > firstDay ? money.since : firstDay;
+  if (from > to) return null;
+  const rows = [];
+  for (let m = monthOf(from); m <= monthOf(to); m = nextMonth(m)) rows.push({ month: m, regular: 0, oneOff: 0, spend: 0 });
+  const row = (day) => rows.find((r) => r.month === monthOf(day));
+  const inside = (day) => day >= from && day <= to;
+  for (const [day, cats] of Object.entries(money.days)) if (inside(day)) row(day).spend += sum(cats);
+  for (const i of money.income) if (inside(i.day)) row(i.day)[isOneOff(i) ? 'oneOff' : 'regular'] += i.amount;
+  for (const r of rows) { r.in = r.regular + r.oneOff; r.net = r.in - r.spend; r.netRegular = r.regular - r.spend; }
+  const total = (k) => rows.reduce((t, r) => t + r[k], 0);
+  const totals = { regular: total('regular'), oneOff: total('oneOff'), in: total('in'), spend: total('spend'), net: total('net'), netRegular: total('netRegular') };
+  const sorted = [...money.balances].sort((a, b) => a.day.localeCompare(b.day));
+  const base = sorted.find((b) => b.day === addDays(from, -1)) ?? null;
+  const now = sorted.filter((b) => b.day >= from && b.day <= to).at(-1) ?? null;
+  let outside = null;
+  if (base && now) {
+    let netToNow = 0;
+    for (const [day, cats] of Object.entries(money.days)) if (day >= from && day <= now.day) netToNow -= sum(cats);
+    for (const i of money.income) if (i.day >= from && i.day <= now.day) netToNow += i.amount;
+    outside = now.total - base.total - netToNow;
+  }
+  return { from, to, rows, totals, base, now, outside };
+}
+
 // Spending per week by category over the covered days that pass `test`.
 function perWeek(money, days) {
   const spend = {};
@@ -203,6 +240,7 @@ export function mergeMoney(base, add) {
     const last = out.covered.at(-1);
     if (last && r.from <= addDays(last.to, 1)) { if (r.to > last.to) last.to = r.to; } else out.covered.push({ ...r });
   }
+  if (add.since !== undefined) { if (add.since) out.since = add.since; else delete out.since; }
   out.updated = add.updated ?? out.updated;
   return out;
 }

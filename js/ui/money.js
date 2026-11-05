@@ -8,8 +8,11 @@ import { h } from './dom.js';
 import { svg, tip } from './svg.js';
 import { bigSection } from './big.js';
 import { shortDate, shortWeekday } from '../dates.js';
-import { moneySummary, monthActuals, compare, gbp, startDay, START_ID, CATEGORIES, categoryLabel, lastCovered, averageSpend } from '../money.js';
+import { moneySummary, monthActuals, compare, gbp, startDay, START_ID, CATEGORIES, categoryLabel, lastCovered, averageSpend, inOut } from '../money.js';
 import { hoursSummary, countId, ordinal } from '../hours.js';
+
+const signed = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
+const sinceText = (day) => `${Number(day.slice(8, 10))} ${monthName(day.slice(0, 7))}`;
 
 // Eight colour groups (the chart's categorical slots, in fixed order); the ledger keeps finer categories.
 export const GROUPS = [
@@ -56,11 +59,50 @@ export function renderMoneyTile(ctx) {
       h('ul', { class: 'mo-facts' }, payLine),
       h('p', { class: 'muted' }, 'Give Claude your bank statements to see your spending and what you\'ll have in May.'));
   }
+  const io = inOut(money);
   return h('div', { class: 'tile-stack mo-tile' },
     h('p', { class: 'tile-hero' }, h('span', { class: 'tile-num' }, gbp(s.atStart)), h('span', { class: 'tile-cap' }, `at the start, ${monthName(s.start.slice(0, 7), true)}`)),
     h('ul', { class: 'mo-facts' }, payLine,
       s.spent != null ? h('li', {}, 'This month ', h('b', {}, gbp(s.spent)), s.planned ? ` of ~${gbp(s.planned)}` : '')
-        : s.planned ? h('li', {}, 'This month ', h('b', {}, `~${gbp(s.planned)}`), ' planned') : null));
+        : s.planned ? h('li', {}, 'This month ', h('b', {}, `~${gbp(s.planned)}`), ' planned') : null,
+      io ? h('li', {}, `Since ${sinceText(io.from)} `, h('b', {}, signed(io.totals.net)), io.totals.oneOff ? h('span', { class: 'muted' }, ` · on pay alone ${signed(io.totals.netRegular)}`) : '') : null));
+}
+
+// In and out each month since the day he counts from: what came in (regular pay, then one-off money
+// on top) beside what went out, the net under each month, and the pot either side.
+function inOutChart(io) {
+  const W = 640, H = 230, L = 56, R = 8, T = 10, B = 50;
+  const hi = Math.max(1, ...io.rows.map((r) => Math.max(r.in, r.spend)));
+  const slot = (W - L - R) / io.rows.length;
+  const bw = Math.min(26, slot / 2 - 5);
+  const X = (i) => L + (i + 0.5) * slot;
+  const Y = (v) => T + (1 - v / hi) * (H - T - B);
+  const step = niceStep(hi);
+  const grid = [];
+  for (let v = 0; v <= hi; v += step) grid.push(svg('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: 'mo-grid' }), svg('text', { x: L - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'mo-axis' }, gbp(v)));
+  const rect = (x, from, to, cls, label) => (to > from ? svg('rect', { x, y: Y(to), width: bw, height: Math.max(0, Y(from) - Y(to) - (from ? 2 : 0)), rx: 3, class: cls }, tip(label)) : null);
+  const bars = io.rows.map((r, i) => svg('g', {},
+    rect(X(i) - bw - 2, 0, r.regular, 'mo-in', `${monthName(r.month, true)}: pay and regular ${gbp(r.regular)}`),
+    rect(X(i) - bw - 2, r.regular, r.in, 'mo-in-once', `${monthName(r.month, true)}: one-off ${gbp(r.oneOff)}`),
+    rect(X(i) + 2, 0, r.spend, 'mo-out', `${monthName(r.month, true)}: spent ${gbp(r.spend)}`),
+    svg('text', { x: X(i), y: H - B + 18, 'text-anchor': 'middle', class: 'mo-axis' }, monthName(r.month)),
+    svg('text', { x: X(i), y: H - B + 38, 'text-anchor': 'middle', class: r.net < 0 ? 'mo-net neg' : 'mo-net' }, signed(r.net))));
+  return svg('svg', { class: 'mo-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `In and out each month since ${sinceText(io.from)}: net ${signed(io.totals.net)}` }, grid, bars);
+}
+
+function inOutBlock(money, io) {
+  const notes = [...new Set(money.income.filter((i) => i.day >= io.from && i.day <= io.to && (i.oneOff || i.kind === 'refund')).map((i) => i.note || (i.kind === 'refund' ? 'refund' : 'one-off')))];
+  return h('div', {},
+    h('div', { class: 'mo-stats' },
+      stat(signed(io.totals.net), `net since ${sinceText(io.from)}`),
+      stat(signed(io.totals.netRegular), 'on pay alone, without one-off money'),
+      io.base && io.now ? stat(signed(io.now.total - io.base.total), `your pot: ${gbp(io.base.total)} → ${gbp(io.now.total)}`) : null),
+    h('ul', { class: 'mo-legend' }, h('li', {}, h('i', { class: 'mo-in' }), 'Pay & regular'), h('li', {}, h('i', { class: 'mo-in-once' }), 'One-off'), h('li', {}, h('i', { class: 'mo-out' }), 'Spent')),
+    inOutChart(io),
+    h('p', { class: 'muted mo-note' },
+      `In ${gbp(io.totals.in)}, out ${gbp(io.totals.spend)}, to ${shortDate(io.to)}.`,
+      notes.length ? ` One-off money (${gbp(io.totals.oneOff)}): ${notes.join(', ')}.` : '',
+      io.outside ? ` Your pot moved ${signed(io.now.total - io.base.total)}: the ${signed(io.totals.net)} net, ${io.outside < 0 ? `less ${gbp(-io.outside)} moved out (into shares or savings)` : `plus ${gbp(io.outside)} moved in (from shares or savings)`}.` : ''));
 }
 
 // The pot, month by month: solid where the statements are, dashed where it's planned.
@@ -225,6 +267,7 @@ export function renderMoneyBig(ctx) {
       stat(s.nextPay.net != null ? `~${pounds2(s.nextPay.net)}` : `${s.nextPay.hours} h`, `next pay, ${dayText(s.nextPay.payday)}`),
       money ? (s.spent != null ? stat(gbp(s.spent), `spent in ${monthName(today.slice(0, 7))}, ${s.seenDays} days on statements`) : stat(`~${gbp(s.planned)}`, `planned for ${monthName(today.slice(0, 7))}`)) : null),
     !money ? h('p', { class: 'mo-empty' }, 'No statements yet. In a chat on the laptop, give Claude your bank statements (PDFs) and say "add these to Money". Only daily totals per category are saved; the statements stay on your laptop.') : null,
+    money && inOut(money) ? bigSection(`In and out since ${sinceText(inOut(money).from)}`, inOutBlock(money, inOut(money))) : null,
     money ? bigSection('Your money to the start', potChart(s.rows, start) ?? h('p', { class: 'muted' }, 'Needs a balance from a statement to draw.'),
       h('p', { class: 'muted mo-note' }, `Solid is from your statements (up to ${shortDate(lastCovered(money))}); dashed is the plan: your pay from Hours, spending at your recent average${avg?.months ? ` (${gbp(avg.total)} a month)` : ''}.`)) : null,
     money ? bigSection('Spending by month', legend(), spendChart(ctx, s.rows), month ? monthDetail(money, s.rows, month) : h('p', { class: 'muted mo-note' }, 'Tap a month to see where it went.')) : null,

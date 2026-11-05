@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validMoney, emptyMoney, monthActuals, averageSpend, potForecast, compare, mergeMoney, startDay, moneySummary, gbp, START_ID } from '../js/money.js';
+import { validMoney, emptyMoney, monthActuals, averageSpend, potForecast, compare, mergeMoney, startDay, moneySummary, gbp, START_ID, inOut } from '../js/money.js';
 import { emptyDoc } from '../js/doc.js';
 import { addDays } from '../js/dates.js';
 
@@ -90,4 +90,44 @@ test('startDay and the summary with no ledger yet: nothing is NaN', () => {
   assert.equal(gbp(s.atStart), '—');
   assert.equal(gbp(123456), '£1,235');
   assert.equal(gbp(-500, { pennies: true }), '−£5.00');
+});
+
+test('inOut: month by month from `since`, one-offs apart, and the pot either side', () => {
+  const m = ledger();
+  m.since = '2026-09-01';
+  m.balances = [{ day: '2026-08-31', total: 100000 }, { day: '2026-10-31', total: 120000 }];
+  const r = inOut(m);
+  assert.equal(r.from, '2026-09-01');
+  assert.deepEqual(r.rows.map((x) => x.month), ['2026-09', '2026-10']);
+  const oct = r.rows[1];
+  assert.equal(oct.spend, 31000 + 15500);
+  assert.equal(oct.regular, 40000);
+  assert.equal(oct.oneOff, 20000);
+  assert.equal(oct.net, 60000 - 46500);
+  assert.equal(oct.netRegular, 40000 - 46500);
+  assert.equal(r.totals.spend, 30000 + 46500);
+  assert.equal(r.totals.net, 110000 - 76500);
+  assert.equal(r.base.total, 100000);
+  assert.equal(r.now.total, 120000);
+  // The pot rose £200 but £335 came in net: £135 went somewhere that isn't spending.
+  assert.equal(r.outside, 20000 - 33500);
+});
+
+test('inOut: without `since` it counts from the first statement day, and no balance means no pot', () => {
+  const m = ledger();
+  m.balances = [];
+  const r = inOut(m);
+  assert.equal(r.from, '2026-08-01');
+  assert.equal(r.rows.length, 3);
+  assert.equal(r.base, null);
+  assert.equal(r.outside, null);
+  assert.equal(inOut(emptyMoney()), null);
+});
+
+test('mergeMoney: `since` is set by an import, cleared by an empty one, and checked', () => {
+  const a = mergeMoney(ledger(), { since: '2026-09-01' });
+  assert.equal(a.since, '2026-09-01');
+  assert.equal(mergeMoney(a, {}).since, '2026-09-01');
+  assert.equal(mergeMoney(a, { since: null }).since, undefined);
+  assert.equal(validMoney({ ...a, since: 'May' }), false);
 });
