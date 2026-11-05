@@ -19,6 +19,10 @@ It's laid out to fit a tall widget (2 × 4) as well as a wide one.
   wording needs no new app.
 - The app only lays that out (`app/src/main/java/.../Widgets.kt`), keeps the last answer for when
   there's no signal, and asks again at most every five minutes (Android wakes widgets every 30).
+  A fetch Android starts (that half-hourly wake, the Hebrew card's alarm) goes through WorkManager,
+  which waits until Android lets the app use the network. While the phone is idle Android blocks a
+  background app's network, so a plain request fails and the widget keeps yesterday's card with a ⚠.
+  A tap fetches straight away, because Android lets an app use the network when you've just touched it.
 - The key lives in `glance.json` in the sync repo as a SHA-256. `node claude/glance-setup.mjs` makes a
   new one (the old stops working) and puts it in `calendar.widgets` in the dashboard's data, where
   **⚙ → Phone widgets → Connect** hands it to the app. Delete `glance.json` to switch the widgets off.

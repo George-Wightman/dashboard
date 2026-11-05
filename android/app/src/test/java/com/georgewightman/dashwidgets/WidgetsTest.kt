@@ -7,6 +7,11 @@ import android.graphics.Canvas
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.work.ListenableWorker
+import androidx.work.NetworkType
+import androidx.work.WorkManager
+import androidx.work.testing.TestListenableWorkerBuilder
+import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -145,5 +150,24 @@ class WidgetsTest {
         val view = Widgets.views(ctx, "fuel", null, 0, null, connected = false).apply(ctx, FrameLayout(ctx))
         assertTrue(view.findViewById<TextView>(R.id.lines).text.contains("Connect"))
         assertEquals(View.GONE, view.findViewById<View>(R.id.number_row).visibility)
+    }
+
+    // Android blocks a background app's network when the phone is idle, so a fetch Android starts
+    // (the half-hourly update, the Hebrew card's alarm) goes to WorkManager, which waits for network.
+    @Test fun aFetchAndroidStartsWaitsForTheNetwork() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(ctx)
+        Widgets.fetchLater(ctx)
+        Widgets.fetchLater(ctx)
+        val queued = WorkManager.getInstance(ctx).getWorkInfosForUniqueWork(Widgets.WORK).get()
+        assertEquals(1, queued.size)
+        assertEquals(NetworkType.CONNECTED, queued[0].constraints.requiredNetworkType)
+    }
+
+    @Test fun theQueuedFetchTriesAgainWhenThePlannerCantBeReached() {
+        val notConnected = TestListenableWorkerBuilder<RefreshWorker>(ctx).build().doWork()
+        assertEquals(ListenableWorker.Result.success(), notConnected)
+        Glance.connect(ctx, "https://127.0.0.1:9/macros/s/x", "k".repeat(40))
+        assertEquals(ListenableWorker.Result.retry(), TestListenableWorkerBuilder<RefreshWorker>(ctx).build().doWork())
+        assertEquals(ListenableWorker.Result.success(), TestListenableWorkerBuilder<RefreshWorker>(ctx).setRunAttemptCount(5).build().doWork())
     }
 }

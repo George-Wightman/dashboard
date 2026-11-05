@@ -10,16 +10,25 @@ import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Worker
+import androidx.work.WorkerParameters
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 // One widget per tile. Each draws what was last fetched straight away, then asks the planner for the
 // latest (at most every five minutes, whichever widget asks) and redraws them all.
 abstract class TileWidget(private val tileId: String) : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
         Widgets.draw(ctx, mgr, tileId, ids)
-        Widgets.refreshInBackground(ctx, goAsync(), force = false)
+        Widgets.fetchLater(ctx)
     }
 
     override fun onReceive(ctx: Context, intent: Intent) {
@@ -39,6 +48,17 @@ class GoalsWidget : TileWidget("goals")
 class CountdownWidget : TileWidget("countdown")
 class WeekWidget : TileWidget("week")
 class MapWidget : TileWidget("map")
+
+// The queued fetch: draws whatever it got (a failure shows as ⚠) and tries again a few times.
+class RefreshWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
+    override fun doWork(): Result {
+        val app = applicationContext
+        if (!Glance.connected(app)) return Result.success()
+        val ok = Glance.refresh(app, force = true)
+        Widgets.drawAll(app)
+        return if (ok || runAttemptCount >= 5) Result.success() else Result.retry()
+    }
+}
 
 object Widgets {
     const val ACTION_REFRESH = "com.georgewightman.dashwidgets.REFRESH"
@@ -66,11 +86,27 @@ object Widgets {
         val app = ctx.applicationContext
         Thread {
             try {
-                if (Glance.refresh(app, force) || force) drawAll(app)
+                val ok = Glance.refresh(app, force)
+                if (ok || force) drawAll(app)
+                // Refused (the phone idle, the app in the background): Android's queue tries again.
+                if (!ok && Glance.connected(app)) fetchLater(app)
             } finally {
                 pending?.finish()
             }
         }.start()
+    }
+
+    const val WORK = "glance"
+
+    // A fetch through WorkManager, which runs it once Android lets the app use the network. Started
+    // in the background, a plain request fails while the phone is idle: Android blocks a background
+    // app's network then, and the Hebrew card sat on the day before's (5 Nov 2026). One at a time.
+    fun fetchLater(ctx: Context) {
+        val request = OneTimeWorkRequestBuilder<RefreshWorker>()
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(ctx.applicationContext).enqueueUniqueWork(WORK, ExistingWorkPolicy.KEEP, request)
     }
 
     fun drawAll(ctx: Context) {
