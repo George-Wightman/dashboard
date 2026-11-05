@@ -35,8 +35,8 @@ export const STANSTED = { lat: 51.8890, lon: 0.2626 };
 // Beyond London, from the timetables (read Oct 2026): LNER King's Cross to Newark Northgate then a lift;
 // EMR St Pancras to Mansfield with a change at Nottingham.
 export const RAIL = {
-  newark: { label: "King's Cross → Newark Northgate, then a lift", mins: 80 + 40, note: 'LNER direct about 1 h 20, around 29 a weekday, Advance from about £17 before Railcard, then about 40 min by car' },
-  nottingham: { label: 'St Pancras → Mansfield via Nottingham', mins: 146, note: 'East Midlands Railway, one change at Nottingham, seen from £22 to £64 before Railcard' },
+  newark: { label: "King's Cross → Newark Northgate, then a lift", short: 'the train to Newark and a lift', mins: 80 + 40, note: 'LNER direct about 1 h 20, around 29 a weekday, Advance from about £17 before Railcard, then about 40 min by car' },
+  nottingham: { label: 'St Pancras → Mansfield via Nottingham', short: 'the train via Nottingham', mins: 146, note: 'East Midlands Railway, one change at Nottingham, seen from £22 to £64 before Railcard' },
 };
 
 async function cached(url, init = {}) {

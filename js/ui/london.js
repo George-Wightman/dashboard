@@ -1,5 +1,5 @@
 // London's tile and big view (js/london.js): where to look for a room. Phone first. The big view is a
-// real map (Leaflet, vendored in js/vendor/leaflet, loaded the first time it opens) with every area
+// real map (Leaflet, vendored in js/vendor/leaflet, loaded the first time it opens; OpenStreetMap tiles) with every area
 // pinned at its station and numbered by rank, the settings that rank them (each with a line saying
 // what it does), the chosen area's card with why it ranks where it does in pounds, the ranked list,
 // cost against commute, and the budget with what Money says he'll have at the start. The map element
@@ -46,8 +46,7 @@ function loadLeaflet(onReady) {
   return leaflet.then((L) => { onReady?.(); return L; });
 }
 
-const state = { el: null, map: null, layer: null, theme: null, tiles: null, fitted: false };
-const night = () => document.documentElement.dataset.theme === 'night';
+const state = { el: null, map: null, layer: null, tiles: null, fitted: false, pending: false };
 
 function mapBox(ctx, ranked, pick, data) {
   if (!state.el) state.el = h('div', { class: 'lo-map', role: 'application', 'aria-label': 'Map of London with the areas ranked' });
@@ -58,18 +57,26 @@ function mapBox(ctx, ranked, pick, data) {
     return state.el;
   }
   if (!state.map) {
-    state.el.replaceChildren();
-    state.map = L.map(state.el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false, tap: true }).setView([51.505, -0.11], 11);
-    state.layer = L.layerGroup().addTo(state.map);
-    requestAnimationFrame(() => state.map.invalidateSize());
+    // Made once the box is on screen (a map made in a detached box measures itself as 0 × 0).
+    if (!state.pending) {
+      state.pending = true;
+      requestAnimationFrame(() => {
+        state.pending = false;
+        if (!state.el.isConnected || state.map) return;
+        state.el.replaceChildren();
+        state.map = L.map(state.el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false }).setView([51.505, -0.11], 11);
+        state.layer = L.layerGroup().addTo(state.map);
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => state.map?.invalidateSize()).observe(state.el);
+        ctx.render();
+      });
+    }
+    return state.el;
   }
-  const theme = night() ? 'dark_all' : 'light_all';
-  if (state.theme !== theme) {
-    state.tiles?.remove();
-    state.tiles = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${theme}/{z}/{x}/{y}{r}.png`, {
-      maxZoom: 18, subdomains: 'abcd', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  // OpenStreetMap's own tiles (light personal use, with attribution); night mode darkens them in CSS.
+  if (!state.tiles) {
+    state.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(state.map);
-    state.theme = theme;
   }
   state.layer.clearLayers();
   if (data.office) {
@@ -176,7 +183,7 @@ function card(r, s, data) {
       h('div', {}, h('h5', {}, 'Getting about'), h('ul', { class: 'lo-j' },
         h('li', {}, h('b', {}, 'Work '), `${mins(j.office)} door to door, arriving 8:30`),
         j.west != null ? h('li', {}, h('b', {}, 'West London '), `${mins(j.west)} on average`) : null,
-        h('li', {}, h('b', {}, 'Mansfield '), home == null ? '—' : `${hrs(home + (route?.mins ?? 0))} (${mins(home)} to ${s.mansfieldRoute === 'nottingham' ? 'St Pancras' : "King's Cross"}, then ${route?.label?.split(', ')[0] ?? 'the train'})`),
+        h('li', {}, h('b', {}, 'Mansfield '), home == null ? '—' : `${hrs(home + (route?.mins ?? 0))} (${mins(home)} to ${s.mansfieldRoute === 'nottingham' ? 'St Pancras' : "King's Cross"}, then ${route?.short ?? 'the train'})`),
         h('li', {}, h('b', {}, 'Stansted, 7 am flight '), j.stansted ? `leave by ${j.stansted.leave} (${mins(j.stansted.mins)})` : 'not by public transport')),
         h('h5', {}, "What's around"), h('ul', { class: 'lo-near-list' }, NEAR.map((n) => h('li', {}, n.label, h('span', { class: 'lo-meter' }, h('i', { style: `width:${Math.round((sc.nearScores[n.id] ?? 0.5) * 100)}%` }))))))),
     h('a', { class: 'dl-btn lo-sr', href: spareRoomLink(a.name), target: '_blank', rel: 'noopener' }, 'Rooms near this station on SpareRoom ↗'));

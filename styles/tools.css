@@ -18,7 +18,7 @@
 .mo-empty { background: var(--dl-soft); border-radius: 16px; padding: 14px 16px; margin: 0 0 14px; }
 .mo-note { font-size: 13px; margin: 6px 0 0; }
 .mo-chart { display: block; width: 100%; height: auto; overflow: visible; }
-.mo-chart text { font: 12px var(--dl-text); }
+.mo-chart text { font: 15px var(--dl-text); }
 .mo-axis { fill: var(--dl-muted); }
 .mo-grid { stroke: var(--dl-line); stroke-width: 1; }
 .mo-pot { fill: none; stroke: var(--viz-1); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
@@ -125,4 +125,15 @@
 .lo-name small, .lo-nums small { display: block; font-size: 12px; color: var(--dl-muted); }
 .lo-nums { text-align: right; font-variant-numeric: tabular-nums; }
 :root[data-theme="night"] .leaflet-container { background: #1b1b1b; }
+:root[data-theme="night"] .lo-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6); }
 .leaflet-container a { color: var(--dl-accent); }
+
+/* Wide sheets: Money's sections sit in the sheet's two columns under its numbers; London is one
+   layout of its own (map and card beside the settings), never split into columns. */
+.sheet .big.money > .mo-stats, .sheet .big.money > .mo-empty { column-span: all; }
+.sheet .big.london, .big.london { columns: auto; column-count: auto; display: grid; gap: 18px; }
+@media (min-width: 1000px) {
+  .sheet .big.london > .big-section { break-inside: avoid; }
+  .big.london { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .big.london > .lo-layout, .big.london > .lo-small { grid-column: 1 / -1; }
+}
