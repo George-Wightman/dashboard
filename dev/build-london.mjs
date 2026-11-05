@@ -65,10 +65,13 @@ export function nextTuesday(from = new Date()) {
 
 const MODES = 'tube,overground,dlr,elizabeth-line,national-rail';
 async function station(name) {
-  const q = encodeURIComponent(name.replace('&', 'and'));
-  const r = await cached(`https://api.tfl.gov.uk/StopPoint/Search/${q}?modes=${MODES}&maxResults=5`);
-  const m = r?.matches?.[0];
-  return m ? { lat: m.lat, lon: m.lon, tfl: m.name } : null;
+  // TfL's search wants the name as written ("Elephant & Castle"); "and" finds nothing for some.
+  for (const q of [name, name.replace('&', 'and'), name.split(/[ &]/)[0]]) {
+    const r = await cached(`https://api.tfl.gov.uk/StopPoint/Search/${encodeURIComponent(q)}?modes=${MODES}&maxResults=5`);
+    const m = r?.matches?.[0];
+    if (m) return { lat: m.lat, lon: m.lon, tfl: m.name };
+  }
+  return null;
 }
 
 async function borough({ lat, lon }) {
