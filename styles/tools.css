@@ -1,0 +1,128 @@
+/* Money (js/ui/money.js) and London (js/ui/london.js): the dashboard's tools. Colours come from
+   styles/daylight.css (--viz-* are the chart series, checked for colour blindness in both themes). */
+
+.viz-1 { background: var(--viz-1); fill: var(--viz-1); }
+.viz-2 { background: var(--viz-2); fill: var(--viz-2); }
+.viz-3 { background: var(--viz-3); fill: var(--viz-3); }
+.viz-4 { background: var(--viz-4); fill: var(--viz-4); }
+.viz-5 { background: var(--viz-5); fill: var(--viz-5); }
+.viz-6 { background: var(--viz-6); fill: var(--viz-6); }
+.viz-7 { background: var(--viz-7); fill: var(--viz-7); }
+.viz-8 { background: var(--viz-8); fill: var(--viz-8); }
+
+.mo-facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 15px; }
+.mo-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.mo-stat { background: var(--dl-soft); border-radius: 16px; padding: 12px 14px; display: grid; gap: 2px; min-width: 0; }
+.mo-n { font: 800 clamp(20px, 5.5vw, 28px)/1.05 var(--dl-display); letter-spacing: -0.02em; }
+.mo-t { font-size: 13px; color: var(--dl-muted); }
+.mo-empty { background: var(--dl-soft); border-radius: 16px; padding: 14px 16px; margin: 0 0 14px; }
+.mo-note { font-size: 13px; margin: 6px 0 0; }
+.mo-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.mo-chart text { font: 12px var(--dl-text); }
+.mo-axis { fill: var(--dl-muted); }
+.mo-grid { stroke: var(--dl-line); stroke-width: 1; }
+.mo-pot { fill: none; stroke: var(--viz-1); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.mo-pot-plan { stroke-dasharray: 6 5; }
+.mo-dot { fill: var(--viz-1); stroke: var(--dl-card); stroke-width: 2; }
+.mo-dot-plan { fill: var(--dl-card); stroke: var(--viz-1); }
+.mo-bar { cursor: pointer; outline: none; }
+.mo-hit { fill: transparent; }
+.mo-bar.on .mo-hit, .mo-bar:focus-visible .mo-hit { fill: color-mix(in srgb, var(--dl-ink) 7%, transparent); }
+.mo-plan { fill: url(#mo-hatch); }
+.mo-hatch-bg { fill: color-mix(in srgb, var(--dl-muted) 18%, var(--dl-card)); }
+.mo-hatch-fg { fill: color-mix(in srgb, var(--dl-muted) 55%, var(--dl-card)); }
+.mo-hbar { fill: var(--viz-1); }
+.mo-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; padding: 0; list-style: none; font-size: 13px; color: var(--dl-muted); }
+.mo-legend i, .mo-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.mo-plan-swatch { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--dl-muted) 55%, var(--dl-card)) 0 3px, color-mix(in srgb, var(--dl-muted) 18%, var(--dl-card)) 3px 6px); }
+.mo-table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.mo-table td, .mo-table th { padding: 7px 4px; border-bottom: 1px solid var(--dl-line); text-align: left; vertical-align: top; }
+.mo-table th { font-size: 12px; color: var(--dl-muted); font-weight: 600; }
+.mo-table .n { text-align: right; white-space: nowrap; }
+.mo-table small { display: block; font-size: 12px; color: var(--dl-muted); }
+.mo-table .mo-total td { font-weight: 700; }
+.mo-diff small { color: var(--dl-carry-ink); font-weight: 600; }
+.mo-month h4, .mo-hours h4 { margin: 14px 0 6px; font-size: 14px; }
+.mo-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; }
+.mo-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.mo-seg .dl-btn[aria-pressed="true"], .mo-seg .dl-btn[aria-checked="true"] { background: var(--dl-ink); color: var(--dl-card); border-color: var(--dl-ink); }
+.mo-ranges { display: grid; gap: 8px; margin: 10px 0; }
+.mo-range { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mo-range input, .mo-start input, .lo-sal input, .lo-near select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--dl-line); background: var(--dl-card); color: var(--dl-ink); min-height: 44px; box-sizing: border-box; max-width: 100%; }
+.mo-start { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.mo-cmp-head { display: grid; gap: 4px; font-size: 14px; margin: 12px 0 8px; }
+.mo-cmp-head i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.mo-cmp-row { display: grid; grid-template-columns: minmax(90px, 130px) 1fr auto; gap: 10px; align-items: center; font-size: 14px; padding: 4px 0; }
+.mo-cmp-bars { display: grid; gap: 2px; }
+.mo-cmp-bars i { display: block; height: 8px; border-radius: 0 4px 4px 0; min-width: 2px; }
+.mo-cmp-a { background: var(--viz-1); }
+.mo-cmp-b { background: var(--viz-2); }
+.mo-cmp-n { font-variant-numeric: tabular-nums; color: var(--dl-muted); white-space: nowrap; font-size: 13px; }
+
+.lo-top { display: flex; gap: 12px; align-items: center; margin: 0; }
+.lo-top b { font: 800 26px/1.05 var(--dl-display); display: block; }
+.lo-top small { display: block; color: var(--muted); }
+.lo-rank { display: inline-grid; place-items: center; min-width: 30px; height: 30px; border-radius: 15px; background: var(--dl-ink); color: var(--dl-card); font: 800 15px var(--dl-display); flex: none; }
+.lo-layout { display: grid; gap: 16px; }
+@media (min-width: 1000px) {
+  .lo-layout { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+  .lo-settings { position: sticky; top: 0; max-height: 82vh; overflow: auto; }
+}
+.lo-main { display: grid; gap: 10px; min-width: 0; }
+.lo-map { height: 52vh; min-height: 300px; border-radius: 18px; overflow: hidden; background: var(--dl-soft); z-index: 0; }
+.lo-map-wait { display: grid; place-items: center; height: 100%; margin: 0; color: var(--dl-muted); padding: 16px; text-align: center; }
+.lo-pin-wrap, .lo-office { background: none; border: 0; }
+.lo-pin { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 15px; font: 800 13px var(--dl-text); color: #fff; box-shadow: 0 0 0 2px var(--dl-card), 0 2px 6px rgba(0, 0, 0, .25); }
+.lo-pin.ok, .lo-key.ok { background: var(--viz-1); }
+.lo-pin.stretch, .lo-key.stretch { background: var(--viz-2); }
+.lo-pin.over, .lo-key.over { background: #8C8A96; }
+.lo-dot.ok { fill: var(--viz-1); }
+.lo-dot.stretch { fill: var(--viz-2); }
+.lo-dot.over { fill: #8C8A96; }
+.lo-pin.on { box-shadow: 0 0 0 3px var(--dl-ink), 0 0 0 5px var(--dl-card); transform: scale(1.15); }
+.lo-office span { display: inline-block; padding: 2px 7px; border-radius: 6px; background: var(--dl-ink); color: var(--dl-card); font: 700 12px var(--dl-text); }
+.lo-key { display: inline-block; width: 10px; height: 10px; border-radius: 5px; margin-right: 6px; vertical-align: -1px; }
+.lo-dot { fill-opacity: .55; stroke: var(--dl-card); stroke-width: 1.5; cursor: pointer; }
+.lo-dot.on { fill-opacity: 1; stroke: var(--dl-ink); stroke-width: 2.5; }
+.lo-limit { stroke: var(--dl-muted); stroke-dasharray: 5 4; }
+.lo-label { fill: var(--dl-ink); font-weight: 600; paint-order: stroke; stroke: var(--dl-card); stroke-width: 4px; stroke-linejoin: round; }
+.lo-card { background: var(--dl-soft); border-radius: 20px; padding: 16px; display: grid; gap: 12px; }
+.lo-card header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.lo-card h4 { margin: 0; font: 800 22px/1.1 var(--dl-display); }
+.lo-card header p { margin: 2px 0 0; font-size: 13px; }
+.lo-total { text-align: right; }
+.lo-total b { font: 800 24px/1 var(--dl-display); display: block; }
+.lo-total small { font-size: 12px; color: var(--dl-muted); }
+.lo-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.lo-flags:empty { display: none; }
+.lo-flag { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; color: var(--dl-carry-ink); }
+.lo-card-grid { display: grid; gap: 14px; }
+@media (min-width: 640px) { .lo-card-grid { grid-template-columns: 1fr 1fr; } }
+.lo-card h5 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dl-muted); }
+.lo-j, .lo-near-list { margin: 0 0 12px; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+.lo-near-list li { display: grid; grid-template-columns: 1fr 90px; gap: 10px; align-items: center; }
+.lo-meter { display: block; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--dl-ink) 12%, transparent); overflow: hidden; }
+.lo-meter i { display: block; height: 100%; background: var(--viz-3); border-radius: 4px; }
+.lo-small { font-size: 12px; margin: 6px 0 0; }
+.lo-sr { justify-self: start; text-decoration: none; }
+.lo-settings { background: var(--dl-card); border: 1px solid var(--dl-line); border-radius: 20px; padding: 6px 16px 14px; min-width: 0; }
+.lo-settings summary { font: 800 18px var(--dl-display); padding: 10px 0; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.lo-ctl { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--dl-line); }
+.lo-ctl label { display: flex; justify-content: space-between; gap: 10px; font-weight: 600; font-size: 14px; }
+.lo-ctl output { font-variant-numeric: tabular-nums; color: var(--dl-accent); white-space: nowrap; }
+.lo-ctl input[type="range"] { width: 100%; min-height: 32px; accent-color: var(--dl-accent); }
+.lo-ctl-label { font-weight: 600; font-size: 14px; }
+.lo-help { margin: 0; font-size: 12.5px; color: var(--dl-muted); }
+.lo-sals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-bottom: 10px; }
+.lo-sal { display: grid; gap: 4px; font-size: 12px; color: var(--dl-muted); min-width: 0; }
+.lo-sal input { width: 100%; font-variant-numeric: tabular-nums; }
+.lo-near { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--dl-line); }
+.lo-near-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
+.lo-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.lo-list button { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; font: inherit; color: inherit; background: var(--dl-soft); border: 0; border-radius: 14px; padding: 10px 12px; min-height: 52px; cursor: pointer; }
+.lo-list li.on button { outline: 2px solid var(--dl-ink); }
+.lo-list li.over { opacity: .55; }
+.lo-name small, .lo-nums small { display: block; font-size: 12px; color: var(--dl-muted); }
+.lo-nums { text-align: right; font-variant-numeric: tabular-nums; }
+:root[data-theme="night"] .leaflet-container { background: #1b1b1b; }
+.leaflet-container a { color: var(--dl-accent); }

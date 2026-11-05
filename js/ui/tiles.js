@@ -21,6 +21,8 @@ import { hebrewMinutesId } from '../tiles.js';
 import { openBig } from './big.js';
 import { renderMapTile, renderMapBig } from './map.js';
 import { renderEuTile, renderEuBig } from './eu.js';
+import { renderMoneyTile, renderMoneyBig } from './money.js';
+import { renderLondonTile, renderLondonBig } from './london.js';
 
 // Parts of a tile one under the other, or nothing when none has anything to show.
 const stacked = (...parts) => {
@@ -65,6 +67,9 @@ export const TILES = [
   { id: 'countdown', title: 'Countdown', area: 'countdown', render: renderCountdown },
   // Days in the EU (js/ui/eu.js): the calendar to mark them is its big view.
   { id: 'eu', title: 'EU days', area: 'eu', render: (ctx) => renderEuTile({ ...ctx, openEu: () => openBig(ctx, BY_ID.get('eu')) }), big: renderEuBig },
+  // Money with Hours inside (js/ui/money.js), and where to live in London (js/ui/london.js).
+  { id: 'money', title: 'Money', area: 'money', render: renderMoneyTile, big: renderMoneyBig },
+  { id: 'london', title: 'London', area: 'london', render: renderLondonTile, big: (ctx) => mapSafely(() => renderLondonBig(ctx)) },
   // The map (js/ui/map.js): its picture opens it big too. A map that can't draw says so in its own
   // tile rather than taking the rest of the screen with it.
   {

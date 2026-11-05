@@ -27,7 +27,8 @@ export function saveNotePlace(storage, place) {
 // `review` (the week in review) only shows Saturday to Monday, at the top.
 // `eu` is days in the EU (js/eu.js), for planning visits under the 90-in-180 rule.
 // `map` shows only once the sync repo has a map file (js/ui/map.js).
-export const TILE_IDS = ['review', 'needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'eu', 'week', 'map'];
+// `money` is Money with Hours inside (js/money.js, js/hours.js); `london` is where to live (js/london.js).
+export const TILE_IDS = ['review', 'needs', 'body', 'fuel', 'hebrew', 'goals', 'weeks', 'countdown', 'eu', 'money', 'london', 'week', 'map'];
 export const DEFAULT_TILES = Object.freeze({ v: 1, order: Object.freeze([...TILE_IDS]), hidden: Object.freeze([]) });
 
 // The classic widgets with a tile. Note for Claude moved into the timeline; Muscles and Cardio

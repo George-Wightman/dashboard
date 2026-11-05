@@ -2,7 +2,7 @@
 // a refresh selects the new release for the next navigation, never per-file.
 const CACHE = 'today-dashboard-v16';
 const SHELL = [
-  './', 'index.html', 'styles.css', 'styles/daylight.css', 'fonts/BricolageGrotesque.woff2', 'fonts/Figtree.woff2', 'fonts/Rubik-Hebrew.woff2', 'manifest.webmanifest',
+  './', 'index.html', 'styles.css', 'styles/daylight.css', 'styles/tools.css', 'fonts/BricolageGrotesque.woff2', 'fonts/Figtree.woff2', 'fonts/Rubik-Hebrew.woff2', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/commit.js', 'js/data.js', 'js/doc.js', 'js/dates.js', 'js/parse.js', 'js/schedule.js',
   'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/hebrew-voice.js', 'js/duolingo.js', 'js/gemini.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/checkins.js',
@@ -11,7 +11,7 @@ const SHELL = [
   'js/version.js', 'js/ui/dom.js', 'js/ui/today.js', 'js/ui/side.js', 'js/ui/edit.js', 'js/ui/settings.js', 'js/ui/checkin.js', 'js/ui/mic.js', 'js/ui/note.js',
   'js/ui/widgets.js', 'js/ui/flags.js', 'js/ui/changes.js', 'js/ui/claude.js', 'js/ui/sources.js', 'js/ui/gym.js', 'js/ui/hebrew.js', 'js/ui/countdown.js', 'js/ui/big.js',
   'js/ui/training.js',
-  'js/sky.js', 'js/timeline.js', 'js/header.js', 'js/needs.js', 'js/tiles.js', 'js/ui/sky.js', 'js/ui/timeline.js', 'js/ui/tiles.js', 'js/ui/needs.js', 'js/food.js', 'js/photos.js', 'js/ui/snap.js', 'js/ui/fuel.js', 'js/coach.js', 'js/ui/coach.js', 'js/ui/hebrewlog.js', 'js/travel.js', 'js/eu.js', 'js/ui/eu.js', 'js/hours.js', 'js/money.js', 'js/london.js', 'js/private.js', 'js/nudges.js', 'js/review.js', 'js/ui/review.js', 'js/ui/noteslot.js', 'js/jobs.js', 'js/voice.js', 'js/ui/timedrag.js', 'js/glance.js', 'js/stt.js', 'js/stt-worker.js',
+  'js/sky.js', 'js/timeline.js', 'js/header.js', 'js/needs.js', 'js/tiles.js', 'js/ui/sky.js', 'js/ui/timeline.js', 'js/ui/tiles.js', 'js/ui/needs.js', 'js/food.js', 'js/photos.js', 'js/ui/snap.js', 'js/ui/fuel.js', 'js/coach.js', 'js/ui/coach.js', 'js/ui/hebrewlog.js', 'js/travel.js', 'js/eu.js', 'js/ui/eu.js', 'js/hours.js', 'js/money.js', 'js/london.js', 'js/private.js', 'js/ui/money.js', 'js/ui/london.js', 'js/ui/svg.js', 'js/vendor/leaflet/leaflet.js', 'js/vendor/leaflet/leaflet.css', 'js/nudges.js', 'js/review.js', 'js/ui/review.js', 'js/ui/noteslot.js', 'js/jobs.js', 'js/voice.js', 'js/ui/timedrag.js', 'js/glance.js', 'js/stt.js', 'js/stt-worker.js',
   'js/map/hex.js', 'js/map/engine.js', 'js/map/files.js', 'js/map/summary.js', 'js/map/points.js', 'js/ui/map.js', 'js/ui/map-art.js',
 ];
 

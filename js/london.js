@@ -56,10 +56,15 @@ export function londonSettings(doc, data) {
   const saved = r?.status === 'active' ? r : {};
   const fileDefaults = data?.defaults ?? {};
   const pick = (k) => (saved[k] ?? fileDefaults[k] ?? DEFAULTS[k]);
-  const salaries = [0, 1, 2].map((i) => (fin(saved.salaries?.[i]) ? saved.salaries[i] : fin(fileDefaults.salaries?.[i]) ? fileDefaults.salaries[i] : null));
+  const given = [0, 1, 2].map((i) => (fin(saved.salaries?.[i]) ? saved.salaries[i] : fin(fileDefaults.salaries?.[i]) ? fileDefaults.salaries[i] : null));
+  // Years not given are a guess: a 5% rise, then the same rise again.
+  const salaries = [...given];
+  if (salaries[1] == null && salaries[0] != null) salaries[1] = Math.round((salaries[0] * 1.05) / 100) * 100;
+  if (salaries[2] == null && salaries[1] != null) salaries[2] = salaries[1] + (salaries[1] - (salaries[0] ?? salaries[1]));
+  const guessed = given.map((v) => v == null);
   return {
     year: [0, 1, 2].includes(saved.year) ? saved.year : 0,
-    salaries,
+    salaries, guessed,
     ceilingPct: pick('ceilingPct'), savings: pick('savings'), everythingElse: pick('everythingElse') ?? 0,
     hourValue: pick('hourValue'), maxCommute: pick('maxCommute'), west: pick('west'),
     mansfieldTrips: pick('mansfieldTrips'), salzburgTrips: pick('salzburgTrips'),
@@ -180,6 +185,16 @@ export function spareRoomLink(name, maxRent = 1150) {
     share_type: 'P', days_of_wk_available: '7 days a week', posted_by: 'live_out', searchtype: 'advanced', action: 'search',
   });
   return `https://www.spareroom.co.uk/flatshare/search.pl?${q}`;
+}
+
+// Saves a change to the settings (a partial patch), merged into the synced record.
+export function setLondonSettings(store, patch) {
+  const had = store.doc().calendar?.[SETTINGS_ID];
+  const base = had?.status === 'active' ? had : {};
+  const next = { ...base, ...patch, near: { ...(base.near ?? {}), ...(patch.near ?? {}) } };
+  if (patch.salaries) next.salaries = patch.salaries;
+  delete next.id; delete next._sync;
+  store.putCalendar(SETTINGS_ID, { ...next, status: 'active' }, 'me');
 }
 
 export const pounds = (v) => (v == null || !fin(v) ? '—' : `${v < 0 ? '−' : ''}£${Math.round(Math.abs(v)).toLocaleString('en-GB')}`);
