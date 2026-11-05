@@ -89,41 +89,54 @@ export function payslips(doc) {
   return Object.values(cal(doc))
     .filter((r) => r?.status === 'active' && String(r.id).startsWith('payslip:') && PERIOD.test(r.period ?? ''))
     .map((r) => ({
-      period: r.period, paid: r.paid ?? null, hours: num(r.hours) ?? 0, holiday: num(r.holiday) ?? 0,
+      period: r.period, paid: r.paid ?? null, from: DAY.test(r.from ?? '') ? r.from : null, to: DAY.test(r.to ?? '') ? r.to : null, hours: num(r.hours) ?? 0, holiday: num(r.holiday) ?? 0,
       gross: num(r.gross) ?? 0, tax: num(r.tax) ?? 0, ni: num(r.ni) ?? 0, net: num(r.net) ?? 0,
     }))
     .sort((a, b) => a.period.localeCompare(b.period));
 }
 
-// What reaches his account per £ earned: everything, unless one of the last three payslips took tax or NI.
+// What reaches his account per £ earned: everything, unless the latest payslip took tax or NI (then
+// that payslip's share). Older taxed months don't count: tax taken in error gets refunded.
 export function netRatio(slips) {
-  const last = slips.slice(-3);
-  if (!last.some((s) => s.tax > 0 || s.ni > 0)) return 1;
-  const gross = last.reduce((t, s) => t + s.gross, 0);
-  return gross > 0 ? last.reduce((t, s) => t + s.net, 0) / gross : 1;
+  const last = slips.at(-1);
+  if (!last || !(last.tax > 0 || last.ni > 0) || !(last.gross > 0)) return 1;
+  return last.net / last.gross;
 }
 
 export const grossFor = (hours, pay) => (pay.rate == null ? null : round2(hours * pay.rate * (1 + pay.holidayPct / 100)));
 
 const hoursIn = (list, test) => round2(list.filter(test).reduce((t, s) => t + s.minutes, 0) / 60);
+const cutDay = (m, cutoff) => `${m}-${String(Math.min(cutoff, daysInMonth(`${m}-01`))).padStart(2, '0')}`;
 
-// Everything Hours shows, as of `today`.
+// The days of work a period's payslip pays: the day after last month's cut-off to this month's.
+export const periodWindow = (m, cutoff) => ({ from: addDays(cutDay(prevMonth(m), cutoff), 1), to: cutDay(m, cutoff) });
+
+// The days a payslip actually paid: the ones written on it when they differ from the rule (cut-offs
+// have moved about), otherwise its period's window.
+const slipWindow = (slip, cutoff) => {
+  const w = periodWindow(slip.period, cutoff);
+  return { from: slip.from ?? w.from, to: slip.to ?? w.to };
+};
+
+// Everything Hours shows, as of `today`. Shifts after the last payslip's last day are unpaid; each
+// goes to the period of its day under the cut-off rule.
 export function hoursSummary(doc, today) {
   const pay = paySettings(doc);
   const all = shifts(doc);
   const counted = all.filter((s) => s.counted);
   const slips = payslips(doc);
-  const paidPeriods = new Set(slips.map((s) => s.period));
   const ratio = netRatio(slips);
+  const windows = slips.map((s) => slipWindow(s, pay.cutoff));
+  const paidTo = windows.reduce((m, w) => (m == null || w.to > m ? w.to : m), null);
+  const unpaid = counted.filter((s) => paidTo == null || s.day > paidTo);
   const periodOf = (day) => payPeriodOf(day, pay.cutoff);
 
   const period = periodOf(today);
-  const periodHours = hoursIn(counted, (s) => periodOf(s.day) === period && s.day <= today);
+  const periodHours = hoursIn(unpaid, (s) => periodOf(s.day) === period && s.day <= today);
 
   // The next pay not yet on a payslip: everything booked in it, done or still to come.
-  let next = period;
-  while (paidPeriods.has(next)) next = nextMonth(next);
-  const nextHours = hoursIn(counted, (s) => periodOf(s.day) === next);
+  const next = paidTo == null ? period : [period, periodOf(addDays(paidTo, 1))].sort()[0];
+  const nextHours = hoursIn(unpaid, (s) => periodOf(s.day) === next);
   const nextGross = grossFor(nextHours, pay);
   const expected = { period: next, hours: nextHours, gross: nextGross, net: nextGross == null ? null : round2(nextGross * ratio), payday: paydayOf(next) };
 
@@ -137,36 +150,34 @@ export function hoursSummary(doc, today) {
   const full = weeks.slice(-9, -1);
   const weeklyAverage = round2(full.reduce((t, w) => t + w.hours, 0) / full.length);
 
-  const withCalendar = slips.map((s) => {
-    const calendarHours = hoursIn(counted, (x) => periodOf(x.day) === s.period);
-    return { ...s, calendarHours, diff: round2(s.hours - calendarHours) };
+  const withCalendar = slips.map((s, i) => {
+    const w = windows[i];
+    const calendarHours = hoursIn(counted, (x) => x.day >= w.from && x.day <= w.to);
+    return { ...s, from: w.from, to: w.to, calendarHours, diff: round2(s.hours - calendarHours) };
   });
   const notCounted = all.filter((s) => !s.counted).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 20);
   const upcoming = counted.filter((s) => s.day > today || s.source === 'upcoming').slice(0, 30);
 
-  return { pay, ratio, period, periodHours, expected, weeks, weeklyAverage, slips: withCalendar, notCounted, upcoming };
+  return { pay, ratio, paidTo, period, periodHours, expected, weeks, weeklyAverage, slips: withCalendar, notCounted, upcoming };
 }
 
-// Expected take-home in each month from `from` to `to` (inclusive, YYYY-MM): booked hours where there
-// are some, the weekly average for days not yet booked. { month: { net, booked, guessed } }.
+// Expected take-home in each month from `from` to `to` (inclusive, YYYY-MM): unpaid hours already done
+// or booked, plus the weekly average for the period's days not yet booked. { month: { net, booked, guessed } }.
 export function payForecast(doc, today, from, to) {
   const s = hoursSummary(doc, today);
   const out = {};
   if (s.pay.rate == null) return out;
-  const counted = shifts(doc).filter((x) => x.counted);
-  const lastBooked = counted.reduce((m, x) => (x.day > m ? x.day : m), today);
+  const unpaid = shifts(doc).filter((x) => x.counted && (s.paidTo == null || x.day > s.paidTo));
+  const lastBooked = unpaid.reduce((m, x) => (x.day > m ? x.day : m), today);
   for (let m = from; m <= to; m = nextMonth(m)) {
-    if (s.slips.some((x) => x.period === m)) continue;
-    const booked = hoursIn(counted, (x) => payPeriodOf(x.day, s.pay.cutoff) === m && x.day > today);
-    const doneUnpaid = hoursIn(counted, (x) => payPeriodOf(x.day, s.pay.cutoff) === m && x.day <= today);
-    // Days in the period after the last booked shift are guessed at the weekly average.
-    const periodEnd = `${m}-${String(Math.min(s.pay.cutoff, daysInMonth(`${m}-01`))).padStart(2, '0')}`;
-    const periodStart = addDays(`${prevMonth(m)}-${String(Math.min(s.pay.cutoff, daysInMonth(`${prevMonth(m)}-01`))).padStart(2, '0')}`, 1);
-    const guessFrom = [periodStart, addDays(lastBooked, 1), addDays(today, 1)].sort().at(-1);
-    const guessDays = guessFrom <= periodEnd ? (Date.parse(periodEnd) - Date.parse(guessFrom)) / 86400000 + 1 : 0;
+    const w = periodWindow(m, s.pay.cutoff);
+    if (s.paidTo != null && w.to <= s.paidTo) continue;
+    const booked = hoursIn(unpaid, (x) => payPeriodOf(x.day, s.pay.cutoff) === m);
+    const guessFrom = [w.from, addDays(lastBooked, 1), addDays(today, 1), s.paidTo ? addDays(s.paidTo, 1) : w.from].sort().at(-1);
+    const guessDays = guessFrom <= w.to ? (Date.parse(w.to) - Date.parse(guessFrom)) / 86400000 + 1 : 0;
     const guessed = round2((guessDays / 7) * s.weeklyAverage);
-    const gross = grossFor(booked + doneUnpaid + guessed, s.pay);
-    out[m] = { net: round2(gross * s.ratio), booked: round2(booked + doneUnpaid), guessed };
+    const gross = grossFor(booked + guessed, s.pay);
+    out[m] = { net: round2(gross * s.ratio), booked, guessed };
   }
   return out;
 }

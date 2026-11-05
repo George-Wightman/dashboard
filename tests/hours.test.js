@@ -86,9 +86,10 @@ test('hoursSummary: no rate yet means no money figures, not NaN', () => {
   assert.equal(s.weeklyAverage, 0);
 });
 
-test('netRatio: whole pay unless a recent payslip took tax', () => {
+test('netRatio: whole pay unless the latest payslip took tax', () => {
   assert.equal(netRatio([{ gross: 100, net: 100, tax: 0, ni: 0 }]), 1);
-  assert.equal(netRatio([{ gross: 100, net: 80, tax: 20, ni: 0 }, { gross: 100, net: 100, tax: 0, ni: 0 }]), 0.9);
+  assert.equal(netRatio([{ gross: 100, net: 80, tax: 20, ni: 0 }, { gross: 100, net: 100, tax: 0, ni: 0 }]), 1);
+  assert.equal(netRatio([{ gross: 100, net: 100, tax: 0, ni: 0 }, { gross: 100, net: 80, tax: 20, ni: 0 }]), 0.8);
 });
 
 test('payForecast: booked hours plus the weekly average for the days not yet booked', () => {

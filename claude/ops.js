@@ -684,7 +684,8 @@ function hours(store, op) {
     const p = op.payslip;
     if (!PERIOD_RE.test(p.period ?? '')) throw new Error('A payslip needs "period" as YYYY-MM (the month it pays)');
     if (p.paid != null && !DAY_RE.test(p.paid)) throw new Error('"paid" is the date paid, YYYY-MM-DD');
-    const rec = { status: 'active', period: p.period, paid: p.paid ?? null, hours: money2(p.hours, 'hours'), holiday: money2(p.holiday ?? 0, 'holiday'),
+    for (const k of ['from', 'to']) if (p[k] != null && !DAY_RE.test(p[k])) throw new Error(`"${k}" is the ${k === 'from' ? 'first' : 'last'} day of work it paid, YYYY-MM-DD`);
+    const rec = { status: 'active', period: p.period, paid: p.paid ?? null, from: p.from ?? null, to: p.to ?? null, hours: money2(p.hours, 'hours'), holiday: money2(p.holiday ?? 0, 'holiday'),
       gross: money2(p.gross, 'gross'), tax: money2(p.tax ?? 0, 'tax'), ni: money2(p.ni ?? 0, 'ni'), net: money2(p.net, 'net') };
     store.putCalendar(payslipId(p.period), rec, CLAUDE);
     said = `Payslip for ${p.period}: ${rec.hours} h, £${rec.net.toFixed(2)} paid`;

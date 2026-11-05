@@ -166,7 +166,8 @@ One part per op. `{"op": "hours", "pay": {"rate": 12, "holidayPct": 12.07, "cuto
 hourly rate, holiday pay on top (%), and the last day of the month whose hours that month's payslip
 pays. `{"op": "hours", "payslip": {"period": "2026-10", "paid": "2026-10-30", "hours": 20,
 "holiday": 28.97, "gross": 268.97, "tax": 0, "ni": 0, "net": 268.97}}` — read off a payslip PDF he
-gives you; never record his NI number, address or employee id. `{"op": "hours", "shifts": [{"eventId":
+gives you. Add `"from"` and `"to"` (the first and last day of work it paid) when the hours don't fit
+the cut-off rule: match its hours to the calendar to find them; never record his NI number, address or employee id. `{"op": "hours", "shifts": [{"eventId":
 "…", "start": "…", "end": "…", "title": "…"}]}` — imports shifts from before the planner started
 recording them (read them from the Work calendar with the calendar connector); ones the planner
 already has are skipped. `{"op": "hours", "count": {"eventId": "…", "on": true}}` — counts an event

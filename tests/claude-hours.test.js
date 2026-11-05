@@ -45,6 +45,6 @@ test('hours read: pay, next pay and payslips against the calendar', () => {
   runOp(s, { op: 'hours', payslip: { period: '2026-08', hours: 4, gross: 44.83, net: 44.83 } });
   const text = READS.hours(s.doc(), s.today());
   assert.match(text, /Pay: £10\.00 an hour/);
-  assert.match(text, /2026-08: paid 4 h, calendar 3 h \(\+1\)/);
+  assert.match(text, /2026-08 \(2026-07-24 to 2026-08-23\): paid 4 h, calendar 3 h \(\+1\)/);
   assert.match(text, /Next pay \(2026-09/);
 });

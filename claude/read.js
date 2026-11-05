@@ -594,8 +594,8 @@ function hoursRead(doc, today) {
   out.push(`Next pay (${s.expected.period}, ~${dayName(s.expected.payday, today)}): ${s.expected.hours} h booked or done${s.expected.net != null ? `, about ${gbp(s.expected.net)}` : ''}`);
   out.push(`Average over the last 8 full weeks: ${s.weeklyAverage} h a week`);
   if (s.slips.length) {
-    out.push('Payslips (paid hours vs calendar hours in that period):');
-    for (const p of s.slips) out.push(`  ${p.period}: paid ${p.hours} h, calendar ${p.calendarHours} h${p.diff ? ` (${p.diff > 0 ? '+' : ''}${p.diff})` : ''} · ${gbp(p.net)} net`);
+    out.push('Payslips (paid hours vs calendar hours for the days each paid):');
+    for (const p of s.slips) out.push(`  ${p.period} (${p.from} to ${p.to}): paid ${p.hours} h, calendar ${p.calendarHours} h${p.diff ? ` (${p.diff > 0 ? '+' : ''}${p.diff})` : ''} · ${gbp(p.net)} net`);
   }
   if (s.upcoming.length) out.push(`Booked ahead: ${s.upcoming.map((x) => `${dayName(x.day, today)} ${Math.round(x.minutes / 6) / 10} h`).join(' · ')}`);
   if (s.notCounted.length) out.push(`Not counted (title isn't a shift): ${s.notCounted.map((x) => `${x.day} "${x.title}" [${x.eventId}]`).join(' · ')}`);
