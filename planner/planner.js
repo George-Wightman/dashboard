@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '860912fd';
+var PLANNER_BUILD = '53a16be7';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -6397,6 +6397,220 @@ function recordShifts(store, events, { calendarId, today, now, dayStartHour = 4 
 return { recordShifts };
 })();
 
+// ---- js/hours.js
+const __js_hours = (() => {
+// Hours (docs/superpowers/specs/2026-11-05-hours-money-london-design.md): his paid shifts, read from
+// the Work calendar. Shifts that have ended are the planner's `work:<event id>` records (planner/work.js,
+// the Civ map's hammers, never changed here) and, from before those began, `hours:<event id>` records
+// Claude imported once. Shifts booked ahead are the planner's `hours:upcoming` list. A shift counts
+// unless its title clearly says it's something else; `hours-count:<event id>` overrides that. Pay is an
+// hourly rate plus holiday pay on top, paid monthly for the hours up to a cut-off day (`money:pay`);
+// each payslip Claude reads is a `payslip:<YYYY-MM>` record. Pure.
+
+const { addDays, dayOfMonth, daysInMonth, weekday, weekStart } = __js_dates;
+
+const UPCOMING_ID = 'hours:upcoming';
+const PAY_ID = 'money:pay';
+const countId = (eventId) => `hours-count:${eventId}`;
+const payslipId = (period) => `payslip:${period}`;
+const DEFAULT_PAY = Object.freeze({ rate: null, holidayPct: 12.07, cutoff: 23 });
+
+const PERIOD = /^\d{4}-\d{2}$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const cal = (doc) => doc?.calendar ?? {};
+const num = (v) => (Number.isFinite(v) ? v : null);
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// Untitled, or some spelling of Signify ("Signifi", "Singify"…), or plainly a shift.
+function isShiftTitle(title) {
+  const s = String(title ?? '').trim();
+  if (!s) return true;
+  return /^s[iy]n?g?n?i?f/i.test(s) || /^(shift|work)\b/i.test(s);
+}
+
+function paySettings(doc) {
+  const r = cal(doc)[PAY_ID];
+  const rate = num(r?.rate);
+  const holidayPct = num(r?.holidayPct) ?? DEFAULT_PAY.holidayPct;
+  const cutoff = Number.isInteger(r?.cutoff) && r.cutoff >= 1 && r.cutoff <= 31 ? r.cutoff : DEFAULT_PAY.cutoff;
+  return { rate: rate != null && rate > 0 ? rate : null, holidayPct, cutoff };
+}
+
+const nextMonth = (m) => {
+  const [y, mo] = m.split('-').map(Number);
+  return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+};
+const prevMonth = (m) => {
+  const [y, mo] = m.split('-').map(Number);
+  return mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, '0')}`;
+};
+
+// The month whose payslip pays a shift on `day`: up to and including the cut-off, that month's.
+function payPeriodOf(day, cutoff = DEFAULT_PAY.cutoff) {
+  return dayOfMonth(day) <= cutoff ? day.slice(0, 7) : nextMonth(day.slice(0, 7));
+}
+
+// Pay lands on the month's last weekday.
+function paydayOf(period) {
+  let d = `${period}-${String(daysInMonth(`${period}-01`)).padStart(2, '0')}`;
+  while (weekday(d) > 5) d = addDays(d, -1);
+  return d;
+}
+
+// Every shift known, one per calendar event: { id, eventId, day, start, end, minutes, title, counted, source }.
+function shifts(doc) {
+  const byEvent = new Map();
+  const add = (eventId, r, source) => {
+    if (!eventId || !DAY.test(r?.day ?? '') || !(r.minutes > 0)) return;
+    if (byEvent.has(eventId) && byEvent.get(eventId).source === 'work') return;
+    byEvent.set(eventId, { eventId, day: r.day, start: r.start ?? null, end: r.end ?? null, minutes: r.minutes, title: String(r.title ?? ''), source });
+  };
+  for (const r of Object.values(cal(doc))) {
+    if (r?.status !== 'active') continue;
+    const id = String(r.id ?? '');
+    if (id.startsWith('work:')) add(id.slice(5), r, 'work');
+  }
+  for (const r of Object.values(cal(doc))) {
+    if (r?.status !== 'active') continue;
+    const id = String(r.id ?? '');
+    if (id.startsWith('hours:') && id !== UPCOMING_ID) add(id.slice(6), r, 'hours');
+  }
+  const up = cal(doc)[UPCOMING_ID];
+  if (up?.status === 'active' && Array.isArray(up.list)) {
+    for (const r of up.list) if (!byEvent.has(r?.eventId)) add(r?.eventId, r, 'upcoming');
+  }
+  return [...byEvent.values()].map((s) => {
+    const o = cal(doc)[countId(s.eventId)];
+    const counted = o?.status === 'active' && typeof o.count === 'boolean' ? o.count : isShiftTitle(s.title);
+    return { ...s, id: s.eventId, counted };
+  }).sort((a, b) => (a.start ?? a.day).localeCompare(b.start ?? b.day));
+}
+
+function payslips(doc) {
+  return Object.values(cal(doc))
+    .filter((r) => r?.status === 'active' && String(r.id).startsWith('payslip:') && PERIOD.test(r.period ?? ''))
+    .map((r) => ({
+      period: r.period, paid: r.paid ?? null, hours: num(r.hours) ?? 0, holiday: num(r.holiday) ?? 0,
+      gross: num(r.gross) ?? 0, tax: num(r.tax) ?? 0, ni: num(r.ni) ?? 0, net: num(r.net) ?? 0,
+    }))
+    .sort((a, b) => a.period.localeCompare(b.period));
+}
+
+// What reaches his account per £ earned: everything, unless one of the last three payslips took tax or NI.
+function netRatio(slips) {
+  const last = slips.slice(-3);
+  if (!last.some((s) => s.tax > 0 || s.ni > 0)) return 1;
+  const gross = last.reduce((t, s) => t + s.gross, 0);
+  return gross > 0 ? last.reduce((t, s) => t + s.net, 0) / gross : 1;
+}
+
+const grossFor = (hours, pay) => (pay.rate == null ? null : round2(hours * pay.rate * (1 + pay.holidayPct / 100)));
+
+const hoursIn = (list, test) => round2(list.filter(test).reduce((t, s) => t + s.minutes, 0) / 60);
+
+// Everything Hours shows, as of `today`.
+function hoursSummary(doc, today) {
+  const pay = paySettings(doc);
+  const all = shifts(doc);
+  const counted = all.filter((s) => s.counted);
+  const slips = payslips(doc);
+  const paidPeriods = new Set(slips.map((s) => s.period));
+  const ratio = netRatio(slips);
+  const periodOf = (day) => payPeriodOf(day, pay.cutoff);
+
+  const period = periodOf(today);
+  const periodHours = hoursIn(counted, (s) => periodOf(s.day) === period && s.day <= today);
+
+  // The next pay not yet on a payslip: everything booked in it, done or still to come.
+  let next = period;
+  while (paidPeriods.has(next)) next = nextMonth(next);
+  const nextHours = hoursIn(counted, (s) => periodOf(s.day) === next);
+  const nextGross = grossFor(nextHours, pay);
+  const expected = { period: next, hours: nextHours, gross: nextGross, net: nextGross == null ? null : round2(nextGross * ratio), payday: paydayOf(next) };
+
+  const thisWeek = weekStart(today);
+  const weeks = [];
+  for (let i = 11; i >= 0; i--) {
+    const start = addDays(thisWeek, -7 * i);
+    const end = addDays(start, 6);
+    weeks.push({ start, hours: hoursIn(counted, (s) => s.day >= start && s.day <= end && s.day <= today) });
+  }
+  const full = weeks.slice(-9, -1);
+  const weeklyAverage = round2(full.reduce((t, w) => t + w.hours, 0) / full.length);
+
+  const withCalendar = slips.map((s) => {
+    const calendarHours = hoursIn(counted, (x) => periodOf(x.day) === s.period);
+    return { ...s, calendarHours, diff: round2(s.hours - calendarHours) };
+  });
+  const notCounted = all.filter((s) => !s.counted).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 20);
+  const upcoming = counted.filter((s) => s.day > today || s.source === 'upcoming').slice(0, 30);
+
+  return { pay, ratio, period, periodHours, expected, weeks, weeklyAverage, slips: withCalendar, notCounted, upcoming };
+}
+
+// Expected take-home in each month from `from` to `to` (inclusive, YYYY-MM): booked hours where there
+// are some, the weekly average for days not yet booked. { month: { net, booked, guessed } }.
+function payForecast(doc, today, from, to) {
+  const s = hoursSummary(doc, today);
+  const out = {};
+  if (s.pay.rate == null) return out;
+  const counted = shifts(doc).filter((x) => x.counted);
+  const lastBooked = counted.reduce((m, x) => (x.day > m ? x.day : m), today);
+  for (let m = from; m <= to; m = nextMonth(m)) {
+    if (s.slips.some((x) => x.period === m)) continue;
+    const booked = hoursIn(counted, (x) => payPeriodOf(x.day, s.pay.cutoff) === m && x.day > today);
+    const doneUnpaid = hoursIn(counted, (x) => payPeriodOf(x.day, s.pay.cutoff) === m && x.day <= today);
+    // Days in the period after the last booked shift are guessed at the weekly average.
+    const periodEnd = `${m}-${String(Math.min(s.pay.cutoff, daysInMonth(`${m}-01`))).padStart(2, '0')}`;
+    const periodStart = addDays(`${prevMonth(m)}-${String(Math.min(s.pay.cutoff, daysInMonth(`${prevMonth(m)}-01`))).padStart(2, '0')}`, 1);
+    const guessFrom = [periodStart, addDays(lastBooked, 1), addDays(today, 1)].sort().at(-1);
+    const guessDays = guessFrom <= periodEnd ? (Date.parse(periodEnd) - Date.parse(guessFrom)) / 86400000 + 1 : 0;
+    const guessed = round2((guessDays / 7) * s.weeklyAverage);
+    const gross = grossFor(booked + doneUnpaid + guessed, s.pay);
+    out[m] = { net: round2(gross * s.ratio), booked: round2(booked + doneUnpaid), guessed };
+  }
+  return out;
+}
+return { UPCOMING_ID, PAY_ID, countId, payslipId, DEFAULT_PAY, isShiftTitle, paySettings, nextMonth, prevMonth, payPeriodOf, paydayOf, shifts, payslips, netRatio, grossFor, hoursSummary, payForecast };
+})();
+
+// ---- planner/hours.js
+const __planner_hours = (() => {
+// Shifts booked ahead, for Hours (js/hours.js): the Work calendar's events that haven't ended yet, as
+// one `hours:upcoming` record. Separate from planner/work.js, whose `work:` records are the map's
+// hammers and only take shifts once they're over. Written only when the list changes. Pure apart from
+// the store.
+
+const { logicalDay } = __js_dates;
+const { UPCOMING_ID } = __js_hours;
+
+function upcomingShifts(events, { calendarId, now, dayStartHour = 4 }) {
+  const out = [];
+  for (const ev of events) {
+    if (ev.calendarId !== calendarId || ev.status === 'cancelled' || ev.transparency === 'transparent') continue;
+    const start = Date.parse(ev.start?.dateTime), end = Date.parse(ev.end?.dateTime);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end <= now.getTime()) continue;
+    out.push({
+      eventId: String(ev.id), day: logicalDay(new Date(start), dayStartHour),
+      start: new Date(start).toISOString(), end: new Date(end).toISOString(),
+      minutes: Math.round((end - start) / 60000), title: String(ev.summary ?? '').trim().slice(0, 80),
+    });
+  }
+  return out.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+// Returns true when it wrote.
+function recordUpcoming(store, events, { calendarId, now, dayStartHour = 4 }) {
+  if (!calendarId) return false;
+  const list = upcomingShifts(events, { calendarId, now, dayStartHour });
+  const had = store.doc().calendar?.[UPCOMING_ID];
+  if (had?.status === 'active' && JSON.stringify(had.list) === JSON.stringify(list)) return false;
+  store.putCalendar(UPCOMING_ID, { status: 'active', at: now.toISOString(), list });
+  return true;
+}
+return { upcomingShifts, recordUpcoming };
+})();
+
 // ---- js/hebrewSync.js
 const __js_hebrewSync = (() => {
 // Read-only pull from the Hebrew app's own sync file (same shape of GitHub-file sync as js/sync.js,
@@ -9455,6 +9669,7 @@ const { syncHevy } = __planner_hevy;
 const { syncRoutines } = __planner_routines;
 const { syncHealth } = __planner_health;
 const { recordShifts } = __planner_work;
+const { recordUpcoming } = __planner_hours;
 const { syncDuolingo } = __planner_duolingo;
 const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner_properties;
 const { processWorkflows } = __js_workflow;
@@ -9836,6 +10051,13 @@ function createPlanner({
       }
       // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
       recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
+      // Shifts booked ahead for Hours (planner/hours.js): the Work calendar only, six weeks out.
+      try {
+        const workId = find(config.workCalendar)?.id ?? null;
+        if (workId) recordUpcoming(store, listEvents([workId], t.toISOString(), new Date(t.getTime() + 42 * 86400000).toISOString()), { calendarId: workId, now: t, dayStartHour: dayStartHour() });
+      } catch (error) {
+        log(`Shifts ahead skipped: ${error?.message ?? error}`);
+      }
       doc = store.doc();
       const base = webAppUrl(doc, get('WEB_APP_URL'));
       const sign = base ? signer() : null;

@@ -23,6 +23,7 @@ import { syncHevy } from './hevy.js';
 import { syncRoutines } from './routines.js';
 import { syncHealth } from './health.js';
 import { recordShifts } from './work.js';
+import { recordUpcoming } from './hours.js';
 import { syncDuolingo } from './duolingo.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
@@ -404,6 +405,13 @@ export function createPlanner({
       }
       // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
       recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
+      // Shifts booked ahead for Hours (planner/hours.js): the Work calendar only, six weeks out.
+      try {
+        const workId = find(config.workCalendar)?.id ?? null;
+        if (workId) recordUpcoming(store, listEvents([workId], t.toISOString(), new Date(t.getTime() + 42 * 86400000).toISOString()), { calendarId: workId, now: t, dayStartHour: dayStartHour() });
+      } catch (error) {
+        log(`Shifts ahead skipped: ${error?.message ?? error}`);
+      }
       doc = store.doc();
       const base = webAppUrl(doc, get('WEB_APP_URL'));
       const sign = base ? signer() : null;
