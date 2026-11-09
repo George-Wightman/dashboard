@@ -47,6 +47,17 @@
 .mo-table small { display: block; font-size: 12px; color: var(--dl-muted); }
 .mo-table .mo-total td { font-weight: 700; }
 .mo-diff small { color: var(--dl-carry-ink); font-weight: 600; }
+.mo-cats { display: grid; font-size: 14px; font-variant-numeric: tabular-nums; }
+.mo-cat { border-bottom: 1px solid var(--dl-line); }
+.mo-cat summary { display: flex; justify-content: space-between; gap: 10px; padding: 9px 4px; cursor: pointer; list-style: none; }
+.mo-cat summary::-webkit-details-marker { display: none; }
+.mo-cat summary::after { content: '›'; color: var(--dl-muted); margin-left: 6px; transition: transform .15s; }
+.mo-cat[open] summary::after { transform: rotate(90deg); }
+.mo-cat summary > span:first-child { flex: 1; }
+.mo-places, .mo-top { margin: 0; padding: 0 4px 10px 20px; list-style: none; display: grid; gap: 4px; color: var(--dl-muted); }
+.mo-places li, .mo-top li { display: flex; justify-content: space-between; gap: 10px; }
+.mo-top { padding: 0 4px 6px 0; color: inherit; font-size: 14px; font-variant-numeric: tabular-nums; }
+.mo-sub { margin: 10px 0 6px; font-size: 14px; }
 .mo-month h4, .mo-hours h4 { margin: 14px 0 6px; font-size: 14px; }
 .mo-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; }
 .mo-seg { display: flex; flex-wrap: wrap; gap: 6px; }

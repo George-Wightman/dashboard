@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validMoney, emptyMoney, monthActuals, averageSpend, potForecast, compare, mergeMoney, startDay, moneySummary, gbp, START_ID, inOut } from '../js/money.js';
+import { validMoney, emptyMoney, monthActuals, averageSpend, potForecast, compare, mergeMoney, startDay, moneySummary, gbp, START_ID, inOut, wherePlaces, topPlaces, UNNAMED } from '../js/money.js';
 import { emptyDoc } from '../js/doc.js';
 import { addDays } from '../js/dates.js';
 
@@ -130,4 +130,25 @@ test('mergeMoney: `since` is set by an import, cleared by an empty one, and chec
   assert.equal(mergeMoney(a, {}).since, '2026-09-01');
   assert.equal(mergeMoney(a, { since: null }).since, undefined);
   assert.equal(validMoney({ ...a, since: 'May' }), false);
+});
+
+test('wherePlaces: each category with its places, and what no statement named as one line', () => {
+  const m = ledger();
+  m.places = { '2026-10-01': { groceries: { 'Corner Shop': 600, 'Big Market': 300 }, 'eating-out': { 'Noodle Bar': 500 } } };
+  const w = wherePlaces(m, '2026-10-01', '2026-10-02');
+  assert.deepEqual(w.map((e) => [e.cat, e.total]), [['groceries', 2000], ['eating-out', 1000]]);
+  assert.deepEqual(w[0].places, [{ name: UNNAMED, amount: 1100 }, { name: 'Corner Shop', amount: 600 }, { name: 'Big Market', amount: 300 }]);
+  assert.deepEqual(w[1].places, [{ name: 'Noodle Bar', amount: 500 }, { name: UNNAMED, amount: 500 }]);
+  assert.deepEqual(topPlaces(m, '2026-10-01', '2026-10-02').map((p) => p.name), ['Corner Shop', 'Noodle Bar', 'Big Market']);
+});
+
+test('mergeMoney: places travel with their day, and bad places fail the check', () => {
+  const m = mergeMoney(ledger(), { days: { '2026-10-01': { groceries: 900 } }, places: { '2026-10-01': { groceries: { 'Corner Shop': 900 } } } });
+  assert.equal(m.places['2026-10-01'].groceries['Corner Shop'], 900);
+  assert.equal(validMoney(m), true);
+  const again = mergeMoney(m, { days: { '2026-10-01': { groceries: 700 } } });
+  assert.equal(again.places['2026-10-01'], undefined);
+  assert.equal(validMoney({ ...m, places: { '2026-10-01': { casino: { X: 1 } } } }), false);
+  assert.equal(validMoney({ ...m, places: { '2026-10-01': { groceries: { X: 1.5 } } } }), false);
+  assert.equal(validMoney({ ...m, days: { '2026-10-01': { car: 100 } } }), true);
 });

@@ -7,8 +7,8 @@
 import { h } from './dom.js';
 import { svg, tip } from './svg.js';
 import { bigSection } from './big.js';
-import { shortDate, shortWeekday } from '../dates.js';
-import { moneySummary, monthActuals, compare, gbp, startDay, START_ID, CATEGORIES, categoryLabel, lastCovered, averageSpend, inOut } from '../money.js';
+import { shortDate, shortWeekday, addDays, daysInMonth } from '../dates.js';
+import { moneySummary, monthActuals, compare, gbp, startDay, START_ID, categoryLabel, lastCovered, averageSpend, inOut, wherePlaces, topPlaces, UNNAMED } from '../money.js';
 import { hoursSummary, countId, ordinal } from '../hours.js';
 
 const signed = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
@@ -18,7 +18,7 @@ const sinceText = (day) => `${Number(day.slice(8, 10))} ${monthName(day.slice(0,
 export const GROUPS = [
   { id: 'food', label: 'Food', cats: ['groceries', 'eating-out'] },
   { id: 'going-out', label: 'Going out', cats: ['going-out'] },
-  { id: 'local-travel', label: 'Getting about', cats: ['local-travel'] },
+  { id: 'local-travel', label: 'Getting about', cats: ['local-travel', 'car'] },
   { id: 'trips', label: 'Trips', cats: ['trips'] },
   { id: 'gym-health', label: 'Gym & health', cats: ['gym-health'] },
   { id: 'phone-subs', label: 'Phone & subs', cats: ['phone-subs'] },
@@ -102,7 +102,7 @@ function inOutBlock(money, io) {
     h('p', { class: 'muted mo-note' },
       `In ${gbp(io.totals.in)}, out ${gbp(io.totals.spend)}, to ${shortDate(io.to)}.`,
       notes.length ? ` One-off money (${gbp(io.totals.oneOff)}): ${notes.join(', ')}.` : '',
-      io.outside ? ` Your pot moved ${signed(io.now.total - io.base.total)}: the ${signed(io.totals.net)} net, ${io.outside < 0 ? `less ${gbp(-io.outside)} moved out (into shares or savings)` : `plus ${gbp(io.outside)} moved in (from shares or savings)`}.` : ''));
+      io.outside ? ` Your pot moved ${signed(io.now.total - io.base.total)}: the ${signed(io.totals.net)} net, ${io.outside < 0 ? `less ${gbp(-io.outside)} moved to accounts the pot leaves out (shares, savings)` : `plus ${gbp(io.outside)} moved in from accounts the pot leaves out`}.` : ''));
 }
 
 // The pot, month by month: solid where the statements are, dashed where it's planned.
@@ -169,15 +169,31 @@ function spendChart(ctx, rows) {
     svg('pattern', { id: 'mo-hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, svg('rect', { width: 6, height: 6, class: 'mo-hatch-bg' }), svg('rect', { width: 3, height: 6, class: 'mo-hatch-fg' }))), grid, bars);
 }
 
+// Categories, biggest first; tap one to see the places it went to.
+function catBreakdown(entries) {
+  return h('div', { class: 'mo-cats' }, entries.map((e) => h('details', { class: 'mo-cat' },
+    h('summary', {}, h('span', {}, h('i', { class: `mo-swatch ${viz(groupOf(e.cat))}` }), categoryLabel(e.cat)), h('span', { class: 'n' }, gbp(e.total))),
+    h('ul', { class: 'mo-places' }, e.places.map((p) => h('li', { class: p.name === UNNAMED ? 'muted' : '' }, h('span', {}, p.name), h('span', { class: 'n' }, gbp(p.amount))))))));
+}
+
+function whereBlock(money, from, to) {
+  const top = topPlaces(money, from, to, 8);
+  return h('div', {},
+    top.length ? h('div', {}, h('h4', { class: 'mo-sub' }, 'Where you spent most'),
+      h('ol', { class: 'mo-top' }, top.map((p) => h('li', {}, h('span', {}, h('i', { class: `mo-swatch ${viz(groupOf(p.cat))}` }), p.name), h('span', { class: 'n' }, gbp(p.amount)))))) : null,
+    h('h4', { class: 'mo-sub' }, 'By category'),
+    catBreakdown(wherePlaces(money, from, to)),
+    h('p', { class: 'muted mo-note' }, 'Tap a category to see where it went.'));
+}
+
 function monthDetail(money, rows, month) {
   const row = rows.find((r) => r.month === month);
   if (!row) return null;
   const a = monthActuals(money, month);
-  const cats = CATEGORIES.filter((c) => a.spend[c.id]).sort((x, y) => a.spend[y.id] - a.spend[x.id]);
   return h('div', { class: 'mo-month' },
     h('h4', {}, monthName(month, true), row.actual ? '' : ' (part planned)'),
+    catBreakdown(wherePlaces(money, `${month}-01`, addDays(`${month}-01`, daysInMonth(`${month}-01`) - 1))),
     h('table', { class: 'mo-table' }, h('tbody', {},
-      cats.map((c) => h('tr', {}, h('td', {}, h('i', { class: `mo-swatch ${viz(groupOf(c.id))}` }), c.label), h('td', { class: 'n' }, gbp(a.spend[c.id])))),
       row.plannedSpend ? h('tr', {}, h('td', {}, h('i', { class: 'mo-swatch mo-plan-swatch' }), 'Planned'), h('td', { class: 'n' }, gbp(row.plannedSpend))) : null,
       h('tr', { class: 'mo-total' }, h('td', {}, 'Spent'), h('td', { class: 'n' }, gbp(row.spend))),
       h('tr', {}, h('td', {}, 'Came in'), h('td', { class: 'n' }, gbp(row.income))),
@@ -270,6 +286,7 @@ export function renderMoneyBig(ctx) {
     money && inOut(money) ? bigSection(`In and out since ${sinceText(inOut(money).from)}`, inOutBlock(money, inOut(money))) : null,
     money ? bigSection('Your money to the start', potChart(s.rows, start) ?? h('p', { class: 'muted' }, 'Needs a balance from a statement to draw.'),
       h('p', { class: 'muted mo-note' }, `Solid is from your statements (up to ${shortDate(lastCovered(money))}); dashed is the plan: your pay from Hours, spending at your recent average${avg?.months ? ` (${gbp(avg.total)} a month)` : ''}.`)) : null,
+    money && inOut(money) ? bigSection(`Where it went since ${sinceText(inOut(money).from)}`, whereBlock(money, inOut(money).from, inOut(money).to)) : null,
     money ? bigSection('Spending by month', legend(), spendChart(ctx, s.rows), month ? monthDetail(money, s.rows, month) : h('p', { class: 'muted mo-note' }, 'Tap a month to see where it went.')) : null,
     money ? bigSection('Compare', compareBlock(ctx, money, doc)) : null,
     bigSection('Hours', hoursBlock(ctx, doc, today)),

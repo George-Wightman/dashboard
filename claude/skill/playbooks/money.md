@@ -16,9 +16,13 @@ the personal note for this, `reference money`, names them). For each:
 
 1. Read every transaction. Leave out **money moved between his own accounts**, which would otherwise
    count twice.
-2. Put each spending line in one category: `groceries`, `eating-out`, `going-out`, `local-travel`,
-   `trips` (flights, trains home), `gym-health`, `phone-subs`, `shopping`, `gifts`, `rent-bills`,
-   `other`. When you're unsure, ask him in one line rather than guess a big one.
+2. Put each spending line in one category: `groceries`, `eating-out`, `going-out`, `local-travel`
+   (petrol, buses, parking), `car` (buying it, insurance, tax), `trips` (flights, trains home),
+   `gym-health`, `phone-subs`, `shopping`, `gifts`, `rent-bills`, `other`, and give it a **place**: the
+   shop, in plain words ("Tesco", "Tesco petrol", "Paid to Maya: flights"). Gift cards bought through
+   EverUp go under the shop the card is for (he sends screenshots of his EverUp orders). `other` is
+   for what fits nowhere, never a dumping ground; money moved to an account you can't see is
+   "To your Monzo (not itemised)". When you're unsure, ask him in one line rather than guess a big one.
 3. Income: Signify pay is `pay`. A tax refund is `refund` with `"oneOff": true`. Anything else is
    `other`; mark it one-off unless it repeats.
 4. Note the **closing balance** of the accounts that make up his pot, added together, on the
@@ -30,6 +34,7 @@ Then write a JSON file **outside any repo** (your scratchpad) and import it:
 ```json
 {
   "days": { "2026-10-01": { "groceries": 1240, "local-travel": 350 } },
+  "places": { "2026-10-01": { "groceries": { "Tesco": 1240 }, "local-travel": { "TfL": 350 } } },
   "income": [{ "day": "2026-10-30", "amount": 47658, "kind": "pay" }],
   "balances": [{ "day": "2026-10-31", "total": 123400 }],
   "covered": [{ "from": "2026-10-01", "to": "2026-10-31" }],
@@ -44,8 +49,9 @@ the day before it so the view shows where he started. `"since": null` clears it.
 what's there for that day, so import a whole statement at a time. Then `bash run.sh money` checks
 it.
 
-**Never store** shop names, payees, account numbers, sort codes or per-account balances, and never
-copy the PDFs anywhere. Only totals per day per category leave the laptop.
+**Never store** account numbers, sort codes, card numbers, transaction IDs or per-account balances,
+and never copy the PDFs anywhere. Shop and payee names are stored (he asked for them, 9 Nov 2026), as
+`places` in the private ledger only, never in the public code repo or its fixtures.
 
 ## Planning with him
 

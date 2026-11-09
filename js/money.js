@@ -1,7 +1,8 @@
 // Money (docs/superpowers/specs/2026-11-05-hours-money-london-design.md): what George earns and spends,
 // back from his bank statements and forward to the London start date. The ledger is `money.json` in
 // the private sync repo, written by Claude after reading statements on the laptop: only totals per day
-// per category, income items, balance totals and plan lines, never shop names or account numbers.
+// per category (with where it went: `places`, day → category → place → pence), income items, balance
+// totals and plan lines, never account numbers.
 // Amounts are whole pence. Future income comes from Hours (js/hours.js). Pure.
 
 import { addDays, daysInMonth, dayOfMonth } from './dates.js';
@@ -18,6 +19,7 @@ export const CATEGORIES = [
   { id: 'eating-out', label: 'Eating out' },
   { id: 'going-out', label: 'Going out' },
   { id: 'local-travel', label: 'Local travel' },
+  { id: 'car', label: 'Car' },
   { id: 'trips', label: 'Trips' },
   { id: 'gym-health', label: 'Gym & health' },
   { id: 'phone-subs', label: 'Phone & subscriptions' },
@@ -47,6 +49,16 @@ export function validMoney(m) {
   if (!Array.isArray(m.plan) || !m.plan.every((p) => p && MONTH.test(p.month ?? '') && pence(p.amount) && ['spend', 'income'].includes(p.kind) && typeof p.label === 'string' && (p.cat == null || CATEGORY_IDS.includes(p.cat)))) return false;
   if (!Array.isArray(m.covered) || !m.covered.every((c) => c && DAY.test(c.from ?? '') && DAY.test(c.to ?? '') && c.from <= c.to)) return false;
   if (m.since != null && !DAY.test(m.since)) return false;
+  if (m.places != null) {
+    if (typeof m.places !== 'object') return false;
+    for (const [day, cats] of Object.entries(m.places)) {
+      if (!DAY.test(day) || !cats || typeof cats !== 'object') return false;
+      for (const [c, ps] of Object.entries(cats)) {
+        if (!CATEGORY_IDS.includes(c) || !ps || typeof ps !== 'object') return false;
+        if (!Object.entries(ps).every(([name, v]) => name.trim() && pence(v))) return false;
+      }
+    }
+  }
   return true;
 }
 
@@ -173,6 +185,37 @@ export function inOut(money) {
   return { from, to, rows, totals, base, now, outside };
 }
 
+// Where the money went between two days: each category's total and its places, biggest first.
+// Spending a statement didn't name (older imports) shows as one "Not broken down" line.
+export const UNNAMED = 'Not broken down';
+export function wherePlaces(money, from, to) {
+  const cats = {};
+  for (const [day, spend] of Object.entries(money.days)) {
+    if (day < from || day > to) continue;
+    for (const [c, v] of Object.entries(spend)) {
+      const e = (cats[c] ??= { cat: c, total: 0, places: {} });
+      e.total += v;
+      let named = 0;
+      for (const [name, pv] of Object.entries(money.places?.[day]?.[c] ?? {})) { e.places[name] = (e.places[name] ?? 0) + pv; named += pv; }
+      if (v - named) e.places[UNNAMED] = (e.places[UNNAMED] ?? 0) + v - named;
+    }
+  }
+  return Object.values(cats).filter((e) => e.total)
+    .map((e) => ({ ...e, places: Object.entries(e.places).filter(([, v]) => v).sort((a, b) => b[1] - a[1]).map(([name, amount]) => ({ name, amount })) }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// The places he spent most at between two days, across categories.
+export function topPlaces(money, from, to, n = 8) {
+  const all = {};
+  for (const e of wherePlaces(money, from, to)) for (const p of e.places) if (p.name !== UNNAMED) {
+    const k = `${p.name}`;
+    all[k] ??= { name: p.name, cat: e.cat, amount: 0 };
+    all[k].amount += p.amount;
+  }
+  return Object.values(all).sort((a, b) => b.amount - a.amount).slice(0, n);
+}
+
 // Spending per week by category over the covered days that pass `test`.
 function perWeek(money, days) {
   const spend = {};
@@ -224,6 +267,11 @@ export const gbp = (p, { pennies = false } = {}) => {
 export function mergeMoney(base, add) {
   const out = structuredClone(base ?? emptyMoney());
   Object.assign(out.days, add.days ?? {});
+  // A day's places go with its spending: an imported day without them loses the old ones.
+  for (const day of Object.keys(add.days ?? {})) {
+    if (add.places?.[day]) (out.places ??= {})[day] = add.places[day];
+    else if (out.places) delete out.places[day];
+  }
   const key = (i) => `${i.day}|${i.kind}|${i.amount}|${i.note ?? ''}`;
   const income = new Map(out.income.map((i) => [key(i), i]));
   for (const i of add.income ?? []) income.set(key(i), i);
