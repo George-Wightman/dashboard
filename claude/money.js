@@ -4,6 +4,7 @@
 
 import { MONEY_PATH, validMoney, mergeMoney, potForecast, averageSpend, monthActuals, compare, categoryLabel, gbp, startDay, emptyMoney, lastCovered, inOut } from '../js/money.js';
 import { hoursSummary } from '../js/hours.js';
+import { forecastSettings, runForecast, hoursFor, monthlySpend, SAFE_PENCE, FORECAST_ID } from '../js/forecast.js';
 
 export async function readMoney(files) {
   const f = await files.read(MONEY_PATH);
@@ -30,6 +31,16 @@ export function moneyLines(money, doc, today) {
     out.push(`In and out since ${io.from}${money.since ? '' : ' (no `since` set: from the first statement day)'}: in ${gbp(io.totals.in)} (one-off ${gbp(io.totals.oneOff)}) · out ${gbp(io.totals.spend)} · net ${sign(io.totals.net)} · without one-offs ${sign(io.totals.netRegular)}`);
     for (const r of io.rows) out.push(`  ${r.month}: in ${gbp(r.in)}${r.oneOff ? ` (one-off ${gbp(r.oneOff)})` : ''} · out ${gbp(r.spend)} · net ${sign(r.net)}`);
     if (io.base && io.now) out.push(`Pot ${gbp(io.base.total)} on ${io.base.day} → ${gbp(io.now.total)} on ${io.now.day}${io.outside ? `; ${sign(io.outside)} of that change isn't income or spending (shares, savings)` : ''}`);
+  }
+  const fs = forecastSettings(money, doc);
+  const fc = runForecast({ money, doc, today, settings: fs });
+  if (fc) {
+    const mine = doc?.calendar?.[FORECAST_ID]?.status === 'active';
+    const h1 = (n) => (n == null ? '—' : `${n.toFixed(1)} h`);
+    out.push(`Forecast to the start (${mine ? 'his slider settings' : 'the agreed figures'}): ${fs.hours} h a week, ${gbp(monthlySpend(fs))} a month (${Object.entries(fs.spend).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${categoryLabel(c)} ${gbp(v)}`).join(', ')}), ${fs.flights.count} flights at ${gbp(fs.flights.price)}`);
+    if (fs.oneOffs.length) out.push(`  One-offs: ${fs.oneOffs.map((o) => `${o.label} ${o.amount > 0 ? '+' : ''}${gbp(o.amount)} in ${o.month}${o.on ? '' : ' (off)'}`).join(' · ')}`);
+    out.push(`  From ${gbp(fc.from.total)} on ${fc.from.day}: ${fc.rows.map((r) => `${r.month} ${gbp(r.pot)}`).join(' · ')}`);
+    out.push(`  Ends ${gbp(fc.end)}; lowest ${gbp(fc.lowest.pot)} (${fc.lowest.month}); keep ${gbp(SAFE_PENCE)} at ${h1(hoursFor({ money, doc, today, settings: fs, target: SAFE_PENCE }))} a week, break even at ${h1(hoursFor({ money, doc, today, settings: fs, target: fc.from.total }))}`);
   }
   const f = potForecast({ money, doc, today });
   out.push(`Statements cover up to ${lastCovered(money) ?? '—'} · what he'll have at the start: ${gbp(f.atStart)}`);

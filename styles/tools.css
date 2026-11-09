@@ -165,3 +165,34 @@
 .mo-fold[open] > summary::before { transform: rotate(90deg); }
 .mo-fold > :not(summary) { margin-top: 6px; }
 .big.money .mo-seg { margin-bottom: 8px; }
+/* Forecast to London (js/ui/forecast.js) */
+.fc-fold > summary { font-size: 15px; color: var(--dl-ink); padding: 4px 0; }
+.fc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 10px 0 8px; }
+.fc-stats .mo-n { font-size: clamp(18px, 5vw, 24px); }
+.mo-stat.neg .mo-n { color: var(--dl-carry-ink); }
+.mo-stat.warn .mo-n { color: var(--dl-carry-ink); }
+.fc-band { fill: color-mix(in srgb, var(--viz-6) 14%, transparent); stroke: none; }
+.fc-line { fill: none; stroke: var(--viz-6); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.fc-dot { fill: var(--viz-6); stroke: var(--dl-card); stroke-width: 2; }
+.fc-dot.neg { fill: var(--dl-carry-ink); }
+.fc-zero { stroke: var(--dl-ink); stroke-width: 1; opacity: .5; }
+.fc-safe { stroke: var(--dl-muted); stroke-width: 1.2; stroke-dasharray: 5 5; }
+.fc-safe-label { font-size: 13px !important; }
+.fc-controls { display: grid; gap: 2px; font-size: 14px; margin-top: 6px; }
+.fc-head { display: flex; justify-content: space-between; align-items: baseline; }
+.fc-total { font-weight: 600; color: var(--dl-muted); font-size: 13px; }
+.fc-row { display: grid; grid-template-columns: minmax(84px, 9fr) minmax(0, 11fr) auto; align-items: center; gap: 8px; min-height: 34px; }
+.fc-label { line-height: 1.15; }
+.fc-label small { display: block; font-size: 11px; color: var(--dl-muted); }
+.fc-row input[type=range] { width: 100%; accent-color: var(--viz-6); margin: 0; }
+.fc-val { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; min-width: 52px; }
+.fc-once { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; min-height: 36px; }
+.fc-check { display: flex; align-items: center; gap: 8px; }
+.fc-check input { accent-color: var(--viz-6); width: 18px; height: 18px; }
+.fc-amt { display: inline-flex; align-items: center; font-variant-numeric: tabular-nums; }
+.fc-amt input { width: 64px; font: inherit; padding: 4px 6px; border: 1px solid var(--dl-line); border-radius: 8px; background: var(--dl-card); color: inherit; }
+.fc-once select { font: inherit; padding: 4px 6px; border: 1px solid var(--dl-line); border-radius: 8px; background: var(--dl-card); color: inherit; }
+.fc-foot { display: grid; gap: 6px; margin-top: 12px; }
+.fc-pin { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; margin: 4px 0 6px; border-radius: 12px; background: var(--dl-soft); font-size: 13px; font-variant-numeric: tabular-nums; box-shadow: 0 2px 8px color-mix(in srgb, var(--dl-ink) 10%, transparent); }
+.fc-pin b { font-size: 15px; }
+.fc-pin .neg, .fc-pin .warn { color: var(--dl-carry-ink); }

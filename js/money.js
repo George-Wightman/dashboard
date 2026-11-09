@@ -51,6 +51,7 @@ export function validMoney(m) {
   if (!Array.isArray(m.plan) || !m.plan.every((p) => p && MONTH.test(p.month ?? '') && pence(p.amount) && ['spend', 'income'].includes(p.kind) && typeof p.label === 'string' && (p.cat == null || CATEGORY_IDS.includes(p.cat)))) return false;
   if (!Array.isArray(m.covered) || !m.covered.every((c) => c && DAY.test(c.from ?? '') && DAY.test(c.to ?? '') && c.from <= c.to)) return false;
   if (m.since != null && !DAY.test(m.since)) return false;
+  if (!validForecast(m.forecast)) return false;
   if (m.places != null) {
     if (typeof m.places !== 'object') return false;
     for (const [day, cats] of Object.entries(m.places)) {
@@ -61,6 +62,18 @@ export function validMoney(m) {
       }
     }
   }
+  return true;
+}
+
+// The forecast settings Claude has agreed with him (js/forecast.js): hours a week, spending a month
+// by category, flights, and one-off amounts (+ in, - out) in a month, each switched on or off.
+export function validForecast(f) {
+  if (f == null) return true;
+  if (typeof f !== 'object') return false;
+  if (f.hours != null && !(typeof f.hours === 'number' && f.hours >= 0 && f.hours <= 60)) return false;
+  if (f.spend != null && !(typeof f.spend === 'object' && Object.entries(f.spend).every(([c, v]) => CATEGORY_IDS.includes(c) && pence(v) && v >= 0))) return false;
+  if (f.flights != null && !(Number.isInteger(f.flights.count) && f.flights.count >= 0 && pence(f.flights.price))) return false;
+  if (f.oneOffs != null && !(Array.isArray(f.oneOffs) && f.oneOffs.every((o) => o && typeof o.id === 'string' && typeof o.label === 'string' && pence(o.amount) && MONTH.test(o.month ?? '') && typeof o.on === 'boolean'))) return false;
   return true;
 }
 
@@ -291,6 +304,7 @@ export function mergeMoney(base, add) {
     if (last && r.from <= addDays(last.to, 1)) { if (r.to > last.to) last.to = r.to; } else out.covered.push({ ...r });
   }
   if (add.since !== undefined) { if (add.since) out.since = add.since; else delete out.since; }
+  if (add.forecast !== undefined) { if (add.forecast) out.forecast = add.forecast; else delete out.forecast; }
   out.updated = add.updated ?? out.updated;
   return out;
 }

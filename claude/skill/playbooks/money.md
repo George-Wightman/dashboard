@@ -55,6 +55,16 @@ and never copy the PDFs anywhere. Shop and payee names are stored (he asked for 
 
 ## Planning with him
 
+- **The forecast** (Money → Forecast to London): his pot month by month from the latest balance to
+  the start date, from his hours a week, spending a month by category, flights and one-offs. What
+  you agree with him goes in the ledger as `forecast` (it replaces the whole of what was there):
+  `{"forecast": {"hours": 7, "spend": {"groceries": 26000, ...}, "flights": {"count": 5, "price": 8000},
+  "oneOffs": [{"id": "xmas-gifts", "label": "Christmas presents", "amount": -15000, "month": "2026-12", "on": true}]}}`.
+  Amounts are pence a month; a one-off is + for money in, − for out. Categories you leave out start
+  at his average since `since`, 5% over and rounded up to £10; the car never counts. His own slider
+  moves are a synced record on top, and `money` shows which you're reading. Never change his settings
+  without asking; update the agreed figures when you agree new ones.
+
 - `money` shows the months ahead with `~`. A plan line covers a known cost or income: a flight, a
   deposit, a birthday. Send it again with `"amount": 0` to remove it.
 - Payslips go in with the `hours` op, not here. If tax shows up on one, say so: his pay is far under

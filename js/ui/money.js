@@ -10,7 +10,8 @@ import { svg, tip } from './svg.js';
 import { bigSection } from './big.js';
 import { shortDate, shortWeekday, addDays, daysInMonth } from '../dates.js';
 import { moneySummary, compare, gbp, startDay, START_ID, categoryLabel, inOut, wherePlaces, isCovered, UNNAMED, ONE_OFF_CATS } from '../money.js';
-import { hoursSummary, countId, ordinal } from '../hours.js';
+import { hoursSummary, ordinal } from '../hours.js';
+import { forecastBlock, forecastHeadline } from './forecast.js';
 
 const signed = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
 const sinceText = (day) => `${Number(day.slice(8, 10))} ${monthName(day.slice(0, 7))}`;
@@ -236,16 +237,11 @@ function hoursBlock(ctx, doc, today) {
       w.hours ? svg('rect', { x: X(i) - bw / 2, y: Y(w.hours), width: bw, height: Math.max(0, H - B - Y(w.hours)), rx: 3, class: 'mo-hbar' }, tip(`Week of ${shortDate(w.start)}: ${w.hours} h`)) : null,
       w.hours ? svg('text', { x: X(i), y: Y(w.hours) - 4, 'text-anchor': 'middle', class: 'mo-axis' }, String(Math.round(w.hours))) : null,
       i % 2 === 1 || s.weeks.length <= 6 ? svg('text', { x: X(i), y: H - 6, 'text-anchor': 'middle', class: 'mo-axis' }, shortDate(w.start)) : null)));
-  const setCount = (eventId, on) => ctx.store.putCalendar(countId(eventId), { status: 'active', count: on }, 'me');
   return h('div', { class: 'mo-hours' },
     h('div', { class: 'mo-stats' },
       stat(`${s.periodHours} h`, `this pay period (to the ${ordinal(s.pay.cutoff)})`),
       stat(`${s.weeklyAverage} h`, 'a week, last 8 weeks')),
     weekChart,
-    s.upcoming.length ? h('div', {}, h('h4', {}, 'Booked ahead'), h('ul', { class: 'mo-list' }, s.upcoming.slice(0, 10).map((x) => h('li', {}, `${dayText(x.day)} · ${Math.round(x.minutes / 6) / 10} h`)))) : null,
-    s.notCounted.length ? h('div', {}, h('h4', {}, 'Not counted as shifts'),
-      h('ul', { class: 'mo-list' }, s.notCounted.map((x) => h('li', {}, `${dayText(x.day)} · "${x.title}" `,
-        h('button', { type: 'button', class: 'link', onclick: () => setCount(x.eventId, true) }, 'Count it'))))) : null,
     s.slips.length ? fold('Payslips against your calendar',
       h('table', { class: 'mo-table mo-slips' }, h('thead', {}, h('tr', {}, h('th', {}, 'Paid'), h('th', { class: 'n' }, 'Hours'), h('th', { class: 'n' }, 'Calendar'), h('th', { class: 'n' }, 'Net'))),
         h('tbody', {}, [...s.slips].reverse().map((p) => h('tr', {},
@@ -272,7 +268,10 @@ export function renderMoneyBig(ctx) {
     io ? bigSection(`In and out since ${sinceText(io.from)}`, inOutBlock(ctx, money, io)) : null,
     io ? bigSection(`By category since ${sinceText(io.from)}`, categoryBlock(ctx, money, io)) : null,
     bigSection('Hours', hoursBlock(ctx, doc, today)),
-    money ? bigSection('Compare', compareBlock(ctx, money, doc)) : null,
+    io ? bigSection('Forecast to London', h('details', { class: 'mo-fold fc-fold', open: !!ctx.ui.forecastOpen, ontoggle: (e) => { ctx.ui.forecastOpen = e.target.open; } },
+      h('summary', {}, forecastHeadline(money, doc, today) ?? 'Open the forecast'), forecastBlock(ctx, money, doc, today))) : null,
+    money ? bigSection('Compare', h('details', { class: 'mo-fold', open: !!ctx.ui.compareOpen, ontoggle: (e) => { ctx.ui.compareOpen = e.target.open; } },
+      h('summary', {}, 'Salzburg vs UK, or any two stretches'), compareBlock(ctx, money, doc))) : null,
     bigSection('Settings',
       h('label', { class: 'mo-start' }, 'London start date ', h('input', { type: 'date', value: start, onchange: setStart })),
       money?.plan?.length ? h('ul', { class: 'mo-list' }, money.plan.map((p) => h('li', {}, `${monthName(p.month, true)} · ${p.label} · ${p.kind === 'income' ? '+' : '−'}${gbp(p.amount)}${p.cat ? ` (${categoryLabel(p.cat)})` : ''}`))) : null));
