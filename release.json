@@ -1,11 +1,11 @@
 {
-  "id": "c7666f0f0eec4f11604dd9b742296fa587b802bb8464b6f6e2a2f5efce58bb32",
+  "id": "256f325af252ef27e8eaff5eaf83a7fec2179d4a7ba15e9a30b7cfa976c9adb4",
   "files": {
     "./": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
     "index.html": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
     "styles.css": "82757c6e1a2f8af994dc37b125a00f8bf62b90d7bafe61e98bb1dbfa5f674836",
     "styles/daylight.css": "b0c6dfe01b5b7fc778ac986f4c2c269f0ceeb1c9c7789c645b9d46b189994949",
-    "styles/tools.css": "a8c63a34b0cd061ff181122cbd1cd8ac9b3326407e4b5d32104fd15c643e9f45",
+    "styles/tools.css": "ecfa35efc396ef1029a6332ab0794552b56c17c28fb7796afd10f349f1754174",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
@@ -83,7 +83,7 @@
     "js/money.js": "7e8bb0e0e63859a3169bedbbbb51c4f0b9ff9c34b636242d4d6de4a74a0d3548",
     "js/london.js": "095b5eef10d8776524893f5ded58dcd050a718e7ba0883386959a98afdb945db",
     "js/private.js": "98ee4b6383317886b91ee32217b5a4957784f8c6165382631a87bd4fb88d8ef6",
-    "js/ui/money.js": "53a1920719f71dc5c475f09a2ebdb854699a731efd8df5c01bf2c02ac0d8c774",
+    "js/ui/money.js": "00250dbfb1ba5c8f1fcca31ff2c694e411e358aa73fd08363f88a240b5bbe2e9",
     "js/ui/london.js": "053e02770edac4267a5a613ea31acc7abf15f4a6dc60deaf00d55da92445ed9f",
     "js/ui/svg.js": "9c672f1bc3e7ddb89d25dc33c22a8cd564d71126e0b3ea60d01d533931b377c1",
     "js/vendor/leaflet/leaflet.js": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a",

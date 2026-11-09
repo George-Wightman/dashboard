@@ -1,14 +1,15 @@
-// Money's tile and big view (js/money.js, js/hours.js). The tile: what he'll have at the London start,
-// the next pay, this month so far. The big view, phone first: the pot to the start date, spending by
-// month (tap a month for its breakdown), Salzburg against the UK, Hours (his shifts, payslips against
-// the calendar, what's booked, what isn't counted), and the plan. Claude fills the ledger from his
-// statements; here he looks, and sets the start date and which Work events count.
+// Money's tile and big view (js/money.js, js/hours.js). The tile: what he's made or lost since the day
+// he counts from, and the next pay. The big view, phone first: in and out each month (what came in
+// beside what went out, by group; tap a month for its categories), every category since that day
+// (total or per month; tap one for its places), Hours (weeks, what's booked; payslips folded away),
+// Salzburg against the UK, and settings. Claude fills the ledger from his statements; here he looks,
+// and sets the start date and which Work events count.
 
 import { h } from './dom.js';
 import { svg, tip } from './svg.js';
 import { bigSection } from './big.js';
 import { shortDate, shortWeekday, addDays, daysInMonth } from '../dates.js';
-import { moneySummary, monthActuals, compare, gbp, startDay, START_ID, categoryLabel, lastCovered, averageSpend, inOut, wherePlaces, topPlaces, UNNAMED } from '../money.js';
+import { moneySummary, compare, gbp, startDay, START_ID, categoryLabel, inOut, wherePlaces, isCovered, UNNAMED } from '../money.js';
 import { hoursSummary, countId, ordinal } from '../hours.js';
 
 const signed = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
@@ -37,6 +38,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const monthName = (m, year = false) => `${MONTHS[Number(m.slice(5, 7)) - 1]}${year ? ` ${m.slice(0, 4)}` : ''}`;
 const dayText = (d) => `${shortWeekday(d)} ${shortDate(d)}`;
 const pounds2 = (n) => (n == null ? '—' : `£${n.toFixed(2)}`);
+const monthEnd = (m) => addDays(`${m}-01`, daysInMonth(`${m}-01`) - 1);
 // About four gridlines: a round step (1, 2 or 5 × a power of ten) for the range.
 export function niceStep(range) {
   const raw = Math.max(range, 1) / 4;
@@ -45,33 +47,41 @@ export function niceStep(range) {
   return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * pow;
 }
 const stat = (value, label) => h('div', { class: 'mo-stat' }, h('span', { class: 'mo-n' }, value), h('span', { class: 'mo-t' }, label));
-const legend = (ids = GROUPS.map((_, i) => i)) => h('ul', { class: 'mo-legend' }, ids.map((i) => h('li', {}, h('i', { class: viz(i) }), GROUPS[i].label)));
+// Small print, folded away until he wants it.
+const fold = (label, ...body) => h('details', { class: 'mo-fold' }, h('summary', {}, label), ...body);
+
+function payLine(pay) {
+  return pay.net != null ? h('li', {}, 'Next pay ', h('b', {}, `~${pounds2(pay.net)}`), `, ${dayText(pay.payday)} · ${pay.hours} h`) : h('li', {}, `${pay.hours} h towards the next pay`);
+}
 
 export function renderMoneyTile(ctx) {
   const doc = ctx.store.doc();
   const today = ctx.store.today();
   const money = ctx.money?.() ?? null;
   const s = moneySummary(money, doc, today);
-  const pay = s.nextPay;
-  const payLine = pay.net != null ? h('li', {}, 'Next pay ', h('b', {}, `~${pounds2(pay.net)}`), `, ${dayText(pay.payday)} · ${pay.hours} h`) : h('li', {}, `${pay.hours} h towards the next pay`);
-  if (!money) {
+  const io = money ? inOut(money) : null;
+  if (!io) {
     return h('div', { class: 'tile-stack mo-tile' },
-      h('ul', { class: 'mo-facts' }, payLine),
-      h('p', { class: 'muted' }, 'Give Claude your bank statements to see your spending and what you\'ll have in May.'));
+      h('ul', { class: 'mo-facts' }, payLine(s.nextPay)),
+      h('p', { class: 'muted' }, 'Give Claude your bank statements to see what comes in and goes out.'));
   }
-  const io = inOut(money);
   return h('div', { class: 'tile-stack mo-tile' },
-    h('p', { class: 'tile-hero' }, h('span', { class: 'tile-num' }, gbp(s.atStart)), h('span', { class: 'tile-cap' }, `at the start, ${monthName(s.start.slice(0, 7), true)}`)),
-    h('ul', { class: 'mo-facts' }, payLine,
-      s.spent != null ? h('li', {}, 'This month ', h('b', {}, gbp(s.spent)), s.planned ? ` of ~${gbp(s.planned)}` : '')
-        : s.planned ? h('li', {}, 'This month ', h('b', {}, `~${gbp(s.planned)}`), ' planned') : null,
-      io ? h('li', {}, `Since ${sinceText(io.from)} `, h('b', {}, signed(io.totals.net)), io.totals.oneOff ? h('span', { class: 'muted' }, ` · on pay alone ${signed(io.totals.netRegular)}`) : '') : null));
+    h('p', { class: 'tile-hero' }, h('span', { class: 'tile-num' }, signed(io.totals.net)), h('span', { class: 'tile-cap' }, `since ${sinceText(io.from)}`)),
+    h('ul', { class: 'mo-facts' }, payLine(s.nextPay)));
 }
 
-// In and out each month since the day he counts from: what came in (regular pay, then one-off money
-// on top) beside what went out, the net under each month, and the pot either side.
-function inOutChart(io) {
-  const W = 640, H = 230, L = 56, R = 8, T = 10, B = 50;
+// Spending by category over the days of `month` that fall in the stretch he counts.
+function monthSpend(money, io, month) {
+  const from = [`${month}-01`, io.from].sort().at(-1);
+  const to = [monthEnd(month), io.to].sort()[0];
+  return wherePlaces(money, from, to);
+}
+
+// Each month: what came in (pay, then one-off money on top) beside what went out (stacked by group),
+// with the net under it. Tapping a month opens its categories below.
+function inOutChart(ctx, money, io) {
+  const W = 640, H = 240, L = 56, R = 8, T = 10, B = 50, GAP = 2;
+  const outs = io.rows.map((r) => byGroup(Object.fromEntries(monthSpend(money, io, r.month).map((e) => [e.cat, e.total]))));
   const hi = Math.max(1, ...io.rows.map((r) => Math.max(r.in, r.spend)));
   const slot = (W - L - R) / io.rows.length;
   const bw = Math.min(26, slot / 2 - 5);
@@ -80,124 +90,82 @@ function inOutChart(io) {
   const step = niceStep(hi);
   const grid = [];
   for (let v = 0; v <= hi; v += step) grid.push(svg('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: 'mo-grid' }), svg('text', { x: L - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'mo-axis' }, gbp(v)));
-  const rect = (x, from, to, cls, label) => (to > from ? svg('rect', { x, y: Y(to), width: bw, height: Math.max(0, Y(from) - Y(to) - (from ? 2 : 0)), rx: 3, class: cls }, tip(label)) : null);
-  const bars = io.rows.map((r, i) => svg('g', {},
-    rect(X(i) - bw - 2, 0, r.regular, 'mo-in', `${monthName(r.month, true)}: pay and regular ${gbp(r.regular)}`),
-    rect(X(i) - bw - 2, r.regular, r.in, 'mo-in-once', `${monthName(r.month, true)}: one-off ${gbp(r.oneOff)}`),
-    rect(X(i) + 2, 0, r.spend, 'mo-out', `${monthName(r.month, true)}: spent ${gbp(r.spend)}`),
-    svg('text', { x: X(i), y: H - B + 18, 'text-anchor': 'middle', class: 'mo-axis' }, monthName(r.month)),
-    svg('text', { x: X(i), y: H - B + 38, 'text-anchor': 'middle', class: r.net < 0 ? 'mo-net neg' : 'mo-net' }, signed(r.net))));
+  const rect = (x, from, to, cls, label) => (to > from ? svg('rect', { x, y: Y(to), width: bw, height: Math.max(0, Y(from) - Y(to) - (from ? GAP : 0)), rx: 3, class: cls }, tip(label)) : null);
+  const bars = io.rows.map((r, i) => {
+    const name = monthName(r.month, true);
+    let base = 0;
+    const out = outs[i].map((v, gi) => {
+      if (v <= 0) return null;
+      const seg = rect(X(i) + 2, base, base + v, viz(gi), `${name}: ${GROUPS[gi].label} ${gbp(v)}`);
+      base += v;
+      return seg;
+    });
+    const on = ctx.ui.moneyMonth === r.month;
+    return svg('g', { class: `mo-bar${on ? ' on' : ''}`, role: 'button', tabindex: 0, 'aria-label': `${name}: in ${gbp(r.in)}, out ${gbp(r.spend)}`,
+      onclick: () => { ctx.ui.moneyMonth = on ? null : r.month; ctx.render(); },
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ctx.ui.moneyMonth = on ? null : r.month; ctx.render(); } } },
+      svg('rect', { x: X(i) - slot / 2 + 2, y: T, width: slot - 4, height: H - T - B + 44, rx: 6, class: 'mo-hit' }),
+      rect(X(i) - bw - 2, 0, r.regular, 'mo-in', `${name}: pay ${gbp(r.regular)}`),
+      rect(X(i) - bw - 2, r.regular, r.in, 'mo-in-once', `${name}: one-off ${gbp(r.oneOff)}`),
+      out,
+      svg('text', { x: X(i), y: H - B + 18, 'text-anchor': 'middle', class: 'mo-axis' }, monthName(r.month)),
+      svg('text', { x: X(i), y: H - B + 38, 'text-anchor': 'middle', class: r.net < 0 ? 'mo-net neg' : 'mo-net' }, signed(r.net)));
+  });
   return svg('svg', { class: 'mo-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `In and out each month since ${sinceText(io.from)}: net ${signed(io.totals.net)}` }, grid, bars);
 }
 
-function inOutBlock(money, io) {
-  const notes = [...new Set(money.income.filter((i) => i.day >= io.from && i.day <= io.to && (i.oneOff || i.kind === 'refund')).map((i) => i.note || (i.kind === 'refund' ? 'refund' : 'one-off')))];
-  return h('div', {},
-    h('div', { class: 'mo-stats' },
-      stat(signed(io.totals.net), `net since ${sinceText(io.from)}`),
-      stat(signed(io.totals.netRegular), 'on pay alone, without one-off money'),
-      io.base && io.now ? stat(signed(io.now.total - io.base.total), `your pot: ${gbp(io.base.total)} → ${gbp(io.now.total)}`) : null),
-    h('ul', { class: 'mo-legend' }, h('li', {}, h('i', { class: 'mo-in' }), 'Pay & regular'), h('li', {}, h('i', { class: 'mo-in-once' }), 'One-off'), h('li', {}, h('i', { class: 'mo-out' }), 'Spent')),
-    inOutChart(io),
-    h('p', { class: 'muted mo-note' },
-      `In ${gbp(io.totals.in)}, out ${gbp(io.totals.spend)}, to ${shortDate(io.to)}.`,
-      notes.length ? ` One-off money (${gbp(io.totals.oneOff)}): ${notes.join(', ')}.` : '',
-      io.outside ? ` Your pot moved ${signed(io.now.total - io.base.total)}: the ${signed(io.totals.net)} net, ${io.outside < 0 ? `less ${gbp(-io.outside)} moved to accounts the pot leaves out (shares, savings)` : `plus ${gbp(io.outside)} moved in from accounts the pot leaves out`}.` : ''));
-}
-
-// The pot, month by month: solid where the statements are, dashed where it's planned.
-function potChart(rows, start) {
-  const pts = rows.filter((r) => r.pot != null);
-  if (pts.length < 2) return null;
-  const W = 640, H = 200, L = 56, R = 12, T = 14, B = 26;
-  const vals = pts.map((r) => r.pot);
-  let lo = Math.min(0, ...vals), hi = Math.max(...vals);
-  if (hi === lo) hi = lo + 10000;
-  const X = (i) => L + (i / (pts.length - 1)) * (W - L - R);
-  const Y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
-  const step = niceStep(hi - lo);
-  const grid = [];
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
-    grid.push(svg('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: 'mo-grid' }), svg('text', { x: L - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'mo-axis' }, gbp(v)));
-  }
-  const firstPlan = pts.findIndex((r) => !r.actual);
-  const path = (from, to) => pts.slice(from, to).map((r, i) => `${i ? 'L' : 'M'}${X(from + i)},${Y(r.pot)}`).join(' ');
-  const solidEnd = firstPlan === -1 ? pts.length : Math.max(1, firstPlan);
-  return svg('svg', { class: 'mo-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Your money each month, reaching ${gbp(pts.at(-1).pot)} by ${start}` },
-    grid,
-    svg('path', { d: path(0, solidEnd), class: 'mo-pot' }),
-    firstPlan === -1 ? null : svg('path', { d: path(Math.max(0, solidEnd - 1), pts.length), class: 'mo-pot mo-pot-plan' }),
-    pts.map((r, i) => svg('circle', { cx: X(i), cy: Y(r.pot), r: 5, class: r.actual ? 'mo-dot' : 'mo-dot mo-dot-plan' }, tip(`${monthName(r.month, true)}: ${gbp(r.pot)}${r.actual ? '' : ' (planned)'}`))),
-    pts.map((r, i) => (i === 0 || i === pts.length - 1 || pts.length <= 8 || i % 2 === 0
-      ? svg('text', { x: X(i), y: H - 6, 'text-anchor': 'middle', class: 'mo-axis' }, monthName(r.month)) : null)));
-}
-
-// Spending by month, stacked by group. Planned months are hatched. Tapping one opens its breakdown.
-function spendChart(ctx, rows) {
-  if (!rows.length) return null;
-  const W = 640, H = 200, L = 56, R = 8, T = 10, B = 26, GAP = 2;
-  // Planned spending is drawn as its own hatched cap on top of what the statements show.
-  const stacks = rows.map((r) => byGroup(r.spendByCat));
-  const totals = rows.map((r) => r.spend);
-  const hi = Math.max(1, ...totals);
-  const bw = Math.min(40, (W - L - R) / rows.length - 6);
-  const X = (i) => L + ((i + 0.5) / rows.length) * (W - L - R);
-  const Y = (v) => T + (1 - v / hi) * (H - T - B);
-  const step = niceStep(hi);
-  const grid = [];
-  for (let v = step; v <= hi; v += step) grid.push(svg('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: 'mo-grid' }), svg('text', { x: L - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'mo-axis' }, gbp(v)));
-  const bars = rows.map((r, i) => {
-    let base = 0;
-    const segs = [];
-    stacks[i].forEach((v, gi) => {
-      if (!v) return;
-      const y0 = Y(base), y1 = Y(base + v);
-      segs.push(svg('rect', { x: X(i) - bw / 2, y: y1, width: bw, height: Math.max(0, y0 - y1 - GAP), rx: 3, class: viz(gi) }, tip(`${GROUPS[gi].label} ${gbp(v)}`)));
-      base += v;
-    });
-    if (r.plannedSpend) {
-      const y0 = Y(base), y1 = Y(base + r.plannedSpend);
-      segs.push(svg('rect', { x: X(i) - bw / 2, y: y1, width: bw, height: Math.max(0, y0 - y1 - GAP), rx: 3, class: 'mo-plan' }, tip(`Planned ${gbp(r.plannedSpend)}`)));
-    }
-    const on = ctx.ui.moneyMonth === r.month;
-    return svg('g', { class: `mo-bar${on ? ' on' : ''}`, role: 'button', tabindex: 0, 'aria-label': `${monthName(r.month, true)}: ${gbp(r.spend)}`, onclick: () => { ctx.ui.moneyMonth = on ? null : r.month; ctx.render(); } },
-      svg('rect', { x: X(i) - bw / 2 - 3, y: T, width: bw + 6, height: H - T - B + 4, class: 'mo-hit' }),
-      segs,
-      svg('text', { x: X(i), y: H - 6, 'text-anchor': 'middle', class: 'mo-axis' }, monthName(r.month)));
-  });
-  return svg('svg', { class: 'mo-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Spending each month by group' }, svg('defs', {},
-    svg('pattern', { id: 'mo-hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, svg('rect', { width: 6, height: 6, class: 'mo-hatch-bg' }), svg('rect', { width: 3, height: 6, class: 'mo-hatch-fg' }))), grid, bars);
-}
-
-// Categories, biggest first; tap one to see the places it went to.
-function catBreakdown(entries) {
+// Categories, biggest first; tap one to see the places it went to. `per` divides every amount (months).
+function catBreakdown(entries, per = 1) {
+  const amt = (p) => gbp(Math.round(p / per));
   return h('div', { class: 'mo-cats' }, entries.map((e) => h('details', { class: 'mo-cat' },
-    h('summary', {}, h('span', {}, h('i', { class: `mo-swatch ${viz(groupOf(e.cat))}` }), categoryLabel(e.cat)), h('span', { class: 'n' }, gbp(e.total))),
-    h('ul', { class: 'mo-places' }, e.places.map((p) => h('li', { class: p.name === UNNAMED ? 'muted' : '' }, h('span', {}, p.name), h('span', { class: 'n' }, gbp(p.amount))))))));
+    h('summary', {}, h('span', {}, h('i', { class: `mo-swatch ${viz(groupOf(e.cat))}` }), categoryLabel(e.cat)), h('span', { class: 'n' }, amt(e.total))),
+    h('ul', { class: 'mo-places' }, e.places.map((p) => h('li', { class: p.name === UNNAMED ? 'muted' : '' }, h('span', {}, p.name), h('span', { class: 'n' }, amt(p.amount))))))));
 }
 
-function whereBlock(money, from, to) {
-  const top = topPlaces(money, from, to, 8);
-  return h('div', {},
-    top.length ? h('div', {}, h('h4', { class: 'mo-sub' }, 'Where you spent most'),
-      h('ol', { class: 'mo-top' }, top.map((p) => h('li', {}, h('span', {}, h('i', { class: `mo-swatch ${viz(groupOf(p.cat))}` }), p.name), h('span', { class: 'n' }, gbp(p.amount)))))) : null,
-    h('h4', { class: 'mo-sub' }, 'By category'),
-    catBreakdown(wherePlaces(money, from, to)),
-    h('p', { class: 'muted mo-note' }, 'Tap a category to see where it went.'));
-}
-
-function monthDetail(money, rows, month) {
-  const row = rows.find((r) => r.month === month);
-  if (!row) return null;
-  const a = monthActuals(money, month);
+function monthDetail(money, io, month) {
+  const r = io.rows.find((x) => x.month === month);
+  if (!r) return null;
   return h('div', { class: 'mo-month' },
-    h('h4', {}, monthName(month, true), row.actual ? '' : ' (part planned)'),
-    catBreakdown(wherePlaces(money, `${month}-01`, addDays(`${month}-01`, daysInMonth(`${month}-01`) - 1))),
+    h('h4', {}, monthName(month, true)),
+    catBreakdown(monthSpend(money, io, month)),
     h('table', { class: 'mo-table' }, h('tbody', {},
-      row.plannedSpend ? h('tr', {}, h('td', {}, h('i', { class: 'mo-swatch mo-plan-swatch' }), 'Planned'), h('td', { class: 'n' }, gbp(row.plannedSpend))) : null,
-      h('tr', { class: 'mo-total' }, h('td', {}, 'Spent'), h('td', { class: 'n' }, gbp(row.spend))),
-      h('tr', {}, h('td', {}, 'Came in'), h('td', { class: 'n' }, gbp(row.income))),
-      a.oneOff ? h('tr', { class: 'muted' }, h('td', {}, 'of which one-off'), h('td', { class: 'n' }, gbp(a.oneOff))) : null)));
+      h('tr', { class: 'mo-total' }, h('td', {}, 'Spent'), h('td', { class: 'n' }, gbp(r.spend))),
+      h('tr', {}, h('td', {}, 'Came in'), h('td', { class: 'n' }, gbp(r.in))),
+      r.oneOff ? h('tr', { class: 'muted' }, h('td', {}, 'of which one-off'), h('td', { class: 'n' }, gbp(r.oneOff))) : null,
+      h('tr', { class: 'mo-total' }, h('td', {}, 'Net'), h('td', { class: 'n' }, signed(r.net))))));
+}
+
+function inOutBlock(ctx, money, io) {
+  const notes = [...new Set(money.income.filter((i) => i.day >= io.from && i.day <= io.to && (i.oneOff || i.kind === 'refund')).map((i) => i.note || (i.kind === 'refund' ? 'refund' : 'one-off')))];
+  const shown = GROUPS.map((_, i) => i).filter((gi) => io.rows.some((r) => byGroup(Object.fromEntries(monthSpend(money, io, r.month).map((e) => [e.cat, e.total])))[gi] > 0));
+  const month = ctx.ui.moneyMonth && io.rows.some((r) => r.month === ctx.ui.moneyMonth) ? ctx.ui.moneyMonth : null;
+  return h('div', {},
+    h('ul', { class: 'mo-legend' },
+      h('li', {}, h('i', { class: 'mo-in' }), 'Pay'), h('li', {}, h('i', { class: 'mo-in-once' }), 'One-off in'),
+      shown.map((gi) => h('li', {}, h('i', { class: viz(gi) }), GROUPS[gi].label))),
+    inOutChart(ctx, money, io),
+    month ? monthDetail(money, io, month) : h('p', { class: 'muted mo-note' }, 'Left bar in, right bar out. Tap a month to see where it went.'),
+    fold('How this is worked out',
+      h('p', { class: 'muted mo-note' },
+        `From ${shortDate(io.from)} to ${shortDate(io.to)} (the last day on your statements): in ${gbp(io.totals.in)}, out ${gbp(io.totals.spend)}. `,
+        notes.length ? `One-off money (${gbp(io.totals.oneOff)}): ${notes.join(', ')}. ` : '',
+        'Money moved between your own accounts, into shares or into your Lifetime ISA isn\'t counted either way.')));
+}
+
+function categoryBlock(ctx, money, io) {
+  let days = 0;
+  for (let d = io.from; d <= io.to; d = addDays(d, 1)) if (isCovered(money, d)) days++;
+  const months = days / (365.25 / 12);
+  const perMonth = !!ctx.ui.moneyPerMonth && months >= 1;
+  const set = (on) => { ctx.ui.moneyPerMonth = on; ctx.render(); };
+  return h('div', {},
+    months >= 1 ? h('div', { class: 'mo-seg', role: 'group', 'aria-label': 'Show totals or a month' },
+      h('button', { type: 'button', class: 'dl-btn', 'aria-pressed': String(!perMonth), onclick: () => set(false) }, 'Total'),
+      h('button', { type: 'button', class: 'dl-btn', 'aria-pressed': String(perMonth), onclick: () => set(true) }, 'Per month')) : null,
+    catBreakdown(wherePlaces(money, io.from, io.to), perMonth ? months : 1),
+    h('p', { class: 'muted mo-note' }, perMonth
+      ? `An average month over the ${months.toFixed(1)} months from ${shortDate(io.from)} to ${shortDate(io.to)}. Tap a category to see where it went.`
+      : 'Tap a category to see where it went.'));
 }
 
 function compareBlock(ctx, money, doc) {
@@ -251,21 +219,20 @@ function hoursBlock(ctx, doc, today) {
   return h('div', { class: 'mo-hours' },
     h('div', { class: 'mo-stats' },
       stat(`${s.periodHours} h`, `this pay period (to the ${ordinal(s.pay.cutoff)})`),
-      stat(s.expected.net != null ? `~${pounds2(s.expected.net)}` : `${s.expected.hours} h`, `next pay, ${dayText(s.expected.payday)}`),
       stat(`${s.weeklyAverage} h`, 'a week, last 8 weeks')),
     weekChart,
     s.upcoming.length ? h('div', {}, h('h4', {}, 'Booked ahead'), h('ul', { class: 'mo-list' }, s.upcoming.slice(0, 10).map((x) => h('li', {}, `${dayText(x.day)} · ${Math.round(x.minutes / 6) / 10} h`)))) : null,
-    s.slips.length ? h('div', {}, h('h4', {}, 'Payslips against your calendar'),
+    s.notCounted.length ? h('div', {}, h('h4', {}, 'Not counted as shifts'),
+      h('ul', { class: 'mo-list' }, s.notCounted.map((x) => h('li', {}, `${dayText(x.day)} · "${x.title}" `,
+        h('button', { type: 'button', class: 'link', onclick: () => setCount(x.eventId, true) }, 'Count it'))))) : null,
+    s.slips.length ? fold('Payslips against your calendar',
       h('table', { class: 'mo-table mo-slips' }, h('thead', {}, h('tr', {}, h('th', {}, 'Paid'), h('th', { class: 'n' }, 'Hours'), h('th', { class: 'n' }, 'Calendar'), h('th', { class: 'n' }, 'Net'))),
         h('tbody', {}, [...s.slips].reverse().map((p) => h('tr', {},
           h('td', {}, monthName(p.period, true), h('small', {}, `${shortDate(p.from)} – ${shortDate(p.to)}`)),
           h('td', { class: 'n' }, String(p.hours)),
           h('td', { class: `n${Math.abs(p.diff) >= 1 ? ' mo-diff' : ''}` }, String(p.calendarHours), p.diff ? h('small', {}, `${p.diff > 0 ? '+' : ''}${p.diff} h paid`) : h('small', {}, 'matches')),
           h('td', { class: 'n' }, pounds2(p.net))))))) : null,
-    s.notCounted.length ? h('div', {}, h('h4', {}, 'Not counted as shifts'),
-      h('ul', { class: 'mo-list' }, s.notCounted.map((x) => h('li', {}, `${dayText(x.day)} · "${x.title}" `,
-        h('button', { type: 'button', class: 'link', onclick: () => setCount(x.eventId, true) }, 'Count it'))))) : null,
-    h('p', { class: 'muted mo-note' }, 'Every event in your Work calendar is a shift unless its title says otherwise.'));
+    fold('How shifts are counted', h('p', { class: 'muted mo-note' }, 'Every event in your Work calendar is a shift unless its title says otherwise.')));
 }
 
 export function renderMoneyBig(ctx) {
@@ -273,25 +240,19 @@ export function renderMoneyBig(ctx) {
   const today = ctx.store.today();
   const money = ctx.money?.() ?? null;
   const s = moneySummary(money, doc, today);
+  const io = money ? inOut(money) : null;
   const start = startDay(doc);
   const setStart = (e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) ctx.store.putCalendar(START_ID, { status: 'active', day: e.target.value }, 'me'); };
-  const month = ctx.ui.moneyMonth ?? null;
-  const avg = money ? averageSpend(money, today) : null;
   return h('div', { class: 'big money' },
     h('div', { class: 'mo-stats' },
-      stat(gbp(s.atStart), `at the start, ${dayText(start)}`),
       stat(s.nextPay.net != null ? `~${pounds2(s.nextPay.net)}` : `${s.nextPay.hours} h`, `next pay, ${dayText(s.nextPay.payday)}`),
-      money ? (s.spent != null ? stat(gbp(s.spent), `spent in ${monthName(today.slice(0, 7))}, ${s.seenDays} days on statements`) : stat(`~${gbp(s.planned)}`, `planned for ${monthName(today.slice(0, 7))}`)) : null),
-    !money ? h('p', { class: 'mo-empty' }, 'No statements yet. In a chat on the laptop, give Claude your bank statements (PDFs) and say "add these to Money". Only daily totals per category are saved; the statements stay on your laptop.') : null,
-    money && inOut(money) ? bigSection(`In and out since ${sinceText(inOut(money).from)}`, inOutBlock(money, inOut(money))) : null,
-    money ? bigSection('Your money to the start', potChart(s.rows, start) ?? h('p', { class: 'muted' }, 'Needs a balance from a statement to draw.'),
-      h('p', { class: 'muted mo-note' }, `Solid is from your statements (up to ${shortDate(lastCovered(money))}); dashed is the plan: your pay from Hours, spending at your recent average${avg?.months ? ` (${gbp(avg.total)} a month)` : ''}.`)) : null,
-    money && inOut(money) ? bigSection(`Where it went since ${sinceText(inOut(money).from)}`, whereBlock(money, inOut(money).from, inOut(money).to)) : null,
-    money ? bigSection('Spending by month', legend(), spendChart(ctx, s.rows), month ? monthDetail(money, s.rows, month) : h('p', { class: 'muted mo-note' }, 'Tap a month to see where it went.')) : null,
-    money ? bigSection('Compare', compareBlock(ctx, money, doc)) : null,
+      io ? stat(signed(io.totals.net), `net since ${sinceText(io.from)}`) : null),
+    !io ? h('p', { class: 'mo-empty' }, 'No statements yet. In a chat on the laptop, give Claude your bank statements and say "add these to Money".') : null,
+    io ? bigSection(`In and out since ${sinceText(io.from)}`, inOutBlock(ctx, money, io)) : null,
+    io ? bigSection(`By category since ${sinceText(io.from)}`, categoryBlock(ctx, money, io)) : null,
     bigSection('Hours', hoursBlock(ctx, doc, today)),
-    bigSection('The plan',
+    money ? bigSection('Compare', compareBlock(ctx, money, doc)) : null,
+    bigSection('Settings',
       h('label', { class: 'mo-start' }, 'London start date ', h('input', { type: 'date', value: start, onchange: setStart })),
-      money?.plan?.length ? h('ul', { class: 'mo-list' }, money.plan.map((p) => h('li', {}, `${monthName(p.month, true)} · ${p.label} · ${p.kind === 'income' ? '+' : '−'}${gbp(p.amount)}${p.cat ? ` (${categoryLabel(p.cat)})` : ''}`)))
-        : h('p', { class: 'muted' }, 'No planned costs yet. Tell Claude about a flight, a deposit or a birthday and it goes here.')));
+      money?.plan?.length ? h('ul', { class: 'mo-list' }, money.plan.map((p) => h('li', {}, `${monthName(p.month, true)} · ${p.label} · ${p.kind === 'income' ? '+' : '−'}${gbp(p.amount)}${p.cat ? ` (${categoryLabel(p.cat)})` : ''}`))) : null));
 }
