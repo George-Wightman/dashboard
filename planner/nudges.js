@@ -6,7 +6,7 @@
 import { logicalDay } from '../js/dates.js';
 import { dueNudges, quietAt, NUDGES_PER_DAY } from '../js/nudges.js';
 import { deviceZone } from '../js/travel.js';
-import { pushSubscriptions, makePusher } from './checkins.js';
+import { pushSubscriptions, makePusher, retire } from './checkins.js';
 import { gasCrypto } from './webpush.js';
 
 export function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
@@ -28,6 +28,7 @@ export function createNudges({ UrlFetchApp, Utilities = null, props, log = () =>
     if (!due.length) return { changed: false, sent: 0 };
     const push = makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t });
     const gone = new Set();
+    const why = {};
     const problems = [];
     let sent = 0;
     for (const n of due) {
@@ -36,6 +37,7 @@ export function createNudges({ UrlFetchApp, Utilities = null, props, log = () =>
       try {
         const r = push(devices, { title: n.title, body: n.body.slice(0, 140), url: n.url, tag: n.id });
         r.gone.forEach((id) => gone.add(id));
+        Object.assign(why, r.why ?? {});
         r.failed.forEach((f) => { problems.push(f); log(`Nudges: ${f}`); });
         if (r.ok) sent++;
       } catch (e) {
@@ -47,7 +49,7 @@ export function createNudges({ UrlFetchApp, Utilities = null, props, log = () =>
       state.sent.push(n.id);
     }
     props.put('NUDGES', JSON.stringify(state));
-    for (const id of gone) store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner');
+    for (const id of gone) problems.push(retire(store, id, why[id], t, today));
     // For ⚙ → Claude's jobs: what was sent today, and the last problem (written only when tried).
     const prev = store.doc().calendar?.['nudges:status'];
     const sentToday = (prev?.status === 'active' && prev.day === today ? prev.sent ?? 0 : 0) + sent;

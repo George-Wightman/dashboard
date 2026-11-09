@@ -220,6 +220,8 @@ test('no pings in the quiet hours, none past the day cap, and a device that has 
   const r = c.ping(store);
   assert.equal(r.sent, PINGS_PER_DAY);
   assert.equal(store.doc().calendar['push:old'].status, 'archived');
+  assert.match(store.doc().calendar['push:old'].retiredWhy, /^HTTP 410/, 'what the push service said is kept');
+  assert.match(store.doc().calendar['checkins:status'].lastError, /Notifications stopped working on the .*HTTP 410/, 'and said, not passed over');
   assert.deepEqual(pushSubscriptions(store.doc()).map((s) => s.id), ['push:phone1']);
   // Two were left over when the cap was reached: never pinged, still waiting in the app.
   assert.equal(Object.values(store.doc().journal).filter((x) => x.kind === 'reflect' && !x.pushedAt).length, 2);

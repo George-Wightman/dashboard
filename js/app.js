@@ -12,6 +12,7 @@ import { openTaskCard } from './ui/agenda.js';
 import { renderSide, WIDGET_IDS, setArranging } from './ui/widgets.js';
 import { openEditor } from './ui/edit.js';
 import { openSettings } from './ui/settings.js';
+import { repairPush } from './push-client.js';
 import { checkinState, openCheckin } from './ui/checkin.js';
 import { noteState } from './ui/note.js';
 import { paintBig } from './ui/big.js';
@@ -421,6 +422,7 @@ function whenIdle() {
   });
 }
 
+let pushChecked = false;
 const scheduler = createSyncScheduler({
   run: async () => {
     // Hebrew first: a goal or target it creates on its first run then rides along on this same
@@ -429,6 +431,9 @@ const scheduler = createSyncScheduler({
     const result = await runSync();
     await runMapSync();
     ctx.mealPass();
+    // Once per open, after the planner's view of this device has arrived: is the subscription
+    // it sends to still the one this browser holds? (js/push-client.js, repairPush)
+    if (!pushChecked) { pushChecked = true; setTimeout(() => { repairPush(ctx).catch(() => {}); }, 0); }
     return result;
   },
   canRun,

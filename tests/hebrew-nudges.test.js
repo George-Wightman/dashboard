@@ -58,6 +58,26 @@ test('a device that has gone (410) is never tried again', () => {
   assert.deepEqual(s.sent.map((u) => u.split('/').pop()), ['old', 'phone', 'phone']);
 });
 
+test('a device that has gone is retired with what the push service said, and named, not passed over', () => {
+  const map = new Map();
+  const props = { get: (k) => map.get(k) ?? null, put: (k, v) => map.set(k, String(v)) };
+  const keys = makeVapidKeys(nodeCrypto.randomBytes);
+  props.put('VAPID_PRIVATE', keys.privateKey);
+  props.put('VAPID_PUBLIC', keys.publicKey);
+  const UrlFetchApp = { fetchAll: (reqs) => reqs.map(() => ({ getResponseCode: () => 410, getContentText: () => 'push subscription has unsubscribed or expired.\n' })) };
+  const phone = device('ts4pkg');
+  const send = (t) => createHebrewNudges({ UrlFetchApp, props, crypto: nodeCrypto, t })
+    .send({ devices: [phone], practising: 'ts4pkg', input: { now: t, today: DAY, days: {}, duolingo: [], busy: [], countdown: null, strongGain: 0 } });
+  const first = send(at(9, 31));
+  assert.match(first.error, /stopped working on ts4pkg \(HTTP 410: push subscription has unsubscribed or expired\.\)/);
+  const retired = JSON.parse(props.get('HEBREW_RETIRED'));
+  assert.equal(retired[0].why, 'HTTP 410: push subscription has unsubscribed or expired.');
+  // Later runs have nothing live to send to, and say when and why rather than "reminders are off".
+  const later = send(at(15, 1));
+  assert.equal(later.devices, 0);
+  assert.match(later.error, /Reminders on ts4pkg stopped working on 2026-09-16 \(HTTP 410/);
+});
+
 test('no devices: nothing sent, and it says reminders are off', () => {
   const s = setup();
   assert.deepEqual(s.send(at(9, 31), []), { sent: 0, devices: 0, error: 'Reminders are off: turn them on in the Hebrew app' });

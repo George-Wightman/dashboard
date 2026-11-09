@@ -49,15 +49,32 @@ export function makePusher({ UrlFetchApp, Utilities = null, tools, keys, t }) {
   const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
   return (devices, message) => {
     const responses = UrlFetchApp.fetchAll(devices.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
-    const out = { ok: false, gone: [], failed: [] };
+    // `why`: the push service's own answer for each device it said is gone. It is the only record
+    // of why a subscription died, and was thrown away until 9 Nov 2026, when his phone's had
+    // been retired twice within a day of being made and nothing could say why.
+    const out = { ok: false, gone: [], failed: [], why: {} };
     responses.forEach((res, i) => {
       const code = res.getResponseCode();
       if (code >= 200 && code < 300) out.ok = true;
-      else if (code === 404 || code === 410) out.gone.push(devices[i].id);
+      else if (code === 404 || code === 410) {
+        out.gone.push(devices[i].id);
+        let text = '';
+        try { text = String(res.getContentText?.() ?? '').replace(/\s+/g, ' ').trim().slice(0, 160); } catch { /* the code is enough */ }
+        out.why[devices[i].id] = `HTTP ${code}${text ? `: ${text}` : ''}`;
+      }
       else out.failed.push(`A ping to the ${devices[i].label ?? 'device'} failed (HTTP ${code})`);
     });
     return out;
   };
+}
+
+// A device the push service says is gone: archived, with when and what it said, and named in the
+// status so ⚙ → Claude and Claude's planner read show it instead of going quiet. The app re-subscribes
+// on its next open (js/push-client.js, repairPush).
+export function retire(store, id, why, t, today) {
+  const rec = store.doc().calendar?.[id];
+  store.putCalendar(id, { status: 'archived', archivedOn: today, retiredAt: t.toISOString(), retiredWhy: why ?? 'gone' }, 'planner');
+  return `Notifications stopped working on the ${rec?.label ?? 'device'} (${why ?? 'gone'}): open the dashboard there and it will try again`;
 }
 
 export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
@@ -125,6 +142,7 @@ export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () 
     const keys = tools ? vapid(null) : null;
     let sent = 0;
     const gone = new Set();
+    const why = {};
     // Quiet hours in George's own time, where he is.
     if (pending.length && subs.length && keys && !quietAt(t, deviceZone(doc))) {
       const push = makePusher({ UrlFetchApp, Utilities, tools, keys, t });
@@ -142,13 +160,14 @@ export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () 
         }
         const { ok } = result;
         for (const id of result.gone) gone.add(id);
+        Object.assign(why, result.why ?? {});
         for (const f of result.failed) note(f);
         // Marked even when it failed: a question is pinged once, and it's waiting in the app anyway.
         store.updateJournal(rec.id, { pushedAt: t.toISOString() });
         if (ok) { sent++; left--; }
       }
     }
-    for (const id of gone) store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner');
+    for (const id of gone) note(retire(store, id, why[id], t, today));
     const tried = pending.some((r) => store.doc().journal[r.id]?.pushedAt);
     if (tried || gone.size || problems.length) writeStatus(store, t, today, sent);
     return { changed: tried || gone.size > 0 || problems.length > 0, sent };

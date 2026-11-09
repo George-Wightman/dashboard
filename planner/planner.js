@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'ca060237';
+var PLANNER_BUILD = 'be13a263';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -7900,15 +7900,32 @@ function makePusher({ UrlFetchApp, Utilities = null, tools, keys, t }) {
   const asBlob = (req) => (Utilities ? { ...req, payload: Utilities.newBlob(req.payload, 'application/octet-stream') } : req);
   return (devices, message) => {
     const responses = UrlFetchApp.fetchAll(devices.map((sub) => asBlob(pushRequest({ ...tools, sub, message, vapid: keys, now: t, subject: VAPID_SUBJECT, authorization: authFor(sub.endpoint) }))));
-    const out = { ok: false, gone: [], failed: [] };
+    // `why`: the push service's own answer for each device it said is gone. It is the only record
+    // of why a subscription died, and was thrown away until 9 Nov 2026, when his phone's had
+    // been retired twice within a day of being made and nothing could say why.
+    const out = { ok: false, gone: [], failed: [], why: {} };
     responses.forEach((res, i) => {
       const code = res.getResponseCode();
       if (code >= 200 && code < 300) out.ok = true;
-      else if (code === 404 || code === 410) out.gone.push(devices[i].id);
+      else if (code === 404 || code === 410) {
+        out.gone.push(devices[i].id);
+        let text = '';
+        try { text = String(res.getContentText?.() ?? '').replace(/\s+/g, ' ').trim().slice(0, 160); } catch { /* the code is enough */ }
+        out.why[devices[i].id] = `HTTP ${code}${text ? `: ${text}` : ''}`;
+      }
       else out.failed.push(`A ping to the ${devices[i].label ?? 'device'} failed (HTTP ${code})`);
     });
     return out;
   };
+}
+
+// A device the push service says is gone: archived, with when and what it said, and named in the
+// status so ⚙ → Claude and Claude's planner read show it instead of going quiet. The app re-subscribes
+// on its next open (js/push-client.js, repairPush).
+function retire(store, id, why, t, today) {
+  const rec = store.doc().calendar?.[id];
+  store.putCalendar(id, { status: 'archived', archivedOn: today, retiredAt: t.toISOString(), retiredWhy: why ?? 'gone' }, 'planner');
+  return `Notifications stopped working on the ${rec?.label ?? 'device'} (${why ?? 'gone'}): open the dashboard there and it will try again`;
 }
 
 function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
@@ -7976,6 +7993,7 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
     const keys = tools ? vapid(null) : null;
     let sent = 0;
     const gone = new Set();
+    const why = {};
     // Quiet hours in George's own time, where he is.
     if (pending.length && subs.length && keys && !quietAt(t, deviceZone(doc))) {
       const push = makePusher({ UrlFetchApp, Utilities, tools, keys, t });
@@ -7993,13 +8011,14 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
         }
         const { ok } = result;
         for (const id of result.gone) gone.add(id);
+        Object.assign(why, result.why ?? {});
         for (const f of result.failed) note(f);
         // Marked even when it failed: a question is pinged once, and it's waiting in the app anyway.
         store.updateJournal(rec.id, { pushedAt: t.toISOString() });
         if (ok) { sent++; left--; }
       }
     }
-    for (const id of gone) store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner');
+    for (const id of gone) note(retire(store, id, why[id], t, today));
     const tried = pending.some((r) => store.doc().journal[r.id]?.pushedAt);
     if (tried || gone.size || problems.length) writeStatus(store, t, today, sent);
     return { changed: tried || gone.size > 0 || problems.length > 0, sent };
@@ -8007,7 +8026,7 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
 
   return { ask, ping, problems: () => [...problems] };
 }
-return { PINGS_PER_DAY, QUIET_FROM, QUIET_UNTIL, PUSH_MAX_AGE_HOURS, VAPID_SUBJECT, isQuiet, pushSubscriptions, makePusher, createCheckins };
+return { PINGS_PER_DAY, QUIET_FROM, QUIET_UNTIL, PUSH_MAX_AGE_HOURS, VAPID_SUBJECT, isQuiet, pushSubscriptions, makePusher, retire, createCheckins };
 })();
 
 // ---- planner/nudges.js
@@ -8020,7 +8039,7 @@ const __planner_nudges = (() => {
 const { logicalDay } = __js_dates;
 const { dueNudges, quietAt, NUDGES_PER_DAY } = __js_nudges;
 const { deviceZone } = __js_travel;
-const { pushSubscriptions, makePusher } = __planner_checkins;
+const { pushSubscriptions, makePusher, retire } = __planner_checkins;
 const { gasCrypto } = __planner_webpush;
 
 function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, now, dayStartHour = 4, crypto = null }) {
@@ -8042,6 +8061,7 @@ function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, no
     if (!due.length) return { changed: false, sent: 0 };
     const push = makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t });
     const gone = new Set();
+    const why = {};
     const problems = [];
     let sent = 0;
     for (const n of due) {
@@ -8050,6 +8070,7 @@ function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, no
       try {
         const r = push(devices, { title: n.title, body: n.body.slice(0, 140), url: n.url, tag: n.id });
         r.gone.forEach((id) => gone.add(id));
+        Object.assign(why, r.why ?? {});
         r.failed.forEach((f) => { problems.push(f); log(`Nudges: ${f}`); });
         if (r.ok) sent++;
       } catch (e) {
@@ -8061,7 +8082,7 @@ function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, no
       state.sent.push(n.id);
     }
     props.put('NUDGES', JSON.stringify(state));
-    for (const id of gone) store.putCalendar(id, { status: 'archived', archivedOn: today }, 'planner');
+    for (const id of gone) problems.push(retire(store, id, why[id], t, today));
     // For ⚙ → Claude's jobs: what was sent today, and the last problem (written only when tried).
     const prev = store.doc().calendar?.['nudges:status'];
     const sentToday = (prev?.status === 'active' && prev.day === today ? prev.sent ?? 0 : 0) + sent;
@@ -9626,14 +9647,24 @@ function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log = () => 
     let state = read('HEBREW_NUDGES', null);
     if (state?.day !== input.today || !Array.isArray(state.sent)) state = { day: input.today, sent: [] };
     const gone = new Set(read('HEBREW_GONE', []));
+    // When and why each was retired: what the push service said, kept because it is the only
+    // record of why a subscription died (his phone's, twice, within a day of being made).
+    const retired = read('HEBREW_RETIRED', []);
     const live = devices.filter((d) => !gone.has(d.endpoint));
-    if (!live.length) return { sent: 0, devices: 0, error: 'Reminders are off: turn them on in the Hebrew app' };
+    // The device he practises on, published but retired: say so, with the date and the reason,
+    // instead of "reminders aren't on", which is what the app's Settings row flatly contradicted.
+    const dead = practising ? devices.find((d) => d.id === `hvr:${practising}` && gone.has(d.endpoint)) : null;
+    const deadWhy = dead ? retired.find((r) => r.endpoint === dead.endpoint) : null;
+    const deadLine = dead
+      ? `Reminders on ${practising} stopped working${deadWhy ? ` on ${String(deadWhy.at).slice(0, 10)} (${deadWhy.why})` : ''}: open the Hebrew app there and it will try again, or turn Reminders off and on`
+      : null;
+    if (!live.length) return { sent: 0, devices: 0, error: deadLine ?? 'Reminders are off: turn them on in the Hebrew app' };
     const privateKey = props.get('VAPID_PRIVATE');
     const publicKey = props.get('VAPID_PUBLIC');
     if (!tools || !privateKey || !publicKey) return { sent: 0, devices: live.length, error: 'The planner has no push keys yet' };
-    const elsewhere = practising && !live.some((d) => d.id === `hvr:${practising}`)
+    const elsewhere = deadLine ?? (practising && !live.some((d) => d.id === `hvr:${practising}`)
       ? `Reminders aren't on for the device you last practised on (${practising}), only ${live.map((d) => d.id.replace(/^hvr:/, '')).join(', ')}: turn them on in the Hebrew app there`
-      : null;
+      : null);
     const ping = duePing(input, state.sent);
     if (!ping) return { sent: 0, devices: live.length, error: elsewhere };
     let error = null;
@@ -9641,8 +9672,16 @@ function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log = () => 
     try {
       const push = makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t });
       const r = push(live, { title: ping.title, body: ping.body, url: ping.url, tag: ping.id });
-      for (const id of r.gone) gone.add(live.find((d) => d.id === id)?.endpoint);
-      if (r.failed.length) { error = r.failed.join('; '); log(`Hebrew pings: ${error}`); }
+      for (const id of r.gone) {
+        const endpoint = live.find((d) => d.id === id)?.endpoint;
+        if (!endpoint) continue;
+        gone.add(endpoint);
+        retired.push({ id, endpoint, at: t.toISOString(), why: r.why?.[id] ?? 'gone' });
+        log(`Hebrew pings: retired ${id} (${r.why?.[id] ?? 'gone'})`);
+      }
+      const lost = r.gone.map((id) => `${id.replace(/^hvr:/, '')} (${r.why?.[id] ?? 'gone'})`);
+      if (lost.length) error = `Reminders stopped working on ${lost.join(', ')}: open the Hebrew app there and it will try again`;
+      if (r.failed.length) { error = [error, ...r.failed].filter(Boolean).join('; '); log(`Hebrew pings: ${r.failed.join('; ')}`); }
       if (r.ok) sent = 1;
     } catch (e) {
       error = `Couldn't send the Hebrew ping (${e?.message ?? e})`;
@@ -9652,6 +9691,7 @@ function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log = () => 
     state.sent.push(ping.id);
     props.put('HEBREW_NUDGES', JSON.stringify(state));
     props.put('HEBREW_GONE', JSON.stringify([...gone].filter(Boolean).slice(-20)));
+    props.put('HEBREW_RETIRED', JSON.stringify(retired.slice(-10)));
     return { sent, devices: live.filter((d) => !gone.has(d.endpoint)).length, error: error ?? elsewhere };
   }
 
