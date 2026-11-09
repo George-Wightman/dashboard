@@ -19,7 +19,7 @@ export const CATEGORIES = [
   { id: 'eating-out', label: 'Eating out' },
   { id: 'going-out', label: 'Going out' },
   { id: 'local-travel', label: 'Local travel' },
-  { id: 'car', label: 'Car' },
+  { id: 'car', label: 'Car', oneOff: true },
   { id: 'trips', label: 'Trips' },
   { id: 'gym-health', label: 'Gym & health' },
   { id: 'phone-subs', label: 'Phone & subscriptions' },
@@ -29,6 +29,8 @@ export const CATEGORIES = [
   { id: 'other', label: 'Other' },
 ];
 export const CATEGORY_IDS = CATEGORIES.map((c) => c.id);
+// Big things bought once (the car): shown apart, never averaged into a month.
+export const ONE_OFF_CATS = CATEGORIES.filter((c) => c.oneOff).map((c) => c.id);
 export const categoryLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label ?? id;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;

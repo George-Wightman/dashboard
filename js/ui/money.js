@@ -9,7 +9,7 @@ import { h } from './dom.js';
 import { svg, tip } from './svg.js';
 import { bigSection } from './big.js';
 import { shortDate, shortWeekday, addDays, daysInMonth } from '../dates.js';
-import { moneySummary, compare, gbp, startDay, START_ID, categoryLabel, inOut, wherePlaces, isCovered, UNNAMED } from '../money.js';
+import { moneySummary, compare, gbp, startDay, START_ID, categoryLabel, inOut, wherePlaces, isCovered, UNNAMED, ONE_OFF_CATS } from '../money.js';
 import { hoursSummary, countId, ordinal } from '../hours.js';
 
 const signed = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
@@ -32,8 +32,10 @@ export function byGroup(spend) {
   for (const [c, v] of Object.entries(spend ?? {})) { const i = groupOf(c); out[i < 0 ? GROUPS.length - 1 : i] += v; }
   return out;
 }
-// Series colours are classes (styles/tools.css .viz-1 … .viz-8), in the groups' fixed order.
-const viz = (i) => `viz-${Math.min(Math.max(i, 0), 7) + 1}`;
+// Series colours are classes (styles/tools.css), in the groups' fixed order. Green is kept for pay, so
+// Getting about and Phone & subs take their own colours rather than the palette's two greens.
+const GROUP_COLOURS = ['viz-1', 'viz-2', 'mo-c-travel', 'viz-4', 'viz-5', 'mo-c-phone', 'viz-7', 'viz-8'];
+const viz = (i) => GROUP_COLOURS[Math.min(Math.max(i, 0), 7)];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthName = (m, year = false) => `${MONTHS[Number(m.slice(5, 7)) - 1]}${year ? ` ${m.slice(0, 4)}` : ''}`;
 const dayText = (d) => `${shortWeekday(d)} ${shortDate(d)}`;
@@ -122,6 +124,18 @@ function catBreakdown(entries, per = 1) {
     h('ul', { class: 'mo-places' }, e.places.map((p) => h('li', { class: p.name === UNNAMED ? 'muted' : '' }, h('span', {}, p.name), h('span', { class: 'n' }, amt(p.amount))))))));
 }
 
+// One-off money between two days, by what it was (its note), biggest first.
+function oneOffItems(money, from, to) {
+  const by = {};
+  for (const i of money.income) {
+    if (i.day < from || i.day > to || !(i.oneOff || i.kind === 'refund')) continue;
+    const k = i.note || (i.kind === 'refund' ? 'Refund' : 'One-off');
+    by[k] = (by[k] ?? 0) + i.amount;
+  }
+  return Object.entries(by).sort((a, b) => b[1] - a[1]);
+}
+const itemRows = (items) => items.map(([note, v]) => h('tr', { class: 'mo-sub-row' }, h('td', {}, note), h('td', { class: 'n' }, gbp(v))));
+
 function monthDetail(money, io, month) {
   const r = io.rows.find((x) => x.month === month);
   if (!r) return null;
@@ -131,24 +145,27 @@ function monthDetail(money, io, month) {
     h('table', { class: 'mo-table' }, h('tbody', {},
       h('tr', { class: 'mo-total' }, h('td', {}, 'Spent'), h('td', { class: 'n' }, gbp(r.spend))),
       h('tr', {}, h('td', {}, 'Came in'), h('td', { class: 'n' }, gbp(r.in))),
-      r.oneOff ? h('tr', { class: 'muted' }, h('td', {}, 'of which one-off'), h('td', { class: 'n' }, gbp(r.oneOff))) : null,
+      r.regular ? h('tr', { class: 'mo-sub-row' }, h('td', {}, h('i', { class: 'mo-swatch mo-in' }), 'Pay (and interest)'), h('td', { class: 'n' }, gbp(r.regular))) : null,
+      itemRows(oneOffItems(money, [`${month}-01`, io.from].sort().at(-1), [monthEnd(month), io.to].sort()[0])),
       h('tr', { class: 'mo-total' }, h('td', {}, 'Net'), h('td', { class: 'n' }, signed(r.net))))));
 }
 
 function inOutBlock(ctx, money, io) {
-  const notes = [...new Set(money.income.filter((i) => i.day >= io.from && i.day <= io.to && (i.oneOff || i.kind === 'refund')).map((i) => i.note || (i.kind === 'refund' ? 'refund' : 'one-off')))];
+  const items = oneOffItems(money, io.from, io.to);
   const shown = GROUPS.map((_, i) => i).filter((gi) => io.rows.some((r) => byGroup(Object.fromEntries(monthSpend(money, io, r.month).map((e) => [e.cat, e.total])))[gi] > 0));
   const month = ctx.ui.moneyMonth && io.rows.some((r) => r.month === ctx.ui.moneyMonth) ? ctx.ui.moneyMonth : null;
   return h('div', {},
     h('ul', { class: 'mo-legend' },
-      h('li', {}, h('i', { class: 'mo-in' }), 'Pay'), h('li', {}, h('i', { class: 'mo-in-once' }), 'One-off in'),
+      h('li', {}, h('i', { class: 'mo-in' }), 'Pay'), h('li', {}, h('i', { class: 'mo-in-once' }), 'One-off money in'),
       shown.map((gi) => h('li', {}, h('i', { class: viz(gi) }), GROUPS[gi].label))),
     inOutChart(ctx, money, io),
     month ? monthDetail(money, io, month) : h('p', { class: 'muted mo-note' }, 'Left bar in, right bar out. Tap a month to see where it went.'),
+    items.length ? fold(`One-off money in since ${sinceText(io.from)}: ${gbp(io.totals.oneOff)}`,
+      h('table', { class: 'mo-table' }, h('tbody', {}, itemRows(items)))) : null,
     fold('How this is worked out',
       h('p', { class: 'muted mo-note' },
         `From ${shortDate(io.from)} to ${shortDate(io.to)} (the last day on your statements): in ${gbp(io.totals.in)}, out ${gbp(io.totals.spend)}. `,
-        notes.length ? `One-off money (${gbp(io.totals.oneOff)}): ${notes.join(', ')}. ` : '',
+        'Pay is Signify (and a little interest); one-off money is anything else that came in. ',
         'Money moved between your own accounts, into shares or into your Lifetime ISA isn\'t counted either way.')));
 }
 
@@ -158,11 +175,15 @@ function categoryBlock(ctx, money, io) {
   const months = days / (365.25 / 12);
   const perMonth = !!ctx.ui.moneyPerMonth && months >= 1;
   const set = (on) => { ctx.ui.moneyPerMonth = on; ctx.render(); };
+  const all = wherePlaces(money, io.from, io.to);
+  const once = all.filter((e) => ONE_OFF_CATS.includes(e.cat));
   return h('div', {},
     months >= 1 ? h('div', { class: 'mo-seg', role: 'group', 'aria-label': 'Show totals or a month' },
       h('button', { type: 'button', class: 'dl-btn', 'aria-pressed': String(!perMonth), onclick: () => set(false) }, 'Total'),
       h('button', { type: 'button', class: 'dl-btn', 'aria-pressed': String(perMonth), onclick: () => set(true) }, 'Per month')) : null,
-    catBreakdown(wherePlaces(money, io.from, io.to), perMonth ? months : 1),
+    catBreakdown(all.filter((e) => !ONE_OFF_CATS.includes(e.cat)), perMonth ? months : 1),
+    once.length ? h('h4', { class: 'mo-sub' }, perMonth ? 'One-off purchases (not averaged)' : 'One-off purchases') : null,
+    once.length ? catBreakdown(once) : null,
     h('p', { class: 'muted mo-note' }, perMonth
       ? `An average month over the ${months.toFixed(1)} months from ${shortDate(io.from)} to ${shortDate(io.to)}. Tap a category to see where it went.`
       : 'Tap a category to see where it went.'));

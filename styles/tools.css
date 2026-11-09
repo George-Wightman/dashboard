@@ -32,8 +32,13 @@
 .mo-hatch-bg { fill: color-mix(in srgb, var(--dl-muted) 18%, var(--dl-card)); }
 .mo-hatch-fg { fill: color-mix(in srgb, var(--dl-muted) 55%, var(--dl-card)); }
 .mo-hbar { fill: var(--viz-1); }
-.mo-in { fill: color-mix(in srgb, var(--dl-ink) 78%, var(--dl-card)); background: color-mix(in srgb, var(--dl-ink) 78%, var(--dl-card)); }
-.mo-in-once { fill: color-mix(in srgb, var(--dl-ink) 30%, var(--dl-card)); background: color-mix(in srgb, var(--dl-ink) 30%, var(--dl-card)); }
+.mo-in { fill: var(--viz-6); background: var(--viz-6); }
+.mo-in-once { fill: color-mix(in srgb, var(--viz-6) 38%, var(--dl-card)); background: color-mix(in srgb, var(--viz-6) 38%, var(--dl-card)); }
+/* Getting about and Phone & subs: off the palette's greens, which belong to pay here. */
+.mo-c-travel { fill: #0f97b0; background: #0f97b0; }
+.mo-c-phone { fill: #a0673a; background: #a0673a; }
+.mo-table .mo-sub-row td { padding-top: 3px; padding-bottom: 3px; border-bottom: 0; color: var(--dl-muted); font-size: 13px; }
+.mo-table .mo-sub-row td:first-child { padding-left: 18px; }
 .mo-out { fill: var(--viz-2); background: var(--viz-2); }
 .mo-net { fill: var(--dl-ink); font-weight: 700; }
 .mo-net.neg { fill: var(--dl-carry-ink); }
