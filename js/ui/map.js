@@ -7,11 +7,12 @@ import { h } from './dom.js';
 import { replay, claimable, placeable, makeCityOf, lookups, visibleOf, findName, FIND_VALUE, REPAIR, LEVEL_STEP } from '../map/engine.js';
 import { key, unkey, DIRS } from '../map/hex.js';
 import {
-  S, centre, fromUnits, corners, pts, TERRAIN, CENTRE_TOP, PLAZA, TRACK_COLOUR, seasonOf, seasonTop, groundSvg, clipSvg,
+  S, K, SQ3, DEPTH, centre, fromUnits, corners, pts, TERRAIN, CENTRE_TOP, PLAZA, TRACK_COLOUR, seasonOf, seasonTop, groundSvg, clipSvg,
   decoSvg, findSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadSvg, bannerSvg, pinSvg, mix,
 } from './map-art.js';
 import { addDays, shortDate, shortWeekday } from '../dates.js';
 import { dayPoints } from '../map/points.js';
+import { BASE as PAINT_BASE, SIZE as PAINT_SIZE, SETS as PAINT_SETS } from '../map/terrain-atlas.js';
 
 export const SEEN_KEY = 'dash_map_seen';
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -134,11 +135,47 @@ function artImage(map, id, x, y, scale) {
 }
 const placeScale = (map, id) => map.places.find((p) => p.id === id)?.scale ?? 0.5;
 
+// ---- painted ground ----
+
+// Which painted season a day takes: autumn to 20 Nov, first snow to 20 Dec, winter to the end of
+// February, first snow again (the thaw) through March; none from April, when the drawn land is used.
+export function paintSeason(day) {
+  const md = String(day).slice(5, 10);
+  if (md >= '09-01' && md <= '11-20') return 'autumn';
+  if (md > '11-20' && md <= '12-20') return 'late';
+  if (md > '12-20' || md <= '02-29') return 'winter';
+  if (md <= '03-31') return 'late';
+  return null;
+}
+const PAINT_FALLBACK = { winter: ['winter', 'late', 'autumn'], late: ['late', 'autumn'], autumn: ['autumn'] };
+// A town, its shops and its works look like where the city is; the land is the same everywhere.
+const paintSet = (map, terrain) => (['town', 'shops', 'industry'].includes(terrain) ? `${map.place === 'salzburg' ? 'sz' : 'uk'}-${terrain}` : terrain);
+const tileHash = (q, r) => { let a = (q * 73856093) ^ (r * 19349663); a = Math.imul(a ^ (a >>> 15), 2246822519); return ((a ^ (a >>> 13)) >>> 0) / 4294967296; };
+// A tile's painted sprite ([x, y, w, h] in the atlas), or null for the drawn one.
+export function paintPicker(map, today) {
+  const season = paintSeason(today);
+  if (!season) return null;
+  return (t) => {
+    const set = PAINT_SETS[paintSet(map, t.terrain)];
+    if (!set) return null;
+    const list = PAINT_FALLBACK[season].map((s) => set[s]).find((l) => l?.length);
+    return list ? list[Math.floor(tileHash(t.q, t.r) * list.length)] : null;
+  };
+}
+// One sprite out of the atlas: an inner <svg> whose viewBox is the sprite's box, so only it shows.
+function paintedSvg([ax, ay, aw, ah], x, y, owned) {
+  const w = (S * SQ3 * 1.02 * aw) / PAINT_BASE, hh = (w * ah) / aw;
+  return `<polygon points="${pts(corners(x, y))}" fill="transparent"/>`
+    + `<svg x="${(x - w / 2).toFixed(1)}" y="${(y + S * K + DEPTH - hh).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}" viewBox="${ax} ${ay} ${aw} ${ah}" preserveAspectRatio="none" overflow="hidden"><image href="icons/terrain.webp" width="${PAINT_SIZE[0]}" height="${PAINT_SIZE[1]}"/></svg>`
+    + (owned ? '' : `<polygon points="${pts(corners(x, y))}" fill="#e8dab1" opacity=".3"/>`);
+}
+
 // The land as SVG. `world` adds the sea, the coasts and the pins; `picks` glow to claim, `targets` to
 // build on; `fresh` rise in. `id` keeps clip paths unique on the page.
-export function mapSvg(state, map, { today, world = false, picks = new Set(), targets = new Set(), fresh = new Set(), id = 'm', others = [], backdrop = true } = {}) {
+export function mapSvg(state, map, { today, world = false, picks = new Set(), targets = new Set(), fresh = new Set(), id = 'm', others = [], backdrop = true, painted = true } = {}) {
   const L = lookups(map);
   const season = seasonOf(today);
+  const paint = painted ? paintPicker(map, today) : null;
   const vis = state.visible;
   const camps = new Map(state.camps.map((c) => [key(c.q, c.r), c]));
   const builtAt = new Map(Object.entries(state.built).map(([b, k]) => [k, b]));
@@ -157,7 +194,7 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
       + `<path d="${coast}" fill="none" stroke="#86c3cf" stroke-width="26" stroke-linejoin="round" opacity=".55"/><path d="${coast}" fill="url(#${id}-fog)" stroke="#8a7652" stroke-width="2.5"/>`
 
     // The other cities' land, as it stands, where they are: to look at, not to play.
-    back += others.map((o) => `<g transform="translate(${o.at[0].toFixed(1)} ${o.at[1].toFixed(1)})" pointer-events="none">${mapSvg(o.state, o.map, { today, id: `${id}-o-${o.map.id}`, backdrop: false })}</g>`).join('');
+    back += others.map((o) => `<g transform="translate(${o.at[0].toFixed(1)} ${o.at[1].toFixed(1)})" pointer-events="none">${mapSvg(o.state, o.map, { today, id: `${id}-o-${o.map.id}`, backdrop: false, painted })}</g>`).join('');
     // Zoomed out, a city's land is a speck: every place gets a pin that keeps one size on the screen
     // (showView) and goes once you're close.
     const places = (map.pins ?? []).filter((p) => !others.some((o) => o.pin === p.name)).map((p) => [...fromUnits(p.at), p.name, p.sub]);
@@ -181,14 +218,18 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
     if (state.pillaged.has(k)) top = mix(top, '#7a3a2a', 0.35);
     const clip = `${id}-c${t.q + 500}_${t.r + 500}`;
     clips += clipSvg(clip, x, y);
-    ground += `<g data-k="${k}"${fr}>${groundSvg(x, y, top, { faded: !owned })}</g>`;
+    // Painted ground (js/map/terrain-atlas.js) where there is some for this terrain and time of year;
+    // a built tile keeps its track's plaza, and a camp or a raid its drawn ground.
+    const art = !b && !camps.has(k) && !state.pillaged.has(k) ? paint?.(t) : null;
+    ground += `<g data-k="${k}"${fr}>${art ? paintedSvg(art, x, y, owned) : groundSvg(x, y, top, { faded: !owned })}</g>`;
+    const deco = () => (art ? '' : decoSvg(t.terrain, x, y, { q: t.q, r: t.r, season, clip }));
     let sp;
     if (camps.has(k)) sp = campSvg(x, y + 4);
     else if (b) sp = artImage(map, b, x, y + 7, placeScale(map, b)) + levelSvg(state.levels[b] ?? 1, x, y);
-    else if (site?.kind === 'wonder') sp = state.wonders.has(site.id) ? artImage(map, site.id, x, y + 7, placeScale(map, site.id)) : decoSvg(t.terrain, x, y, { q: t.q, r: t.r, season, clip }) + starSvg(x, y - 2, owned);
-    else if (site) sp = artImage(map, site.id, x, y + 7, placeScale(map, site.id)) || decoSvg(t.terrain, x, y, { q: t.q, r: t.r, season, clip });
+    else if (site?.kind === 'wonder') sp = state.wonders.has(site.id) ? artImage(map, site.id, x, y + 7, placeScale(map, site.id)) : deco() + starSvg(x, y - 2, owned);
+    else if (site) sp = artImage(map, site.id, x, y + 7, placeScale(map, site.id)) || deco();
     else if (k === '0,0') sp = artImage(map, 'centre', x, y + 7, map.centreScale ?? 0.5);
-    else sp = decoSvg(t.terrain, x, y, { q: t.q, r: t.r, season, clip }) + (t.find && !state.claimedFinds.has(k) ? findSvg(t.find, x + 9, y + 4) : '');
+    else sp = deco() + (t.find && !state.claimedFinds.has(k) ? findSvg(t.find, x + 9, y + 4) : '');
     if (state.pillaged.has(k)) sp += smokeSvg(x, y);
     sprites += `<g${fr}>${sp}</g>`;
     if (picks.has(k)) glow += `<polygon points="${pts(corners(x, y, S * 0.88))}" fill="rgba(243,210,126,.34)" stroke="#ffd866" stroke-width="2.6"/><g class="map-pick">${plusSvg(x, y)}</g>`;

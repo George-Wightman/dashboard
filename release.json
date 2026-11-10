@@ -1,5 +1,5 @@
 {
-  "id": "82232c743d148eaeb6cba0a243fd18ff975e62e7ac3e7519bcc95b9154767cf0",
+  "id": "c51f4ccd53ec9757af239ca74820568da12423ba0f3d0b856ee14ad2ceef5648",
   "files": {
     "./": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
     "index.html": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
@@ -105,7 +105,9 @@
     "js/map/files.js": "9f61ad100f3f6aeec786aea1423f37d7c7713fe271a2272a9d86cd6439a74fdb",
     "js/map/summary.js": "2474984af9df955b38af09f716387c4cf0a9c84a9ad5ffbea57867fec1a321f9",
     "js/map/points.js": "3008295a9be0973d9d978af164c6e4d3046f32c414e5ba34275a6d67c1e2b119",
-    "js/ui/map.js": "c633c467afb215eabb08426cddc08bb2f87b82795b2340df9bf5b61a27d91892",
-    "js/ui/map-art.js": "895e21d00f997d8caedd2d510407938ea9a3e048f05db3f724b7a0d9dcdaddcd"
+    "js/ui/map.js": "a6389d38552e6ea73a383817b5b947d798e16e60e23f0ee788bbf308a5d348ec",
+    "js/ui/map-art.js": "895e21d00f997d8caedd2d510407938ea9a3e048f05db3f724b7a0d9dcdaddcd",
+    "js/map/terrain-atlas.js": "ce9b5f37a10553f559751b6202b0e339e36de3c85601fb0e2079f85fcb72be50",
+    "icons/terrain.webp": "4de3272a975eac75db03cb62ce642685bf5108d3e3fb5cd05de3990dd7e9e809"
   }
 }

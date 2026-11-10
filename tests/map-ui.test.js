@@ -99,3 +99,29 @@ test('another city shows where its pin is, and its pin gives way to it', async (
   assert.ok(svg.includes('LONDON') && !svg.includes('>Next<') && svg.includes('class="map-far"'));
   assert.equal(neighbourCities(home, [home]).length, 0);
 });
+
+test('painted ground: by time of year, by where the city is, and drawn land from April', async () => {
+  const { paintSeason, paintPicker } = await import('../js/ui/map.js');
+  assert.equal(paintSeason('2026-11-10'), 'autumn');
+  assert.equal(paintSeason('2026-12-05'), 'late');
+  assert.equal(paintSeason('2027-01-15'), 'winter');
+  assert.equal(paintSeason('2027-02-28'), 'winter');
+  assert.equal(paintSeason('2027-03-10'), 'late');
+  assert.equal(paintSeason('2027-04-10'), null);
+  assert.equal(paintPicker({ place: 'uk' }, '2027-04-10'), null);
+  const uk = paintPicker({ place: 'uk' }, '2026-11-10'), sz = paintPicker({ place: 'salzburg' }, '2026-11-10');
+  const town = { q: 3, r: -1, terrain: 'town' };
+  assert.equal(uk(town).length, 4);
+  assert.notDeepEqual(uk(town), sz(town));
+  assert.deepEqual(uk({ q: 2, r: 2, terrain: 'meadow' }), uk({ q: 2, r: 2, terrain: 'meadow' }));
+  assert.equal(uk({ q: 0, r: 1, terrain: 'nothing-painted' }), null);
+  // A Salzburg town has no deep-winter set: it falls back to first snow.
+  assert.ok(paintPicker({ place: 'salzburg' }, '2027-01-15')(town));
+});
+
+test('the board draws painted ground from the atlas, and the drawn land when asked', () => {
+  const { state } = fresh();
+  const on = mapSvg(state, map, { today: '2026-11-10' });
+  assert.match(on, /icons\/terrain\.webp/);
+  assert.doesNotMatch(mapSvg(state, map, { today: '2026-11-10', painted: false }), /terrain\.webp/);
+});
