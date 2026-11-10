@@ -45,7 +45,7 @@ test('the meal op corrects a meal with a reason, saves a usual meal, and sets Fu
   runOp(store, { op: 'meal', fuel: { maintenanceKcal: 3100 } });
   assert.equal(store.doc().meals['fuel:settings'].maintenanceKcal, 3100);
   assert.throws(() => runOp(store, { op: 'meal' }), /meal needs/);
-  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log']);
+  assert.deepEqual(FIELDS.meal, ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log', 'batch', 'share', 'of', 'over']);
 });
 
 test('the meal op moves a meal logged the morning after to when he ate it, never into the future', () => {

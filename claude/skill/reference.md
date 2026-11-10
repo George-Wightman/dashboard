@@ -197,8 +197,9 @@ leave you a For Claude flag. Read it before writing a session with a hinge or a 
 Meals over the last 7 days (or `days`), newest first: each with its time and slot, Gemini's name for
 it, the protein and calories counted (with the portion he chose, or your correction and why), his own
 words, and its photo's path in the sync repo (or that it's still on his phone). Protein against the
-target for each day; the week's calories against maintenance; how many meals are waiting to be
-estimated. Read `reference food` first.
+target for each day; the week's calories against maintenance; the batches cooked this week, with what
+went in and how much of each pot he has logged; how many meals are waiting to be estimated. Read
+`reference food` first.
 
 ### `photo <meal id>`
 Saves that meal's photo from the sync repo to a local file and prints the path, so you can open it and
@@ -330,7 +331,7 @@ Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not on
 take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `areaHours`
 (`{"Food": ["16:30", "20:00"]}` — an area booked only in its own hours, inside the day's hours or not:
 cooking in the evening rather than first thing), `nudges` (`false` turns off
-the pushes before a miss: the back question at 07:30, lunch at 14:00, Hebrew at 20:00, a session half an
+the pushes before a miss: the back question at 07:30, Hebrew at 20:00, a session half an
 hour ahead; on by default, at most four a day), `duolingo` (George's Duolingo username, `""` to stop: the
 planner adds his Hebrew course's XP to the day as a `duolingo:<day>` log on Hebrew practice. A
 Duolingo-only day keeps the streak but isn't ticked or counted as done; rows say *Duolingo only (N XP)*). `areaCalendars`,
@@ -404,6 +405,14 @@ cheese"}` corrects a meal Gemini got badly wrong; the why is required and shown 
 meals by saying what he had; the app no longer offers usual meals. Meals he tells you about in a chat:
 `{"op": "meal", "log": "his words, amounts and all", "day": "yesterday", "time": "12:30"}` logs one as if he'd
 said it in the app (his words, not a summary; `time` required); Gemini estimates it when the app next opens.
+Batches (a pot he cooks once and eats over a few days): `{"op": "meal", "batch": {"name": "Chilli",
+"ingredients": "1kg beef mince, 2 tins kidney beans, 400g rice", "protein": 260, "kcal": 4200, "day":
+"yesterday"}}` saves the whole pot (you work out the numbers from what went in). `{"op": "meal", "share":
+"1/4", "of": "chilli", "day": "yesterday", "time": "12:30"}` logs his share of the whole pot (a number,
+"1/4" or "25%"; `of` is the batch's name or id), exact at once. A share that takes the pot past 100% is
+refused: check with him, then correct the batch or add `"over": true`. `{"op": "meal", "batch": {"id":
+"batch:…", "protein": 300, "kcal": 4800}}` corrects a pot and every serving from it; `{"op": "meal", "id":
+"batch:…", "remove": true, "why": "binned the rest"}` takes it out of the fridge (its servings stay).
 `{"op": "meal", "fuel":
 {"protein": 180, "maintenanceKcal": 3100}}` sets the daily protein target and his maintenance calories
 (`null` clears maintenance).

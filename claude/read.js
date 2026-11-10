@@ -22,7 +22,7 @@ import {
 import { checkinsSince } from '../js/checkins.js';
 import { duolingoStatusLine } from '../js/duolingo.js';
 import { hebrewPingsLine } from '../js/hebrew-voice.js';
-import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES } from '../js/food.js';
+import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES, batches, batchEaten, batchServings, BATCH_DAYS } from '../js/food.js';
 import { BACK, backScores, sessionTasks, sessionLines, routinesOf, routineFor, sessionWorkout, readyMarks } from '../js/coach.js';
 
 // A row's notes, on their own indented line under it.
@@ -529,6 +529,7 @@ function mealText(m) {
   const name = m.estimate?.name ?? m.text ?? m.slot;
   const parts = [`${clockLabel(m.at)} ${m.slot}`, name];
   if (m.correction) parts.push(`${m.correction.protein} g, ${kcalText(m.correction.kcal)} kcal — corrected by you from ${m.final ? kcalText(m.final.kcal) : '?'} (${m.correction.why})`);
+  else if (m.final && m.batchId) parts.push(`${m.final.protein} g, ${kcalText(m.final.kcal)} kcal (his share ${m.share} of batch ${tag(m.batchId)})`);
   else if (m.final && m.items) parts.push(`${m.final.protein} g, ${kcalText(m.final.kcal)} kcal (counts he set: ${m.items.map((i) => `${i.qty}${i.unit ? ` ${i.unit}` : ''} ${i.name}`).join(', ')})`);
   else if (m.final) parts.push(`${m.final.protein} g, ${kcalText(m.final.kcal)} kcal (${PORTION_WORDS[m.portion] ?? 'about right'})`);
   else if (m.state === 'failed') parts.push(`couldn't estimate it${m.error ? ` (${m.error})` : ''}, try ${m.tries ?? 0} of ${MAX_TRIES}`);
@@ -560,8 +561,18 @@ function foodRead(doc, today, arg) {
       ? ` — ${verdict} (${kcalText(maintenanceKcal)})`
       : ' — no maintenance figure yet; set one with {"op": "meal", "fuel": {"maintenanceKcal": …}} once there are two weeks of meals'}`);
   }
+  const pots = batches(doc).filter((b) => b.cookedOn > addDays(today, -Math.max(days, BATCH_DAYS)));
+  if (pots.length) {
+    out.push('Batches (the whole pot; his servings are shares of it, and nobody else’s are logged):');
+    for (const b of pots) {
+      const eaten = batchEaten(doc, b.id);
+      const n = batchServings(doc, b.id).length;
+      out.push(`  ${b.name}, cooked ${shortWeekday(b.cookedOn)} ${shortDate(b.cookedOn)} · ${b.protein} g, ${kcalText(b.kcal)} kcal · "${b.ingredients}" · ${n} serving${n === 1 ? '' : 's'}, ${Math.round(eaten * 100)}% of the pot logged ${tag(b.id)}`);
+    }
+  }
   const waiting = waitingMeals(doc);
   if (waiting) out.push(`${waiting} meal${waiting === 1 ? '' : 's'} waiting to be estimated`);
+  out.push('Log his share of a batch with {"op": "meal", "share": "1/4", "of": "chilli", "day": "yesterday", "time": "12:30"}; save a new one with {"op": "meal", "batch": {"name": …, "ingredients": …, "protein": …, "kcal": …, "day": …}}.');
   out.push('Look at a photo with `photo <meal id>`; correct a big miss with {"op": "meal", "id": "…", "protein": …, "kcal": …, "why": "…"}.');
   return out.join('\n');
 }

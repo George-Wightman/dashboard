@@ -2,7 +2,16 @@
 
 ## What he does, and what you do
 
-George logs a meal in the app by saying or typing what he had and how much ("5 fried eggs, 2
+**Since 10 Nov 2026 he logs almost every meal through you, not the app.** A scheduled Claude task
+asks him in the evening or the next morning, and he tells you what he ate the day before. Log each
+meal with its time, in his words:
+
+    {"op": "meal", "log": "5 fried eggs, 2 pittas", "day": "yesterday", "time": "12:30"}
+
+Ask for a rough time if he doesn't give one. The app no longer pushes him to log a meal, so a day
+with nothing logged just means you haven't asked yet. It doesn't mean he skipped eating.
+
+He can still log a meal in the app by saying or typing what he had and how much ("5 fried eggs, 2
 pittas"), or logs a usual meal in one tap. A photo is optional: he describes his portions better than
 a picture does (since 20 Oct 2026), so his words win on amounts. Gemini estimates each item with a
 count, and he can open any meal later to change a count (the total follows), change his words and have
@@ -45,6 +54,32 @@ photo's path; protein against the target day by day; and the week's calories aga
        {"op": "meal", "fuel": {"maintenanceKcal": 3100}}
 
    The tile then says whether a week was about, above or below it.
+
+## Batches: a pot cooked once, eaten over days
+
+He often cooks in batches and shares them, so his plate isn't an even split. When he says he cooked
+something, save the **whole pot** once, then log each meal as **his share of the whole pot**:
+
+1. He tells you what went in ("1kg mince, 2 tins of beans, 400g rice, a jar of sauce"). Work out the
+   pot from the ingredients: packs and tins have known weights, so this is more reliable than judging a
+   plate. Ask about anything that moves the numbers a lot (how much oil or cheese, lean or fatty mince).
+
+       {"op": "meal", "batch": {"name": "Chilli", "ingredients": "1kg 5% beef mince, 2 tins kidney beans, 400g rice (dry), jar of sauce", "protein": 260, "kcal": 4200, "day": "yesterday"}}
+
+2. Each time he eats from it, log his share of the **whole pot**, not of what's left: "we split it into
+   five" makes each of his portions 1/5. Anyone else's portions are never logged.
+
+       {"op": "meal", "share": "1/5", "of": "chilli", "day": "yesterday", "time": "19:00"}
+
+3. If a share takes the pot past 100%, the tool refuses it. Ask him: either the share is wrong or the pot
+   was bigger than you saved, so correct the batch, which moves every serving logged from it. Only add
+   `"over": true` if he says both are right.
+4. `food` lists the week's batches with how much of each pot is logged. If he says the rest went in the
+   bin, remove the batch with that reason. Its servings stay counted. A batch drops off the Fuel tile
+   after a week anyway.
+
+Save the batch before logging any serving from it. He usually describes the pot in the same chat as his
+first serving.
 
 ## Say it plainly
 

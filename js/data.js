@@ -10,7 +10,7 @@ import { checkLength, checkClock, checkNotes } from './parse.js';
 import { reviseRecord, recordContent } from './record.js';
 import { checkinId, SAID_MAX } from './checkins.js';
 import { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } from './workflow.js';
-import { slotFor, fuelSettings, FUEL_ID } from './food.js';
+import { slotFor, fuelSettings, FUEL_ID, servingValue, shareWords, batchServings } from './food.js';
 import { BACK, notesWith, soreRun, soreFlagText } from './coach.js';
 
 export const DATA_KEY = 'dash_data';
@@ -603,7 +603,7 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   function redoMeal(id, text) {
     const words = String(text ?? '').trim();
     if (!words) throw new Error('Say what you had');
-    return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null });
+    return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null, batchId: null, share: null });
   }
 
   function saveUsual({ name, protein, kcal }) {
@@ -611,6 +611,34 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
     const id = `usual:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meal'}`;
     return putRecord('meals', id, { kind: 'usual', name: title, protein, kcal, uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
+  }
+
+  // A batch he cooked (js/food.js): the whole pot's protein and kcal, worked out by Claude from what
+  // went in. Correcting one moves every serving already logged from it.
+  function saveBatch({ name, ingredients = '', protein, kcal, cookedOn }) {
+    const title = requireTitle(name, 'A batch');
+    if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A batch needs the whole pot’s protein and kcal, 0 or more');
+    return create('meals', { id: `batch:${newId()}`, kind: 'batch', name: title, ingredients: String(ingredients ?? '').trim().slice(0, 500), protein, kcal, cookedOn: cookedOn ?? today() });
+  }
+
+  function updateBatch(id, changes) {
+    const batch = doc.meals[id];
+    if (!batch || batch.kind !== 'batch') throw new Error(`No batch ${id}`);
+    const next = { ...batch, ...changes, id, updated: stamp() };
+    writeRecord('meals', id, next);
+    for (const m of batchServings(doc, id)) writeRecord('meals', m.id, { ...m, final: servingValue(next, m.share), updated: stamp() });
+    commit('local');
+    return doc.meals[id];
+  }
+
+  // A serving: his share of the whole pot, counted exactly at once.
+  function addServing({ at, batchId, share }) {
+    const batch = doc.meals[batchId];
+    if (!batch || batch.kind !== 'batch') throw new Error(`No batch ${batchId}`);
+    const when = at instanceof Date ? at : new Date(at);
+    return create('meals', { id: `meal:${newId()}`, kind: 'meal', day: logicalDay(when, settings.dayStartHour), at: when.toISOString(), slot: slotFor(when),
+      portion: 'right', correction: null, tries: 0, text: `${shareWords(share)} of the ${batch.name.toLowerCase()}`, batchId, share,
+      state: 'estimated', photoState: null, estimate: null, final: servingValue(batch, share) });
   }
 
   const setFuel = (changes) => putRecord('meals', FUEL_ID, { kind: 'settings', ...fuelSettings(doc), ...changes }, 'me').rec;
@@ -826,6 +854,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     redoMeal,
     archiveMeal: (id) => patch('meals', id, { status: 'archived', archivedOn: today() }),
     saveUsual,
+    saveBatch,
+    updateBatch,
+    addServing,
     setFuel,
     putLog,
     transaction,

@@ -176,3 +176,45 @@ export function mealWork(doc, localIds) {
     upload: all.filter((m) => m.photoState === 'local' && localIds.has(m.id)),
   };
 }
+
+// Batches (10 Nov 2026): a pot he cooks once and eats over a few days, often shared. Claude
+// works out the whole pot from what went in, and each serving is his share of the whole ("a
+// quarter"), whoever ate the rest, so it counts exactly, with no estimate. A batch is a record in
+// `meals` with kind 'batch'; a serving is an ordinary meal with `batchId` and `share`.
+export const BATCH_DAYS = 7; // how long a batch shows as in the fridge
+
+// A share of the whole pot: a number from 0 to 1, a fraction ("1/4"), or a percentage ("25%").
+export function parseShare(v) {
+  let n = null;
+  if (typeof v === 'number') n = v;
+  else if (typeof v === 'string') {
+    const s = v.trim();
+    const frac = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+    const pct = s.match(/^(\d+(?:\.\d+)?)\s*%$/);
+    if (frac) n = Number(frac[1]) / Number(frac[2]);
+    else if (pct) n = Number(pct[1]) / 100;
+    else if (/^\d*\.?\d+$/.test(s)) n = Number(s);
+  }
+  if (!(Number.isFinite(n) && n > 0 && n <= 1)) throw new Error('A share is part of the whole pot: 0.25, "1/4" or "25%"');
+  return Math.round(n * 1000) / 1000;
+}
+
+// The share as he'd say it: a quarter, a fifth, a third, or a percentage.
+const SHARE_WORDS = { 1: 'all', 0.5: 'half', 0.333: 'a third', 0.667: 'two thirds', 0.25: 'a quarter', 0.75: 'three quarters', 0.2: 'a fifth', 0.4: 'two fifths', 0.167: 'a sixth', 0.125: 'an eighth' };
+export const shareWords = (share) => SHARE_WORDS[Math.round(share * 1000) / 1000] ?? `${Math.round(share * 100)}%`;
+
+export const servingValue = (batch, share) => ({ protein: roundProtein(batch.protein * share), kcal: roundKcal(batch.kcal * share) });
+
+export const batchServings = (doc, batchId) => meals(doc).filter((m) => m.batchId === batchId).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+// How much of the pot he has logged (anyone else's share is never logged).
+export const batchEaten = (doc, batchId) => Math.round(batchServings(doc, batchId).reduce((s, m) => s + (m.share ?? 0), 0) * 1000) / 1000;
+
+export function batches(doc) {
+  return Object.values(doc?.meals ?? {})
+    .filter((m) => m && m.kind === 'batch' && m.status === 'active')
+    .sort((a, b) => String(b.cookedOn).localeCompare(String(a.cookedOn)) || String(b.created).localeCompare(String(a.created)));
+}
+
+// The batches still in the fridge: cooked in the last week and not all logged.
+export const liveBatches = (doc, today) => batches(doc).filter((b) => b.cookedOn > addDays(today, -BATCH_DAYS) && batchEaten(doc, b.id) < 0.98);

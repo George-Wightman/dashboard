@@ -3,7 +3,7 @@
 // maintenance, and how many meals are waiting to be estimated. Opened big: the last 14 days.
 
 import { h } from './dom.js';
-import { mealsOn, mealValue, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, slotName, MAX_TRIES } from '../food.js';
+import { mealsOn, mealValue, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, slotName, MAX_TRIES, liveBatches, batchEaten } from '../food.js';
 import { addDays, shortWeekday, shortDate } from '../dates.js';
 import { clockLabel } from '../calendar.js';
 import { localPhotos } from '../photos.js';
@@ -76,6 +76,13 @@ function weekLine(doc, today) {
   return h('p', { class: 'fuel-week' }, `This week about ${average.toLocaleString('en-GB')} kcal a day${verdict ? `, ${verdict}` : ''}.`);
 }
 
+// What's still in the fridge from a batch, as the share of the pot he hasn't logged (anyone else's included).
+function fridgeLine(doc, today) {
+  const live = liveBatches(doc, today);
+  if (!live.length) return null;
+  return h('p', { class: 'fuel-week fuel-fridge' }, `In the fridge: ${live.map((b) => `${b.name.toLowerCase()}, ${Math.round((1 - batchEaten(doc, b.id)) * 100)}% not logged`).join(' · ')}.`);
+}
+
 const waitingCount = (doc) => Object.values(doc.meals ?? {})
   .filter((m) => m?.kind === 'meal' && m.status === 'active' && (m.state === 'pending' || (m.state === 'failed' && (m.tries ?? 0) < MAX_TRIES))).length;
 
@@ -90,6 +97,7 @@ export function renderFuel(ctx) {
       meals.length ? h('ul', { class: 'fuel-meals' }, meals.map((m) => mealLine(ctx, m))) : h('p', { class: 'fuel-none' }, 'Nothing logged yet today.')),
     h('button', { class: 'fuel-snap', type: 'button', onclick: () => openSnap(ctx) }, 'Log a meal'),
     weekLine(doc, today),
+    fridgeLine(doc, today),
     waiting ? h('p', { class: 'fuel-waiting', role: 'status' }, `${waiting} meal${waiting === 1 ? '' : 's'} waiting to be estimated`) : null);
 }
 
@@ -100,6 +108,7 @@ export function renderFuelBig(ctx) {
   const days = Array.from({ length: 14 }, (_, i) => addDays(today, -i));
   return h('div', { class: 'fuel-big' },
     weekLine(doc, today),
+    fridgeLine(doc, today),
     maintenanceKcal ? null : h('p', { class: 'muted' }, 'Claude sets your maintenance figure once there are two weeks of meals.'),
     days.map((day) => {
       const meals = mealsOn(doc, day);

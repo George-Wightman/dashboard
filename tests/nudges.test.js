@@ -29,14 +29,10 @@ test('the back nudge: from 07:30 until 11:00, only while the morning is unanswer
   assert.deepEqual(ids(store.doc(), at(8, 0)), []);
 });
 
-test('the lunch nudge: from 14:00 to 17:00 with no lunch logged, and only once he snaps meals', () => {
+test('no meal pushes: Claude logs his meals from a chat, so nothing nags him to snap one', () => {
   const { store } = withData();
   store.setBack(DAY, 0);
-  assert.deepEqual(ids(store.doc(), at(14, 10)), [], 'never snapped a meal: no nudge');
   store.addMeal({ at: new Date(2026, 9, 18, 13, 0), text: 'soup' });
-  assert.deepEqual(ids(store.doc(), at(14, 10)), [`lunch:${DAY}`]);
-  assert.equal(dueNudges(store.doc(), at(14, 10), 4)[0].url, './?do=snap');
-  store.addMeal({ at: at(13, 0), text: 'wrap' });
   assert.deepEqual(ids(store.doc(), at(14, 10)), []);
 });
 

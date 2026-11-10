@@ -19,7 +19,7 @@ export const CALENDAR_DEFAULTS = {
   areaColors: {},
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
-  nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
+  nudges: true, // js/nudges.js: pushes before a miss (the back question, Hebrew, a session)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
 

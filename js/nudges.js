@@ -1,11 +1,11 @@
 // Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
 // sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
-// The back question in the morning, an unlogged lunch, and a coach's session half an hour ahead.
+// The back question in the morning and a coach's session half an hour ahead. No meal pushes: Claude
+// logs his meals from a chat (10 Nov 2026), so the app never asks him to snap one.
 // Hebrew has its own, from the Hebrew app (planner/hebrew-nudges.js). Pure: a document and a moment in.
 
 import { addDays } from './dates.js';
 import { wallClock, deviceZone } from './travel.js';
-import { mealsOn } from './food.js';
 import { readPlannerConfig, dayRecord } from './calendar.js';
 import { sessionTasks, routineFor } from './coach.js';
 
@@ -27,15 +27,6 @@ function backNudge(doc, t, day, clk) {
   const r = doc.gym?.[`back:${day}`];
   if (r && r.status === 'active') return null;
   return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
-}
-
-function lunchNudge(doc, t, day, clk) {
-  if (!between(clk, 14 * 60, 17 * 60)) return null;
-  if (mealsOn(doc, day).some((m) => m.slot === 'lunch')) return null;
-  // Only once he snaps meals at all (any in the last week): never a nag about something he doesn't use.
-  const since = new Date(t.getTime() - 7 * 86400000).toISOString();
-  if (!Object.values(doc.meals ?? {}).some((m) => m.kind === 'meal' && m.status === 'active' && String(m.at) >= since)) return null;
-  return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
 }
 
 function sessionNudges(doc, t, day, zone) {
@@ -62,5 +53,5 @@ export function dueNudges(doc, t, dayStartHour = 4) {
   const zone = deviceZone(doc);
   const clk = wallClock(t, zone);
   const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
-  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
+  return [backNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
 }

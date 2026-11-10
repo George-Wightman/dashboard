@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '19a5713f';
+var PLANNER_BUILD = 'dd0002b2';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1259,7 +1259,7 @@ const CALENDAR_DEFAULTS = {
   areaColors: {},
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
-  nudges: true, // js/nudges.js: pushes before a miss (the back question, lunch, Hebrew, a session)
+  nudges: true, // js/nudges.js: pushes before a miss (the back question, Hebrew, a session)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
 
@@ -1924,7 +1924,49 @@ function mealWork(doc, localIds) {
     upload: all.filter((m) => m.photoState === 'local' && localIds.has(m.id)),
   };
 }
-return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, parseEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork };
+
+// Batches (10 Nov 2026): a pot he cooks once and eats over a few days, often shared. Claude
+// works out the whole pot from what went in, and each serving is his share of the whole ("a
+// quarter"), whoever ate the rest, so it counts exactly, with no estimate. A batch is a record in
+// `meals` with kind 'batch'; a serving is an ordinary meal with `batchId` and `share`.
+const BATCH_DAYS = 7; // how long a batch shows as in the fridge
+
+// A share of the whole pot: a number from 0 to 1, a fraction ("1/4"), or a percentage ("25%").
+function parseShare(v) {
+  let n = null;
+  if (typeof v === 'number') n = v;
+  else if (typeof v === 'string') {
+    const s = v.trim();
+    const frac = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+    const pct = s.match(/^(\d+(?:\.\d+)?)\s*%$/);
+    if (frac) n = Number(frac[1]) / Number(frac[2]);
+    else if (pct) n = Number(pct[1]) / 100;
+    else if (/^\d*\.?\d+$/.test(s)) n = Number(s);
+  }
+  if (!(Number.isFinite(n) && n > 0 && n <= 1)) throw new Error('A share is part of the whole pot: 0.25, "1/4" or "25%"');
+  return Math.round(n * 1000) / 1000;
+}
+
+// The share as he'd say it: a quarter, a fifth, a third, or a percentage.
+const SHARE_WORDS = { 1: 'all', 0.5: 'half', 0.333: 'a third', 0.667: 'two thirds', 0.25: 'a quarter', 0.75: 'three quarters', 0.2: 'a fifth', 0.4: 'two fifths', 0.167: 'a sixth', 0.125: 'an eighth' };
+const shareWords = (share) => SHARE_WORDS[Math.round(share * 1000) / 1000] ?? `${Math.round(share * 100)}%`;
+
+const servingValue = (batch, share) => ({ protein: roundProtein(batch.protein * share), kcal: roundKcal(batch.kcal * share) });
+
+const batchServings = (doc, batchId) => meals(doc).filter((m) => m.batchId === batchId).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+// How much of the pot he has logged (anyone else's share is never logged).
+const batchEaten = (doc, batchId) => Math.round(batchServings(doc, batchId).reduce((s, m) => s + (m.share ?? 0), 0) * 1000) / 1000;
+
+function batches(doc) {
+  return Object.values(doc?.meals ?? {})
+    .filter((m) => m && m.kind === 'batch' && m.status === 'active')
+    .sort((a, b) => String(b.cookedOn).localeCompare(String(a.cookedOn)) || String(b.created).localeCompare(String(a.created)));
+}
+
+// The batches still in the fridge: cooked in the last week and not all logged.
+const liveBatches = (doc, today) => batches(doc).filter((b) => b.cookedOn > addDays(today, -BATCH_DAYS) && batchEaten(doc, b.id) < 0.98);
+return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, parseEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, usualMeals, mealWork, BATCH_DAYS, parseShare, shareWords, servingValue, batchServings, batchEaten, batches, liveBatches };
 })();
 
 // ---- js/duolingo.js
@@ -3064,7 +3106,7 @@ const { checkLength, checkClock, checkNotes } = __js_parse;
 const { reviseRecord, recordContent } = __js_record;
 const { checkinId, SAID_MAX } = __js_checkins;
 const { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } = __js_workflow;
-const { slotFor, fuelSettings, FUEL_ID } = __js_food;
+const { slotFor, fuelSettings, FUEL_ID, servingValue, shareWords, batchServings } = __js_food;
 const { BACK, notesWith, soreRun, soreFlagText } = __js_coach;
 
 const DATA_KEY = 'dash_data';
@@ -3657,7 +3699,7 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   function redoMeal(id, text) {
     const words = String(text ?? '').trim();
     if (!words) throw new Error('Say what you had');
-    return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null });
+    return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null, batchId: null, share: null });
   }
 
   function saveUsual({ name, protein, kcal }) {
@@ -3665,6 +3707,34 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
     const id = `usual:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meal'}`;
     return putRecord('meals', id, { kind: 'usual', name: title, protein, kcal, uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
+  }
+
+  // A batch he cooked (js/food.js): the whole pot's protein and kcal, worked out by Claude from what
+  // went in. Correcting one moves every serving already logged from it.
+  function saveBatch({ name, ingredients = '', protein, kcal, cookedOn }) {
+    const title = requireTitle(name, 'A batch');
+    if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A batch needs the whole pot’s protein and kcal, 0 or more');
+    return create('meals', { id: `batch:${newId()}`, kind: 'batch', name: title, ingredients: String(ingredients ?? '').trim().slice(0, 500), protein, kcal, cookedOn: cookedOn ?? today() });
+  }
+
+  function updateBatch(id, changes) {
+    const batch = doc.meals[id];
+    if (!batch || batch.kind !== 'batch') throw new Error(`No batch ${id}`);
+    const next = { ...batch, ...changes, id, updated: stamp() };
+    writeRecord('meals', id, next);
+    for (const m of batchServings(doc, id)) writeRecord('meals', m.id, { ...m, final: servingValue(next, m.share), updated: stamp() });
+    commit('local');
+    return doc.meals[id];
+  }
+
+  // A serving: his share of the whole pot, counted exactly at once.
+  function addServing({ at, batchId, share }) {
+    const batch = doc.meals[batchId];
+    if (!batch || batch.kind !== 'batch') throw new Error(`No batch ${batchId}`);
+    const when = at instanceof Date ? at : new Date(at);
+    return create('meals', { id: `meal:${newId()}`, kind: 'meal', day: logicalDay(when, settings.dayStartHour), at: when.toISOString(), slot: slotFor(when),
+      portion: 'right', correction: null, tries: 0, text: `${shareWords(share)} of the ${batch.name.toLowerCase()}`, batchId, share,
+      state: 'estimated', photoState: null, estimate: null, final: servingValue(batch, share) });
   }
 
   const setFuel = (changes) => putRecord('meals', FUEL_ID, { kind: 'settings', ...fuelSettings(doc), ...changes }, 'me').rec;
@@ -3880,6 +3950,9 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     redoMeal,
     archiveMeal: (id) => patch('meals', id, { status: 'archived', archivedOn: today() }),
     saveUsual,
+    saveBatch,
+    updateBatch,
+    addServing,
     setFuel,
     putLog,
     transaction,
@@ -7781,12 +7854,12 @@ return { CENTRAL, zoneOffset, deviceZone, zoneWarning, zoneNote, wallClock, shif
 const __js_nudges = (() => {
 // Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
 // sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
-// The back question in the morning, an unlogged lunch, and a coach's session half an hour ahead.
+// The back question in the morning and a coach's session half an hour ahead. No meal pushes: Claude
+// logs his meals from a chat (10 Nov 2026), so the app never asks him to snap one.
 // Hebrew has its own, from the Hebrew app (planner/hebrew-nudges.js). Pure: a document and a moment in.
 
 const { addDays } = __js_dates;
 const { wallClock, deviceZone } = __js_travel;
-const { mealsOn } = __js_food;
 const { readPlannerConfig, dayRecord } = __js_calendar;
 const { sessionTasks, routineFor } = __js_coach;
 
@@ -7808,15 +7881,6 @@ function backNudge(doc, t, day, clk) {
   const r = doc.gym?.[`back:${day}`];
   if (r && r.status === 'active') return null;
   return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
-}
-
-function lunchNudge(doc, t, day, clk) {
-  if (!between(clk, 14 * 60, 17 * 60)) return null;
-  if (mealsOn(doc, day).some((m) => m.slot === 'lunch')) return null;
-  // Only once he snaps meals at all (any in the last week): never a nag about something he doesn't use.
-  const since = new Date(t.getTime() - 7 * 86400000).toISOString();
-  if (!Object.values(doc.meals ?? {}).some((m) => m.kind === 'meal' && m.status === 'active' && String(m.at) >= since)) return null;
-  return { id: `lunch:${day}`, title: 'Lunch', body: 'Snap your lunch while you remember it.', url: './?do=snap' };
 }
 
 function sessionNudges(doc, t, day, zone) {
@@ -7843,7 +7907,7 @@ function dueNudges(doc, t, dayStartHour = 4) {
   const zone = deviceZone(doc);
   const clk = wallClock(t, zone);
   const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
-  return [backNudge(doc, t, day, clk), lunchNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
+  return [backNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
 }
 return { NUDGES_PER_DAY, QUIET, quietAt, dueNudges };
 })();

@@ -15,6 +15,7 @@ import { checkSession, notesWith } from '../js/coach.js';
 import { NOTES_MAX } from '../js/parse.js';
 import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
 import { resolveId, shortId } from './ids.js';
+import { batches, batchEaten, parseShare, shareWords, servingValue } from '../js/food.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
@@ -738,8 +739,17 @@ function meal(store, op) {
     if (!(typeof v === 'number' && Number.isFinite(v) && v >= 0)) throw new Error(`meal needs ${what} as a number, 0 or more`);
     return Math.round(v);
   };
+  if (op.share != null || op.of != null) return serving(store, op);
+  if (op.batch) return batch(store, op);
   if (op.id) {
     const { id, rec } = resolveId(store.doc(), op.id, ['meals']);
+    if (rec.kind === 'batch') {
+      if (op.remove !== true) throw new Error('Correct a batch with {"op": "meal", "batch": {"id": "…", "protein": …, "kcal": …}}');
+      const why = String(op.why ?? '').trim();
+      if (!why) throw new Error('Removing a batch needs a why, e.g. "finished" or "binned the rest"');
+      store.archiveMeal(id);
+      return `Took the ${rec.name.toLowerCase()} out of the fridge (${why}); the servings already logged keep their numbers`;
+    }
     if (rec.kind !== 'meal') throw new Error(`${op.id} isn't a meal`);
     const why = String(op.why ?? '').trim();
     if (op.remove === true) {
@@ -791,7 +801,76 @@ function meal(store, op) {
     store.setFuel(changes);
     return `Changed Fuel: ${Object.entries(changes).map(([k, v]) => `${k} ${v}`).join(', ')}`;
   }
-  throw new Error('meal needs an id to correct, a usual meal, or fuel settings — e.g. {"op": "meal", "id": "…", "protein": 35, "kcal": 1050, "why": "…"}');
+  throw new Error('meal needs an id to correct, a log, a batch, a share of a batch, a usual meal, or fuel settings — e.g. {"op": "meal", "id": "…", "protein": 35, "kcal": 1050, "why": "…"}');
+}
+
+// A batch he cooked: the whole pot, worked out from what went in. With an id, a correction, which
+// moves every serving already logged from it.
+function batch(store, op) {
+  const b = op.batch;
+  if (typeof b !== 'object' || Array.isArray(b)) throw new Error('batch takes {"name": "Chilli", "ingredients": "1kg beef mince, …", "protein": 260, "kcal": 4200, "day": "yesterday"}');
+  const num = (v, what) => {
+    if (!(typeof v === 'number' && Number.isFinite(v) && v >= 0)) throw new Error(`batch needs ${what} for the whole pot, as a number`);
+    return Math.round(v);
+  };
+  if (b.id) {
+    const { id, rec } = resolveId(store.doc(), b.id, ['meals']);
+    if (rec.kind !== 'batch') throw new Error(`${b.id} isn't a batch`);
+    const changes = {};
+    if (b.protein != null) changes.protein = num(b.protein, 'protein');
+    if (b.kcal != null) changes.kcal = num(b.kcal, 'kcal');
+    if (b.name != null) changes.name = String(b.name).trim() || rec.name;
+    if (b.ingredients != null) changes.ingredients = String(b.ingredients).trim().slice(0, 500);
+    if (!Object.keys(changes).length) throw new Error('A batch correction needs protein, kcal, name or ingredients');
+    const next = store.updateBatch(id, changes);
+    const n = store.doc().meals && Object.values(store.doc().meals).filter((m) => m?.kind === 'meal' && m.status === 'active' && m.batchId === id).length;
+    return `Changed the ${next.name.toLowerCase()} to ${next.protein} g protein, ${next.kcal} kcal for the pot${n ? `; ${n} serving${n === 1 ? '' : 's'} moved with it` : ''}`;
+  }
+  const words = String(b.ingredients ?? '').trim();
+  if (!words) throw new Error('A batch needs what went in ("ingredients"), so the pot can be checked later');
+  const cookedOn = toDay(b.day ?? 'today', store.today());
+  if (cookedOn > store.today()) throw new Error('A batch can’t be cooked on a day that hasn’t come yet');
+  const rec = store.saveBatch({ name: b.name, ingredients: words, protein: num(b.protein, 'protein'), kcal: num(b.kcal, 'kcal'), cookedOn });
+  return tagged(`Saved the batch ${q(rec.name)}, cooked ${dayName(cookedOn, store.today())}: ${rec.protein} g protein, ${rec.kcal} kcal for the whole pot`, rec.id);
+}
+
+// The batch a serving comes from: an id, or a name (the latest live batch whose name has the words).
+function batchFor(doc, ref) {
+  const key = String(ref ?? '').trim();
+  if (!key) throw new Error('A serving needs "of": the batch, by name or id');
+  if (/^#?batch:/.test(key)) {
+    const { rec } = resolveId(doc, key, ['meals']);
+    if (rec.kind !== 'batch') throw new Error(`${key} isn't a batch`);
+    return rec;
+  }
+  const live = batches(doc);
+  const want = key.toLowerCase().replace(/^the\s+/, '');
+  const hit = live.find((x) => x.name.toLowerCase() === want) ?? live.find((x) => x.name.toLowerCase().includes(want) || want.includes(x.name.toLowerCase()));
+  if (!hit) throw new Error(`No batch called ${q(key)}${live.length ? ` (there's ${live.map((x) => q(x.name)).join(', ')})` : ''}: save it first with {"op": "meal", "batch": {…}}`);
+  return hit;
+}
+
+// His share of a batch, logged exactly. More than the whole pot is refused unless "over" says it's right.
+function serving(store, op) {
+  const doc = store.doc();
+  const rec = batchFor(doc, op.of);
+  const share = parseShare(op.share);
+  if (op.time == null) throw new Error('A serving needs the time he ate it ("12:30")');
+  const day = toDay(op.day ?? 'today', store.today());
+  const [y, m, d] = day.split('-').map(Number);
+  const [hh, mm] = clockOf(op.time).split(':').map(Number);
+  const at = new Date(y, m - 1, d, hh, mm);
+  if (at > store.now()) throw new Error('A meal can’t be logged for a time that hasn’t come yet');
+  if (day < rec.cookedOn) throw new Error(`The ${rec.name.toLowerCase()} wasn’t cooked until ${dayName(rec.cookedOn, store.today())}`);
+  const before = batchEaten(doc, rec.id);
+  const after = Math.round((before + share) * 1000) / 1000;
+  if (after > 1.02 && op.over !== true) {
+    throw new Error(`That makes ${Math.round(after * 100)}% of the ${rec.name.toLowerCase()} (${Math.round(before * 100)}% already logged): check his share with him; if it's right, the pot was bigger than saved, so correct the batch, or add "over": true`);
+  }
+  const meal = store.addServing({ at, batchId: rec.id, share });
+  const v = servingValue(rec, share);
+  const left = Math.max(0, 1 - after);
+  return tagged(`Logged ${shareWords(share)} of the ${rec.name.toLowerCase()} for ${dayName(day, store.today())} at ${clockOf(op.time)}: ${v.protein} g, ${v.kcal} kcal; ${left > 0.02 ? `about ${Math.round(left * 100)}% of the pot not logged yet` : 'that’s the whole pot logged'}`, meal.id);
 }
 
 // ---- The gym --------------------------------------------------------------------------------------
@@ -913,7 +992,7 @@ function session(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   details: ['id', 'set'],
-  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log'],
+  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log', 'batch', 'share', 'of', 'over'],
   session: ['id', 'date', 'time', 'title', 'session'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],
