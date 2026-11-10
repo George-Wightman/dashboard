@@ -151,95 +151,12 @@ const PAINT_FALLBACK = { winter: ['winter', 'late', 'autumn'], late: ['late', 'a
 // A town, its shops and its works look like where the city is; the land is the same everywhere.
 const paintSet = (map, terrain) => (['town', 'shops', 'industry'].includes(terrain) ? `${map.place === 'salzburg' ? 'sz' : 'uk'}-${terrain}` : terrain);
 const tileHash = (q, r) => { let a = (q * 73856093) ^ (r * 19349663); a = Math.imul(a ^ (a >>> 15), 2246822519); return ((a ^ (a >>> 13)) >>> 0) / 4294967296; };
-// Rivers, snapped to the hexes the way Civ draws them: the tiles a river runs through, and which of
-// them it flows between. Each such tile's painted ground is plain grass (the meadow's first tile), and
-// the stream is drawn through the middle of them, so it isn't laid across roofs and trees. Pure;
-// worked out once per map.
-const riversOf = new WeakMap();
-const hexAt = (u, v) => {
-  // Units are hex widths across and row spacing down (map-art.js fromUnits): back to axial, then
-  // round to the nearest hex.
-  const r = (v * 2) / SQ3, q = u - r / 2, sc = -q - r;
-  let rq = Math.round(q), rr = Math.round(r);
-  const rs = Math.round(sc), dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - sc);
-  if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
-  return [rq, rr];
-};
-const hexDist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[0] + a[1] - b[0] - b[1]));
-export function riverGraph(map) {
-  if (riversOf.has(map)) return riversOf.get(map);
-  const tiles = new Set(), links = new Map();
-  const link = (a, b) => {
-    for (const [x, y] of [[a, b], [b, a]]) { if (!links.has(x)) links.set(x, new Set()); links.get(x).add(y); }
-  };
-  for (const l of map.lines ?? []) {
-    if (l.kind !== 'river') continue;
-    for (const s of l.segs) {
-      // The hexes it passes, in order, one step at a time (across a corner, through the neighbour the
-      // two share).
-      const seq = [];
-      for (let i = 0; i < s.length; i++) {
-        const [u0, v0] = s[Math.max(0, i - 1)], [u1, v1] = s[i];
-        const n = Math.max(1, Math.ceil(Math.hypot(u1 - u0, v1 - v0) / 0.1));
-        for (let j = i ? 1 : 0; j <= n; j++) {
-          const h = hexAt(u0 + ((u1 - u0) * j) / n, v0 + ((v1 - v0) * j) / n), prev = seq[seq.length - 1];
-          if (prev && prev[0] === h[0] && prev[1] === h[1]) continue;
-          if (prev && hexDist(prev, h) > 1) {
-            const mid = DIRS.map(([a, b]) => [prev[0] + a, prev[1] + b]).find((m) => hexDist(m, h) === 1);
-            if (mid) seq.push(mid);
-          }
-          seq.push(h);
-        }
-      }
-      // Straightened: a river running along a row's edge would weave between the two rows, so a step
-      // out and straight back, or a tile its neighbours already touch, is cut.
-      for (let changed = true; changed;) {
-        changed = false;
-        for (let i = 1; i < seq.length - 1; i++) {
-          if (hexDist(seq[i - 1], seq[i + 1]) <= 1) {
-            seq.splice(i, 1);
-            if (hexDist(seq[i - 1], seq[i]) === 0) seq.splice(i, 1);
-            changed = true; break;
-          }
-        }
-      }
-      seq.forEach((h, i) => { tiles.add(key(...h)); if (i) link(key(...seq[i - 1]), key(...h)); });
-    }
-  }
-  // A stub of one tile off a junction is where two of the river's pieces nearly met: gone.
-  for (const [k, ns] of [...links]) {
-    const [n] = ns;
-    if (ns.size === 1 && links.get(n)?.size >= 3) { links.delete(k); links.get(n).delete(k); tiles.delete(k); }
-  }
-  const out = { tiles, links };
-  riversOf.set(map, out);
-  return out;
-}
-export const riverTiles = (map) => riverGraph(map).tiles;
-// The rivers as one SVG path: in each tile, a curve from one side it flows through to the other,
-// bending at the middle; a source or a mouth, a line to the middle. A lake's tiles have none.
-function riverPathOf(map, L) {
-  const { links } = riverGraph(map);
-  const f = (n) => n.toFixed(1);
-  let d = '';
-  for (const [k, ns] of links) {
-    if (L.tiles.get(k)?.terrain === 'water') continue;
-    const [x, y] = centre(...unkey(k));
-    const sides = [...ns].map((n) => { const [a, b] = centre(...unkey(n)); return [(x + a) / 2, (y + b) / 2]; });
-    if (sides.length === 2) d += `M${f(sides[0][0])} ${f(sides[0][1])}Q${f(x)} ${f(y)} ${f(sides[1][0])} ${f(sides[1][1])}`;
-    else for (const [a, b] of sides) d += `M${f(a)} ${f(b)}L${f(x)} ${f(y)}`;
-  }
-  return d;
-}
 // A tile's painted sprite ([x, y, w, h] in the atlas), or null for the drawn one.
 export function paintPicker(map, today) {
   const season = paintSeason(today);
   if (!season) return null;
-  const rivers = riverTiles(map);
   return (t) => {
-    const river = t.terrain !== 'water' && rivers.has(key(t.q, t.r));
-    const set = PAINT_SETS[river ? 'meadow' : paintSet(map, t.terrain)];
-    if (set && river) return PAINT_FALLBACK[season].map((s) => set[s]).find((l) => l?.length)?.[0] ?? null;
+    const set = PAINT_SETS[paintSet(map, t.terrain)];
     if (!set) return null;
     const list = PAINT_FALLBACK[season].map((s) => set[s]).find((l) => l?.length);
     return list ? list[Math.floor(tileHash(t.q, t.r) * list.length)] : null;
@@ -351,13 +268,11 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   const P = (u) => fromUnits(u).map((n) => n.toFixed(1)).join(' ');
   const line = (kind) => (map.lines ?? []).filter((l) => l.kind === kind).flatMap((l) => l.segs).map((s) => 'M' + s.map(P).join('L')).join('');
   const visClip = [...vis].map((k) => { const [x, y] = centre(...unkey(k)); return `<polygon points="${pts(corners(x, y, S))}"/>`; }).join('');
-  const river = riverPathOf(map, L), rail = line('rail');
-  // The stream in the painted lakes' colours: a grassy bank, the water, a lighter middle; iced over
-  // in winter.
+  const river = line('river'), rail = line('rail');
+  // The stream: faint, in the painted lakes' colours (icy in winter), so the land under it still shows.
   const ps = paintSeason(today);
-  const [bank, water, mid, glint] = ps === 'winter' ? ['#8aa4ae', '#b9d4e0', '#dcecf3', '#ffffff']
-    : ps === 'late' ? ['#5f7b78', '#5f8ea8', '#8fb6c9', '#e4f1f6'] : ['#4d6a3a', '#2f6a98', '#4a8cbb', '#a9d6ee'];
-  const lines = `<g clip-path="url(#${id}-vis)" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="${river}" stroke="${bank}" stroke-width="7" opacity=".5"/><path d="${river}" stroke="${water}" stroke-width="4.6"/><path d="${river}" stroke="${mid}" stroke-width="2"/><path d="${river}" stroke="${glint}" stroke-width=".6" stroke-dasharray="2 9" opacity=".6"/><g opacity=".32"><path d="${rail}" stroke="#5a4a3c" stroke-width="1"/><path d="${rail}" stroke="#5a4a3c" stroke-width="3" stroke-dasharray=".8 2.6"/></g></g>`;
+  const [water, glint] = ps === 'winter' ? ['#b9d4e0', '#ffffff'] : ps === 'late' ? ['#6f9cb6', '#e4f1f6'] : ['#3a7fb0', '#a9d6ee'];
+  const lines = `<g clip-path="url(#${id}-vis)" fill="none" stroke-linecap="round" stroke-linejoin="round"><g opacity=".55"><path d="${river}" stroke="${water}" stroke-width="2.2"/><path d="${river}" stroke="${glint}" stroke-width=".5" stroke-dasharray="2 9"/></g><g opacity=".32"><path d="${rail}" stroke="#5a4a3c" stroke-width="1"/><path d="${rail}" stroke="#5a4a3c" stroke-width="3" stroke-dasharray=".8 2.6"/></g></g>`;
   const roads = roadSvg(state.roads.map(([a, b]) => [centre(...unkey(a)), centre(...unkey(b))]));
   let border = '';
   for (const k of state.owned) {
