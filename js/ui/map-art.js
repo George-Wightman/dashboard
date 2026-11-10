@@ -6,16 +6,23 @@
 import { FINDS, SIZE as FINDS_SIZE } from '../map/finds-atlas.js';
 
 export const S = 24;            // a hex's corner radius, in SVG units
-export const K = 0.74;          // the board's tilt: vertical squash
-export const DEPTH = 6;         // the hex's visible side
+export const K = 0.75;          // the board's tilt: how far the slanted edges are squashed
+// The hex's shape follows the painted tiles (made in Gemini, js/map/terrain-atlas.js): its upright
+// sides are shorter than a regular hex's would be (SIDE of S, not K of it), so the painted tiles'
+// tops meet row to row with no gap.
+export const SIDE = 0.43;       // the upright side, as a fraction of S
+export const DEPTH = 4.6;       // the earth under the top, in SVG units
 export const SQ3 = Math.sqrt(3);
+export const ROW = S * (SIDE + K / 2);          // one row down
+export const BOTTOM = (SIDE + K) / 2;           // the top's lowest point below the centre, as a fraction of S
 
-export const centre = (q, r) => [S * SQ3 * (q + r / 2), S * 1.5 * r * K];
-export const fromUnits = ([u, v]) => [u * S * SQ3, v * S * SQ3 * K];
-export const corners = (x, y, s = S * 0.965) => Array.from({ length: 6 }, (_, i) => {
-  const a = Math.PI / 180 * (60 * i - 30);
-  return [x + s * Math.cos(a), y + s * Math.sin(a) * K];
-});
+export const centre = (q, r) => [S * SQ3 * (q + r / 2), ROW * r];
+// The map's units are hex widths across and, down, rows of 1.5 / sqrt(3) of one (dev/build-map.mjs).
+export const fromUnits = ([u, v]) => [u * S * SQ3, (v * 2 * ROW) / SQ3];
+export const corners = (x, y, s = S * 0.965) => {
+  const w = (s * SQ3) / 2, a = (s * SIDE) / 2, b = s * BOTTOM;
+  return [[x + w, y - a], [x + w, y + a], [x, y + b], [x - w, y + a], [x - w, y - a], [x, y - b]];
+};
 export const pts = (c) => c.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
 const n1 = (v) => v.toFixed(1);
 

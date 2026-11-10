@@ -5,12 +5,13 @@
 #   python dev/build-terrain.py <tiles dir>
 #
 # Tiles are named <set>-<season>-<n>.png, e.g. meadow-autumn-2.png or uk-town-winter-1.png. Each is
-# scaled so its hex base is BASE pixels wide (the widest sprite of its set is taken as the base:
-# trees can spill a little past it, so the median of the set is used).
-import sys, os, json, re, statistics
+# scaled so its own hex base (dev/hexbase.py; trees can spill past it) is BASE pixels wide, so the
+# tiles meet on the board.
+import sys, os, json, re
 from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from defringe import defringe
+from hexbase import base_width
 
 BASE = 160
 SEASONS = ('autumn', 'late', 'winter', 'spring')
@@ -22,14 +23,12 @@ for f in files:
     m = re.match(r'^(.+)-(autumn|late|winter|deep|spring)-(\d+)\.png$', f)
     if not m or m.group(2) not in SEASONS: continue
     parsed.append((m.group(1), m.group(2), int(m.group(3)), f))
-# The base width of each set: the median width of its sprites.
-widths = {}
-for s, _, _, f in parsed: widths.setdefault(s, []).append(Image.open(os.path.join(src, f)).size[0])
-ref = {s: statistics.median(w) for s, w in widths.items()}
+# Heather is purple to its edges: the fringe pass would eat into it, so it gets one pass, not three.
+HEATHER = {'hills-autumn-2.png', 'hills-late-2.png', 'hills-winter-2.png'}
 sprites = []
 for s, season, n, f in parsed:
-    im = defringe(Image.open(os.path.join(src, f)))
-    k = BASE / ref[s]
+    im = defringe(Image.open(os.path.join(src, f)), passes=1 if f in HEATHER else 3)
+    k = BASE / base_width(im)
     im = im.resize((max(1, round(im.size[0] * k)), max(1, round(im.size[1] * k))), Image.LANCZOS)
     sprites.append((s, season, n, im))
 cw = max(im.size[0] for *_, im in sprites) + 2

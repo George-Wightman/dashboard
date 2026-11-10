@@ -7,7 +7,7 @@ import { h } from './dom.js';
 import { replay, claimable, placeable, makeCityOf, lookups, visibleOf, findName, FIND_VALUE, REPAIR, LEVEL_STEP } from '../map/engine.js';
 import { key, unkey, DIRS } from '../map/hex.js';
 import {
-  S, K, SQ3, DEPTH, centre, fromUnits, corners, pts, TERRAIN, CENTRE_TOP, PLAZA, TRACK_COLOUR, seasonOf, seasonTop, groundSvg, clipSvg,
+  S, K, SQ3, DEPTH, ROW, BOTTOM, centre, fromUnits, corners, pts, TERRAIN, CENTRE_TOP, PLAZA, TRACK_COLOUR, seasonOf, seasonTop, groundSvg, clipSvg,
   decoSvg, findSvg, paintedFindSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadSvg, bannerSvg, pinSvg, mix,
 } from './map-art.js';
 import { addDays, shortDate, shortWeekday } from '../dates.js';
@@ -164,17 +164,18 @@ export function paintPicker(map, today) {
 }
 // One sprite out of the atlas: an inner <svg> whose viewBox is the sprite's box, so only it shows.
 function paintedSvg([ax, ay, aw, ah], x, y, owned) {
-  const w = (S * SQ3 * 1.02 * aw) / PAINT_BASE, hh = (w * ah) / aw;
+  const w = (S * SQ3 * 1.01 * aw) / PAINT_BASE, hh = (w * ah) / aw;
   return `<polygon points="${pts(corners(x, y))}" fill="transparent"/>`
-    + `<svg x="${(x - w / 2).toFixed(1)}" y="${(y + S * K + DEPTH - hh).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}" viewBox="${ax} ${ay} ${aw} ${ah}" preserveAspectRatio="none" overflow="hidden"><image href="icons/terrain.webp" width="${PAINT_SIZE[0]}" height="${PAINT_SIZE[1]}"/></svg>`
+    + `<svg x="${(x - w / 2).toFixed(1)}" y="${(y + S * BOTTOM + DEPTH - hh).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}" viewBox="${ax} ${ay} ${aw} ${ah}" preserveAspectRatio="none" overflow="hidden"><image href="icons/terrain.webp" width="${PAINT_SIZE[0]}" height="${PAINT_SIZE[1]}"/></svg>`
     + (owned ? '' : `<polygon points="${pts(corners(x, y))}" fill="#e8dab1" opacity=".3"/>`);
 }
 
 // A landmark painted on its own hex: drawn so its hex is a tile wide, standing where the tile does.
-function landmarkSvg({ src, w: aw, h: ah }, x, y, owned) {
-  const w = S * SQ3 * 1.02, hh = (w * ah) / aw;
+function landmarkSvg({ src, w: aw, h: ah, b }, x, y, owned) {
+  // `b` is its hex's width in its pixels (dev/build-landmarks.py); older files drew the hex full width.
+  const w = (S * SQ3 * 1.01 * aw) / (b > 0 ? b : aw), hh = (w * ah) / aw;
   return `<polygon points="${pts(corners(x, y))}" fill="transparent"/>`
-    + `<image href="${src}" x="${(x - w / 2).toFixed(1)}" y="${(y + S * K + DEPTH - hh).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}"/>`
+    + `<image href="${src}" x="${(x - w / 2).toFixed(1)}" y="${(y + S * BOTTOM + DEPTH - hh).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}"/>`
     + (owned ? '' : `<polygon points="${pts(corners(x, y))}" fill="#e8dab1" opacity=".3"/>`);
 }
 
@@ -188,7 +189,7 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   const vis = state.visible;
   const camps = new Map(state.camps.map((c) => [key(c.q, c.r), c]));
   const builtAt = new Map(Object.entries(state.built).map(([b, k]) => [k, b]));
-  const w = S * Math.sqrt(3), hh = 3 * S * 0.74;
+  const w = S * Math.sqrt(3), hh = 2 * ROW;
   const fogHex = (x, y) => `<polygon points="${pts(corners(x, y, S))}" fill="none" stroke="#cdb98a" stroke-width=".9"/>`;
   let defs = `<pattern id="${id}-fog" width="${w.toFixed(3)}" height="${hh.toFixed(3)}" patternUnits="userSpaceOnUse"><rect width="${w.toFixed(3)}" height="${hh.toFixed(3)}" fill="#e8dab1"/>${fogHex(0, 0)}${fogHex(w, 0)}${fogHex(w / 2, hh / 2)}${fogHex(0, hh)}${fogHex(w, hh)}</pattern>`
     + `<filter id="${id}-glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.2"/></filter>`;
@@ -358,7 +359,7 @@ export function horizonSvg(ctx) {
   if (band.size < 3) { horizonCache = { key: k, out: null }; return null; }
   const at = [...band].map((t) => centre(...unkey(t)));
   const x0 = Math.min(...at.map((p) => p[0])) - S, x1 = Math.max(...at.map((p) => p[0])) + S;
-  const y0 = Math.min(...at.map((p) => p[1])) - S * 2.2, y1 = Math.max(...at.map((p) => p[1])) + S * K + DEPTH + 2;
+  const y0 = Math.min(...at.map((p) => p[1])) - S * 2.2, y1 = Math.max(...at.map((p) => p[1])) + S * BOTTOM + DEPTH + 2;
   const inner = mapSvg({ ...state, visible: band, owned: band, camps: [] }, map, { today, id: 'hz', backdrop: false, strip: true });
   const out = { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${(x1 - x0).toFixed(1)} ${(y1 - y0).toFixed(1)}" preserveAspectRatio="xMidYMax meet">${inner}</svg>`, ratio: (x1 - x0) / (y1 - y0) };
   horizonCache = { key: k, out };

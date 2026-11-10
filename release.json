@@ -1,5 +1,5 @@
 {
-  "id": "302fc78e78ddae4ca56c345c25c741c8b297d7f9e39cc18571a7038369684f0f",
+  "id": "804bb3b1ddf0cd168aaee475dc20f001053ba44391fa2889b69974df2e63b00b",
   "files": {
     "./": "f8115b1033ad9f93e0a15ce9230995b6ed987ee597dad63863cd5fdaa6c02fb0",
     "index.html": "f8115b1033ad9f93e0a15ce9230995b6ed987ee597dad63863cd5fdaa6c02fb0",
@@ -104,10 +104,10 @@
     "js/map/files.js": "a8cd653721b90bb4c10fd6bf1ed2fa9300205a4d452cc4cecd0148308a3ff6df",
     "js/map/summary.js": "2474984af9df955b38af09f716387c4cf0a9c84a9ad5ffbea57867fec1a321f9",
     "js/map/points.js": "3008295a9be0973d9d978af164c6e4d3046f32c414e5ba34275a6d67c1e2b119",
-    "js/ui/map.js": "8cc3bb93a1f780babff4f767cfa9dbe438b3313844077528e1f03f4e37f38672",
-    "js/ui/map-art.js": "f79f51b6a2fdece22bdbcac6c7c3c1610995f9d21dd917c74838914e024abfe5",
-    "js/map/terrain-atlas.js": "0cf0dc49a29989213d09cbea1b3adb8926752a1fe42b57956c82ac8d045352b7",
-    "icons/terrain.webp": "949d9e8d7f809bc855ddb958476273eca918117d137b6ceae747e17e75848a17",
+    "js/ui/map.js": "d579931be2ff43f86b77c661d1ff278d9a722a83e02346eff93832f315c8b3fe",
+    "js/ui/map-art.js": "4ce777ef18d7962936ce324ffb8a53f201bf712c8f6685005c3864156782f6b5",
+    "js/map/terrain-atlas.js": "7e671fabe08b16ad83f275301ff90cd35d26f440bb9609e30c026e50b2e07445",
+    "icons/terrain.webp": "c7f23d3d2449c53583253b4ca412e590e963409a78d344a92cc8bc6a36a6bc9d",
     "js/map/finds-atlas.js": "a8a1027f3e29d2d6a450781959c6d4601a0c3257b67353d5ee161e510f251b9d",
     "icons/finds.webp": "6ebc44095d40157b8044db2c33f1184c0690b7afe9552116850d0859540e0d48"
   }
