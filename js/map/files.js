@@ -14,6 +14,10 @@ const str = (v, max = 200) => typeof v === 'string' && v.length <= max;
 // A drawing is an SVG and nothing that could run.
 export const safeArt = (s) => str(s, 200000) && /^<svg[\s>]/.test(s) && !/<script|<foreignObject|\son[a-z]+\s*=|javascript:/i.test(s);
 
+// A painted landmark (dev/build-landmarks.py): a WebP or PNG picture and its size, nothing else.
+export const safePaint = (p) => !!p && typeof p === 'object' && /^data:image\/(webp|png);base64,[A-Za-z0-9+/=]+$/.test(p.src ?? '')
+  && p.src.length <= 120000 && Number.isFinite(p.w) && Number.isFinite(p.h) && p.w > 0 && p.h > 0;
+
 export function validMap(m) {
   if (!m || typeof m !== 'object') return false;
   if (!ID.test(m.id ?? '') || !str(m.name, 60) || !['uk', 'salzburg'].includes(m.place) || !DAY.test(m.start ?? '')) return false;
@@ -29,6 +33,7 @@ export function validMap(m) {
       || !t.list.every((e) => Array.isArray(e) && builds.has(e[0]) && Number.isFinite(e[1]))) return false;
   }
   if (m.art != null && (typeof m.art !== 'object' || !Object.values(m.art).every(safeArt))) return false;
+  if (m.paint != null && (typeof m.paint !== 'object' || !Object.values(m.paint).every(safePaint))) return false;
   return true;
 }
 

@@ -170,6 +170,14 @@ function paintedSvg([ax, ay, aw, ah], x, y, owned) {
     + (owned ? '' : `<polygon points="${pts(corners(x, y))}" fill="#e8dab1" opacity=".3"/>`);
 }
 
+// A landmark painted on its own hex: drawn so its hex is a tile wide, standing where the tile does.
+function landmarkSvg({ src, w: aw, h: ah }, x, y, owned) {
+  const w = S * SQ3 * 1.02, hh = (w * ah) / aw;
+  return `<polygon points="${pts(corners(x, y))}" fill="transparent"/>`
+    + `<image href="${src}" x="${(x - w / 2).toFixed(1)}" y="${(y + S * K + DEPTH - hh).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}"/>`
+    + (owned ? '' : `<polygon points="${pts(corners(x, y))}" fill="#e8dab1" opacity=".3"/>`);
+}
+
 // The land as SVG. `world` adds the sea, the coasts and the pins; `picks` glow to claim, `targets` to
 // build on; `fresh` rise in. `id` keeps clip paths unique on the page.
 export function mapSvg(state, map, { today, world = false, picks = new Set(), targets = new Set(), fresh = new Set(), id = 'm', others = [], backdrop = true, painted = true } = {}) {
@@ -220,11 +228,16 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
     clips += clipSvg(clip, x, y);
     // Painted ground (js/map/terrain-atlas.js) where there is some for this terrain and time of year;
     // a built tile keeps its track's plaza, and a camp or a raid its drawn ground.
-    const art = !b && !camps.has(k) && !state.pillaged.has(k) ? paint?.(t) : null;
-    ground += `<g data-k="${k}"${fr}>${art ? paintedSvg(art, x, y, owned) : groundSvg(x, y, top, { faded: !owned })}</g>`;
+    // A painted landmark (the map file's `paint`) is the whole tile: a building placed here, a wonder
+    // built, a place found, or the centre.
+    const markId = b ?? (site && (site.kind !== 'wonder' || state.wonders.has(site.id)) ? site.id : k === '0,0' ? 'centre' : null);
+    const mark = painted && markId && !camps.has(k) && !state.pillaged.has(k) ? map.paint?.[markId] : null;
+    const art = !mark && !b && !camps.has(k) && !state.pillaged.has(k) ? paint?.(t) : null;
+    ground += `<g data-k="${k}"${fr}>${mark ? landmarkSvg(mark, x, y, owned) : art ? paintedSvg(art, x, y, owned) : groundSvg(x, y, top, { faded: !owned })}</g>`;
     const deco = () => (art ? '' : decoSvg(t.terrain, x, y, { q: t.q, r: t.r, season, clip }));
     let sp;
-    if (camps.has(k)) sp = campSvg(x, y + 4);
+    if (mark) sp = b ? levelSvg(state.levels[b] ?? 1, x, y) : '';
+    else if (camps.has(k)) sp = campSvg(x, y + 4);
     else if (b) sp = artImage(map, b, x, y + 7, placeScale(map, b)) + levelSvg(state.levels[b] ?? 1, x, y);
     else if (site?.kind === 'wonder') sp = state.wonders.has(site.id) ? artImage(map, site.id, x, y + 7, placeScale(map, site.id)) : deco() + starSvg(x, y - 2, owned);
     else if (site) sp = artImage(map, site.id, x, y + 7, placeScale(map, site.id)) || deco();
@@ -411,7 +424,7 @@ export function renderMapBig(ctx) {
     const ok = placeable(state, c).length > 0;
     const name = c.kind === 'wonder' ? 'A wonder' : L.byId.get(c.id)?.name;
     const pressed = ui.armed && ui.armed.kind === c.kind && (c.kind === 'wonder' || ui.armed.id === c.id);
-    const art = c.kind === 'wonder' ? svgEl([-12, -12, 24, 24], starSvg(0, 0, true), 'map-card-art') : (map.art?.[c.id] ? h('img', { class: 'map-card-art', alt: '', src: artHref(map.art[c.id]) }) : null);
+    const art = c.kind === 'wonder' ? svgEl([-12, -12, 24, 24], starSvg(0, 0, true), 'map-card-art') : (map.paint?.[c.id] ? h('img', { class: 'map-card-art', alt: '', src: map.paint[c.id].src }) : map.art?.[c.id] ? h('img', { class: 'map-card-art', alt: '', src: artHref(map.art[c.id]) }) : null);
     return h('button', { class: 'map-card', type: 'button', 'aria-pressed': String(!!pressed), disabled: !ok,
       onclick: () => { ui.armed = pressed ? null : c; ctx.render(); } },
     art, h('span', {}, h('b', {}, name), h('small', {}, ok ? (pressed ? 'Now pick a glowing tile' : 'Tap, then pick a tile') : c.kind === 'wonder' ? 'Reach a wonder site first' : 'Reach its zone first')));

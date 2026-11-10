@@ -125,3 +125,17 @@ test('the board draws painted ground from the atlas, and the drawn land when ask
   assert.match(on, /icons\/terrain\.webp/);
   assert.doesNotMatch(mapSvg(state, map, { today: '2026-11-10', painted: false }), /terrain\.webp/);
 });
+
+test('a painted landmark is drawn as its whole tile once it is in sight, never before', async () => {
+  const { validMap } = await import('../js/map/files.js');
+  const dot = 'data:image/png;base64,iVBORw0KGgo=';
+  const site = mapTown().places.find((p) => p.kind === 'found');
+  const painted = mapTown({ paint: { centre: { src: dot, w: 128, h: 140 }, [site.id]: { src: dot + 'AA', w: 128, h: 150 } } });
+  assert.ok(validMap(painted));
+  assert.equal(validMap(mapTown({ paint: { centre: { src: 'javascript:alert(1)', w: 1, h: 1 } } })), false);
+  const { state } = fresh();
+  const svg = mapSvg(state, painted, { today: '2026-11-10' });
+  assert.ok(svg.includes(`href="${dot}"`));
+  assert.equal(state.visible.has(`${site.q},${site.r}`), svg.includes(`href="${dot}AA"`));
+  assert.ok(!mapSvg(state, painted, { today: '2026-11-10', painted: false }).includes(dot));
+});
