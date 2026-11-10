@@ -34,6 +34,8 @@ export function validMap(m) {
   }
   if (m.art != null && (typeof m.art !== 'object' || !Object.values(m.art).every(safeArt))) return false;
   if (m.paint != null && (typeof m.paint !== 'object' || !Object.values(m.paint).every(safePaint))) return false;
+  // The same landmarks under snow: a field of its own, so copies that don't know it still read the file.
+  if (m.paintWinter != null && (typeof m.paintWinter !== 'object' || !Object.values(m.paintWinter).every(safePaint))) return false;
   return true;
 }
 

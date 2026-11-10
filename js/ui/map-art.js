@@ -3,6 +3,8 @@
 // buildings are drawings in the private map file, never here. The land follows the real season:
 // autumn colours, snow, blossom. Pure.
 
+import { FINDS, SIZE as FINDS_SIZE } from '../map/finds-atlas.js';
+
 export const S = 24;            // a hex's corner radius, in SVG units
 export const K = 0.74;          // the board's tilt: vertical squash
 export const DEPTH = 6;         // the hex's visible side
@@ -213,6 +215,14 @@ export function findSvg(f, x, y) {
     case 'fish': return `<path d="M${X(-5)} ${Y(-3)} q5 -4 9 0 q-4 4 -9 0 z M${X(4)} ${Y(-3)} l4 -3 v6 z" fill="#f2a65a"/>`;
     default: return '';
   }
+}
+// A painted find (dev/build-finds.py), standing at (x, y); the drawn one where there's no picture.
+export function paintedFindSvg(f, x, y) {
+  const a = FINDS[f];
+  if (!a) return findSvg(f, x, y);
+  const [ax, ay, aw, ah] = a, hh = 14, w = (hh * aw) / ah;
+  return `<ellipse cx="${n1(x)}" cy="${n1(y + 1)}" rx="${n1(w * 0.42)}" ry="2.6" fill="rgba(0,0,0,.2)"/>`
+    + `<svg x="${n1(x - w / 2)}" y="${n1(y + 2 - hh)}" width="${n1(w)}" height="${hh}" viewBox="${ax} ${ay} ${aw} ${ah}" preserveAspectRatio="none" overflow="hidden"><image href="icons/finds.webp" width="${FINDS_SIZE[0]}" height="${FINDS_SIZE[1]}"/></svg>`;
 }
 export function campSvg(x, y) {
   const X = (v) => n1(x + v), Y = (v) => n1(y + v);

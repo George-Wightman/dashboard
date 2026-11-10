@@ -148,3 +148,22 @@ test('a river along the edge between two rows takes one line of tiles, not both'
   assert.ok(tiles.size <= 8, `${tiles.size} tiles`);
   assert.ok([...links.values()].every((n) => n.size <= 2));
 });
+
+test('a landmark painted under snow is drawn so from first snow to the thaw, and its own self otherwise', async () => {
+  const { validMap } = await import('../js/map/files.js');
+  const dot = 'data:image/png;base64,iVBORw0KGgo=', snow = dot + 'BB';
+  const painted = mapTown({ paint: { centre: { src: dot, w: 128, h: 140 } }, paintWinter: { centre: { src: snow, w: 128, h: 150 } } });
+  assert.ok(validMap(painted));
+  assert.equal(validMap(mapTown({ paintWinter: { centre: { src: 'javascript:1', w: 1, h: 1 } } })), false);
+  const { state } = fresh();
+  assert.ok(mapSvg(state, painted, { today: '2027-01-15' }).includes(`href="${snow}"`));
+  assert.ok(mapSvg(state, painted, { today: '2026-12-01' }).includes(`href="${snow}"`));
+  const autumn = mapSvg(state, painted, { today: '2026-11-10' });
+  assert.ok(autumn.includes(`href="${dot}"`) && !autumn.includes(snow));
+});
+
+test('a find is painted where there is a picture of it, and drawn where there is not', async () => {
+  const { paintedFindSvg } = await import('../js/ui/map-art.js');
+  assert.match(paintedFindSvg('sheep', 0, 0), /icons\/finds\.webp/);
+  assert.equal(paintedFindSvg('nothing-like-it', 0, 0), findSvg('nothing-like-it', 0, 0));
+});

@@ -5,7 +5,8 @@
 #
 #   python dev/build-landmarks.py <marks dir> <map.json> <city>
 #
-# <marks dir> holds <city>-<id>.png. Run it again after dev/build-map.mjs, which writes the file afresh.
+# <marks dir> holds <city>-<id>.png, and <city>-<id>.winter.png for the same place under snow (drawn from
+# first snow to the thaw), which goes in `paintWinter`. Run it again after dev/build-map.mjs, which writes the file afresh.
 import sys, os, io, json, base64
 from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -15,18 +16,24 @@ WIDTH = 128
 marks, path, city = sys.argv[1], sys.argv[2], sys.argv[3]
 m = json.load(open(path, encoding='utf-8'))
 ids = {p['id'] for p in m['places']} | {'centre'}
-paint = {}
-for f in sorted(os.listdir(marks)):
-    if not f.startswith(city + '-') or not f.endswith('.png'): continue
-    pid = f[len(city) + 1:-4]
-    if pid not in ids:
-        print('not a place on this map:', pid); continue
+def sprite(f):
     im = defringe(Image.open(os.path.join(marks, f)), inner=True)
     im = im.resize((WIDTH, round(im.size[1] * WIDTH / im.size[0])), Image.LANCZOS)
     buf = io.BytesIO(); im.save(buf, 'WEBP', quality=78, method=6)
-    paint[pid] = {'src': 'data:image/webp;base64,' + base64.b64encode(buf.getvalue()).decode(), 'w': im.size[0], 'h': im.size[1]}
+    return {'src': 'data:image/webp;base64,' + base64.b64encode(buf.getvalue()).decode(), 'w': im.size[0], 'h': im.size[1]}
+
+paint, winter = {}, {}
+files = sorted(f for f in os.listdir(marks) if f.startswith(city + '-') and f.endswith('.png'))
+for f in files:
+    if f.endswith('.winter.png'): continue
+    pid = f[len(city) + 1:-4]
+    if pid not in ids:
+        print('not a place on this map:', pid); continue
+    paint[pid] = sprite(f)
+    if f[:-4] + '.winter.png' in files: winter[pid] = sprite(f[:-4] + '.winter.png')
 m['paint'] = paint
+m['paintWinter'] = winter
 text = json.dumps(m, ensure_ascii=False, separators=(',', ':'))
 open(path, 'w', encoding='utf-8', newline='\n').write(text)
-size = sum(len(v['src']) for v in paint.values())
-print(f'{city}: {len(paint)} landmarks, {size // 1024} KB of paint, file {len(text) // 1024} KB; missing: {sorted(ids - set(paint))}')
+size = sum(len(v['src']) for v in [*paint.values(), *winter.values()])
+print(f'{city}: {len(paint)} landmarks ({len(winter)} with winter), {size // 1024} KB of paint, file {len(text) // 1024} KB; missing: {sorted(ids - set(paint))}')

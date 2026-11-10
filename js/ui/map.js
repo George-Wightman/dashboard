@@ -8,7 +8,7 @@ import { replay, claimable, placeable, makeCityOf, lookups, visibleOf, findName,
 import { key, unkey, DIRS } from '../map/hex.js';
 import {
   S, K, SQ3, DEPTH, centre, fromUnits, corners, pts, TERRAIN, CENTRE_TOP, PLAZA, TRACK_COLOUR, seasonOf, seasonTop, groundSvg, clipSvg,
-  decoSvg, findSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadSvg, bannerSvg, pinSvg, mix,
+  decoSvg, findSvg, paintedFindSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadSvg, bannerSvg, pinSvg, mix,
 } from './map-art.js';
 import { addDays, shortDate, shortWeekday } from '../dates.js';
 import { dayPoints } from '../map/points.js';
@@ -267,6 +267,7 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   const L = lookups(map);
   const season = seasonOf(today);
   const paint = painted ? paintPicker(map, today) : null;
+  const snowy = ['winter', 'late'].includes(paintSeason(today));
   const vis = state.visible;
   const camps = new Map(state.camps.map((c) => [key(c.q, c.r), c]));
   const builtAt = new Map(Object.entries(state.built).map(([b, k]) => [k, b]));
@@ -314,7 +315,9 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
     // A painted landmark (the map file's `paint`) is the whole tile: a building placed here, a wonder
     // built, a place found, or the centre.
     const markId = b ?? (site && (site.kind !== 'wonder' || state.wonders.has(site.id)) ? site.id : k === '0,0' ? 'centre' : null);
-    const mark = painted && markId && !camps.has(k) && !state.pillaged.has(k) ? map.paint?.[markId] : null;
+    const pm = painted && markId && !camps.has(k) && !state.pillaged.has(k) ? map.paint?.[markId] : null;
+    // Under snow from first snow to the thaw, where it was painted that way.
+    const mark = pm && snowy ? map.paintWinter?.[markId] ?? pm : pm;
     const art = !mark && !b && !camps.has(k) && !state.pillaged.has(k) ? paint?.(t) : null;
     ground += `<g data-k="${k}"${fr}>${mark ? landmarkSvg(mark, x, y, owned) : art ? paintedSvg(art, x, y, owned) : groundSvg(x, y, top, { faded: !owned })}</g>`;
     const deco = () => (art ? '' : decoSvg(t.terrain, x, y, { q: t.q, r: t.r, season, clip }));
@@ -325,7 +328,7 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
     else if (site?.kind === 'wonder') sp = state.wonders.has(site.id) ? artImage(map, site.id, x, y + 7, placeScale(map, site.id)) : deco() + starSvg(x, y - 2, owned);
     else if (site) sp = artImage(map, site.id, x, y + 7, placeScale(map, site.id)) || deco();
     else if (k === '0,0') sp = artImage(map, 'centre', x, y + 7, map.centreScale ?? 0.5);
-    else sp = deco() + (t.find && !state.claimedFinds.has(k) ? findSvg(t.find, x + 9, y + 4) : '');
+    else sp = deco() + (t.find && !state.claimedFinds.has(k) ? (painted ? paintedFindSvg : findSvg)(t.find, x + 9, y + 4) : '');
     if (state.pillaged.has(k)) sp += smokeSvg(x, y);
     sprites += `<g${fr}>${sp}</g>`;
     if (picks.has(k)) glow += `<polygon points="${pts(corners(x, y, S * 0.88))}" fill="rgba(243,210,126,.34)" stroke="#ffd866" stroke-width="2.6"/><g class="map-pick">${plusSvg(x, y)}</g>`;
