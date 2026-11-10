@@ -28,6 +28,32 @@ export function currentMap(maps, doc, today) {
 }
 
 let cached = { key: null, map: null, state: null };
+const otherCache = new Map();
+// The other cities, each where it really is on this city's board: the pin this map has for it (by
+// name) is its centre. A city with no pin here isn't drawn. Pure.
+export function neighbourCities(map, maps) {
+  const out = [];
+  for (const m of maps ?? []) {
+    if (m === map || m.id === map.id) continue;
+    const pin = (map.pins ?? []).find((p) => p.name === m.name);
+    if (pin) out.push({ map: m, pin: pin.name, at: fromUnits(pin.at) });
+  }
+  return out;
+}
+function othersFor(ctx, map, today) {
+  const maps = ctx.maps?.() ?? [];
+  const doc = ctx.store.doc();
+  const k = `${ctx.store.revision?.() ?? 0}|${today}|${maps.length}`;
+  return neighbourCities(map, maps).filter(({ map: m }) => m.start <= today).map((n) => {
+    let c = otherCache.get(n.map.id);
+    if (!c || c.key !== k || c.map !== n.map) {
+      c = { key: k, map: n.map, state: replay({ doc, map: n.map, today, cityOf: makeCityOf(doc, maps) }) };
+      otherCache.set(n.map.id, c);
+    }
+    return { ...n, state: c.state };
+  });
+}
+
 function stateFor(ctx) {
   const maps = ctx.maps?.() ?? [];
   const doc = ctx.store.doc();
@@ -110,7 +136,7 @@ const placeScale = (map, id) => map.places.find((p) => p.id === id)?.scale ?? 0.
 
 // The land as SVG. `world` adds the sea, the coasts and the pins; `picks` glow to claim, `targets` to
 // build on; `fresh` rise in. `id` keeps clip paths unique on the page.
-export function mapSvg(state, map, { today, world = false, picks = new Set(), targets = new Set(), fresh = new Set(), id = 'm' } = {}) {
+export function mapSvg(state, map, { today, world = false, picks = new Set(), targets = new Set(), fresh = new Set(), id = 'm', others = [], backdrop = true } = {}) {
   const L = lookups(map);
   const season = seasonOf(today);
   const vis = state.visible;
@@ -120,7 +146,7 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   const fogHex = (x, y) => `<polygon points="${pts(corners(x, y, S))}" fill="none" stroke="#cdb98a" stroke-width=".9"/>`;
   let defs = `<pattern id="${id}-fog" width="${w.toFixed(3)}" height="${hh.toFixed(3)}" patternUnits="userSpaceOnUse"><rect width="${w.toFixed(3)}" height="${hh.toFixed(3)}" fill="#e8dab1"/>${fogHex(0, 0)}${fogHex(w, 0)}${fogHex(w / 2, hh / 2)}${fogHex(0, hh)}${fogHex(w, hh)}</pattern>`
     + `<filter id="${id}-glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.2"/></filter>`;
-  let back = '';
+  let back = '', farPins = '';
   if (world) {
     const P = (u) => fromUnits(u).map((n) => n.toFixed(1)).join(' ');
     const ring = (rings) => (rings ?? []).map((r) => 'M' + r.map(P).join('L') + 'Z').join('');
@@ -129,8 +155,13 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
     back = `<rect x="-40000" y="-40000" width="80000" height="80000" fill="url(#${id}-sea)"/>`
       + `<path d="${europe}" fill="none" stroke="#86c3cf" stroke-width="40" stroke-linejoin="round" opacity=".55"/><path d="${europe}" fill="url(#${id}-fog)" stroke="#8a7652" stroke-width="3"/>`
       + `<path d="${coast}" fill="none" stroke="#86c3cf" stroke-width="26" stroke-linejoin="round" opacity=".55"/><path d="${coast}" fill="url(#${id}-fog)" stroke="#8a7652" stroke-width="2.5"/>`
-      + (map.pins ?? []).map((p) => { const [x, y] = fromUnits(p.at); return pinSvg(x, y, p.name, p.sub, p.scale ?? 3); }).join('');
-  } else {
+      + (map.pins ?? []).filter((p) => !others.some((o) => o.pin === p.name)).map((p) => { const [x, y] = fromUnits(p.at); return pinSvg(x, y, p.name, p.sub, p.scale ?? 3); }).join('');
+    // The other cities' land, as it stands, where they are: to look at, not to play.
+    back += others.map((o) => `<g transform="translate(${o.at[0].toFixed(1)} ${o.at[1].toFixed(1)})" pointer-events="none">${mapSvg(o.state, o.map, { today, id: `${id}-o-${o.map.id}`, backdrop: false })}</g>`).join('');
+    // Zoomed out, a city's land is a speck: each gets a pin, which goes once you're close.
+    farPins = [[0, 0, map.name, `${state.owned.size} tiles · here`], ...others.map((o) => [o.at[0], o.at[1], o.map.name, `${o.state.owned.size} tiles`])]
+      .map(([x, y, name, sub]) => `<g class="map-far" data-at="${x.toFixed(1)} ${y.toFixed(1)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(40)">${pinSvg(0, 0, name, sub, 1)}</g>`).join('');
+  } else if (backdrop) {
     back = `<rect x="-40000" y="-40000" width="80000" height="80000" fill="url(#${id}-fog)"/>`;
   }
   let fog = '', ground = '', sprites = '', glow = '', clips = '';
@@ -191,7 +222,7 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   // Everything over the tiles lets a tap through to the tile underneath.
   return `<defs>${defs}${clips}<clipPath id="${id}-vis">${visClip}</clipPath></defs>${back}${fog}${ground}<g pointer-events="none">${lines}${roads}${zones}`
     + `<path d="${border}" stroke="${gold}" stroke-width="${state.golden.on ? 7 : 5}" opacity=".45" filter="url(#${id}-glow)" fill="none"/><path d="${border}" stroke="${state.golden.on ? '#ffe9a0' : '#f3d27e'}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`
-    + `${sprites}${glow}${bannerSvg(map.name, state.owned.size, cx, cy - 62, state.golden.on)}</g>`;
+    + `${sprites}${glow}${bannerSvg(map.name, state.owned.size, cx, cy - 62, state.golden.on)}${farPins}</g>`;
 }
 
 // The box round some tiles, as a 16:9 viewBox.
@@ -205,6 +236,36 @@ function fit([x0, y0, x1, y1], ar = 16 / 9) {
   if (w / hgt > ar) hgt = w / ar; else w = hgt * ar;
   return [(x0 + x1) / 2 - w / 2, (y0 + y1) / 2 - hgt / 2, w, hgt];
 }
+// How far the board can zoom: in to a few tiles, out to Europe (or a wide ring round the land when
+// the map has no Europe view); and it can't be dragged off that. Pure.
+export function viewLimits(europe, land, ar) {
+  const [x, y, w, hh] = europe ?? [land[0] - land[2] * 2.5, land[1] - land[3] * 2.5, land[2] * 6, land[3] * 6];
+  return { minW: S * 7, maxW: w, bounds: [x, y, x + w, y + hh], ar };
+}
+export function clampView(v, lim) {
+  if (!lim) return v;
+  let [x, y, w, hh] = v;
+  const ar = w / hh;
+  const nw = Math.max(lim.minW, Math.min(lim.maxW, w));
+  if (nw !== w) { const cx = x + w / 2, cy = y + hh / 2; w = nw; hh = nw / ar; x = cx - w / 2; y = cy - hh / 2; }
+  const [bx0, by0, bx1, by1] = lim.bounds;
+  // The view's centre stays over the bounds.
+  const cx = Math.max(bx0, Math.min(bx1, x + w / 2)), cy = Math.max(by0, Math.min(by1, y + hh / 2));
+  return [cx - w / 2, cy - hh / 2, w, hh];
+}
+
+// Closer than this (in board units across), the far pins go.
+export const NEAR_WIDTH = 3000;
+function showView(svg, v) {
+  svg.setAttribute('viewBox', v.map((n) => n.toFixed(1)).join(' '));
+  const near = v[2] < NEAR_WIDTH;
+  svg.classList.toggle('near', near);
+  // Far pins stay the same size on the screen, however far out.
+  if (near) return;
+  const scale = (0.5 * v[2]) / (svg.clientWidth || 360);
+  for (const g of svg.querySelectorAll('.map-far')) g.setAttribute('transform', `translate(${g.dataset.at}) scale(${scale.toFixed(2)})`);
+}
+
 function svgEl(viewBox, inner, cls) {
   const svg = document.createElementNS(SVGNS, 'svg');
   svg.setAttribute('viewBox', viewBox.map((n) => n.toFixed(1)).join(' '));
@@ -269,12 +330,20 @@ export function renderMapBig(ctx) {
     country: map.view?.country ? () => fit([...fromUnits(map.view.country.slice(0, 2)), ...fromUnits(map.view.country.slice(2))], ar) : null,
     europe: map.view?.europe ? () => fit([...fromUnits(map.view.europe.slice(0, 2)), ...fromUnits(map.view.europe.slice(2))], ar) : null,
   };
-  ui.view ??= views.land();
-  const svg = svgEl(ui.view, mapSvg(state, map, { today, world: true, picks, targets, id: 'mb' }), 'map-board');
+  const others = othersFor(ctx, map, today);
+  // Each other city gets a button that flies there.
+  const cityViews = Object.fromEntries(others.map((o) => [`city:${o.map.id}`, () => {
+    const [x, y, w, hgt] = boxAround(o.state.visible, S * (ar < 1 ? 2.5 : 4.5), ar);
+    return [x + o.at[0], y + o.at[1], w, hgt];
+  }]));
+  const limits = viewLimits(views.europe?.(), views.land(), ar);
+  ui.view = clampView(ui.view ?? views.land(), limits);
+  const svg = svgEl(ui.view, mapSvg(state, map, { today, world: true, picks, targets, id: 'mb', others }), 'map-board');
+  showView(svg, ui.view);
   const tip = h('div', { class: 'map-tip', role: 'status' });
   const box = h('div', { class: 'map-box' }, svg, tip,
     h('p', { class: 'map-hint' }, ui.armed ? 'Pick a glowing tile to build on' : state.ready ? `Pick a glowing tile to claim (${state.ready} waiting)` : 'Finish your day to earn more tiles'));
-  wireBoard(ctx, svg, tip, { map, state, today, picks, targets });
+  wireBoard(ctx, svg, tip, { map, state, today, picks, targets, limits });
 
   const L = lookups(map);
   const track = (tr, def) => {
@@ -304,14 +373,15 @@ export function renderMapBig(ctx) {
       onclick: () => { ui.armed = pressed ? null : c; ctx.render(); } },
     art, h('span', {}, h('b', {}, name), h('small', {}, ok ? (pressed ? 'Now pick a glowing tile' : 'Tap, then pick a tile') : c.kind === 'wonder' ? 'Reach a wonder site first' : 'Reach its zone first')));
   }) : h('p', { class: 'muted' }, 'No cards yet. Each track earns buildings; a goal step earns a wonder.'));
-  const zoom = h('div', { class: 'map-zoom' }, Object.entries(views).filter(([, f]) => f).map(([name, f]) =>
+  const cityName = Object.fromEntries(others.map((o) => [`city:${o.map.id}`, o.map.name]));
+  const zoom = h('div', { class: 'map-zoom' }, Object.entries({ ...views, ...cityViews }).filter(([, f]) => f).map(([name, f]) =>
     h('button', { class: 'dl-btn', type: 'button', 'aria-pressed': String(ui.zoom === name),
       onclick: (e) => {
         ui.zoom = name;
         for (const b of e.currentTarget.parentElement.querySelectorAll('[aria-pressed]')) b.setAttribute('aria-pressed', String(b === e.currentTarget));
-        animateView(ctx, svg, f());
-      } }, name === 'land' ? map.name : map.viewNames?.[name] ?? { england: 'England', country: 'Country', europe: 'Europe' }[name])),
-  h('button', { class: 'dl-btn', type: 'button', onclick: () => playHistory(ctx, svg, { map, state, today }) }, 'Watch it grow'));
+        animateView(ctx, svg, clampView(f(), limits));
+      } }, name === 'land' ? map.name : cityName[name] ?? map.viewNames?.[name] ?? { england: 'England', country: 'Country', europe: 'Europe' }[name])),
+  h('button', { class: 'dl-btn', type: 'button', onclick: () => playHistory(ctx, svg, { map, state, today, others }) }, 'Watch it grow'));
   return h('div', { class: 'map-big' }, hud, box, zoom, pointsSection(ctx.store.doc(), today, map), h('h3', {}, 'Cards'), cards, tracks, chronicle(state));
 }
 
@@ -344,21 +414,53 @@ function chronicle(state) {
       e.quote ? h('q', {}, e.quote) : null))));
 }
 
-// Drag to look around, wheel to zoom, tap to claim or build, hover to read a tile.
-function wireBoard(ctx, svg, tip, { map, state, today, picks, targets }) {
+// Drag to look around, wheel or pinch to zoom, tap to claim or build, hover to read a tile.
+function wireBoard(ctx, svg, tip, { map, state, today, picks, targets, limits }) {
   const ui = ctx.ui.map;
   let drag = null;
+  const touches = new Map();
+  let pinch = null;
   const view = () => ui.view;
-  const set = (v) => { ui.view = v; svg.setAttribute('viewBox', v.map((n) => n.toFixed(1)).join(' ')); };
-  svg.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, v: [...view()], moved: false }; });
+  const set = (v) => { ui.view = clampView(v, limits); showView(svg, ui.view); };
+  const twoFingers = () => {
+    const [a, b] = [...touches.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
+  svg.addEventListener('pointerdown', (e) => {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      // A second finger: pinch from here, and the first finger's drag (and tap) is over.
+      pinch = { ...twoFingers(), v: [...view()] };
+      drag = { moved: true };
+      for (const id of touches.keys()) { try { svg.setPointerCapture?.(id); } catch { /* a finger already gone */ } }
+      return;
+    }
+    if (touches.size > 2) return;
+    drag = { x: e.clientX, y: e.clientY, v: [...view()], moved: false };
+  });
+  const lift = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+  svg.addEventListener('pointercancel', (e) => { lift(e); if (!touches.size) drag = null; });
   svg.addEventListener('pointermove', (e) => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && touches.size >= 2) {
+      // The point under the fingers' first midpoint follows them; the spread sets the zoom.
+      const t = twoFingers(), r = svg.getBoundingClientRect(), v = pinch.v, f = pinch.d / t.d;
+      const mx = v[0] + ((pinch.x - r.left) / r.width) * v[2], my = v[1] + ((pinch.y - r.top) / r.height) * v[3];
+      const w = v[2] * f, hh = v[3] * f;
+      set([mx - ((t.x - r.left) / r.width) * w, my - ((t.y - r.top) / r.height) * hh, w, hh]);
+      return;
+    }
     if (!drag) { if (e.pointerType === 'mouse') showTip(e); return; }
+    if (drag.x === undefined) return;
     if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 5) { drag.moved = true; svg.setPointerCapture?.(e.pointerId); }
     if (!drag.moved) return;
     const k = view()[2] / svg.clientWidth;
     set([drag.v[0] - (e.clientX - drag.x) * k, drag.v[1] - (e.clientY - drag.y) * k, view()[2], view()[3]]);
   });
   svg.addEventListener('pointerup', (e) => {
+    lift(e);
+    // Until the last finger is up nothing is a tap.
+    if (touches.size) { if (drag) drag.moved = true; return; }
     const moved = drag?.moved;
     drag = null;
     if (moved) return;
@@ -380,6 +482,7 @@ function wireBoard(ctx, svg, tip, { map, state, today, picks, targets }) {
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
     const v = view(), f = e.deltaY > 0 ? 1.15 : 1 / 1.15, r = svg.getBoundingClientRect();
+    if ((f > 1 && v[2] >= limits.maxW) || (f < 1 && v[2] <= limits.minW)) return;
     const mx = v[0] + ((e.clientX - r.left) / r.width) * v[2], my = v[1] + ((e.clientY - r.top) / r.height) * v[3];
     set([mx - (mx - v[0]) * f, my - (my - v[1]) * f, v[2] * f, v[3] * f]);
   }, { passive: false });
@@ -402,14 +505,14 @@ function animateView(ctx, svg, to) {
   const step = (now) => {
     const t = reduce ? 1 : Math.min(1, (now - t0) / 600), e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
     ui.view = from.map((a, i) => a + (to[i] - a) * e);
-    svg.setAttribute('viewBox', ui.view.map((n) => n.toFixed(1)).join(' '));
+    showView(svg, ui.view);
     if (t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 }
 
 // The time-lapse: the era from the first turn, a tenth of a second a turn.
-function playHistory(ctx, svg, { map, state, today }) {
+function playHistory(ctx, svg, { map, state, today, others = [] }) {
   const frames = state.history ?? [];
   if (!frames.length) return;
   clearInterval(ctx.ui.map.playing);
@@ -422,6 +525,6 @@ function playHistory(ctx, svg, { map, state, today }) {
       ...state, owned, visible: visibleOf(map, owned), built: f.built, levels: f.levels, wonders: new Set(f.wonders), camps: f.camps,
       pillaged: new Set(f.pillaged), roads: f.roads, golden: { on: f.golden, run: 0 }, found: new Set(f.found), claimedFinds: new Set(f.claimedFinds),
     };
-    svg.innerHTML = mapSvg(frame, map, { today: f.day, world: true, id: 'mb' });
+    svg.innerHTML = mapSvg(frame, map, { today: f.day, world: true, id: 'mb', others });
   }, 110);
 }

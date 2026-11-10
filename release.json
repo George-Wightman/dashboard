@@ -1,10 +1,10 @@
 {
-  "id": "02d68acad1915826c4701ae579f603ed4afd2b855adadf15a7232239b35fd103",
+  "id": "f64c5bd0b25244bcb8384bf613de8ec7ab85cd004d6dc59403312cb09ae281f3",
   "files": {
     "./": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
     "index.html": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
     "styles.css": "82757c6e1a2f8af994dc37b125a00f8bf62b90d7bafe61e98bb1dbfa5f674836",
-    "styles/daylight.css": "b0c6dfe01b5b7fc778ac986f4c2c269f0ceeb1c9c7789c645b9d46b189994949",
+    "styles/daylight.css": "0921dac4a6ac24dc6c598be9f2ad182e8fb22b456382f908cdc4bf31f07edc35",
     "styles/tools.css": "56d0273266b41f26166c2c732b6a1ab69d3452dbe251037c97d38326dda84847",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
@@ -23,7 +23,7 @@
     "js/record.js": "d0a4966d6a67e55c5cbaba36f687962b4e99cdf639a74ba68ce7a13804d2f084",
     "js/merge.js": "d829d0ffc0843bd4048a1f5781bedb1ea07e254708f4605caf41107b1e3bbe87",
     "js/sync.js": "b1238bfbfaa14a8ea9b716f322de5d5a3764e63312cf3ab1cf7b91e66c7ca4a4",
-    "js/hebrewSync.js": "a88a6ba27fd86c3d93c27ac75acb22d641267a82fe4585b23e01879d4a90acfe",
+    "js/hebrewSync.js": "ff5edc377687a7becaecf28da172c7d9c2e442c2db80c439f8bbb35397ed75b7",
     "js/hebrew-voice.js": "4362284dc23924d28ab585d2c3d9dabdf77c1c2175666e0e2f961248f73872ff",
     "js/duolingo.js": "12cff0df7d7af5a2ecb5088ba65570ce16a889c1397ad7b0b220d18917763cc7",
     "js/gemini.js": "b127b58ec9f2b6e686288335910b2f06e142d59ea21e260c819982b769f1912e",
@@ -105,7 +105,7 @@
     "js/map/files.js": "55d4d68d3fe339a9a5f75fc918c3e1890fece613c5a5d5bf83bb06eb6d3dec2c",
     "js/map/summary.js": "2474984af9df955b38af09f716387c4cf0a9c84a9ad5ffbea57867fec1a321f9",
     "js/map/points.js": "3008295a9be0973d9d978af164c6e4d3046f32c414e5ba34275a6d67c1e2b119",
-    "js/ui/map.js": "6079c85c28afc113dc61ef236d177c1282e69fed155cab134b760110088d95dd",
+    "js/ui/map.js": "f77a3a48fb5d6e7543175d0059e1b9ac5e54294cb45b0031bebe7c425270be48",
     "js/ui/map-art.js": "4f48bb3ceb004387bc46973f2b28528ec805657c37c17bba113019832550185a"
   }
 }

@@ -473,6 +473,14 @@ function logText(store, entry) {
 function archive(store, op) {
   const { map, id, rec } = resolveId(store.doc(), op.id, ['items', 'goals', 'milestones', 'logs', 'flags']);
   if (rec.status === 'archived') {
+    // Already gone (the planner archives a task whose block he deleted): his reason still releases
+    // it, so a task he did or no longer needed stops counting as a miss.
+    const late = map === 'items' ? str(op.released) : '';
+    if (late) {
+      if (late.length > 200) throw new Error('A release reason is at most 200 characters');
+      store.updateItem(id, { released: late });
+      return `${noun(map, rec)} ${q(nameOf(rec))} was already archived; released: ${q(late)}`;
+    }
     return map === 'logs'
       ? `${logText(store, rec)} was already removed`
       : `${noun(map, rec)} ${q(nameOf(rec))} was already ${map === 'flags' ? 'addressed' : 'archived'}`;

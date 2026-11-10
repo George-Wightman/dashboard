@@ -298,3 +298,13 @@ test('an old-titled goal is renamed once; a title you chose is kept', () => {
   ensureHebrewGoal(mine);
   assert.equal(mine.doc().goals[HEBREW_IDS.goal].title, 'Speak Hebrew with Sam');
 });
+
+test('a day the old merge zeroed does not blank the strong count', async () => {
+  const store = makeStore();
+  const stats = {
+    '2026-09-08': { sec: 300, sessions: 1, bands: { strong: 85 } },
+    '2026-09-09': { sec: 300, sessions: 1, bands: { strong: 0 } },
+  };
+  const result = await syncHebrewProgress({ store, client: client(await envelope(stats, {})) });
+  assert.equal(result.strong, 85);
+});

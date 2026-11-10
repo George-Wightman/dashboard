@@ -279,7 +279,8 @@ on its own date.
 `{"op": "archive", "id": "…"}` — archives an item, goal or milestone (history is kept), removes a
 logged amount or tick, or marks a flag addressed. Use `dismiss` for a suggestion. A task George has
 said is no longer needed takes his reason: `{"op": "archive", "id": "…", "released": "Nathan already
-sent the list"}` — once today has locked, that keeps it from counting as a miss. Only with his reason,
+sent the list"}` — once today has locked, that keeps it from counting as a miss. It works on a task
+that's already archived too (the planner archives one whose block he deleted). Only with his reason,
 never to tidy a bad day.
 
 ### `accept`

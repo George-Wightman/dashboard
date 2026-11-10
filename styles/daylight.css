@@ -583,6 +583,7 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .map-box { position: relative; border-radius: 16px; overflow: hidden; background: #2f6f8a; }
 .map-board { display: block; width: 100%; height: min(62vh, 640px); touch-action: none; cursor: grab; user-select: none; }
 .map-board:active { cursor: grabbing; }
+.map-board.near .map-far { display: none; }
 .map-hint { position: absolute; left: 10px; bottom: 10px; margin: 0; padding: 4px 10px; border-radius: 8px; background: #16324acc; color: #eaf0f4; font-size: 13px; font-weight: 700; pointer-events: none; }
 .map-tip { position: absolute; z-index: 2; display: grid; gap: 2px; max-width: 230px; padding: 6px 10px; border-radius: 8px; background: #16324af2; color: #eaf0f4; border: 1px solid #E2B85C; font-size: 13px; pointer-events: none; opacity: 0; transition: opacity .12s; }
 .map-tip.show { opacity: 1; }

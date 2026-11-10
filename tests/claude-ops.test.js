@@ -339,6 +339,16 @@ test("archive with released: George's reason is kept, so a committed task doesn'
   assert.equal(s.doc().items['rec-2'].status, 'active');
 });
 
+test('a task already archived (its block deleted) can still be released with his reason', () => {
+  const s = fresh();
+  runOp(s, { op: 'task', title: 'Email the NCA' });
+  runOp(s, { op: 'archive', id: 'rec-1' });
+  assert.equal(runOp(s, { op: 'archive', id: 'rec-1', released: 'He sent it himself' }),
+    'task "Email the NCA" was already archived; released: "He sent it himself"');
+  assert.equal(s.doc().items['rec-1'].released, 'He sent it himself');
+  assert.equal(s.doc().items['rec-1'].status, 'archived');
+});
+
 const pickCountdown = (r) => ({ title: r.title, day: r.day, source: r.source });
 
 test('a task added or moved onto its area\'s day off says it won\'t be listed or booked', () => {

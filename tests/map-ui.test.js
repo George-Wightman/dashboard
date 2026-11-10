@@ -70,3 +70,32 @@ test('a find is named by its map; mountain ground and each Salzburg find have dr
   assert.match(decoSvg('mountain', 0, 0), /<polygon/);
   for (const f of ['salt', 'cows', 'timber', 'trout', 'marble', 'beer']) assert.notEqual(findSvg(f, 0, 0), '', f);
 });
+
+test('the board zooms in to a few tiles and out no further than Europe, and stays over it', async () => {
+  const { viewLimits, clampView } = await import('../js/ui/map.js');
+  const lim = viewLimits([-1000, -500, 2000, 1000], [0, 0, 100, 50], 2);
+  assert.deepEqual(clampView([-5000, -2500, 10000, 5000], lim), [-1000, -500, 2000, 1000]);
+  const tiny = clampView([0, 0, 10, 5], lim);
+  assert.equal(tiny[2], lim.minW);
+  assert.equal(tiny[2] / tiny[3], 2);
+  const far = clampView([50000, 0, 200, 100], lim);
+  assert.equal(far[0] + far[2] / 2, 1000);
+  // No Europe view: a wide ring round the land.
+  assert.equal(viewLimits(null, [0, 0, 100, 50], 2).maxW, 600);
+});
+
+test('another city shows where its pin is, and its pin gives way to it', async () => {
+  const { neighbourCities } = await import('../js/ui/map.js');
+  const home = mapTown({ pins: [{ name: 'Faraway', sub: 'Next', at: [10, 5] }, { name: 'London', at: [1, 1] }] });
+  const away = mapTown({ id: 'away', name: 'Faraway' });
+  const n = neighbourCities(home, [home, away]);
+  assert.equal(n.length, 1);
+  assert.equal(n[0].map.id, 'away');
+  const { state } = fresh();
+  const awayState = replay({ doc: makeStore().doc(), map: away, today: map.start });
+  const svg = mapSvg(state, home, { today: map.start, world: true, others: [{ ...n[0], state: awayState }] });
+  assert.ok(svg.includes('FARAWAY'));
+  // Its own pin ("Next") gives way to its land, and a far-off pin with its tiles.
+  assert.ok(svg.includes('London') && !svg.includes('>Next<') && svg.includes('class="map-far"'));
+  assert.equal(neighbourCities(home, [home]).length, 0);
+});

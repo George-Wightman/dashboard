@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'be13a263';
+var PLANNER_BUILD = '8b6ff06e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -6803,7 +6803,8 @@ function metricsOf({ stats, landed, pathscores }) {
   let strong = 0;
   for (let i = days.length - 1; i >= 0; i--) {
     const bands = stats[days[i]]?.bands;
-    if (bands && typeof bands.strong === 'number') { strong = bands.strong; break; }
+    // A day the old sync merge zeroed reads 0: skip it, so one bad day can't blank the count.
+    if (bands && typeof bands.strong === 'number' && bands.strong > 0) { strong = bands.strong; break; }
   }
   return {
     strong,
