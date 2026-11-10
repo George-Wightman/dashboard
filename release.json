@@ -1,5 +1,5 @@
 {
-  "id": "2a099bf2e7a4dbcd1e3132f25f58739ceefb834e207755e09c3a99acc94deae7",
+  "id": "e6f91a1fab2d14e98dcf805097d7e3689bd4e39d370d2d19899ef56ae133bfee",
   "files": {
     "./": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
     "index.html": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
@@ -31,7 +31,7 @@
     "js/layout.js": "1c163eb392156ca65a9efe5b3311e1dfdc676758304fac01fa84fe5f62932ef7",
     "js/flags.js": "762158e944f68eb298f2f8be69d99993142e9ea4fc487d4ba47a646b9af4cab7",
     "js/changes.js": "04e5e8048b847eabda9e677b9627b55c308d0af869390e0720e9799690c95044",
-    "js/calendar.js": "74f918cf573406e2d9aa76a54c8a822a2bf17ab4070db2163f2de7b2f3f2ffa4",
+    "js/calendar.js": "d7148bb05b99639aa74b136b887047303ab11341afe74096986c97305b15cc4b",
     "js/attention.js": "e4c06e222795ab4ba871b616bd0af91e6fecc3f13f85e756460cd1cb4895ced9",
     "js/gym.js": "57c4fe5970e6a3c99a1a83e8f0c1d494701188452224a9ab7e98017bbff1f3c2",
     "js/checkins.js": "03e42f6c08779d1468ad159ff166cbcf93c91a60c045bea4e789c929bea7df51",
@@ -90,7 +90,7 @@
     "js/ui/svg.js": "9c672f1bc3e7ddb89d25dc33c22a8cd564d71126e0b3ea60d01d533931b377c1",
     "js/vendor/leaflet/leaflet.js": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a",
     "js/vendor/leaflet/leaflet.css": "337bfca5cabd03b39815b2700febe2b3b7edf55921c59cd49f88ecb328212303",
-    "js/nudges.js": "c650bf8ab5b608ab73867041515f3022986dfd72570e9daf175bfaa2a32ad3fa",
+    "js/nudges.js": "c0bd90aeb1960898a7325d6e51d88f03df4c71739e31e378382f417337f00e8a",
     "js/review.js": "f8ab2449958bf945d99af808eb5568d7cde9d05027b1b33b8e163e1cb3ef5560",
     "js/ui/review.js": "681eccd930ee009f6b23948f6e3fb075511e85f20695c23faff831ff876d274f",
     "js/ui/noteslot.js": "39a25bfbafa3fbbba2fcbf3a16b780b5ca7dc1afaecda5f450a1391775a0497b",
@@ -105,7 +105,7 @@
     "js/map/files.js": "a61413b72c60f5adb0a239ff427471a7770bc77855f23ffc711fd0b623f6c735",
     "js/map/summary.js": "2474984af9df955b38af09f716387c4cf0a9c84a9ad5ffbea57867fec1a321f9",
     "js/map/points.js": "3008295a9be0973d9d978af164c6e4d3046f32c414e5ba34275a6d67c1e2b119",
-    "js/ui/map.js": "8490bfec01557c61233b03c839659b9dcd48e05d0332af9759c806ec1ba7c6dc",
+    "js/ui/map.js": "dd3f64ea0b8f56e724895f71e5ac3ed4cc410972c09bfab2fb517eee153e3645",
     "js/ui/map-art.js": "895e21d00f997d8caedd2d510407938ea9a3e048f05db3f724b7a0d9dcdaddcd",
     "js/map/terrain-atlas.js": "ce9b5f37a10553f559751b6202b0e339e36de3c85601fb0e2079f85fcb72be50",
     "icons/terrain.webp": "48fff6264d9ee7b6a8f1b75fc17c880ab6a87130dad8ba033585439ae0eecd22"

@@ -139,3 +139,11 @@ test('a painted landmark is drawn as its whole tile once it is in sight, never b
   assert.equal(state.visible.has(`${site.q},${site.r}`), svg.includes(`href="${dot}AA"`));
   assert.ok(!mapSvg(state, painted, { today: '2026-11-10', painted: false }).includes(dot));
 });
+
+test('a river along the edge between two rows takes one line of tiles, not both', async () => {
+  const { riverGraph } = await import('../js/ui/map.js');
+  const v = (0.5 * Math.sqrt(3)) / 2 + 0.01; // just below the edge between rows 0 and 1
+  const { tiles, links } = riverGraph({ lines: [{ kind: 'river', segs: [[[-3, v], [-1, v - 0.02], [1, v + 0.02], [3, v]]] }] });
+  assert.ok(tiles.size <= 8, `${tiles.size} tiles`);
+  assert.ok([...links.values()].every((n) => n.size <= 2));
+});
