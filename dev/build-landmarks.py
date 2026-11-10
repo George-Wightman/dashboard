@@ -8,6 +8,8 @@
 # <marks dir> holds <city>-<id>.png. Run it again after dev/build-map.mjs, which writes the file afresh.
 import sys, os, io, json, base64
 from PIL import Image
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from defringe import defringe
 
 WIDTH = 128
 marks, path, city = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -19,7 +21,7 @@ for f in sorted(os.listdir(marks)):
     pid = f[len(city) + 1:-4]
     if pid not in ids:
         print('not a place on this map:', pid); continue
-    im = Image.open(os.path.join(marks, f)).convert('RGBA')
+    im = defringe(Image.open(os.path.join(marks, f)), inner=True)
     im = im.resize((WIDTH, round(im.size[1] * WIDTH / im.size[0])), Image.LANCZOS)
     buf = io.BytesIO(); im.save(buf, 'WEBP', quality=78, method=6)
     paint[pid] = {'src': 'data:image/webp;base64,' + base64.b64encode(buf.getvalue()).decode(), 'w': im.size[0], 'h': im.size[1]}

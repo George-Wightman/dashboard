@@ -9,6 +9,8 @@
 # trees can spill a little past it, so the median of the set is used).
 import sys, os, json, re, statistics
 from PIL import Image
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from defringe import defringe
 
 BASE = 160
 SEASONS = ('autumn', 'late', 'winter')
@@ -26,7 +28,7 @@ for s, _, _, f in parsed: widths.setdefault(s, []).append(Image.open(os.path.joi
 ref = {s: statistics.median(w) for s, w in widths.items()}
 sprites = []
 for s, season, n, f in parsed:
-    im = Image.open(os.path.join(src, f)).convert('RGBA')
+    im = defringe(Image.open(os.path.join(src, f)))
     k = BASE / ref[s]
     im = im.resize((max(1, round(im.size[0] * k)), max(1, round(im.size[1] * k))), Image.LANCZOS)
     sprites.append((s, season, n, im))

@@ -1,5 +1,5 @@
 {
-  "id": "2fa60c133186363faf96333e52723b5bbae5b38849a498bc1788fb364c999909",
+  "id": "2a099bf2e7a4dbcd1e3132f25f58739ceefb834e207755e09c3a99acc94deae7",
   "files": {
     "./": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
     "index.html": "f4e3a65cae5886bd12a9c5ee37a2228a9c7a9c8bec9beba8d9f268a5ae44ea44",
@@ -108,6 +108,6 @@
     "js/ui/map.js": "8490bfec01557c61233b03c839659b9dcd48e05d0332af9759c806ec1ba7c6dc",
     "js/ui/map-art.js": "895e21d00f997d8caedd2d510407938ea9a3e048f05db3f724b7a0d9dcdaddcd",
     "js/map/terrain-atlas.js": "ce9b5f37a10553f559751b6202b0e339e36de3c85601fb0e2079f85fcb72be50",
-    "icons/terrain.webp": "4de3272a975eac75db03cb62ce642685bf5108d3e3fb5cd05de3990dd7e9e809"
+    "icons/terrain.webp": "48fff6264d9ee7b6a8f1b75fc17c880ab6a87130dad8ba033585439ae0eecd22"
   }
 }
