@@ -12,6 +12,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from defringe import defringe
 from hexbase import base_width
+from unmix import unmix
 
 BASE = 160
 SEASONS = ('autumn', 'late', 'winter', 'spring')
@@ -25,9 +26,13 @@ for f in files:
     parsed.append((m.group(1), m.group(2), int(m.group(3)), f))
 # Heather is purple to its edges: the fringe pass would eat into it, so it gets one pass, not three.
 HEATHER = {'hills-autumn-2.png', 'hills-late-2.png', 'hills-winter-2.png'}
+# Bare winter woods: thin twigs kept the magenta's tint, so the magenta is taken out pixel by pixel.
+UNMIX = {'forest-winter-2.png', 'forest-winter-4.png'}
 sprites = []
 for s, season, n, f in parsed:
-    im = defringe(Image.open(os.path.join(src, f)), passes=1 if f in HEATHER else 3)
+    im = Image.open(os.path.join(src, f))
+    if f in UNMIX: im = unmix(im)
+    im = defringe(im, passes=1 if f in HEATHER else 3)
     k = BASE / base_width(im)
     im = im.resize((max(1, round(im.size[0] * k)), max(1, round(im.size[1] * k))), Image.LANCZOS)
     sprites.append((s, season, n, im))
