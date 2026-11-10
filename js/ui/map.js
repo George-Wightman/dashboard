@@ -155,11 +155,13 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
     back = `<rect x="-40000" y="-40000" width="80000" height="80000" fill="url(#${id}-sea)"/>`
       + `<path d="${europe}" fill="none" stroke="#86c3cf" stroke-width="40" stroke-linejoin="round" opacity=".55"/><path d="${europe}" fill="url(#${id}-fog)" stroke="#8a7652" stroke-width="3"/>`
       + `<path d="${coast}" fill="none" stroke="#86c3cf" stroke-width="26" stroke-linejoin="round" opacity=".55"/><path d="${coast}" fill="url(#${id}-fog)" stroke="#8a7652" stroke-width="2.5"/>`
-      + (map.pins ?? []).filter((p) => !others.some((o) => o.pin === p.name)).map((p) => { const [x, y] = fromUnits(p.at); return pinSvg(x, y, p.name, p.sub, p.scale ?? 3); }).join('');
+
     // The other cities' land, as it stands, where they are: to look at, not to play.
     back += others.map((o) => `<g transform="translate(${o.at[0].toFixed(1)} ${o.at[1].toFixed(1)})" pointer-events="none">${mapSvg(o.state, o.map, { today, id: `${id}-o-${o.map.id}`, backdrop: false })}</g>`).join('');
-    // Zoomed out, a city's land is a speck: each gets a pin, which goes once you're close.
-    farPins = [[0, 0, map.name, `${state.owned.size} tiles · here`], ...others.map((o) => [o.at[0], o.at[1], o.map.name, `${o.state.owned.size} tiles`])]
+    // Zoomed out, a city's land is a speck: every place gets a pin that keeps one size on the screen
+    // (showView) and goes once you're close.
+    const places = (map.pins ?? []).filter((p) => !others.some((o) => o.pin === p.name)).map((p) => [...fromUnits(p.at), p.name, p.sub]);
+    farPins = [[0, 0, map.name, `${state.owned.size} tiles · you're here`], ...others.map((o) => [o.at[0], o.at[1], o.map.name, `${o.state.owned.size} tiles`]), ...places]
       .map(([x, y, name, sub]) => `<g class="map-far" data-at="${x.toFixed(1)} ${y.toFixed(1)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(40)">${pinSvg(0, 0, name, sub, 1)}</g>`).join('');
   } else if (backdrop) {
     back = `<rect x="-40000" y="-40000" width="80000" height="80000" fill="url(#${id}-fog)"/>`;
@@ -262,7 +264,7 @@ function showView(svg, v) {
   svg.classList.toggle('near', near);
   // Far pins stay the same size on the screen, however far out.
   if (near) return;
-  const scale = (0.5 * v[2]) / (svg.clientWidth || 360);
+  const scale = (0.75 * v[2]) / (svg.clientWidth || 360);
   for (const g of svg.querySelectorAll('.map-far')) g.setAttribute('transform', `translate(${g.dataset.at}) scale(${scale.toFixed(2)})`);
 }
 

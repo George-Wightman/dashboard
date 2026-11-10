@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '8b6ff06e';
+var PLANNER_BUILD = 'ba75fe4e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8323,6 +8323,8 @@ const { key, unkey, nbrs, dist, distK } = __js_map_hex;
 
 const COST = 40;          // hammers for a tile
 const GOLDEN_COST = 30;   // in a golden age
+// A city can set its own (Salzburg: a 90-day stay, so cheaper land); a golden age takes a quarter off.
+const tileCost = (map, golden) => (Number.isInteger(map.cost) && map.cost > 0 ? (golden ? Math.round(map.cost * 0.75) : map.cost) : golden ? GOLDEN_COST : COST);
 const BANK = 5;           // tiles that can wait to be claimed
 const REPAIR = 20;        // hammers to repair a raided tile
 const LEVEL_STEP = 400;   // track points per building level once a track's cards are all earned
@@ -8427,7 +8429,7 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
   const cardioId = cardioQuotaId(doc);
   const owned = new Set([CENTRE, ...nbrs(0, 0)].filter((k) => P.tiles.has(k)));
   const state = {
-    map, turn: 0, day: null, owned, visible: visibleOf(map, owned), ready: 1, pool: 0, cost: COST,
+    map, turn: 0, day: null, owned, visible: visibleOf(map, owned), ready: 1, pool: 0, cost: tileCost(map, false),
     golden: { on: false, run: 0 }, track: Object.fromEntries(Object.keys(map.tracks ?? {}).map((t) => [t, 0])),
     earned: new Set(), cards: [], built: {}, levels: {}, pendingLevels: {}, wonders: new Set(),
     camps: [], pillaged: new Set(), roads: [], roadNet: new Set([CENTRE]), roadSteps: 0, roadCarry: 0,
@@ -8602,7 +8604,7 @@ function replay({ doc, map, today, cityOf = () => map.id, snapshots = false }) {
     const wasGolden = state.golden.on;
     if (finished) state.golden.run++; else if (miss) state.golden.run = 0;
     state.golden.on = state.golden.run >= GOLDEN_RUN;
-    state.cost = state.golden.on ? GOLDEN_COST : COST;
+    state.cost = tileCost(map, state.golden.on);
     if (state.golden.on && !wasGolden) event('golden', 'A golden age begins');
     if (!state.golden.on && wasGolden) event('golden-end', 'The golden age ends');
     let hammers = workH;
@@ -8725,7 +8727,7 @@ function snapshot(s) {
 
 // The map file's lookups, for the views: tiles, places by tile, buildings, zones, places by id.
 const lookups = (map) => prepare(map);
-return { COST, GOLDEN_COST, BANK, REPAIR, LEVEL_STEP, MAX_LEVEL, GOLDEN_RUN, ROAD_MINUTES, FINISHED_BONUS, FIND_VALUE, FIND_NAME, rowHammers, workHammers, campCap, findName, workRecords, makeCityOf, visibleOf, claimable, placeable, replay, lookups };
+return { COST, GOLDEN_COST, tileCost, BANK, REPAIR, LEVEL_STEP, MAX_LEVEL, GOLDEN_RUN, ROAD_MINUTES, FINISHED_BONUS, FIND_VALUE, FIND_NAME, rowHammers, workHammers, campCap, findName, workRecords, makeCityOf, visibleOf, claimable, placeable, replay, lookups };
 })();
 
 // ---- js/map/summary.js
@@ -9303,6 +9305,7 @@ function validMap(m) {
   if (!m || typeof m !== 'object') return false;
   if (!ID.test(m.id ?? '') || !str(m.name, 60) || !['uk', 'salzburg'].includes(m.place) || !DAY.test(m.start ?? '')) return false;
   if (m.end != null && !DAY.test(m.end)) return false;
+  if (m.cost != null && !(Number.isInteger(m.cost) && m.cost >= 5 && m.cost <= 200)) return false;
   if (!Array.isArray(m.tiles) || !m.tiles.length || !m.tiles.every((t) => t && int(t.q) && int(t.r) && str(t.terrain, 20))) return false;
   if (!m.tiles.some((t) => t.q === 0 && t.r === 0)) return false;
   if (!Array.isArray(m.places) || !m.places.every((p) => p && ID.test(p.id ?? '') && str(p.name, 60) && KINDS.includes(p.kind) && int(p.q) && int(p.r))) return false;

@@ -18,6 +18,7 @@ export function validMap(m) {
   if (!m || typeof m !== 'object') return false;
   if (!ID.test(m.id ?? '') || !str(m.name, 60) || !['uk', 'salzburg'].includes(m.place) || !DAY.test(m.start ?? '')) return false;
   if (m.end != null && !DAY.test(m.end)) return false;
+  if (m.cost != null && !(Number.isInteger(m.cost) && m.cost >= 5 && m.cost <= 200)) return false;
   if (!Array.isArray(m.tiles) || !m.tiles.length || !m.tiles.every((t) => t && int(t.q) && int(t.r) && str(t.terrain, 20))) return false;
   if (!m.tiles.some((t) => t.q === 0 && t.r === 0)) return false;
   if (!Array.isArray(m.places) || !m.places.every((p) => p && ID.test(p.id ?? '') && str(p.name, 60) && KINDS.includes(p.kind) && int(p.q) && int(p.r))) return false;

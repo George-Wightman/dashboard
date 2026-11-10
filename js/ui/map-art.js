@@ -241,15 +241,26 @@ export function roadSvg(segments) {
   const d = segments.map(([a, b]) => `M${n1(a[0])} ${n1(a[1])}L${n1(b[0])} ${n1(b[1])}`).join('');
   return d ? `<path d="${d}" stroke="#8a6a44" stroke-width="5.5" stroke-linecap="round" opacity=".55" fill="none"/><path d="${d}" stroke="#e7d3a1" stroke-width="3.2" stroke-linecap="round" fill="none"/>` : '';
 }
+// The board's lettering uses the app's own fonts (styles/daylight.css loads them; anything else falls
+// back to the system's cursive, which on Windows is Comic Sans).
+export const MAP_FONT = "'Bricolage Grotesque', system-ui, sans-serif";
+export const MAP_FONT_SMALL = "Figtree, system-ui, sans-serif";
 export function bannerSvg(name, count, x, y, golden = false) {
   const safe = String(name).replace(/[<>&"]/g, '');
-  const w = Math.max(96, safe.length * 9 + 40);
-  return `<g transform="translate(${n1(x)} ${n1(y)})" opacity=".78"><rect x="${-w / 2}" y="-11" width="${w}" height="22" rx="4" fill="#16324a" fill-opacity=".7" stroke="${golden ? '#ffd866' : '#e2b85c'}" stroke-width="${golden ? 2.4 : 1.5}"/>`
-    + `<circle cx="${-w / 2 + 12}" cy="0" r="8.5" fill="#e2b85c"/><text x="${-w / 2 + 12}" y="3.6" text-anchor="middle" font-family="Nunito, system-ui, sans-serif" font-weight="800" font-size="9.5" fill="#2a1d05">${Number(count) || 0}</text>`
-    + `<text x="10" y="4.5" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-weight="700" font-size="12" letter-spacing="1.5" fill="#eaf0f4">${safe.toUpperCase()}</text></g>`;
+  const w = Math.max(96, safe.length * 9.5 + 44);
+  return `<g transform="translate(${n1(x)} ${n1(y)})"><rect x="${-w / 2}" y="-11" width="${w}" height="22" rx="11" fill="#16324a" fill-opacity=".86" stroke="${golden ? '#ffd866' : '#e2b85c'}" stroke-width="${golden ? 2.4 : 1.4}"/>`
+    + `<circle cx="${-w / 2 + 11}" cy="0" r="8" fill="${golden ? '#ffd866' : '#e2b85c'}"/><text x="${-w / 2 + 11}" y="3.4" text-anchor="middle" font-family="${MAP_FONT_SMALL}" font-weight="800" font-size="9.5" fill="#2a1d05">${Number(count) || 0}</text>`
+    + `<text x="9" y="4.2" text-anchor="middle" font-family="${MAP_FONT}" font-weight="800" font-size="11.5" letter-spacing="1.6" fill="#f4ead2">${safe.toUpperCase()}</text></g>`;
 }
+// A place on the world map: a marker and a label in the banner's style. Drawn about 50 units tall.
 export function pinSvg(x, y, title, sub, scale = 1) {
   const t = String(title).replace(/[<>&"]/g, ''), s = String(sub ?? '').replace(/[<>&"]/g, '');
-  return `<g transform="translate(${n1(x)} ${n1(y)}) scale(${scale})"><path d="M0 0 C-12 -16 -15 -24 -15 -30 a15 15 0 0 1 30 0 c0 6 -3 14 -15 30z" fill="#7d8f9c" stroke="#16324a" stroke-width="2"/><circle cx="0" cy="-30" r="6" fill="#16324a"/>`
-    + `<text x="22" y="-26" font-family="Caveat, cursive" font-weight="700" font-size="40" fill="#6f5b3c">${t}</text><text x="22" y="2" font-family="Caveat, cursive" font-weight="700" font-size="26" fill="#8a7652">${s}</text></g>`;
+  const w = Math.max(t.length * 15 + 26, s.length * 8.6 + 26), hgt = s ? 50 : 34;
+  return `<g transform="translate(${n1(x)} ${n1(y)}) scale(${scale})">`
+    + `<ellipse cx="0" cy="0" rx="9" ry="3.5" fill="#000" opacity=".25"/>`
+    + `<path d="M0 0 C-11 -14 -16 -22 -16 -30 a16 16 0 0 1 32 0 c0 8 -5 16 -16 30z" fill="#16324a" stroke="#e2b85c" stroke-width="2.5"/><circle cx="0" cy="-30" r="6.5" fill="#e2b85c"/>`
+    + `<rect x="22" y="${-30 - hgt / 2}" width="${n1(w)}" height="${hgt}" rx="10" fill="#16324a" fill-opacity=".88" stroke="#e2b85c" stroke-width="1.5"/>`
+    + `<text x="35" y="${s ? -33 : -22}" font-family="${MAP_FONT}" font-weight="800" font-size="22" letter-spacing="1" fill="#f4ead2">${t.toUpperCase()}</text>`
+    + (s ? `<text x="35" y="-13" font-family="${MAP_FONT_SMALL}" font-weight="600" font-size="15" fill="#e2b85c">${s}</text>` : '')
+    + '</g>';
 }

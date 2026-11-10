@@ -296,3 +296,13 @@ test('a big land with misses replays in well under a second a turn', () => {
   assert.ok(s.owned.size > 300, `owned ${s.owned.size}`);
   assert.ok(ms < 3000, `took ${ms.toFixed(0)} ms`);
 });
+
+test("a city can set its own tile cost, and a golden age takes a quarter off it", async () => {
+  const { tileCost } = await import('../js/map/engine.js');
+  assert.equal(tileCost({}, false), 40);
+  assert.equal(tileCost({}, true), 30);
+  assert.equal(tileCost({ cost: 25 }, false), 25);
+  assert.equal(tileCost({ cost: 25 }, true), 19);
+  const store = makeStore();
+  assert.equal(replay({ doc: store.doc(), map: mapTown({ cost: 25 }), today: START }).cost, 25);
+});

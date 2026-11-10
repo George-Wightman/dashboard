@@ -96,6 +96,6 @@ test('another city shows where its pin is, and its pin gives way to it', async (
   const svg = mapSvg(state, home, { today: map.start, world: true, others: [{ ...n[0], state: awayState }] });
   assert.ok(svg.includes('FARAWAY'));
   // Its own pin ("Next") gives way to its land, and a far-off pin with its tiles.
-  assert.ok(svg.includes('London') && !svg.includes('>Next<') && svg.includes('class="map-far"'));
+  assert.ok(svg.includes('LONDON') && !svg.includes('>Next<') && svg.includes('class="map-far"'));
   assert.equal(neighbourCities(home, [home]).length, 0);
 });

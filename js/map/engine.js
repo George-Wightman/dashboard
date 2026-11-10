@@ -11,6 +11,8 @@ import { key, unkey, nbrs, dist, distK } from './hex.js';
 
 export const COST = 40;          // hammers for a tile
 export const GOLDEN_COST = 30;   // in a golden age
+// A city can set its own (Salzburg: a 90-day stay, so cheaper land); a golden age takes a quarter off.
+export const tileCost = (map, golden) => (Number.isInteger(map.cost) && map.cost > 0 ? (golden ? Math.round(map.cost * 0.75) : map.cost) : golden ? GOLDEN_COST : COST);
 export const BANK = 5;           // tiles that can wait to be claimed
 export const REPAIR = 20;        // hammers to repair a raided tile
 export const LEVEL_STEP = 400;   // track points per building level once a track's cards are all earned
@@ -115,7 +117,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
   const cardioId = cardioQuotaId(doc);
   const owned = new Set([CENTRE, ...nbrs(0, 0)].filter((k) => P.tiles.has(k)));
   const state = {
-    map, turn: 0, day: null, owned, visible: visibleOf(map, owned), ready: 1, pool: 0, cost: COST,
+    map, turn: 0, day: null, owned, visible: visibleOf(map, owned), ready: 1, pool: 0, cost: tileCost(map, false),
     golden: { on: false, run: 0 }, track: Object.fromEntries(Object.keys(map.tracks ?? {}).map((t) => [t, 0])),
     earned: new Set(), cards: [], built: {}, levels: {}, pendingLevels: {}, wonders: new Set(),
     camps: [], pillaged: new Set(), roads: [], roadNet: new Set([CENTRE]), roadSteps: 0, roadCarry: 0,
@@ -290,7 +292,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     const wasGolden = state.golden.on;
     if (finished) state.golden.run++; else if (miss) state.golden.run = 0;
     state.golden.on = state.golden.run >= GOLDEN_RUN;
-    state.cost = state.golden.on ? GOLDEN_COST : COST;
+    state.cost = tileCost(map, state.golden.on);
     if (state.golden.on && !wasGolden) event('golden', 'A golden age begins');
     if (!state.golden.on && wasGolden) event('golden-end', 'The golden age ends');
     let hammers = workH;

@@ -240,7 +240,7 @@ for (const [id, draw] of Object.entries(art)) drawings[id] = `<svg xmlns="http:/
 const out = {
   id: cfg.id, name: cfg.name, place: cfg.place, start: cfg.start, end: cfg.end ?? null, home: cfg.home ?? null,
   centreName: cfg.centreName ?? cfg.name, centreScale: cfg.centreScale ?? 0.5,
-  tracks: cfg.tracks, finds: cfg.finds ?? undefined, findNames: cfg.findNames ?? undefined, viewNames: cfg.viewNames ?? undefined,
+  cost: cfg.cost ?? undefined, tracks: cfg.tracks, finds: cfg.finds ?? undefined, findNames: cfg.findNames ?? undefined, viewNames: cfg.viewNames ?? undefined,
   tiles: [...tiles.values()], places, lines: outLines, coast, europe, pins, view, art: drawings,
 };
 const text = JSON.stringify(out);
