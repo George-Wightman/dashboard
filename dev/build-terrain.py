@@ -13,13 +13,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from defringe import defringe
 
 BASE = 160
-SEASONS = ('autumn', 'late', 'winter')
+SEASONS = ('autumn', 'late', 'winter', 'spring')
 src = sys.argv[1]
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 files = sorted(f for f in os.listdir(src) if f.endswith('.png'))
 parsed = []
 for f in files:
-    m = re.match(r'^(.+)-(autumn|late|winter|deep)-(\d+)\.png$', f)
+    m = re.match(r'^(.+)-(autumn|late|winter|deep|spring)-(\d+)\.png$', f)
     if not m or m.group(2) not in SEASONS: continue
     parsed.append((m.group(1), m.group(2), int(m.group(3)), f))
 # The base width of each set: the median width of its sprites.

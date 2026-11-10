@@ -138,16 +138,16 @@ const placeScale = (map, id) => map.places.find((p) => p.id === id)?.scale ?? 0.
 // ---- painted ground ----
 
 // Which painted season a day takes: autumn to 20 Nov, first snow to 20 Dec, winter to the end of
-// February, first snow again (the thaw) through March; none from April, when the drawn land is used.
+// February, first snow again (the thaw) through March, then spring and summer to the end of August.
 export function paintSeason(day) {
   const md = String(day).slice(5, 10);
   if (md >= '09-01' && md <= '11-20') return 'autumn';
   if (md > '11-20' && md <= '12-20') return 'late';
   if (md > '12-20' || md <= '02-29') return 'winter';
   if (md <= '03-31') return 'late';
-  return null;
+  return 'spring';
 }
-const PAINT_FALLBACK = { winter: ['winter', 'late', 'autumn'], late: ['late', 'autumn'], autumn: ['autumn'] };
+const PAINT_FALLBACK = { winter: ['winter', 'late', 'autumn'], late: ['late', 'autumn'], autumn: ['autumn'], spring: ['spring', 'autumn'] };
 // A town, its shops and its works look like where the city is; the land is the same everywhere.
 const paintSet = (map, terrain) => (['town', 'shops', 'industry'].includes(terrain) ? `${map.place === 'salzburg' ? 'sz' : 'uk'}-${terrain}` : terrain);
 const tileHash = (q, r) => { let a = (q * 73856093) ^ (r * 19349663); a = Math.imul(a ^ (a >>> 15), 2246822519); return ((a ^ (a >>> 13)) >>> 0) / 4294967296; };

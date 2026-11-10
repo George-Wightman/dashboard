@@ -107,8 +107,9 @@ test('painted ground: by time of year, by where the city is, and drawn land from
   assert.equal(paintSeason('2027-01-15'), 'winter');
   assert.equal(paintSeason('2027-02-28'), 'winter');
   assert.equal(paintSeason('2027-03-10'), 'late');
-  assert.equal(paintSeason('2027-04-10'), null);
-  assert.equal(paintPicker({ place: 'uk' }, '2027-04-10'), null);
+  assert.equal(paintSeason('2027-04-10'), 'spring');
+  assert.equal(paintSeason('2027-08-31'), 'spring');
+  assert.ok(paintPicker({ place: 'uk' }, '2027-04-10')({ q: 0, r: 0, terrain: 'water' }), 'spring water falls back to autumn');
   const uk = paintPicker({ place: 'uk' }, '2026-11-10'), sz = paintPicker({ place: 'salzburg' }, '2026-11-10');
   const town = { q: 3, r: -1, terrain: 'town' };
   assert.equal(uk(town).length, 4);
