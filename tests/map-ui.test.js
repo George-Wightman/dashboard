@@ -159,3 +159,11 @@ test('a find is painted where there is a picture of it, and drawn where there is
   assert.match(paintedFindSvg('sheep', 0, 0), /icons\/finds\.webp/);
   assert.equal(paintedFindSvg('nothing-like-it', 0, 0), findSvg('nothing-like-it', 0, 0));
 });
+
+test('the header horizon draws the land and what stands on it, none of the game marks', () => {
+  const { state } = fresh();
+  const full = mapSvg(state, map, { today: '2026-11-10' }), strip = mapSvg(state, map, { today: '2026-11-10', strip: true, backdrop: false });
+  assert.ok(full.includes(map.name.toUpperCase()) || full.includes(map.name));
+  assert.ok(!strip.includes(map.name.toUpperCase()) && !strip.includes(`>${map.name}<`));
+  assert.match(strip, /terrain\.webp/);
+});

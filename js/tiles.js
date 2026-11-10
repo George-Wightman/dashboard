@@ -10,20 +10,6 @@ import { cardioQuotaId } from './gym.js';
 
 export const TILES_KEY = 'dash_tiles';
 
-// Where the note for Claude sits on Daylight (js/ui/noteslot.js), this device's own choice.
-export const NOTE_KEY = 'dash_note';
-export const NOTE_PLACES = ['top', 'day', 'tiles'];
-export function loadNotePlace(storage) {
-  try {
-    const v = storage.getItem(NOTE_KEY);
-    return NOTE_PLACES.includes(v) ? v : 'top';
-  } catch {
-    return 'top';
-  }
-}
-export function saveNotePlace(storage, place) {
-  try { storage.setItem(NOTE_KEY, NOTE_PLACES.includes(place) ? place : 'top'); } catch { /* this device only */ }
-}
 // `review` (the week in review) only shows Saturday to Monday, at the top.
 // `eu` is days in the EU (js/eu.js), for planning visits under the 90-in-180 rule.
 // `map` shows only once the sync repo has a map file (js/ui/map.js).

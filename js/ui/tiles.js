@@ -16,7 +16,6 @@ import { renderFuel, renderFuelBig } from './fuel.js';
 import { renderCoach, renderCoachBig } from './coach.js';
 import { openHebrewLog } from './hebrewlog.js';
 import { renderReview, renderReviewBig } from './review.js';
-import { noteBlock } from './noteslot.js';
 import { hebrewMinutesId } from '../tiles.js';
 import { openBig } from './big.js';
 import { renderMapTile, renderMapBig } from './map.js';
@@ -142,8 +141,6 @@ export function renderTiles(ctx) {
   const arranging = ctx.ui.arranging;
   const tiles = ctx.tiles();
   const els = [];
-  // The note for Claude, when it lives with the tiles (js/ui/noteslot.js): first.
-  if (ctx.notePlace() === 'tiles') els.push(noteBlock(ctx));
   for (const id of tiles.order) {
     if (tiles.hidden.includes(id)) continue;
     const tile = BY_ID.get(id);

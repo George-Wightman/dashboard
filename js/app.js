@@ -35,8 +35,7 @@ import { useTranscriber } from './ui/mic.js';
 import { createStt } from './stt.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
 import { chooseZoneRecord } from './travel.js';
-import { TILES_KEY, loadTiles, saveTiles, normalizeTiles, loadNotePlace, saveNotePlace } from './tiles.js';
-import { renderNoteSlot } from './ui/noteslot.js';
+import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
 import { loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
 import { loadCached, refreshFile } from './private.js';
 import { MONEY_PATH, MONEY_KEY, validMoney } from './money.js';
@@ -68,7 +67,6 @@ const WIDE = matchMedia('(min-width: 1500px)');
 let layout = loadLayout(localStorage, WIDGET_IDS);
 // Daylight's tiles (js/tiles.js): this device's own too, started from the arrangement above.
 let tiles = loadTiles(localStorage, layout);
-let notePlace = loadNotePlace(localStorage);
 // The map's private files (js/map/files.js): the last good copies, refreshed with sync now and then.
 let maps = loadCachedMaps(localStorage);
 let mapsAt = 0;
@@ -153,13 +151,6 @@ const ctx = {
   // Money's ledger (js/money.js) and London's areas (js/london.js): null until the sync repo has them.
   money: () => money,
   london: () => london,
-  // Where the note for Claude sits on Daylight (js/ui/noteslot.js).
-  notePlace: () => notePlace,
-  setNotePlace(next) {
-    saveNotePlace(localStorage, next);
-    notePlace = loadNotePlace(localStorage);
-    render();
-  },
   setTiles(next) {
     tiles = normalizeTiles(next);
     saveTiles(localStorage, tiles);
@@ -305,7 +296,6 @@ function applyLook() {
 function render() {
   if (daylight()) {
     renderSky(ctx);
-    renderNoteSlot(ctx);
     renderTimeline(ctx);
     renderTiles(ctx);
   } else {
@@ -394,7 +384,7 @@ async function runMapSync() {
 function typing() {
   const el = document.activeElement;
   return !!el && el.matches('input[type=text], input:not([type]), textarea') && el.value !== ''
-    && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky, #dl-note-top, #dl-note-day');
+    && !!el.closest('#list, #under, #side, #timeline, #tiles, #dl-sky');
 }
 
 // The minute redraw moves the now line, but never under a focused row or a drag in progress.

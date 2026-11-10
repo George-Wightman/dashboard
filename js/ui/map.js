@@ -180,7 +180,7 @@ function landmarkSvg({ src, w: aw, h: ah }, x, y, owned) {
 
 // The land as SVG. `world` adds the sea, the coasts and the pins; `picks` glow to claim, `targets` to
 // build on; `fresh` rise in. `id` keeps clip paths unique on the page.
-export function mapSvg(state, map, { today, world = false, picks = new Set(), targets = new Set(), fresh = new Set(), id = 'm', others = [], backdrop = true, painted = true } = {}) {
+export function mapSvg(state, map, { today, world = false, picks = new Set(), targets = new Set(), fresh = new Set(), id = 'm', others = [], backdrop = true, painted = true, strip = false } = {}) {
   const L = lookups(map);
   const season = seasonOf(today);
   const paint = painted ? paintPicker(map, today) : null;
@@ -282,6 +282,8 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   const gold = state.golden.on ? '#ffd866' : '#e2b85c';
   const [cx, cy] = centre(0, 0);
   // Everything over the tiles lets a tap through to the tile underneath.
+  // The header's horizon (horizonSvg): the land and what stands on it, none of the game's marks.
+  if (strip) return `<defs>${defs}${clips}<clipPath id="${id}-vis">${visClip}</clipPath></defs>${ground}<g pointer-events="none">${lines}${roads}${sprites}</g>`;
   return `<defs>${defs}${clips}<clipPath id="${id}-vis">${visClip}</clipPath></defs>${back}${fog}${ground}<g pointer-events="none">${lines}${roads}${zones}`
     + `<path d="${border}" stroke="${gold}" stroke-width="${state.golden.on ? 7 : 5}" opacity=".45" filter="url(#${id}-glow)" fill="none"/><path d="${border}" stroke="${state.golden.on ? '#ffe9a0' : '#f3d27e'}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`
     + `${sprites}${glow}${bannerSvg(map.name, state.owned.size, cx, cy - 62, state.golden.on)}${farPins}</g>`;
@@ -341,6 +343,27 @@ function svgEl(viewBox, inner, cls) {
 
 function readSeen() { try { return localStorage.getItem(SEEN_KEY); } catch { return null; } }
 function writeSeen(day) { try { localStorage.setItem(SEEN_KEY, day); } catch { /* this device only */ } }
+
+// The city as the header's horizon (js/ui/sky.js): the tiles he owns in the three rows through the
+// middle, painted for the season, nothing of the game on them. A string and its width over its height,
+// or null with no map; worked out again only when the land or the day changes.
+let horizonCache = { key: null, out: null };
+export function horizonSvg(ctx) {
+  const got = stateFor(ctx);
+  if (!got) return null;
+  const { map, state, today } = got;
+  const k = `${cached.key}|${today}`;
+  if (horizonCache.key === k) return horizonCache.out;
+  const band = new Set([...state.owned].filter((t) => { const r = unkey(t)[1]; return r >= -1 && r <= 1; }));
+  if (band.size < 3) { horizonCache = { key: k, out: null }; return null; }
+  const at = [...band].map((t) => centre(...unkey(t)));
+  const x0 = Math.min(...at.map((p) => p[0])) - S, x1 = Math.max(...at.map((p) => p[0])) + S;
+  const y0 = Math.min(...at.map((p) => p[1])) - S * 2.2, y1 = Math.max(...at.map((p) => p[1])) + S * K + DEPTH + 2;
+  const inner = mapSvg({ ...state, visible: band, owned: band, camps: [] }, map, { today, id: 'hz', backdrop: false, strip: true });
+  const out = { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${(x1 - x0).toFixed(1)} ${(y1 - y0).toFixed(1)}" preserveAspectRatio="xMidYMax meet">${inner}</svg>`, ratio: (x1 - x0) / (y1 - y0) };
+  horizonCache = { key: k, out };
+  return out;
+}
 
 export function renderMapTile(ctx) {
   const got = stateFor(ctx);

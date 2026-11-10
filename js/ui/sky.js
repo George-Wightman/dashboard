@@ -11,6 +11,7 @@ import { todayRows } from '../schedule.js';
 import { LOGOS } from './sources.js';
 import { openFlagPanel } from './flags.js';
 import { setArranging } from './widgets.js';
+import { horizonSvg } from './map.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const svg = (tag, attrs = {}, ...children) => {
@@ -39,6 +40,25 @@ function bands() {
     svg('path', { class: 'b1', d: 'M0 0H1440V58C1180 42 960 80 720 60C470 40 230 74 0 54Z' }),
     svg('path', { class: 'horizon', d: 'M0 258C240 240 480 276 720 256C960 236 1200 270 1440 250V300H0Z' }),
     svg('path', { class: 'arc', d: 'M60 280Q720 -120 1380 280', fill: 'none' }));
+}
+
+// The city he's built, along the bottom of the sky (js/ui/map.js horizonSvg). Wider than the header,
+// it drifts from end to end over a few minutes; the drift is set from the clock, so drawing the sky
+// again each minute doesn't jump it back to the start.
+const DRIFT_SECONDS = 240;
+function horizon(ctx) {
+  let got = null;
+  try { got = horizonSvg(ctx); } catch { got = null; }
+  if (!got) return null;
+  const land = h('div', { class: 'dl-horizon-land', style: `--hz-ratio: ${got.ratio.toFixed(3)}; animation-delay: -${((Date.now() / 1000) % (DRIFT_SECONDS * 2)).toFixed(1)}s` });
+  land.innerHTML = got.svg; // drawn by js/ui/map.js from the validated map file
+  const el = h('div', { class: 'dl-horizon', 'aria-hidden': 'true' }, land);
+  requestAnimationFrame(() => {
+    const shift = el.clientWidth - land.offsetWidth;
+    el.classList.toggle('drifts', shift < 0);
+    land.style.setProperty('--hz-shift', `${Math.min(0, shift)}px`);
+  });
+  return el;
 }
 
 // Today's blocks for the arc: each row with a time, done or not.
@@ -118,5 +138,7 @@ export function renderSky(ctx) {
         m.off ? noteChip(ctx, today, m.off) : null,
         m.notes.map((n) => noteChip(ctx, today, n)))));
 
-  root.replaceChildren(bands(), ...lights, words);
+  const land = horizon(ctx);
+  root.classList.toggle('has-horizon', !!land);
+  root.replaceChildren(bands(), ...(land ? [land] : []), ...lights, words);
 }

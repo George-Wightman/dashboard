@@ -171,6 +171,23 @@
 .dl-bands .horizon { fill: var(--hz); }
 .dl-bands .arc { stroke: currentColor; stroke-opacity: .22; stroke-width: 2; stroke-dasharray: 2 8; stroke-linecap: round; }
 
+/* The city he's built along the bottom of the sky (js/ui/sky.js horizon): faded at the ends and the
+   top, drifting end to end, in the light of the hour. */
+.dl-horizon { --hz-h: 140px; position: absolute; left: 0; right: 0; bottom: 0; height: var(--hz-h); overflow: hidden; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); }
+.dl-horizon-land { position: absolute; bottom: 0; left: 50%; height: 100%; width: calc(var(--hz-h) * var(--hz-ratio)); transform: translateX(-50%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%); mask-image: linear-gradient(to bottom, transparent, #000 45%); opacity: .9; }
+.dl-horizon-land svg { display: block; width: 100%; height: 100%; }
+.dl-horizon.drifts .dl-horizon-land { left: 0; transform: none; animation: dl-drift 240s ease-in-out infinite alternate; }
+/* Room under the words for the land, so the greeting sits above it. */
+.dl-sky.has-horizon .dl-sky-words { padding-bottom: 120px; }
+@keyframes dl-drift { from { transform: translateX(0); } to { transform: translateX(var(--hz-shift, 0px)); } }
+@media (prefers-reduced-motion: reduce) { .dl-horizon.drifts .dl-horizon-land { animation: none; } }
+.dl-sky[data-phase="dawn"] .dl-horizon-land { filter: sepia(.25) saturate(1.1) brightness(1.02); }
+.dl-sky[data-phase="golden"] .dl-horizon-land { filter: sepia(.35) saturate(1.2) brightness(.97); }
+.dl-sky[data-phase="dusk"] .dl-horizon-land { filter: brightness(.6) saturate(.8) hue-rotate(-12deg); }
+.dl-sky[data-phase="night"] .dl-horizon-land { filter: brightness(.38) saturate(.55) hue-rotate(20deg); }
+
 .dl-sun, .dl-dot { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; }
 .dl-sun { width: 46px; height: 46px; background: #FFAA3C; animation: dl-sun 4s ease-in-out infinite; }
 .dl-moon { position: absolute; right: 9%; top: 22%; width: 34px; height: 34px; border-radius: 50%; box-shadow: inset -9px -4px 0 0 #F4EBC9; transform: rotate(-20deg); }
@@ -216,6 +233,8 @@
 @media (max-width: 759px) {
   .dl-sky, .dl-sky-words { min-height: 220px; }
   .dl-sky-words { padding: 16px 16px 22px; }
+  .dl-horizon { --hz-h: 92px; }
+  .dl-sky.has-horizon .dl-sky-words { padding-bottom: 80px; }
   .dl-hello h1 { font-size: 36px; }
   .dl-notes { max-width: none; }
   .dl-date { font-size: 13px; }
@@ -282,13 +301,7 @@
 :root[data-screen="daylight"] .tl-checkin .checkin-q { font-weight: 700; font-size: 16px; }
 :root[data-screen="daylight"] .tl-checkin textarea { border: 0; border-radius: 14px; background: var(--dl-soft); color: var(--dl-ink); }
 
-/* Tell Claude, a pill under the day (fixed to the bottom on a phone). */
-:root[data-screen="daylight"] .dl-note { background: var(--dl-card); border: 0; border-radius: 26px; padding: 10px 12px 10px 18px; box-shadow: 0 2px 0 var(--dl-shadow); }
-:root[data-screen="daylight"] .dl-note h2 { font: 700 15px/1.2 var(--dl-display); letter-spacing: 0; text-transform: none; color: var(--dl-ink); }
 @media (max-width: 759px) {
-  :root[data-screen="daylight"] #dl-note-day .dl-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 5; box-shadow: 0 6px 24px rgba(29, 26, 43, .18); }
-  :root[data-screen="daylight"] #dl-note-day .dl-note h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  :root[data-screen="daylight"] .dl-note textarea { min-height: 44px; max-height: 96px; }
   .dl-sun { width: 30px; height: 30px; }
   .tl::before { left: 63px; }
   :root[data-screen="daylight"] #timeline li.row.tl-entry, .tl-now, .tl-busy { grid-template-columns: 44px 40px 1fr; }
@@ -512,14 +525,6 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .tile .review-pushed { display: none; }
 @media (min-width: 1500px) { .dl-tiles { columns: 3 240px; } }
 
-/* The note for Claude at the top, centred under the sky (its default place). */
-.dl-note-top { position: relative; z-index: 1; max-width: 760px; margin: -34px auto 0; padding: 0 48px; box-sizing: border-box; }
-.dl-note-top .dl-note { padding: 8px 10px 8px 16px; box-shadow: 0 4px 18px rgba(29, 26, 43, .10); }
-.dl-note-top .dl-note h2 { font-size: 13px; }
-.dl-note-top:empty { display: none; }
-.dl-tiles > .dl-note { break-inside: avoid; margin: 0 0 16px; }
-.note-place { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
-@media (max-width: 759px) { .dl-note-top { padding: 0 16px; margin-top: -18px; } }
 
 /* ---- Big views on a wide window: the sections side by side, so nothing sits in one narrow column
    beside empty space. Each section's grid grows to fill its column. ------------------------------ */
@@ -541,7 +546,6 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 :root[data-screen="daylight"] dialog.snap, :root[data-screen="daylight"] dialog.hebrew-log { height: fit-content; max-height: min(92vh, 60rem); }
 :root[data-screen="daylight"] dialog.snap .sheet-body, :root[data-screen="daylight"] dialog.hebrew-log .sheet-body { height: auto; }
 
-.dl-note-day:empty { display: none; }
 
 /* A tile asked for by a home-screen widget, lit for a moment (js/ui/tiles.js's openTile). */
 .tile.tile-flash { outline: 3px solid var(--dl-accent, #3F3A9E); outline-offset: 3px; transition: outline-color .4s; }
