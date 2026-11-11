@@ -36,7 +36,8 @@ import { createStt } from './stt.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
 import { chooseZoneRecord } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
-import { loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
+import { MAPS_KEY, loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
+import { createBigStore, idbBackend } from './bigstore.js';
 import { loadCached, refreshFile } from './private.js';
 import { MONEY_PATH, MONEY_KEY, validMoney } from './money.js';
 import { LONDON_PATH, LONDON_KEY, validLondon } from './london.js';
@@ -75,7 +76,15 @@ let layout = loadLayout(localStorage, WIDGET_IDS);
 // Daylight's tiles (js/tiles.js): this device's own too, started from the arrangement above.
 let tiles = loadTiles(localStorage, layout);
 // The map's private files (js/map/files.js): the last good copies, refreshed with sync now and then.
-let maps = loadCachedMaps(localStorage);
+// Kept in IndexedDB (js/bigstore.js), not localStorage: they are big, and localStorage's allowance is
+// shared with the Hebrew app at this address. Read a moment after the page starts, so empty until then.
+const bigFiles = createBigStore({ backend: idbBackend(), legacy: localStorage, keys: [MAPS_KEY] });
+let maps = [];
+bigFiles.ready().then(() => {
+  if (maps.length) return;
+  maps = loadCachedMaps(bigFiles);
+  if (maps.length) { lockDay(); if (canRun()) render(); }
+}).catch(() => { /* no saved maps: the next sync fetches them */ });
 let mapsAt = 0;
 // Money's ledger and London's areas (js/private.js): private files too, read on the same half-hour beat.
 let money = loadCached(localStorage, MONEY_KEY, validMoney);
@@ -383,7 +392,7 @@ async function runMapSync() {
   mapsAt = Date.now();
   try {
     const clientFor = (path) => createGitHubClient({ token, repo, path });
-    maps = await refreshMaps({ clientFor, storage: localStorage });
+    maps = await refreshMaps({ clientFor, storage: bigFiles });
     money = await refreshFile({ clientFor, storage: localStorage, key: MONEY_KEY, path: MONEY_PATH, valid: validMoney }).catch(() => money);
     london = await refreshFile({ clientFor, storage: localStorage, key: LONDON_KEY, path: LONDON_PATH, valid: validLondon }).catch(() => london);
     if (canRun()) render();
