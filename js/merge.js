@@ -52,6 +52,36 @@ function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
   return map;
 }
 
+// What leaves the synced file for good, so it stops growing: Claude's changes more than
+// CHANGE_DROP_DAYS older than the newest one (their snapshots went at 14 days, js/changes.js), and
+// usage weeks (js/usage.js) more than USAGE_DROP_WEEKS behind the newest. Measured from the records
+// themselves, never a clock, so every device, the planner and Claude's tool drop exactly the same
+// ones in every merge and a dropped record can't come back from a copy that still has it.
+export const CHANGE_DROP_DAYS = 45;
+export const USAGE_DROP_WEEKS = 16;
+const DAY_MS = 86400000;
+
+function expire(doc) {
+  const changes = doc.changes ?? {};
+  let newest = '';
+  for (const c of Object.values(changes)) if (typeof c?.at === 'string' && c.at > newest) newest = c.at;
+  const t = Date.parse(newest);
+  if (Number.isFinite(t)) {
+    const cutoff = new Date(t - CHANGE_DROP_DAYS * DAY_MS).toISOString();
+    for (const [id, c] of Object.entries(changes)) if (typeof c?.at === 'string' && c.at < cutoff) delete changes[id];
+  }
+  const calendar = doc.calendar ?? {};
+  const weekOf = (id) => (/^usage:[a-z0-9]+:\d{4}-\d{2}-\d{2}$/.test(id) ? id.slice(-10) : null);
+  let last = '';
+  for (const id of Object.keys(calendar)) { const w = weekOf(id); if (w && w > last) last = w; }
+  const lt = Date.parse(`${last}T00:00:00Z`);
+  if (Number.isFinite(lt)) {
+    const cutoff = new Date(lt - USAGE_DROP_WEEKS * 7 * DAY_MS).toISOString().slice(0, 10);
+    for (const id of Object.keys(calendar)) { const w = weekOf(id); if (w && w < cutoff) delete calendar[id]; }
+  }
+  return doc;
+}
+
 export function mergeDocs(a, b) {
   const out = { schema: Math.max(a?.schema ?? 1, b?.schema ?? 1) };
   const keys = new Set([...MAPS, ...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
@@ -75,7 +105,7 @@ export function mergeDocs(a, b) {
       out[key] = hasLeft ? left : right;
     }
   }
-  return out;
+  return expire(out);
 }
 
 export function sameDoc(a, b) {

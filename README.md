@@ -156,7 +156,33 @@ when it has nothing to show. Click **Arrange** in the header:
 - **Done** (or Escape) leaves Arrange mode. The arrangement is saved as you go, kept separately on
   each device (the laptop and the phone can have their own).
 
-## Check-ins
+## Closing the day
+
+From 19:00 a card at the top of Today says how the day stands (*5 of 6 done · 1 not done · 2 of 3
+meals*). **Close it** opens one sheet: tick what happened, log a meal, leave Claude a line (typed or
+said), and close. What stays unticked is named as not done, and anything pushed after the lock is
+listed: closing never tidies a miss away. A closed day books nothing more, and what wasn't done gets a
+new slot. A past day you go back to with ‹ offers the same card until it's closed. The line for Claude
+is a *For Claude* note, so the catch-up shows it first.
+
+This replaced the question after every task on 11 Nov 2026: of 73 asked in the five weeks before, 2
+were answered. The planner setting `checkins: true` (ask Claude) brings the old questions and their
+pings back.
+
+**Hebrew first.** Under the greeting, today's Hebrew minutes against the day's share (the Hebrew
+habit's length, else a seventh of the week's target). Tap it for the Hebrew tile, big.
+
+## How it's used (the usage log)
+
+The app counts how it's used, so a review can go by evidence: opens and minutes on screen, the hours
+it's opened at, where an open came from (a widget, a notification), which tiles are opened big, taps
+by control (*where/what*, never a title or anything typed), sync times and the file's size, and errors
+with their file and line. Counted on each device, written into the synced file at most every three
+hours as one small record per device per week (`calendar['usage:<device>:<monday>']`), kept 16 weeks.
+Ask Claude "how am I using the dashboard?": its `usage` read gives this beside what the records show
+(ticks by who made them and when, meals and how late, flags, features with nothing in them).
+
+## Check-ins (retired 11 Nov 2026, off by default)
 
 The Coach — a Gemini conversation in the app, with a background "mind" and a Claude routine behind it —
 was retired on 26 September 2026 ([`docs/superpowers/specs/2026-09-26-checkins-design.md`](docs/superpowers/specs/2026-09-26-checkins-design.md)):
@@ -322,8 +348,8 @@ the CV task", "debrief the mock".
 - **⚙ → Claude** shows all of it: today's brief and earlier ones, time off, priorities and colours,
   the calendar planner, what needs attention, what Claude can do, and **every change Claude makes**,
   newest first, with *Details* (what changed, field by field) and **Undo**. Undo never overwrites
-  something you've changed since — it says so instead. Details are kept for 30 days; the one-line
-  summaries for good.
+  something you've changed since — it says so instead. Details (and Undo) are kept for 14 days, the one-line
+  summaries for 45; then a change leaves the synced file, which had grown to 2.3 MB.
 - **Planning your week.** Say "plan my week" and Claude spreads the week's work over the days, with
   lengths and areas; the calendar planner (below) books it.
 
@@ -576,6 +602,8 @@ script bundles the Apps Script planner and generates the offline release manifes
 | `js/flags.js` | A flag's captured context, its 4 KB cap, and the panel's readers |
 | `js/version.js` | Which build this is, whether a newer one is live, and taking the update |
 | `js/changes.js` | Claude's change log: what a change did, and the readers ⚙ uses |
+| `js/usage.js`, `claude/usage.js` | The usage log: counting on the device, and Claude's `usage` read |
+| `js/close.js`, `js/ui/close.js` | Closing the day: the evening card and its sheet |
 | `js/calendar.js` | The calendar planner's records: its settings, today's times, its notes and health |
 | `planner/webpush.js`, `planner/p256.js`, `planner/aes.js` | Web Push from Apps Script (RFC 8291/8292), with the curve and cipher it doesn't have |
 | `js/push-client.js` | Turning notifications on and off on a device |

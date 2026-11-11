@@ -28,6 +28,7 @@ import { BACK, backScores, sessionTasks, sessionLines, routinesOf, routineFor, s
 // A row's notes, on their own indented line under it.
 const withNote = (line, item) => (item.notes ? `${line}\n      note: ${String(item.notes).replace(/\s+/g, ' ').slice(0, 300)}` : line);
 import { shortId } from './ids.js';
+import { usageRead } from './usage.js';
 import { resolveId } from './ids.js';
 import { blockers } from '../js/workflow.js';
 import { q, dayName, when, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
@@ -631,6 +632,9 @@ export const READS = {
     'Pending reviews require the planner and its GEMINI_KEY. Review suggestions wait for acceptance.'
   ].join('\n'),
   today, week, goals, list, find, day, history: hist, checkins, catchup, flags, changes, planner: plannerRead, attention: attentionRead, gym: gymRead, food: foodRead, back: backRead, hours: hoursRead,
+  // How the app is really being used (claude/usage.js), in his own time zone.
+  usage: (doc, today, arg) => `${header(doc, today)}
+${usageRead(doc, today, arg, { zone: deviceZone(doc) ?? undefined })}`,
   // What older copies of the skill still ask for.
   journal: checkins,
 };

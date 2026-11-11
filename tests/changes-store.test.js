@@ -117,14 +117,14 @@ test('undoing twice changes nothing; an unknown change throws', () => {
   assert.throws(() => store.undoChange('nope'), /No changes record nope/);
 });
 
-test('pruneChanges drops snapshots after 30 days and keeps the summary', () => {
+test('pruneChanges drops snapshots after 14 days and keeps the summary', () => {
   const now = clock();
   const store = makeStore({ now });
   const old = asClaude(store, 'old', () => store.addItem({ type: 'task', title: 'A' }));
-  now.advance(29 * DAY);
+  now.advance(13 * DAY);
   const recent = asClaude(store, 'recent', () => store.addItem({ type: 'task', title: 'B' }));
   assert.equal(store.pruneChanges(), 0);
-  now.advance(2 * DAY); // old is 31 days old, recent 2
+  now.advance(2 * DAY); // old is 15 days old, recent 2
   assert.equal(store.pruneChanges(), 1);
   const c = store.doc().changes[old.id];
   assert.equal(c.pruned, true);

@@ -118,6 +118,20 @@ export function daylightShows(tiles, doc, today) {
   };
 }
 
+// Hebrew today, for the top of the screen: minutes so far against the day's share. The share is the
+// Hebrew habit's own length when it has one, else a seventh of the week's target.
+export function hebrewToday(doc, today) {
+  const q = minutesQuota(doc, 'hebrew-minutes');
+  if (!q) return null;
+  const minutes = Math.round(Object.values(doc.logs ?? {}).filter((l) => l.status === 'active' && l.kind === 'amount' && l.itemId === q.id && l.day === today)
+    .reduce((sum, l) => sum + (l.amount ?? 0), 0));
+  const habit = doc.items?.['hebrew-habit'];
+  const goal = Math.round(habit?.status === 'active' && habit.minutes > 0 ? habit.minutes : q.target / 7);
+  if (!(goal > 0)) return null;
+  const clock = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+  return { minutes, goal, done: minutes >= goal, text: `${clock(minutes)} of ${clock(goal)} today`, share: Math.min(1, minutes / goal) };
+}
+
 export function hebrewHero(doc, today) {
   const q = minutesQuota(doc, 'hebrew-minutes');
   if (!q) return null;

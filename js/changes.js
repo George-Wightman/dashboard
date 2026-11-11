@@ -3,7 +3,7 @@
 
 import { MAPS, stableStringify } from './doc.js';
 
-export const CHANGE_KEEP_DAYS = 30; // days a change keeps its before/after snapshots
+export const CHANGE_KEEP_DAYS = 14; // days a change keeps its before/after snapshots (and can be undone)
 
 const LOGGED = MAPS.filter((m) => m !== 'changes');
 const DAY_MS = 86400000;

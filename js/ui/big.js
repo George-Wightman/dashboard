@@ -14,6 +14,7 @@ export const bigSection = (title, ...content) => h('section', { class: 'big-sect
 export function openBig(ctx, widget) {
   const dlg = document.getElementById('widget-sheet');
   if (!dlg || !widget?.big) return;
+  if (ctx.ui.big !== widget) ctx.usage?.big(widget.id);
   ctx.ui.big = widget;
   dlg.onclose = () => { ctx.ui.big = null; };
   paintBig(ctx, { top: true });

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'c6a41de2';
+var PLANNER_BUILD = '9715ad7e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -726,6 +726,36 @@ function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
   return map;
 }
 
+// What leaves the synced file for good, so it stops growing: Claude's changes more than
+// CHANGE_DROP_DAYS older than the newest one (their snapshots went at 14 days, js/changes.js), and
+// usage weeks (js/usage.js) more than USAGE_DROP_WEEKS behind the newest. Measured from the records
+// themselves, never a clock, so every device, the planner and Claude's tool drop exactly the same
+// ones in every merge and a dropped record can't come back from a copy that still has it.
+const CHANGE_DROP_DAYS = 45;
+const USAGE_DROP_WEEKS = 16;
+const DAY_MS = 86400000;
+
+function expire(doc) {
+  const changes = doc.changes ?? {};
+  let newest = '';
+  for (const c of Object.values(changes)) if (typeof c?.at === 'string' && c.at > newest) newest = c.at;
+  const t = Date.parse(newest);
+  if (Number.isFinite(t)) {
+    const cutoff = new Date(t - CHANGE_DROP_DAYS * DAY_MS).toISOString();
+    for (const [id, c] of Object.entries(changes)) if (typeof c?.at === 'string' && c.at < cutoff) delete changes[id];
+  }
+  const calendar = doc.calendar ?? {};
+  const weekOf = (id) => (/^usage:[a-z0-9]+:\d{4}-\d{2}-\d{2}$/.test(id) ? id.slice(-10) : null);
+  let last = '';
+  for (const id of Object.keys(calendar)) { const w = weekOf(id); if (w && w > last) last = w; }
+  const lt = Date.parse(`${last}T00:00:00Z`);
+  if (Number.isFinite(lt)) {
+    const cutoff = new Date(lt - USAGE_DROP_WEEKS * 7 * DAY_MS).toISOString().slice(0, 10);
+    for (const id of Object.keys(calendar)) { const w = weekOf(id); if (w && w < cutoff) delete calendar[id]; }
+  }
+  return doc;
+}
+
 function mergeDocs(a, b) {
   const out = { schema: Math.max(a?.schema ?? 1, b?.schema ?? 1) };
   const keys = new Set([...MAPS, ...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
@@ -749,13 +779,13 @@ function mergeDocs(a, b) {
       out[key] = hasLeft ? left : right;
     }
   }
-  return out;
+  return expire(out);
 }
 
 function sameDoc(a, b) {
   return stableStringify(mergeDocs(a, null)) === stableStringify(mergeDocs(b, null));
 }
-return { pickWinner, mergeDocs, sameDoc };
+return { pickWinner, CHANGE_DROP_DAYS, USAGE_DROP_WEEKS, mergeDocs, sameDoc };
 })();
 
 // ---- js/flags.js
@@ -990,7 +1020,7 @@ const __js_changes = (() => {
 
 const { MAPS, stableStringify } = __js_doc;
 
-const CHANGE_KEEP_DAYS = 30; // days a change keeps its before/after snapshots
+const CHANGE_KEEP_DAYS = 14; // days a change keeps its before/after snapshots (and can be undone)
 
 const LOGGED = MAPS.filter((m) => m !== 'changes');
 const DAY_MS = 86400000;
@@ -1260,6 +1290,7 @@ const CALENDAR_DEFAULTS = {
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
   nudges: true, // js/nudges.js: pushes before a miss (the back question, Hebrew, a session)
+  checkins: false, // planner/checkins.js: a question and a ping for each block that passes unticked (off: the day is closed once, js/close.js)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
 
@@ -1306,6 +1337,10 @@ const CONFIG_CHECKS = {
     return v.trim();
   },
   nudges: (v, field) => {
+    if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
+    return v;
+  },
+  checkins: (v, field) => {
     if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
     return v;
   },
@@ -7926,6 +7961,7 @@ const { pushRequest, makeVapidKeys, gasCrypto, vapidAuthorization, fromB64url } 
 const { bytesToBig } = __planner_p256;
 const { quietAt } = __js_nudges;
 const { deviceZone } = __js_travel;
+const { readPlannerConfig } = __js_calendar;
 
 const PINGS_PER_DAY = 4;
 const QUIET_FROM = '22:30';
@@ -8017,7 +8053,10 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
     const today = logicalDay(t, dayStartHour);
     try { vapid(store); } catch (e) { note(`Couldn't make the notification keys: ${e?.message ?? e}`); }
     const asked = [];
-    for (const { itemId } of missedTasks(store.doc(), today, t)) {
+    // Off unless the planner setting `checkins` is true: the questions went unanswered, so the day
+    // is closed once in the evening instead (js/close.js). The status below is still written.
+    const asking = readPlannerConfig(store.doc()).config.checkins === true;
+    for (const { itemId } of asking ? missedTasks(store.doc(), today, t) : []) {
       try {
         const rec = store.askCheckin({ day: today, itemId, why: 'missed', source: 'planner', onlyNew: true });
         if (rec) asked.push(rec.id);

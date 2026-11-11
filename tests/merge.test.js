@@ -282,3 +282,23 @@ test('a document from before the journal merges cleanly with one that has it', (
   assert.equal(mergeDocs(old, { ...emptyDoc(), journal: { [rec.id]: rec } }).journal[rec.id].feedback, 'Kept.');
   assert.equal(sameDoc(old, emptyDoc()), true);
 });
+
+test('old changes and old usage weeks leave in every merge, measured from the newest', async () => {
+  const { CHANGE_DROP_DAYS, USAGE_DROP_WEEKS } = await import('../js/merge.js');
+  assert.equal(CHANGE_DROP_DAYS, 45);
+  assert.equal(USAGE_DROP_WEEKS, 16);
+  const change = (id, at) => ({ id, at, updated: at, created: at.slice(0, 10), status: 'active', summary: id });
+  const a = { schema: 1, changes: { old: change('old', '2026-09-01T10:00:00.000Z'), mid: change('mid', '2026-10-20T10:00:00.000Z') },
+    calendar: { 'usage:lap1:2026-06-01': { id: 'usage:lap1:2026-06-01', updated: '2026-06-02T00:00:00.000Z', days: {} }, status: { id: 'status', updated: '2026-06-02T00:00:00.000Z' } } };
+  const b = { schema: 1, changes: { now: change('now', '2026-11-11T10:00:00.000Z') },
+    calendar: { 'usage:lap1:2026-11-09': { id: 'usage:lap1:2026-11-09', updated: '2026-11-11T00:00:00.000Z', days: {} } } };
+  const merged = mergeDocs(a, b);
+  assert.deepEqual(Object.keys(merged.changes).sort(), ['mid', 'now']);
+  assert.deepEqual(Object.keys(merged.calendar).sort(), ['status', 'usage:lap1:2026-11-09']);
+  // A copy that still has the old ones can't bring them back, in either order.
+  assert.deepEqual(Object.keys(mergeDocs(merged, a).changes).sort(), ['mid', 'now']);
+  assert.deepEqual(Object.keys(mergeDocs(a, merged).changes).sort(), ['mid', 'now']);
+  // On its own, a document measures from its own newest change (old is 49 days behind mid).
+  assert.deepEqual(Object.keys(mergeDocs(a, null).changes).sort(), ['mid']);
+  assert.deepEqual(Object.keys(mergeDocs({ schema: 1, changes: { old: a.changes.old } }, null).changes), ['old']);
+});

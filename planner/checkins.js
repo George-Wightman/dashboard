@@ -10,6 +10,7 @@ import { pushRequest, makeVapidKeys, gasCrypto, vapidAuthorization, fromB64url }
 import { bytesToBig } from './p256.js';
 import { quietAt } from '../js/nudges.js';
 import { deviceZone } from '../js/travel.js';
+import { readPlannerConfig } from '../js/calendar.js';
 
 export const PINGS_PER_DAY = 4;
 export const QUIET_FROM = '22:30';
@@ -101,7 +102,10 @@ export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () 
     const today = logicalDay(t, dayStartHour);
     try { vapid(store); } catch (e) { note(`Couldn't make the notification keys: ${e?.message ?? e}`); }
     const asked = [];
-    for (const { itemId } of missedTasks(store.doc(), today, t)) {
+    // Off unless the planner setting `checkins` is true: the questions went unanswered, so the day
+    // is closed once in the evening instead (js/close.js). The status below is still written.
+    const asking = readPlannerConfig(store.doc()).config.checkins === true;
+    for (const { itemId } of asking ? missedTasks(store.doc(), today, t) : []) {
       try {
         const rec = store.askCheckin({ day: today, itemId, why: 'missed', source: 'planner', onlyNew: true });
         if (rec) asked.push(rec.id);

@@ -20,6 +20,7 @@ export const CALENDAR_DEFAULTS = {
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
   nudges: true, // js/nudges.js: pushes before a miss (the back question, Hebrew, a session)
+  checkins: false, // planner/checkins.js: a question and a ping for each block that passes unticked (off: the day is closed once, js/close.js)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
 
@@ -66,6 +67,10 @@ export const CONFIG_CHECKS = {
     return v.trim();
   },
   nudges: (v, field) => {
+    if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
+    return v;
+  },
+  checkins: (v, field) => {
     if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
     return v;
   },

@@ -17,6 +17,7 @@ import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { renderRow, listRows, renderMealsRow } from './today.js';
 import { enableTimeDrag } from './timedrag.js';
 import { renderCheckin, dayOf } from './checkin.js';
+import { renderCloseCard } from './close.js';
 import { renderBackRow, sessionExtras } from './coach.js';
 import { keptFocus, restoreFocus } from './side.js';
 
@@ -135,10 +136,12 @@ export function renderTimeline(ctx) {
 
   const back = past ? null : renderBackRow(ctx);
   const checkin = renderCheckin(ctx);
+  const closing = renderCloseCard(ctx);
   const tomorrow = past ? null : tomorrowLine(doc, today);
   root.replaceChildren(...[
     back ? h('ul', { class: 'tl-checkin tl-backq' }, back) : null,
     checkin ? h('ul', { class: 'tl-checkin' }, checkin) : null,
+    closing,
     ctx.ui.taskError ? h('p', { class: 'error', role: 'alert' }, ctx.ui.taskError,
       h('button', { class: 'link', type: 'button', onclick: () => { ctx.ui.taskError = null; ctx.render(); } }, 'Dismiss')) : null,
     rows.length ? null : h('p', { class: 'tl-empty' }, past ? 'Nothing was on that day.' : 'Nothing on today. Tell Claude what you want to get done.'),

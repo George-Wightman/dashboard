@@ -40,6 +40,7 @@ import { loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
 import { loadCached, refreshFile } from './private.js';
 import { MONEY_PATH, MONEY_KEY, validMoney } from './money.js';
 import { LONDON_PATH, LONDON_KEY, validLondon } from './london.js';
+import { createUsage, deviceOf } from './usage.js';
 
 const store = createStore({ storage: localStorage });
 const ui = {
@@ -57,6 +58,12 @@ const ui = {
   note: noteState(),
 };
 const sync = { state: 'off', at: null, error: null };
+// How the app gets used, in counts (js/usage.js): kept here as it happens, synced now and then.
+const usage = createUsage({
+  storage: localStorage,
+  device: deviceOf(localStorage, { touch: typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches }),
+  today: () => store.today(),
+});
 // The read-only pull from the Hebrew app's own sync file (js/hebrewSync.js): a separate repo and
 // token from the main sync above, so its own state and words-known count for ⚙ to show.
 const hebrew = { state: 'off', at: null, error: null, words: null, strong: null, live: null, gold: null };
@@ -94,6 +101,7 @@ const updater = createUpdater({
 const ctx = {
   store,
   ui,
+  usage,
   render,
   updater,
   applyUpdate: () => updater.apply(() => location.reload()),
@@ -331,7 +339,9 @@ async function runSync() {
     // Recorded before the request, so a flag saved while this sync is still in flight still
     // counts as "waiting" (js/flags.js's waitingFlags).
     const started = new Date().toISOString();
+    const t0 = performance.now();
     const result = await syncOnce({ store, client: createGitHubClient({ token, repo }) });
+    usage.synced({ ok: result.ok, ms: performance.now() - t0, kb: (localStorage.getItem(DATA_KEY)?.length ?? 0) / 1024 });
     Object.assign(sync, result.ok
       ? { state: 'ok', at: new Date(), error: null }
       : { state: 'failing', error: result.error });
@@ -339,6 +349,7 @@ async function runSync() {
     return result;
   } catch (e) {
     Object.assign(sync, { state: 'failing', error: e.message });
+    usage.synced({ ok: false });
     return { ok: false, error: e.message };
   } finally {
     renderHeader();
@@ -455,10 +466,21 @@ function reportZone() {
   } catch { /* no zone to report */ }
 }
 
+// Where this visit came from (a widget, a notification, a shortcut), read before the address is tidied.
+const cameFrom = params.has('big') ? 'widget' : params.has('checkin') ? 'notification' : params.has('do') ? 'shortcut' : params.has('task') ? 'calendar-link' : null;
+const seen = (from = null) => usage.visible({ from, hour: new Date().getHours(), size: { width: innerWidth, height: innerHeight } });
+// The counts go into the synced document with a sync that was happening anyway (never more than
+// every three hours), with this device's tile arrangement beside them.
+function flushUsage() {
+  try { usage.flush(store, { extra: { tiles: { order: tiles.order, hidden: tiles.hidden } } }); } catch { /* only a measurement */ }
+}
+
 function wake() {
   applyLook();
   checkRollover();
   reportZone();
+  if (!document.hidden) seen();
+  flushUsage();
   scheduler.now();
   updater.check();
 }
@@ -530,10 +552,14 @@ function absorbPending() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { absorbPending(); scheduler.flush(); }
+  if (document.hidden) { usage.hidden(); absorbPending(); scheduler.flush(); }
   else wake();
 });
-window.addEventListener('pagehide', () => { absorbPending(); scheduler.flush(); });
+window.addEventListener('pagehide', () => { usage.hidden(); absorbPending(); scheduler.flush(); });
+// Every tap on a control, by where it is and what it is (js/usage.js's tapName); and anything that breaks.
+document.addEventListener('click', (e) => { try { usage.tap(e.target); } catch { /* only a measurement */ } }, true);
+window.addEventListener('error', (e) => { try { usage.error(e.message, e.filename, e.lineno); } catch { /* only a measurement */ } });
+window.addEventListener('unhandledrejection', (e) => { try { usage.error(e.reason?.message ?? e.reason, 'promise'); } catch { /* only a measurement */ } });
 window.addEventListener('storage', (e) => {
   // Another window on this device rearranged the widgets: follow it, once nothing is being typed.
   if (e.key === TILES_KEY) {
@@ -558,6 +584,7 @@ window.addEventListener('storage', (e) => {
 setInterval(() => {
   applyLook();
   checkRollover();
+  usage.tick();
   // The sun and the now line move: Daylight's sky redraws each minute, never over typing.
   if (daylight() && canRun()) { renderSky(ctx); if (!timelineBusy()) renderTimeline(ctx); }
   lockDay();
@@ -566,10 +593,12 @@ setInterval(() => {
 }, 60000);
 
 applyLook();
+if (!document.hidden) seen(cameFrom);
 // The retired Coach's conversations lose their messages after 30 days, as they always did.
 store.pruneTalks(30);
 store.pruneChanges();
 render();
+flushUsage();
 scheduler.now();
 ctx.mealPass();
 
@@ -582,6 +611,7 @@ if ('serviceWorker' in navigator && !NO_SW) {
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data?.type !== 'open-checkin') return;
     const target = new URL(e.data.url, location.href).searchParams;
+    usage.count('from', 'notification');
     if (target.get('checkin')) openCheckin(ctx, target.get('checkin'));
     else if (target.get('do')) runShortcut(target.get('do')); // a nudge (js/nudges.js)
   });

@@ -169,6 +169,8 @@ function device(store, id, code = 201) {
 }
 
 function planner(store, t, codes = {}) {
+  // Asking about missed blocks is a planner setting now, off unless it's turned on.
+  store.putCalendar('config', { checkins: true }, 'claude');
   const map = new Map();
   const props = { get: (k) => map.get(k) ?? null, put: (k, v) => map.set(k, String(v)) };
   const sent = [];
@@ -311,4 +313,17 @@ test('catchup leads with the notes he left, oldest first, with when and what he 
   assert.match(text, /^New flags:\n {2}Bug: "The mic cut off" #bug/m);
   assert.doesNotMatch(text.split('New flags:')[1], /Remind me/, 'not listed twice');
   assert.match(READS.flags(doc, TODAY), /"Step 3 of the framework keeps falling apart" #n1 · .* · during Scenario practice \(10:30–11:30\) · from George/);
+});
+
+test('with the setting off (the default), the planner asks nothing and pings nothing', () => {
+  const { store, task } = withTask();
+  booked(store, [{ key: 'a', start: at('09:00').toISOString(), end: at('10:00').toISOString(), items: [task.id] }]);
+  device(store, 'phone1');
+  const p = planner(store, at('10:40'));
+  store.putCalendar('config', { checkins: false }, 'claude');
+  const c = p.make();
+  assert.deepEqual(c.ask(store), []);
+  assert.equal(c.ping(store).sent, 0);
+  assert.equal(store.doc().journal[checkinId(DAY, task.id)], undefined);
+  assert.ok(store.doc().calendar[CHECKIN_STATUS], 'the run is still recorded');
 });

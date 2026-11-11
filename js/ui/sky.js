@@ -12,6 +12,8 @@ import { LOGOS } from './sources.js';
 import { openFlagPanel } from './flags.js';
 import { setArranging } from './widgets.js';
 import { horizonSvg } from './map.js';
+import { hebrewToday } from '../tiles.js';
+import { openTile } from './tiles.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const svg = (tag, attrs = {}, ...children) => {
@@ -81,7 +83,8 @@ function progress(done, total, pushed) {
 function noteChip(ctx, today, text, lead = null, cls = '') {
   return h('p', { class: `dl-chip ${cls}`.trim() },
     lead,
-    h('span', {}, text),
+    // On a phone a note is one line until it's tapped (styles/daylight.css).
+    h('span', { 'data-use': 'note-open', role: 'button', onclick: (e) => e.currentTarget.parentElement.classList.toggle('open') }, text),
     h('button', { class: 'dl-chip-x', type: 'button', title: 'Hide for today', 'aria-label': `Hide: ${text}`, onclick: () => ctx.hideNote(today, text) }, '×'));
 }
 
@@ -89,6 +92,16 @@ function claudeMark() {
   const el = h('span', { class: 'src', title: 'From Claude', role: 'img', 'aria-label': 'From Claude' });
   el.innerHTML = LOGOS.claude; // a fixed string from js/ui/sources.js, never data
   return el;
+}
+
+// Hebrew, first on the screen: today's minutes against the day's share, opening the Hebrew tile big.
+function hebrewChip(ctx, doc, today) {
+  const hb = hebrewToday(doc, today);
+  if (!hb) return null;
+  return h('button', { class: `dl-hebrew${hb.done ? ' done' : ''}`, type: 'button', 'data-use': 'hebrew-today', title: 'Open Hebrew', onclick: () => openTile(ctx, 'hebrew') },
+    h('span', { class: 'dl-hebrew-name' }, 'Hebrew'),
+    h('span', { class: 'dl-hebrew-bar', 'aria-hidden': 'true' }, h('i', { style: `width: ${Math.round(hb.share * 100)}%` })),
+    h('span', {}, hb.done ? `${hb.text} ✓` : hb.text));
 }
 
 export function renderSky(ctx) {
@@ -131,7 +144,7 @@ export function renderSky(ctx) {
   const words = h('div', { class: 'dl-sky-words' },
     h('div', { class: 'dl-sky-top' }, h('span', { class: 'dl-date' }, `${m.date} · ${m.time} · ${ctx.place().name}`), actions),
     h('div', { class: 'dl-sky-bottom' },
-      h('div', { class: 'dl-hello' }, h('h1', {}, m.greeting), progress(m.done, m.total, m.pushed.length)),
+      h('div', { class: 'dl-hello' }, h('h1', {}, m.greeting), progress(m.done, m.total, m.pushed.length), hebrewChip(ctx, doc, today)),
       h('div', { class: 'dl-notes' },
         m.warnings.map((w) => h('p', { class: 'dl-chip dl-warning', role: 'status' }, icon(CLOUD), h('span', {}, w))),
         m.brief ? noteChip(ctx, today, m.brief, claudeMark(), 'dl-brief') : null,

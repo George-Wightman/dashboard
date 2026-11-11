@@ -27,6 +27,7 @@ Pick the row, not the whole file. The detail for each command is below.
 | Check what he's eaten, and correct a big miss | `food`, `photo <meal id>` | `meal` |
 | See how a piece of work went, in his words | `checkins`, `catchup` | `edit` with `notes` on the next attempt |
 | Change how the calendar books | `planner` | `planner` |
+| Review how the dashboard itself is being used | `usage [days]` | whatever it shows is ignored or breaking |
 | Tell the app's developer something | `handoffs` | `handoff` |
 | Leave a note George will read | `flags` | `flag` |
 | Discover supported controls without reading everything | `capabilities [topic|op]` | — |
@@ -193,6 +194,24 @@ His answer to the morning question "How's your back?" — fine, stiff, sore or b
 last 14 days (or `days`) he answered, oldest first, and the counts. Two sore mornings running also
 leave you a For Claude flag. Read it before writing a session with a hinge or a heavy squat.
 
+### `usage [days]`
+
+How the dashboard is really being used, over the last 14 days (or the number you give, up to 90).
+Run it when George asks for a review of the app, what he uses, or what to cut.
+
+- **The app**, counted on each device (laptop, phone): days opened, opens, minutes on screen, the
+  hours it's opened at, where an open came from (a widget, a notification, a shortcut), which tiles
+  were opened big and which never were, hidden tiles, taps by control (`where/control`), sync times
+  and the file's size, and errors with their file and line.
+- **What the records show**: ticks by who made them and how many of his own were after 20:00 or in
+  a batch; check-ins asked against answered; meals and how late they were logged; the morning back
+  question; flags; calendar edits; days Claude changed things; features with no records at all.
+- **The synced file**: its size, by part.
+
+Counts only: no titles and nothing he typed. A device shows up once it has reloaded into a build
+with the usage log. Read it as evidence: something untouched for weeks is a candidate to simplify
+or remove, and an error line is a bug to write up with `handoff`.
+
 ### `food [days]`
 Meals over the last 7 days (or `days`), newest first: each with its time and slot, Gemini's name for
 it, the protein and calories counted (with the portion he chose, or your correction and why), his own
@@ -330,7 +349,7 @@ still worth their hammers when done), `areaColors` (`{"Assessment centre": "Grap
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
 take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `areaHours`
 (`{"Food": ["16:30", "20:00"]}` — an area booked only in its own hours, inside the day's hours or not:
-cooking in the evening rather than first thing), `nudges` (`false` turns off
+cooking in the evening rather than first thing), `checkins` (`true` brings back the question and ping after each unticked block; off by default, the day is closed once in the evening instead), `nudges` (`false` turns off
 the pushes before a miss: the back question at 07:30, Hebrew at 20:00, a session half an
 hour ahead; on by default, at most four a day), `duolingo` (George's Duolingo username, `""` to stop: the
 planner adds his Hebrew course's XP to the day as a `duolingo:<day>` log on Hebrew practice. A

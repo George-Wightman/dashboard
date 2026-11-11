@@ -14,7 +14,7 @@ test('the change log is a synced map like the others', () => {
   assert.equal(isDoc({ schema: 1, items: {}, changes: [] }), false);
   const rec = { id: 'c1', updated: '2026-09-13T10:00:00.000Z', created: '2026-09-13', summary: 'x' };
   assert.equal(mergeDocs({ schema: 1, items: {} }, { schema: 1, items: {}, changes: { c1: rec } }).changes.c1.summary, 'x');
-  assert.equal(CHANGE_KEEP_DAYS, 30);
+  assert.equal(CHANGE_KEEP_DAYS, 14);
 });
 
 test('diffDocs lists every record that changed, as copies, and leaves the change log out', () => {

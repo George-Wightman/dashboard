@@ -7,6 +7,7 @@ import { h } from './dom.js';
 import { waitingCheckins, questionFor, SUMMARY_SYSTEM, summaryPrompt, parseSummary } from '../checkins.js';
 import { micButton, stopListening, grow } from './mic.js';
 import { shownDay } from '../timeline.js';
+import { readPlannerConfig } from '../calendar.js';
 
 const SAVED_FOR_MS = 6000;
 
@@ -16,20 +17,23 @@ export const checkinState = () => ({ drafts: {}, error: '', saved: '', first: nu
 // check-ins and meals there are that day's.
 export const dayOf = (ctx) => shownDay(ctx.ui.viewDay, ctx.store.today());
 
-// A tick from the list or a task card: the tick, then (for a task) the question — or, for a tick
-// taken off, its unanswered question goes too. On the day showing.
+// A tick from the list or a task card, on the day showing. It used to ask "how did it go?" after
+// every task; those went unanswered (2 of 73 in five weeks), so the day is closed once in the
+// evening instead (js/ui/close.js). A tick taken off still takes an old unanswered question with it.
 export function tickAndAsk(ctx, itemId) {
   const { store } = ctx;
   const day = dayOf(ctx);
   const log = store.toggleDone(itemId, day);
   if (store.doc().items[itemId]?.type !== 'task') return;
-  if (log) store.askCheckin({ day, itemId, why: 'done' });
-  else store.withdrawCheckin(day, itemId);
+  if (!log) store.withdrawCheckin(day, itemId);
 }
 
 // The one on show: the one a notification opened, else the oldest waiting.
 function current(ctx) {
-  const waiting = waitingCheckins(ctx.store.doc(), dayOf(ctx));
+  // Only while the planner setting `checkins` is on: with it off, a question left over from before
+  // isn't put at the top of the day (the day is closed once instead, js/ui/close.js).
+  const on = readPlannerConfig(ctx.store.doc()).config.checkins === true;
+  const waiting = on ? waitingCheckins(ctx.store.doc(), dayOf(ctx)) : [];
   const first = waiting.find((r) => r.id === ctx.ui.checkin.first);
   return { rec: first ?? waiting[0] ?? null, count: waiting.length };
 }

@@ -217,6 +217,12 @@
 .dl-segs { display: inline-flex; gap: 3px; }
 .dl-segs i { width: 22px; height: 6px; border-radius: 3px; background: currentColor; opacity: .18; }
 .dl-segs i.on { background: var(--dl-gold); opacity: 1; }
+/* Hebrew today, under the greeting (js/ui/sky.js hebrewChip). */
+.dl-hebrew { align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--dl-hebrew, #3F3A9E); color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer; font-variant-numeric: tabular-nums; }
+.dl-hebrew-name { font-weight: 800; }
+.dl-hebrew-bar { width: 64px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .28); overflow: hidden; }
+.dl-hebrew-bar i { display: block; height: 100%; border-radius: 3px; background: #FFFFFF; }
+.dl-hebrew.done .dl-hebrew-bar i { background: var(--dl-gold, #F2B01E); }
 .dl-notes { display: flex; flex-direction: column; gap: 6px; max-width: 460px; }
 .dl-chip { margin: 0; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px 10px 16px; border-radius: 18px; background: rgba(255, 255, 255, .8); color: #1D1A2B; font-size: 15px; }
 .dl-chip > span { flex: 1; }
@@ -231,12 +237,21 @@
 .dl-sky[data-phase="night"] .dl-chip-x, .dl-sky[data-phase="dusk"] .dl-chip-x { color: #A7A2C4; }
 
 @media (max-width: 759px) {
-  .dl-sky, .dl-sky-words { min-height: 220px; }
-  .dl-sky-words { padding: 16px 16px 22px; }
-  .dl-horizon { --hz-h: 92px; }
-  .dl-sky.has-horizon .dl-sky-words { padding-bottom: 80px; }
-  .dl-hello h1 { font-size: 36px; }
-  .dl-notes { max-width: none; }
+  /* On a phone the first screen is for the list: a short sky, the blocks' dots left to the timeline
+     below (they sat on top of the words), and each note on one line until it's tapped. */
+  .dl-sky, .dl-sky-words { min-height: 150px; }
+  .dl-sky-words { padding: 12px 16px 14px; gap: 10px; }
+  .dl-horizon { --hz-h: 64px; }
+  .dl-sky.has-horizon .dl-sky-words { padding-bottom: 56px; }
+  .dl-hello { gap: 6px; }
+  .dl-hello h1 { font-size: 30px; }
+  .dl-dot { display: none; }
+  .dl-sky-bottom { gap: 8px 24px; }
+  .dl-notes { max-width: none; width: 100%; gap: 4px; }
+  .dl-chip { padding: 5px 6px 5px 12px; font-size: 14px; align-items: center; border-radius: 14px; }
+  .dl-chip:not(.open) > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .dl-pill, .dl-round { min-height: 36px; }
+  .dl-round { width: 36px; }
   .dl-date { font-size: 13px; }
 }
 
@@ -300,6 +315,15 @@
 :root[data-screen="daylight"] .tl-checkin li.checkin { background: var(--dl-card); border: 0; border-radius: 22px; padding: 16px 18px; box-shadow: 0 3px 0 var(--dl-shadow); }
 :root[data-screen="daylight"] .tl-checkin .checkin-q { font-weight: 700; font-size: 16px; }
 :root[data-screen="daylight"] .tl-checkin textarea { border: 0; border-radius: 14px; background: var(--dl-soft); color: var(--dl-ink); }
+
+/* A finger needs more than a mouse does: bigger boxes to tick, and room round the small marks. */
+@media (pointer: coarse) {
+  :root[data-screen="daylight"] #timeline li.row > input[type=checkbox] { width: 32px; height: 32px; }
+  :root[data-screen="daylight"] #timeline li.row { min-height: 56px; }
+  :root[data-screen="daylight"] #timeline .row .note-mark { padding: 12px 10px; margin: -12px -4px; font-size: 1.1rem; }
+  :root[data-screen="daylight"] .tl-checkin .buttons .link { padding: 10px 12px; }
+  .day-step { min-width: 40px; min-height: 40px; }
+}
 
 @media (max-width: 759px) {
   .dl-sun { width: 30px; height: 30px; }
@@ -470,6 +494,29 @@ label.dl-btn { display: inline-flex; align-items: center; }
 @media (prefers-reduced-motion: reduce) {
   :root[data-screen="daylight"] * { animation: none !important; transition: none !important; }
 }
+
+/* Close the day (js/ui/close.js): the card at the top of Today, and its sheet. */
+.close-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 22px; background: var(--dl-card); box-shadow: 0 3px 0 var(--dl-shadow); }
+.close-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.close-words strong { font: 800 18px/1.2 var(--dl-display, inherit); }
+.close-done { margin: 0; padding: 10px 16px; border-radius: 16px; background: var(--dl-soft); color: var(--dl-muted); font-size: 14px; }
+dialog.sheet.close-day { width: min(460px, calc(100vw - 24px)); height: auto; max-height: calc(100vh - 24px); margin: auto; padding: 0; border-radius: 22px; }
+.close-day .sheet-body { height: auto; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px; overflow-y: auto; }
+.close-day .sheet-head { display: flex; justify-content: space-between; align-items: center; }
+.close-day .sheet-head h2 { margin: 0; font: 800 22px/1.1 var(--dl-display, inherit); }
+.close-day h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--dl-muted); }
+.close-sum, .close-all, .close-hint { margin: 0; }
+.close-hint { font-size: 13px; margin-top: 6px; }
+.close-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.close-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.close-row input { flex: none; width: 26px; height: 26px; margin: 0; accent-color: var(--dl-ink); }
+.close-row label { flex: 1; padding: 8px 0; cursor: pointer; }
+.close-meals { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.close-meals h3 { flex-basis: 100%; margin: 0; }
+.close-meals span { flex: 1; min-width: 12ch; }
+.close-day .checkin-box { display: flex; gap: 8px; align-items: flex-start; }
+.close-day .checkin-box textarea { flex: 1; border: 0; border-radius: 14px; padding: 10px 12px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; resize: none; }
+.close-actions { display: flex; justify-content: flex-end; }
 
 /* Log Hebrew time. */
 dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin: auto; padding: 0; }

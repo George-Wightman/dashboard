@@ -34,7 +34,7 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
     bash <skill folder>/run.sh today
 
 **Reads:** `catchup [days]`, `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`,
-`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `back`, `map`, `reference`. Each
+`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `back`, `map`, `usage [days]`, `reference`. Each
 starts with today's date — work other dates out from it.
 
 If the tool names an op or a read that isn't in your `reference.md`, your copy is older than the
@@ -95,6 +95,14 @@ the middle of something; each becomes a *For Claude* flag stamped with the time 
 in. `catchup` lists every open one at the top (*Notes George left you*). They're his own words: act
 on each (or tell him what you'd do and why not), then mark it addressed with
 `{"op": "archive", "id": "<flag id>"}`.
+
+## Closing the day (this replaced check-ins on 11 Nov 2026)
+
+In the evening he closes the day in one sheet: ticks what happened, logs a meal, and may leave you a
+line. That line arrives as a *For Claude* note starting "Closing <day>:", at the top of `catchup`.
+What he left unticked is a miss, by name, exactly as before. The per-task questions below are off
+unless the planner setting `checkins` is true (`{"op": "planner", "checkins": true}`); old ones are
+still in `checkins`. When he asks how he uses the dashboard, or for a review of it, run `usage`.
 
 ## Check-ins
 
