@@ -1,0 +1,56 @@
+{
+  "v": 1,
+  "symbols": {
+    "AAA_US_EQ": { "ticker": "AAA", "yahoo": "AAA", "stooq": "aaa.us", "cik": null, "name": "Alpha" },
+    "BBB_US_EQ": { "ticker": "BBB", "yahoo": "BBB", "stooq": "bbb.us", "cik": null, "name": "Beta" },
+    "CCC_US_EQ": { "ticker": "CCC", "yahoo": "CCC", "stooq": "ccc.us", "cik": null, "name": "Gamma" },
+    "FUNDl_EQ": { "ticker": "FUND", "yahoo": "FUND.L", "stooq": "fund.uk", "cik": null, "name": "A theme fund" },
+    "PIEl_EQ": { "ticker": "PIE", "yahoo": "PIE.L", "stooq": "pie.uk", "cik": null, "name": "A pie fund" }
+  },
+  "tiers": { "AAA": "watched", "BBB": "watched", "CCC": "watched", "FUND": "fund", "PIE": "pie" },
+  "themes": [
+    { "id": "chips", "name": "Chips", "holdings": ["AAA", "BBB"], "also": [], "interests": [] },
+    { "id": "power", "name": "Power", "holdings": ["CCC", "FUND"], "also": ["AAA"], "interests": ["grid"] },
+    { "id": "pie", "name": "Pie", "holdings": ["PIE"], "also": [], "interests": [] }
+  ],
+  "theses": {
+    "AAA": { "line": "The default chip, locked in by its software.", "watch": [], "intact": true },
+    "BBB": { "line": "A turnaround.", "watch": [], "intact": true },
+    "CCC": { "line": "A safe supplier.", "watch": ["supply bans"], "intact": true }
+  },
+  "lensNotes": {
+    "AAA": { "expectations": { "dot": "green", "reason": "Forecasts raised 3 times this quarter (soft data)", "at": "2026-11-10T07:00:00.000Z" } },
+    "BBB": { "expectations": { "dot": "red", "reason": "Forecasts cut", "at": "2026-11-10T07:00:00.000Z" } },
+    "CCC": { "expectations": { "dot": "amber", "reason": "No change", "at": "2026-11-10T07:00:00.000Z" } }
+  },
+  "events": [
+    { "day": "2026-11-14", "ticker": "AAA", "theme": null, "kind": "results", "text": "AAA results" },
+    { "day": "2026-11-30", "ticker": null, "theme": "power", "kind": "policy", "text": "Fuel policy vote" }
+  ],
+  "brief": {
+    "at": "2026-11-12T07:00:00.000Z",
+    "verdict": "Nothing that changes your view today.",
+    "happened": [],
+    "coming": [{ "text": "Fri · AAA results", "ticker": "AAA", "url": null, "day": "2026-11-14" }],
+    "look": [{ "kind": "add", "text": "CCC dipped on news that doesn't touch the thesis — a moment to add?", "ticker": "CCC", "url": null }],
+    "payday": null
+  },
+  "notes": [
+    { "at": "2026-11-01T07:00:00.000Z", "subject": "AAA", "kind": "thinking", "text": "Older thought.", "due": null, "closed": false },
+    { "at": "2026-11-05T07:00:00.000Z", "subject": "AAA", "kind": "next", "text": "Check guidance on results.", "due": "2026-11-14", "closed": false },
+    { "at": "2026-11-12T07:00:00.000Z", "subject": "AAA", "kind": "looked", "text": "Quiet; results Friday.", "due": null, "closed": false },
+    { "at": "2026-11-12T07:01:00.000Z", "subject": "AAA", "kind": "thinking", "text": "Stretched on price; fine while forecasts rise.", "due": null, "closed": false },
+    { "at": "2026-11-12T07:02:00.000Z", "subject": "CCC", "kind": "looked", "text": "Dip on a broker note.", "due": null, "closed": false },
+    { "at": "2026-10-20T07:00:00.000Z", "subject": "BBB", "kind": "looked", "text": "Weak results.", "due": null, "closed": false }
+  ],
+  "shortlist": [
+    { "ticker": "IDEA", "name": "Idea Co", "theme": "power", "day": "2026-10-03", "price": 100, "ccy": "USD", "reason": "Grid supplier", "status": "watching", "why": null }
+  ],
+  "insider": {},
+  "alert": null,
+  "meta": { "runs": [
+    { "at": "2026-11-12T07:00:00.000Z", "kind": "daily", "searches": 3, "looked": ["AAA", "CCC"], "skipped": [], "tokens": 40000, "pct": 1 },
+    { "at": "2026-11-11T07:00:00.000Z", "kind": "daily", "searches": 2, "looked": ["BBB"], "skipped": [], "tokens": 30000, "pct": 1 },
+    { "at": "2026-10-01T07:00:00.000Z", "kind": "daily", "searches": 9, "looked": [], "skipped": [], "tokens": 99999, "pct": 9 }
+  ] }
+}

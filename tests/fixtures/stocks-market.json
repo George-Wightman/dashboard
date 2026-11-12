@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "at": "2026-11-12T06:10:00.000Z",
+  "positions": {
+    "at": "2026-11-12T06:10:00.000Z",
+    "error": null,
+    "list": [
+      { "t212": "AAA_US_EQ", "qty": 1, "avg": 100, "price": 150, "ccy": "USD", "valueGbp": 112, "returnGbp": 37 },
+      { "t212": "BBB_US_EQ", "qty": 2, "avg": 50, "price": 40, "ccy": "USD", "valueGbp": 60, "returnGbp": -15 },
+      { "t212": "CCC_US_EQ", "qty": 3, "avg": 20, "price": 30, "ccy": "USD", "valueGbp": 67, "returnGbp": 22 },
+      { "t212": "FUNDl_EQ", "qty": 5, "avg": 10, "price": 12, "ccy": "GBP", "valueGbp": 60, "returnGbp": 10 },
+      { "t212": "PIEl_EQ", "qty": 1, "avg": 20, "price": 21, "ccy": "GBP", "valueGbp": 21, "returnGbp": 1 },
+      { "t212": "NEW_US_EQ", "qty": 1, "avg": 10, "price": 10, "ccy": "USD", "valueGbp": 7.5, "returnGbp": 0 }
+    ]
+  },
+  "account": { "valueGbp": 327.5, "returnGbp": 55, "dayMoveGbp": 2.6, "dayMovePct": 0.8 },
+  "lenses": {
+    "AAA": { "trend": { "dot": "green", "reason": "Up 48% over 12 months" }, "price": { "dot": "amber", "reason": "P/E 38, above its 5-year median of 32" }, "health": { "dot": "green", "reason": "55% net margin" }, "risk": { "dot": "green", "reason": "6% off its high — normal for it" }, "rsi": 61, "sigma": 0.02, "moveToday": 0.01, "close": 150, "at": "2026-11-12T06:10:00.000Z" },
+    "BBB": { "trend": { "dot": "red", "reason": "Down 20% over 12 months" }, "price": { "dot": "red", "reason": "P/E 90" }, "health": { "dot": "amber", "reason": "Margins falling" }, "risk": { "dot": "amber", "reason": "30% off its high" }, "rsi": 35, "sigma": 0.03, "moveToday": -0.07, "close": 40, "at": "2026-11-12T06:10:00.000Z" },
+    "CCC": { "trend": { "dot": "amber", "reason": "Flat over 12 months" }, "price": { "dot": "green", "reason": "Cheap for it" }, "health": { "dot": "green", "reason": "Steady margins" }, "risk": { "dot": "amber", "reason": "18% off its high" }, "rsi": 45, "sigma": 0.02, "moveToday": -0.01, "close": 30, "at": "2026-11-12T06:10:00.000Z" },
+    "FUND": { "trend": { "dot": "green", "reason": "Up 12%" }, "price": { "dot": "grey", "reason": "" }, "health": { "dot": "grey", "reason": "" }, "risk": { "dot": "green", "reason": "Near its high" }, "rsi": 55, "sigma": 0.01, "moveToday": 0.002, "close": 12, "at": "2026-11-12T06:10:00.000Z" }
+  },
+  "quotes": { "IDEA": { "close": 110, "ccy": "USD", "at": "2026-11-12T06:10:00.000Z" } }
+}
