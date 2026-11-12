@@ -461,6 +461,25 @@ start by saying where you are, so a time you give Claude in Salzburg ("the gym a
 your 17:00. A time you type in the app is your time too, and nudges and quiet hours follow your
 phone's clock. The sky follows your device too (anywhere on Central European time is Salzburg).
 
+## Stocks
+
+A tile that checks each holding against why you own it, and says only what matters
+([`docs/superpowers/specs/2026-11-12-stocks-design.md`](docs/superpowers/specs/2026-11-12-stocks-design.md)).
+The planner fetches holdings and free prices each morning and works out five lenses (trend, price,
+health, expectations, risk); a morning Claude routine reads them, searches only where something has
+changed, and writes a short brief and its notes. Never buy or sell advice.
+
+**Setup (once, by you):**
+1. In Trading 212: Settings → API → create a key with **only Portfolio** ticked (not History,
+   Account data, Orders or Pies). If it ever leaked, someone could see what you hold and roughly its
+   value, nothing else; revoke it there any time.
+2. In the planner's Apps Script: Project Settings → Script properties → add `T212_KEY` (and
+   `T212_SECRET` if Trading 212 gave you a second value). Stocks stays off until it's there.
+3. Optional, for US company accounts (the Price and Health lenses): add `SEC_CONTACT`, a name and an
+   email address of your choosing. The SEC asks every caller for one.
+
+Files (private sync repo): `stocks/market.json` (the planner's) and `stocks/desk.json` (Claude's).
+
 ## Hevy
 
 The same script reads your Hevy workouts (Hevy Pro's API) every 10 minutes. The only thing it ever

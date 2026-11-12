@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '0d6be57b';
+var PLANNER_BUILD = 'f5c0d110';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8204,6 +8204,580 @@ function createNudges({ UrlFetchApp, Utilities = null, props, log = () => {}, no
 return { createNudges };
 })();
 
+// ---- js/stocks.js
+const __js_stocks = (() => {
+// Stocks (docs/superpowers/specs/2026-11-12-stocks-design.md): the view-model behind the tile and big
+// view. Two private files in the sync repo: `stocks/market.json` (the planner: positions, prices,
+// lenses) and `stocks/desk.json` (Claude: theses, themes, tiers, the brief, its notes, the shortlist,
+// the run log). This joins them. Pure, no DOM.
+
+const { addDays, daysBetween, shortWeekday, shortDate } = __js_dates;
+
+const MARKET_PATH = 'stocks/market.json';
+const DESK_PATH = 'stocks/desk.json';
+const MARKET_KEY = 'dash_stocks_market';
+const DESK_KEY = 'dash_stocks_desk';
+
+const LENSES = ['trend', 'price', 'health', 'expectations', 'risk'];
+const TIERS = ['watched', 'fund', 'market', 'pie'];
+const DOTS = ['green', 'amber', 'red', 'grey'];
+
+const obj = (x) => x != null && typeof x === 'object' && !Array.isArray(x);
+const arr = Array.isArray;
+
+function validMarket(x) {
+  return obj(x) && x.v === 1 && obj(x.positions) && arr(x.positions.list) && obj(x.lenses) && obj(x.account ?? {}) && obj(x.quotes ?? {});
+}
+
+function validDesk(x) {
+  return obj(x) && x.v === 1 && obj(x.symbols) && obj(x.tiers) && arr(x.themes) && obj(x.theses)
+    && arr(x.notes) && arr(x.shortlist) && obj(x.meta) && arr(x.meta.runs)
+    && Object.values(x.tiers).every((t) => TIERS.includes(t));
+}
+
+const grey = (reason = 'no data yet') => ({ dot: 'grey', reason });
+const lens = (l) => (obj(l) && DOTS.includes(l.dot) ? { dot: l.dot, reason: l.reason ?? '' } : null);
+
+// The five lenses for a ticker: the planner's, overridden by Claude's notes where it wrote one.
+function lensesFor(ticker, market, desk) {
+  const tier = desk?.tiers?.[ticker];
+  const m = market?.lenses?.[ticker] ?? {};
+  const notes = desk?.lensNotes?.[ticker] ?? {};
+  const out = {};
+  for (const k of LENSES) out[k] = lens(notes[k]) ?? lens(m[k]) ?? grey();
+  if (tier === 'fund' || tier === 'market') {
+    for (const k of ['price', 'health', 'expectations']) out[k] = grey("doesn't apply to a fund");
+  }
+  return out;
+}
+
+const count = (lenses, dot) => LENSES.filter((k) => lenses[k]?.dot === dot).length;
+
+function verdict(lenses, tier) {
+  if (tier === 'pie' || !tier) return null;
+  if (tier === 'fund' || tier === 'market') {
+    const t = lenses.trend.dot; const r = lenses.risk.dot;
+    if (t === 'green' && r === 'green') return 'agrees';
+    if (t === 'red' && r === 'red') return 'disagrees';
+    return 'mixed';
+  }
+  if (count(lenses, 'red') >= 2 || (lenses.trend.dot === 'red' && lenses.expectations.dot === 'red')) return 'disagrees';
+  if (count(lenses, 'green') >= 4 && count(lenses, 'red') === 0) return 'agrees';
+  return 'mixed';
+}
+
+function themeDot(verdicts) {
+  const v = verdicts.filter(Boolean);
+  if (!v.length) return 'grey';
+  if (v.filter((x) => x === 'agrees').length * 2 > v.length) return 'green';
+  if (v.filter((x) => x === 'disagrees').length * 2 > v.length) return 'red';
+  return 'amber';
+}
+
+function momentToAdd(ticker, lenses, desk) {
+  if (desk?.theses?.[ticker]?.intact === false) return false;
+  if (lenses.health.dot === 'red' || lenses.expectations.dot === 'red') return false;
+  return lenses.risk.dot === 'amber' || lenses.risk.dot === 'red';
+}
+
+const dayOf = (iso) => (typeof iso === 'string' ? iso.slice(0, 10) : null);
+const newest = (a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
+
+// What Claude last did, thinks now and will do next for a subject ('NVDA', 'theme:ai', 'idea:KOG').
+function notesFor(subject, desk) {
+  const notes = (desk?.notes ?? []).filter((n) => n.subject === subject).sort(newest);
+  const looked = notes.find((n) => n.kind === 'looked');
+  const thinking = notes.find((n) => n.kind === 'thinking') ?? null;
+  const next = notes.find((n) => n.kind === 'next' && !n.closed) ?? null;
+  return { lastLooked: looked ? dayOf(looked.at) : null, thinking, next, earlier: notes.filter((n) => n !== thinking && n !== next) };
+}
+
+const round1 = (x) => Math.round(x * 10) / 10;
+
+function hintFor({ ticker, verdict: v, desk, today, lastLooked }) {
+  const results = (desk?.events ?? []).filter((e) => e.ticker === ticker && e.kind === 'results' && e.day >= today && daysBetween(today, e.day) <= 7)
+    .sort((a, b) => (a.day < b.day ? -1 : 1))[0];
+  if (results) return `results ${shortWeekday(results.day)}`;
+  if (v === 'disagrees') return 'numbers disagree with you';
+  if (lastLooked && daysBetween(lastLooked, today) >= 7) return `quiet ${daysBetween(lastLooked, today)} days`;
+  return null;
+}
+
+function stocksView(market, desk, today) {
+  const symbols = desk?.symbols ?? {};
+  const tickerOf = (t212) => symbols[t212]?.ticker ?? t212.replace(/(_[A-Z]{2})?_EQ$|l_EQ$/, '');
+  const positions = (market?.positions?.list ?? []).map((p) => ({ ...p, ticker: tickerOf(p.t212) }));
+  const value = (t) => positions.find((p) => p.ticker === t)?.valueGbp ?? null;
+
+  const rowFor = (ticker, also = false) => {
+    const tier = desk?.tiers?.[ticker] ?? null;
+    const lenses = lensesFor(ticker, market, desk);
+    const v = verdict(lenses, tier);
+    const notes = notesFor(ticker, desk);
+    return {
+      ticker, tier, also, verdict: v, valueGbp: value(ticker),
+      dots: LENSES.map((k) => lenses[k].dot),
+      hint: tier === 'pie' ? null : hintFor({ ticker, verdict: v, desk, today, lastLooked: notes.lastLooked }),
+      card: {
+        name: Object.values(symbols).find((s) => s.ticker === ticker)?.name ?? ticker,
+        thesis: desk?.theses?.[ticker] ?? null, lenses, notes,
+        rsi: market?.lenses?.[ticker]?.rsi ?? null, insider: desk?.insider?.[ticker] ?? null,
+        add: tier === 'watched' && momentToAdd(ticker, lenses, desk),
+        events: (desk?.events ?? []).filter((e) => e.ticker === ticker && e.day >= today).sort((a, b) => (a.day < b.day ? -1 : 1)),
+      },
+    };
+  };
+
+  const themes = (desk?.themes ?? []).map((t) => {
+    const rows = [...t.holdings.map((k) => rowFor(k)), ...(t.also ?? []).map((k) => rowFor(k, true))];
+    const own = rows.filter((r) => !r.also);
+    const watched = own.filter((r) => r.tier === 'watched');
+    const dot = themeDot((watched.length ? watched : own.filter((r) => r.tier === 'fund' || r.tier === 'market')).map((r) => r.verdict));
+    return { id: t.id, name: t.name, dot, reason: notesFor(`theme:${t.id}`, desk).thinking?.text ?? null, interests: t.interests ?? [], rows };
+  });
+  const placed = new Set((desk?.themes ?? []).flatMap((t) => t.holdings));
+  const unsorted = positions.filter((p) => !placed.has(p.ticker) || !desk?.tiers?.[p.ticker]).map((p) => rowFor(p.ticker));
+
+  const brief = desk?.brief ?? null;
+  const briefToday = brief && dayOf(brief.at) === today;
+  const verdictLine = !brief ? 'No brief yet' : !briefToday ? 'No brief yet today'
+    : (brief.happened?.[0]?.text ?? brief.verdict ?? 'Nothing that changes your view today.');
+  const lastRun = (desk?.meta?.runs ?? []).map((r) => r.at).sort().pop() ?? null;
+  const todaysRuns = (desk?.meta?.runs ?? []).filter((r) => dayOf(r.at) === today);
+  const lookedToday = new Set(todaysRuns.flatMap((r) => r.looked ?? [])).size;
+
+  const since = addDays(today, -6);
+  const week = (desk?.meta?.runs ?? []).filter((r) => dayOf(r.at) >= since && dayOf(r.at) <= today);
+  const sumOf = (k) => (week.some((r) => r[k] != null) ? week.reduce((t, r) => t + (r[k] ?? 0), 0) : null);
+
+  const pos = market?.positions;
+  const positionsNote = pos?.error ? `Couldn't read Trading 212 — holdings as of ${shortWeekday(dayOf(pos.at))} ${shortDate(dayOf(pos.at))}` : null;
+
+  return {
+    value: market?.account?.valueGbp ?? null,
+    dayMove: market?.account?.dayMoveGbp ?? null,
+    dayMovePct: market?.account?.dayMovePct ?? null,
+    allTime: market?.account?.returnGbp ?? null,
+    verdictLine, lookedToday, lastRun,
+    themes, unsorted,
+    coming: briefToday ? (brief.coming ?? []).slice(0, 2) : [],
+    look: briefToday ? (brief.look ?? [])[0] ?? null : null,
+    payday: briefToday ? brief.payday ?? null : null,
+    shortlist: (desk?.shortlist ?? []).map((s) => {
+      const close = market?.quotes?.[s.ticker]?.close ?? market?.lenses?.[s.ticker]?.close ?? null;
+      return { ...s, sincePct: close != null && s.price ? round1((close / s.price - 1) * 100) : null, notes: notesFor(`idea:${s.ticker}`, desk) };
+    }),
+    positionsNote,
+    usage: { runs: week.length, searches: sumOf('searches') ?? 0, tokens: sumOf('tokens'), pct: sumOf('pct') },
+  };
+}
+return { MARKET_PATH, DESK_PATH, MARKET_KEY, DESK_KEY, LENSES, TIERS, validMarket, validDesk, lensesFor, verdict, themeDot, momentToAdd, notesFor, stocksView };
+})();
+
+// ---- planner/stocks-lenses.js
+const __planner_stocks_lenses = (() => {
+// The number lenses behind Stocks (docs/superpowers/specs/2026-11-12-stocks-design.md), worked out by
+// the planner from free data so they cost no tokens. Closes are daily, oldest first. Pure.
+// A lens is { dot: 'green'|'amber'|'red'|'grey', reason } with the reason in plain English.
+
+const THRESHOLDS = {
+  // Momentum research uses the 12-month return skipping the last month; ±10% separates a real
+  // trend from noise for a single stock.
+  trendGreen: 0.10,
+  trendRed: -0.10,
+  // A fall is unusual when it's well past the stock's own typical drawdown: 1.5× is worth a look,
+  // 2.5× is a big move even for a volatile name.
+  riskAmber: 1.5,
+  riskRed: 2.5,
+  // P/E against its own 5-year median: 20% over is stretched, 50% over is expensive for it.
+  pe: { amber: 1.2, red: 1.5 },
+  health: {
+    grossMargin: 0.40, // pricing power: 40%+ gross margin
+    opMarginStdMax: 0.05, // steady: quarterly operating margin varies by under 5 points
+    roicGreen: 0.10, // earns 10%+ after tax on the money invested in it
+    debtToEbitdaRed: 4, // more than 4 years of operating profit in debt is heavy
+  },
+};
+
+const YEAR = 252;
+const MONTH = 21;
+const pct = (x) => `${Math.round(Math.abs(x) * 100)}%`;
+const grey = (reason) => ({ dot: 'grey', reason });
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : null;
+};
+
+function trend(closes) {
+  if (!closes || closes.length < YEAR + 1) return { ...grey('Not enough price history yet'), value: null };
+  const n = closes.length;
+  const value = closes[n - 1 - MONTH] / closes[n - 1 - YEAR] - 1;
+  const dot = value >= THRESHOLDS.trendGreen ? 'green' : value <= THRESHOLDS.trendRed ? 'red' : 'amber';
+  const reason = Math.abs(value) < 0.02 ? 'Flat over 12 months' : `${value > 0 ? 'Up' : 'Down'} ${pct(value)} over 12 months`;
+  return { dot, reason, value };
+}
+
+const drawdownAt = (closes, i) => {
+  let high = -Infinity;
+  for (let j = Math.max(0, i - YEAR + 1); j <= i; j++) high = Math.max(high, closes[j]);
+  return 1 - closes[i] / high;
+};
+
+function risk(closes) {
+  if (!closes || closes.length < 60) return { ...grey('Not enough price history yet'), drawdown: null, typical: null };
+  const all = closes.map((_, i) => drawdownAt(closes, i));
+  const drawdown = all[all.length - 1];
+  const typical = Math.max(median(all), 0.01);
+  const ratio = drawdown / typical;
+  const dot = ratio >= THRESHOLDS.riskRed ? 'red' : ratio >= THRESHOLDS.riskAmber ? 'amber' : 'green';
+  const reason = drawdown < 0.01 ? 'At its high'
+    : `${pct(drawdown)} off its high — ${dot === 'green' ? 'normal for it' : dot === 'amber' ? 'more than usual for it' : 'far more than usual for it'}`;
+  return { dot, reason, drawdown, typical };
+}
+
+function rsi14(closes) {
+  if (!closes || closes.length < 15) return null;
+  let gain = 0; let loss = 0;
+  for (let i = 1; i <= 14; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) gain += d; else loss -= d;
+  }
+  gain /= 14; loss /= 14;
+  for (let i = 15; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    gain = (gain * 13 + Math.max(d, 0)) / 14;
+    loss = (loss * 13 + Math.max(-d, 0)) / 14;
+  }
+  if (loss === 0) return 100;
+  return Math.round(100 - 100 / (1 + gain / loss));
+}
+
+const returns = (closes) => closes.slice(1).map((c, i) => c / closes[i] - 1);
+
+function sigma(closes) {
+  const r = returns(closes ?? []).slice(-60);
+  if (r.length < 2) return 0;
+  const m = r.reduce((t, x) => t + x, 0) / r.length;
+  return Math.sqrt(r.reduce((t, x) => t + (x - m) ** 2, 0) / (r.length - 1));
+}
+
+function moveToday(closes) {
+  return closes && closes.length >= 2 ? closes[closes.length - 1] / closes[closes.length - 2] - 1 : 0;
+}
+
+function priceLens({ price, epsTtm, peHistory }) {
+  if (!(epsTtm > 0) || !price) return grey('No profits to price it on');
+  const pe = price / epsTtm;
+  const med = median((peHistory ?? []).filter((x) => x > 0));
+  if (!med) return grey(`P/E ${Math.round(pe)}, no history to compare`);
+  const ratio = pe / med;
+  const dot = ratio >= THRESHOLDS.pe.red ? 'red' : ratio >= THRESHOLDS.pe.amber ? 'amber' : 'green';
+  const where = ratio >= 1.05 ? 'above' : ratio <= 0.95 ? 'below' : 'about';
+  return { dot, reason: `P/E ${Math.round(pe)}, ${where === 'about' ? 'about at' : where} its 5-year median of ${Math.round(med)}` };
+}
+
+// Quarterly values of an SEC us-gaap concept, oldest first: 10-Q quarters (3-month spans when a
+// start is given) and Q4 worked out as the 10-K year minus the three quarters before it.
+function quarters(facts, names, unit = 'USD') {
+  const g = facts?.facts?.['us-gaap'] ?? {};
+  const name = names.find((n) => g[n]?.units?.[unit]);
+  if (!name) return null;
+  const days = (a, b) => (Date.parse(b) - Date.parse(a)) / 86400000;
+  const rows = g[name].units[unit];
+  const byEnd = new Map();
+  for (const r of rows) {
+    if (!r.end) continue;
+    const span = r.start ? days(r.start, r.end) : null;
+    if (/^Q[1-4]$/.test(r.fp ?? '') && (span == null || (span > 75 && span < 105))) byEnd.set(r.end, r.val);
+  }
+  for (const r of rows) {
+    if (r.form !== '10-K' || r.fp !== 'FY' || !r.start || days(r.start, r.end) < 340 || byEnd.has(r.end)) continue;
+    const inside = [...byEnd.entries()].filter(([end]) => end > r.start && end < r.end);
+    if (inside.length === 3) byEnd.set(r.end, r.val - inside.reduce((t, [, v]) => t + v, 0));
+  }
+  return [...byEnd.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([end, val]) => ({ end, val }));
+}
+
+// A balance-sheet figure (an instant): the latest value.
+function latest(facts, names, unit = 'USD') {
+  const g = facts?.facts?.['us-gaap'] ?? {};
+  const name = names.find((n) => g[n]?.units?.[unit]);
+  if (!name) return null;
+  const rows = [...g[name].units[unit]].filter((r) => r.end).sort((a, b) => (a.end < b.end ? -1 : 1));
+  return rows.length ? rows[rows.length - 1].val : null;
+}
+
+const REVENUE = ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet'];
+const ttm = (qs) => (qs && qs.length >= 4 ? qs.slice(-4).reduce((t, q) => t + q.val, 0) : null);
+
+function healthLens(facts) {
+  const rev = quarters(facts, REVENUE);
+  const gp = quarters(facts, ['GrossProfit']);
+  const op = quarters(facts, ['OperatingIncomeLoss']);
+  if (!rev || !gp || !op || rev.length < 4 || gp.length < 4 || op.length < 4) return grey('Accounts not available');
+  const H = THRESHOLDS.health;
+  const revT = ttm(rev); const gpT = ttm(gp); const opT = ttm(op);
+  if (!(revT > 0)) return grey('Accounts not available');
+  const gross = gpT / revT;
+  const margins = op.slice(-8).map((q) => {
+    const r = rev.find((x) => x.end === q.end)?.val;
+    return r ? q.val / r : null;
+  }).filter((x) => x != null);
+  const m = margins.reduce((t, x) => t + x, 0) / margins.length;
+  const std = Math.sqrt(margins.reduce((t, x) => t + (x - m) ** 2, 0) / margins.length);
+  const equity = latest(facts, ['StockholdersEquity']) ?? 0;
+  const debt = latest(facts, ['LongTermDebt', 'LongTermDebtNoncurrent']) ?? 0;
+  const roic = equity + debt > 0 ? (opT * 0.79) / (equity + debt) : null;
+  const debtYears = opT > 0 ? debt / opT : Infinity;
+  const reason = `${Math.round(gross * 100)}% gross margin, ${Math.round((opT / revT) * 100)}% operating${roic != null ? `, ${Math.round(roic * 100)}% return on capital` : ''}`;
+  if (opT <= 0) return { dot: 'red', reason: `Losing money at the operating line; ${Math.round(gross * 100)}% gross margin` };
+  if (debtYears > H.debtToEbitdaRed) return { dot: 'red', reason: `${reason}; heavy debt` };
+  if (gross >= H.grossMargin && std <= H.opMarginStdMax && roic != null && roic >= H.roicGreen) return { dot: 'green', reason };
+  return { dot: 'amber', reason };
+}
+return { THRESHOLDS, trend, risk, rsi14, sigma, moveToday, priceLens, quarters, latest, healthLens };
+})();
+
+// ---- planner/stocks.js
+const __planner_stocks = (() => {
+// Stocks for the planner (docs/superpowers/specs/2026-11-12-stocks-design.md): the free half. Each run
+// reads `stocks/desk.json` (Claude's: symbols, tiers, the shortlist, an alert) and keeps
+// `stocks/market.json` (positions, prices, lenses) in the sync repo up to date:
+// - Trading 212 positions at most hourly, with George's Portfolio-only key (T212_KEY, T212_SECRET);
+// - prices once a day from 06:00 London (Yahoo, Stooq when Yahoo refuses), never stored as history;
+// - US company accounts from SEC weekly, only with SEC_CONTACT set (SEC asks for a contact).
+// And sends Claude's alert, once per id and at most one a day. `request(url, init) → { status, text }`
+// blocks (UrlFetchApp). Nothing here throws to the planner.
+
+const { encodeBase64, decodeBase64 } = __js_sync;
+const { validDesk, validMarket, MARKET_PATH, DESK_PATH } = __js_stocks;
+const { trend, risk, rsi14, sigma, moveToday, priceLens, healthLens, quarters } = __planner_stocks_lenses;
+
+const HOUR = 3600000;
+const ZONE = 'Europe/London';
+const T212 = 'https://live.trading212.com/api/v0/equity/portfolio';
+
+const londonParts = (t) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false })
+    .formatToParts(t).map((x) => [x.type, x.value]));
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) % 24 };
+};
+
+const gbpRate = (ccy, fx) => {
+  if (ccy === 'GBP') return 1;
+  if (ccy === 'GBp' || ccy === 'GBX') return 0.01;
+  if (ccy === 'USD') return fx?.GBPUSD ? 1 / fx.GBPUSD : null;
+  if (ccy === 'EUR') return fx?.EURGBP ?? null;
+  return null;
+};
+const round2 = (x) => Math.round(x * 100) / 100;
+
+function parseYahoo(text) {
+  const r = JSON.parse(text)?.chart?.result?.[0];
+  const ts = r?.timestamp ?? [];
+  const closes = r?.indicators?.quote?.[0]?.close ?? [];
+  const series = ts.map((s, i) => ({ day: new Date(s * 1000).toISOString().slice(0, 10), close: closes[i] })).filter((x) => x.close != null);
+  return series.length ? { series, ccy: r?.meta?.currency ?? null } : null;
+}
+
+function parseStooq(text) {
+  const rows = String(text).trim().split('\n').slice(1).map((l) => l.split(','))
+    .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c[0]) && Number.isFinite(Number(c[4])))
+    .map((c) => ({ day: c[0], close: Number(c[4]) }));
+  return rows.length ? { series: rows, ccy: null } : null;
+}
+
+// P/E at each month over the last five years: the close over the four quarters' EPS before it.
+function peHistory(series, eps) {
+  const out = [];
+  for (let i = series.length - 1; i >= 0 && out.length < 60; i -= 21) {
+    const before = eps.filter((q) => q.end <= series[i].day).slice(-4);
+    const ttm = before.length === 4 ? before.reduce((t, q) => t + q.val, 0) : null;
+    if (ttm > 0) out.push(series[i].close / ttm);
+  }
+  return out;
+}
+
+function createStocks({ request, props, log = () => {}, now, send = () => false }) {
+  const get = (k) => props.get(k) || null;
+  const repo = () => get('SYNC_REPO');
+  const gh = () => ({ Authorization: `Bearer ${get('GITHUB_TOKEN')}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' });
+  const contents = (path) => `https://api.github.com/repos/${repo()}/contents/${path}`;
+
+  function readFile(path) {
+    const res = request(contents(path), { method: 'GET', headers: gh() });
+    if (res.status === 404) return { doc: null, sha: null };
+    if (res.status !== 200) throw new Error(`GitHub ${res.status} reading ${path}`);
+    const f = JSON.parse(res.text);
+    let doc = null;
+    try { doc = JSON.parse(decodeBase64(f.content ?? '')); } catch { /* malformed: treated as absent */ }
+    return { doc, sha: f.sha };
+  }
+
+  function writeFile(path, doc, sha) {
+    const body = { message: 'stocks: market', content: encodeBase64(`${JSON.stringify(doc)}\n`), ...(sha ? { sha } : {}) };
+    const res = request(contents(path), { method: 'PUT', headers: gh(), body: JSON.stringify(body) });
+    if (res.status !== 200 && res.status !== 201) throw new Error(`GitHub ${res.status} saving ${path}`);
+  }
+
+  function positions(prev, t) {
+    const key = get('T212_KEY');
+    const keep = (error) => ({ ...(prev ?? { at: null, list: [] }), error });
+    if (!key) return keep('No Trading 212 key yet: add T212_KEY to the planner (see README)');
+    const last = Number(get('STOCKS_POS_AT') ?? 0);
+    if (prev && !prev.error && t.getTime() - last < HOUR) return prev;
+    const secret = get('T212_SECRET');
+    try {
+      const res = request(T212, { method: 'GET', headers: { Authorization: secret ? `Basic ${encodeBase64(`${key}:${secret}`)}` : key } });
+      if (res.status !== 200) return keep(`Trading 212 answered ${res.status}`);
+      props.put('STOCKS_POS_AT', String(t.getTime()));
+      const list = JSON.parse(res.text).map((p) => ({ t212: p.ticker, qty: p.quantity, avg: p.averagePrice, price: p.currentPrice, ppl: (p.ppl ?? 0) + (p.fxPpl ?? 0) }));
+      return { at: t.toISOString(), error: null, list };
+    } catch (e) {
+      return keep(`Trading 212 couldn't be reached (${e?.message ?? e})`);
+    }
+  }
+
+  function prices(sym) {
+    const tries = [];
+    if (sym.yahoo) tries.push([`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym.yahoo)}?range=5y&interval=1d`, parseYahoo]);
+    if (sym.stooq) tries.push([`https://stooq.com/q/d/l/?s=${encodeURIComponent(sym.stooq)}&i=d`, parseStooq]);
+    for (const [url, parse] of tries) {
+      try {
+        const res = request(url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const got = res.status === 200 ? parse(res.text) : null;
+        if (got) return { ...got, ccy: got.ccy ?? sym.ccy ?? null };
+      } catch { /* the next source */ }
+    }
+    return null;
+  }
+
+  function fxRates() {
+    const fx = {};
+    for (const pair of ['GBPUSD', 'EURGBP']) {
+      const got = prices({ yahoo: `${pair}=X` });
+      if (got) fx[pair] = got.series[got.series.length - 1].close;
+    }
+    return fx;
+  }
+
+  function fundamentals(cik, contact) {
+    const res = request(`https://data.sec.gov/api/xbrl/companyfacts/CIK${String(cik).padStart(10, '0')}.json`, { method: 'GET', headers: { 'User-Agent': contact } });
+    if (res.status !== 200) return null;
+    const facts = JSON.parse(res.text);
+    const eps = quarters(facts, ['EarningsPerShareDiluted'], 'USD/shares') ?? [];
+    return { eps, health: healthLens(facts) };
+  }
+
+  function lensesFrom(got, fund) {
+    if (!got) {
+      const g = { dot: 'grey', reason: 'No price data today' };
+      return { trend: g, price: g, health: fund?.health ?? g, risk: g, rsi: null, sigma: 0, moveToday: 0, close: null };
+    }
+    const closes = got.series.map((x) => x.close);
+    const close = closes[closes.length - 1];
+    const epsTtm = fund?.eps?.length >= 4 ? fund.eps.slice(-4).reduce((t, q) => t + q.val, 0) : null;
+    return {
+      trend: (({ dot, reason }) => ({ dot, reason }))(trend(closes)),
+      price: fund ? priceLens({ price: close, epsTtm, peHistory: fund.pe }) : { dot: 'grey', reason: 'Accounts not available' },
+      health: fund?.health ?? { dot: 'grey', reason: 'Accounts not available' },
+      risk: (({ dot, reason }) => ({ dot, reason }))(risk(closes)),
+      rsi: rsi14(closes), sigma: round2(sigma(closes) * 10000) / 10000, moveToday: Math.round(moveToday(closes) * 10000) / 10000, close,
+    };
+  }
+
+  function run() {
+    try {
+      const t = now();
+      const { day, hour } = londonParts(t);
+      const deskFile = readFile(DESK_PATH);
+      const desk = validDesk(deskFile.doc) ? deskFile.doc : null;
+      const marketFile = readFile(MARKET_PATH);
+      const prev = validMarket(marketFile.doc) ? marketFile.doc : null;
+      const next = {
+        v: 1, at: prev?.at ?? t.toISOString(),
+        positions: positions(prev?.positions, t),
+        account: prev?.account ?? {}, lenses: prev?.lenses ?? {}, quotes: prev?.quotes ?? {}, fx: prev?.fx ?? {},
+        fundamentals: prev?.fundamentals ?? {},
+      };
+      const symbols = desk?.symbols ?? {};
+      const symFor = (t212) => symbols[t212] ?? null;
+
+      if (get('STOCKS_DAY') !== day && hour >= 6) {
+        next.fx = { ...next.fx, ...fxRates() };
+        const contact = get('SEC_CONTACT');
+        const secDue = contact && t.getTime() - Number(get('STOCKS_SEC_AT') ?? 0) > 7 * 24 * HOUR;
+        const lenses = {};
+        const quotes = {};
+        for (const p of next.positions.list) {
+          const sym = symFor(p.t212);
+          if (!sym) continue;
+          const got = prices(sym);
+          let fund = next.fundamentals[sym.ticker] ?? null;
+          if (secDue && sym.cik && desk?.tiers?.[sym.ticker] === 'watched') {
+            try {
+              const f = fundamentals(sym.cik, contact);
+              if (f) fund = { eps: f.eps.slice(-8), health: f.health, pe: got ? peHistory(got.series, f.eps) : [], at: t.toISOString() };
+            } catch (e) { log(`Stocks: SEC for ${sym.ticker} failed (${e?.message ?? e})`); }
+          }
+          if (fund) next.fundamentals[sym.ticker] = fund;
+          lenses[sym.ticker] = { ...lensesFrom(got, fund), at: t.toISOString() };
+          if (got) quotes[sym.ticker] = { close: got.series[got.series.length - 1].close, ccy: got.ccy, at: t.toISOString() };
+        }
+        for (const s of desk?.shortlist ?? []) {
+          if (s.status === 'dropped') continue;
+          const got = prices({ yahoo: s.yahoo ?? s.ticker, stooq: s.stooq ?? null, ccy: s.ccy });
+          if (got) quotes[s.ticker] = { close: got.series[got.series.length - 1].close, ccy: got.ccy, at: t.toISOString() };
+        }
+        next.lenses = lenses;
+        next.quotes = quotes;
+        if (secDue) props.put('STOCKS_SEC_AT', String(t.getTime()));
+        props.put('STOCKS_DAY', day);
+      }
+
+      // Each position in pounds, from the price source's currency (GBp is pence).
+      let value = 0; let ret = 0; let dayMove = 0;
+      next.positions.list = next.positions.list.map((p) => {
+        const sym = symFor(p.t212);
+        const ccy = (sym && next.quotes[sym.ticker]?.ccy) ?? p.ccy ?? sym?.ccy ?? null;
+        const rate = gbpRate(ccy, next.fx);
+        const valueGbp = rate != null ? round2(p.qty * p.price * rate) : null;
+        const returnGbp = round2(p.ppl ?? p.returnGbp ?? 0);
+        if (valueGbp != null) {
+          value += valueGbp;
+          const m = sym ? next.lenses[sym.ticker]?.moveToday ?? 0 : 0;
+          dayMove += valueGbp - valueGbp / (1 + m);
+        }
+        ret += returnGbp;
+        return { t212: p.t212, qty: p.qty, avg: p.avg, price: p.price, ccy, valueGbp, returnGbp, ppl: p.ppl ?? returnGbp };
+      });
+      next.account = { valueGbp: round2(value), returnGbp: round2(ret), dayMoveGbp: round2(dayMove), dayMovePct: value ? round2((dayMove / (value - dayMove)) * 100) : 0 };
+
+      const same = prev && JSON.stringify({ ...prev, at: null }) === JSON.stringify({ ...next, at: null });
+      if (!same) {
+        next.at = t.toISOString();
+        writeFile(MARKET_PATH, next, marketFile.sha);
+      }
+
+      // Claude's alert: once per id, at most one a day.
+      const alert = desk?.alert;
+      if (alert?.id && alert.text && get('STOCKS_ALERT_SENT') !== alert.id && get('STOCKS_ALERT_DAY') !== day) {
+        props.put('STOCKS_ALERT_SENT', alert.id);
+        props.put('STOCKS_ALERT_DAY', day);
+        send({ title: 'Stocks', body: String(alert.text).slice(0, 140), url: `./?big=stocks${alert.ticker ? `&ticker=${encodeURIComponent(alert.ticker)}` : ''}`, tag: `stocks:${alert.id}` });
+      }
+      return same ? null : 'stocks: market saved';
+    } catch (e) {
+      log(`Stocks failed: ${e?.message ?? e}`);
+      return null;
+    }
+  }
+
+  return { run };
+}
+return { parseYahoo, parseStooq, peHistory, createStocks };
+})();
+
 // ---- planner/relay.js
 const __planner_relay = (() => {
 // The relay: a way into the sync repo for Claude when its sandbox won't let it reach GitHub itself.
@@ -9893,8 +10467,10 @@ const { syncDuolingo } = __planner_duolingo;
 const { readProperty, writeProperty, deleteProperty, propertyParts } = __planner_properties;
 const { processWorkflows } = __js_workflow;
 const { runGoalReviews } = __planner_reviews;
-const { createCheckins } = __planner_checkins;
+const { createCheckins, makePusher, pushSubscriptions } = __planner_checkins;
 const { createNudges } = __planner_nudges;
+const { createStocks } = __planner_stocks;
+const { gasCrypto } = __planner_webpush;
 const { handleRelay } = __planner_relay;
 const { handleGlance } = __planner_glance;
 const { importDrags, webAppUrl, tickLink, handleTick } = __planner_ticks;
@@ -10362,6 +10938,25 @@ function createPlanner({
         if (nudges.send(store).changed) await syncOnce({ store, client: session.client });
       } catch (err) {
         log(clean(`Nudges failed: ${err?.message ?? err}`));
+      }
+      // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
+      // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
+      if (get('T212_KEY')) try {
+        const send = (message) => {
+          const tools = pushCrypto ?? (Utilities ? gasCrypto(Utilities) : null);
+          const privateKey = get('VAPID_PRIVATE'); const publicKey = get('VAPID_PUBLIC');
+          const subs = pushSubscriptions(store.doc());
+          if (!tools || !privateKey || !publicKey || !subs.length) return false;
+          return makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t: now() })(subs, message).ok;
+        };
+        const fetchFor = (url, init) => {
+          const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true,
+            ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}) });
+          return { status: res.getResponseCode(), text: res.getContentText() };
+        };
+        createStocks({ request: fetchFor, props: { get, put }, log, now, send }).run();
+      } catch (err) {
+        log(clean(`Stocks failed: ${err?.message ?? err}`));
       }
 
       if (errors.length) log(problem);

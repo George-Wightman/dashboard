@@ -28,8 +28,10 @@ import { syncDuolingo } from './duolingo.js';
 import { readProperty, writeProperty, deleteProperty, propertyParts } from './properties.js';
 import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
-import { createCheckins } from './checkins.js';
+import { createCheckins, makePusher, pushSubscriptions } from './checkins.js';
 import { createNudges } from './nudges.js';
+import { createStocks } from './stocks.js';
+import { gasCrypto } from './webpush.js';
 import { handleRelay } from './relay.js';
 import { handleGlance } from './glance.js';
 import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
@@ -497,6 +499,25 @@ export function createPlanner({
         if (nudges.send(store).changed) await syncOnce({ store, client: session.client });
       } catch (err) {
         log(clean(`Nudges failed: ${err?.message ?? err}`));
+      }
+      // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
+      // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
+      if (get('T212_KEY')) try {
+        const send = (message) => {
+          const tools = pushCrypto ?? (Utilities ? gasCrypto(Utilities) : null);
+          const privateKey = get('VAPID_PRIVATE'); const publicKey = get('VAPID_PUBLIC');
+          const subs = pushSubscriptions(store.doc());
+          if (!tools || !privateKey || !publicKey || !subs.length) return false;
+          return makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t: now() })(subs, message).ok;
+        };
+        const fetchFor = (url, init) => {
+          const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true,
+            ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}) });
+          return { status: res.getResponseCode(), text: res.getContentText() };
+        };
+        createStocks({ request: fetchFor, props: { get, put }, log, now, send }).run();
+      } catch (err) {
+        log(clean(`Stocks failed: ${err?.message ?? err}`));
       }
 
       if (errors.length) log(problem);
