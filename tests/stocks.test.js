@@ -32,6 +32,14 @@ test('verdict: funds use trend and risk only; the pie has none', () => {
   assert.equal(verdict(L(['green', 'green', 'green', 'green', 'green']), 'pie'), null);
 });
 
+test('verdict: no data yet is no verdict, so a theme waiting for prices is grey', () => {
+  assert.equal(verdict(L(['grey', 'grey', 'grey', 'grey', 'grey']), 'watched'), null);
+  assert.equal(verdict(L(['grey', 'grey', 'grey', 'grey', 'grey']), 'fund'), null);
+  const d = desk(); d.lensNotes = {};
+  const v = stocksView(null, d, TODAY);
+  assert.ok(v.themes.every((t) => t.dot === 'grey'));
+});
+
 test('themeDot: majority, ties go amber, empty is grey', () => {
   assert.equal(themeDot(['agrees', 'agrees', 'mixed']), 'green');
   assert.equal(themeDot(['agrees', 'disagrees']), 'amber');

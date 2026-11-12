@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'f5c0d110';
+var PLANNER_BUILD = '9cf7ecba';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8255,8 +8255,10 @@ const count = (lenses, dot) => LENSES.filter((k) => lenses[k]?.dot === dot).leng
 
 function verdict(lenses, tier) {
   if (tier === 'pie' || !tier) return null;
+  if (count(lenses, 'grey') === LENSES.length) return null; // nothing to judge yet
   if (tier === 'fund' || tier === 'market') {
     const t = lenses.trend.dot; const r = lenses.risk.dot;
+    if (t === 'grey' && r === 'grey') return null;
     if (t === 'green' && r === 'green') return 'agrees';
     if (t === 'red' && r === 'red') return 'disagrees';
     return 'mixed';

@@ -47,8 +47,10 @@ const count = (lenses, dot) => LENSES.filter((k) => lenses[k]?.dot === dot).leng
 
 export function verdict(lenses, tier) {
   if (tier === 'pie' || !tier) return null;
+  if (count(lenses, 'grey') === LENSES.length) return null; // nothing to judge yet
   if (tier === 'fund' || tier === 'market') {
     const t = lenses.trend.dot; const r = lenses.risk.dot;
+    if (t === 'grey' && r === 'grey') return null;
     if (t === 'green' && r === 'green') return 'agrees';
     if (t === 'red' && r === 'red') return 'disagrees';
     return 'mixed';
