@@ -63,6 +63,7 @@ or log.
     bash run.sh reference gym         # his training: you coach him
     bash run.sh reference food        # his meals
     bash run.sh reference money       # his money, statements and hours
+    bash run.sh reference stocks      # his portfolio, theses and the morning stocks routine
 
 **Not sure which command?** The table at the top of `reference.md` — *to do this → run this* — maps
 what you want to do to the command that does it. Start there rather than reading the whole file.

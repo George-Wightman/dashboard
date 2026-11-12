@@ -111,6 +111,16 @@ the start, his average month by category, month by month to the start (`~` is pl
 far, Salzburg against the UK per week, and plan lines. `money-import <file.json>` merges a ledger you
 built from his statements into money.json.
 
+### `stocks`
+His Trading 212 portfolio checked against why he owns each holding (`reference stocks` first, the
+playbook). The read: value, today's verdict line, each theme with its colour and rows (ticker, the five
+lenses as g/a/r/- in the order trend, price, health, expectations, risk, verdict, a hint, his thesis),
+anything not sorted yet, coming up, worth a look, the shortlist and this week's routine cost.
+`stocks brief-input [daily|weekly]` is the morning routine's one read: what changed and what to
+search, capped. `stocks-write <file.json>` merges a patch into stocks/desk.json (brief, notes,
+theses, themes, tiers, symbols, shortlist, lensNotes, events, insider, alert, run, fold). Never buy
+or sell advice.
+
 ### `map`
 His Civ-style map, worked out from his day scores: tiles, tiles waiting to be claimed, a golden age
 (three finished days in a row), barbarian camps and what they're heading for (they come from what he

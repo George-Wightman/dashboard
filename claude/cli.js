@@ -23,6 +23,7 @@ import { mapToday, mapSummary, readMaps } from '../js/map/summary.js';
 import { validMap } from '../js/map/files.js';
 import { dayPoints, pointsLines } from '../js/map/points.js';
 import { readMoney, moneyLines, importMoney } from './money.js';
+import { readStocks, stocksLines, briefInput, writeStocks } from './stocks.js';
 
 // The map in words, then today's points row by row: what's counting and what isn't.
 const mapLines = (doc, today, got) => [...mapSummary(got), ...pointsLines(dayPoints(doc, today, got.map))];
@@ -30,12 +31,13 @@ const saveFile = (path, bytes) => { mkdirSync(dirname(path), { recursive: true }
 
 // Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
 // what never to touch. Served from the clone like the reference, so they can't go stale.
-export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews', 'food', 'money'];
+export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews', 'food', 'money', 'stocks'];
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · usage [days] · reference [topic] · handoffs · handoff <name>',
+  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · stocks · usage [days] · reference [topic] · handoffs · handoff <name>',
   'Money ledger: money-import <file.json> merges a ledger built from his statements (reference money)',
+  'Stocks: stocks · stocks brief-input [daily|weekly] · stocks-write <file.json> merges brief, notes, theses, themes, tiers, shortlist (reference stocks)',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
   'Discover: capabilities [topic|op] · inspect <id> · workflows. Test any JSON batch with preview before apply; preview writes nothing.',
@@ -186,7 +188,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -273,6 +275,24 @@ export async function main({
         const path = rest.join(' ').trim();
         if (!path) throw new Error('money-import needs the path of a JSON file');
         say(await importMoney(files, readText(path)));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+
+    // Stocks (claude/stocks.js): the planner's market.json and Claude's desk.json, beside data.json.
+    if (command === 'stocks') {
+      try {
+        const { market, desk } = await readStocks(files);
+        const [sub, kind] = rest;
+        say((sub === 'brief-input' ? briefInput(market, desk, store.today(), kind === 'weekly' ? 'weekly' : 'daily') : stocksLines(market, desk, store.today())).join('\n'));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+    if (command === 'stocks-write') {
+      try {
+        const path = rest.join(' ').trim();
+        if (!path) throw new Error('stocks-write needs the path of a JSON file');
+        say(await writeStocks(files, readText(path)));
         return finish(0);
       } catch (e) { say(e.message); return finish(1); }
     }
