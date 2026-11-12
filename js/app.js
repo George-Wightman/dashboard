@@ -41,6 +41,7 @@ import { createBigStore, idbBackend } from './bigstore.js';
 import { loadCached, refreshFile } from './private.js';
 import { MONEY_PATH, MONEY_KEY, validMoney } from './money.js';
 import { LONDON_PATH, LONDON_KEY, validLondon } from './london.js';
+import { MARKET_PATH, MARKET_KEY, DESK_PATH, DESK_KEY, validMarket, validDesk } from './stocks.js';
 import { createUsage, deviceOf } from './usage.js';
 
 const store = createStore({ storage: localStorage });
@@ -89,6 +90,7 @@ let mapsAt = 0;
 // Money's ledger and London's areas (js/private.js): private files too, read on the same half-hour beat.
 let money = loadCached(localStorage, MONEY_KEY, validMoney);
 let london = loadCached(localStorage, LONDON_KEY, validLondon);
+let stocks = { market: loadCached(localStorage, MARKET_KEY, validMarket), desk: loadCached(localStorage, DESK_KEY, validDesk) };
 const MAPS_EVERY = 30 * 60 * 1000;
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
@@ -168,6 +170,8 @@ const ctx = {
   // Money's ledger (js/money.js) and London's areas (js/london.js): null until the sync repo has them.
   money: () => money,
   london: () => london,
+  // Stocks (js/stocks.js): the planner's market.json and Claude's desk.json, each null until there.
+  stocks: () => stocks,
   setTiles(next) {
     tiles = normalizeTiles(next);
     saveTiles(localStorage, tiles);
@@ -395,6 +399,10 @@ async function runMapSync() {
     maps = await refreshMaps({ clientFor, storage: bigFiles });
     money = await refreshFile({ clientFor, storage: localStorage, key: MONEY_KEY, path: MONEY_PATH, valid: validMoney }).catch(() => money);
     london = await refreshFile({ clientFor, storage: localStorage, key: LONDON_KEY, path: LONDON_PATH, valid: validLondon }).catch(() => london);
+    stocks = {
+      market: await refreshFile({ clientFor, storage: localStorage, key: MARKET_KEY, path: MARKET_PATH, valid: validMarket }).catch(() => stocks.market),
+      desk: await refreshFile({ clientFor, storage: localStorage, key: DESK_KEY, path: DESK_PATH, valid: validDesk }).catch(() => stocks.desk),
+    };
     if (canRun()) render();
   } catch { /* offline or refused: the cached maps stay */ }
 }
@@ -655,8 +663,11 @@ if (params.has('do')) {
 // A home-screen widget tapped (android/): its tile, big.
 if (params.has('big')) {
   const tile = params.get('big');
+  // A Stocks alert opens the card it is about.
+  if (tile === 'stocks' && params.get('ticker')) ctx.ui.stocksOpen = params.get('ticker');
   const url = new URL(location.href);
   url.searchParams.delete('big');
+  url.searchParams.delete('ticker');
   history.replaceState(null, '', url.pathname + url.search + url.hash);
   openTile(ctx, tile);
 }

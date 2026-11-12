@@ -44,6 +44,7 @@
   --dl-eu-soft: #E6ECFA;
   --dl-eu-over: #C8423A;
   --dl-money-soft: #E3F3EC;
+  --dl-stocks-soft: #FBF1E2;
   --dl-london-soft: #F1ECFB;
   /* Chart series (validated for colour blindness against the card, light and night). */
   --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100;
@@ -105,6 +106,7 @@
   --dl-eu-soft: #1E2550;
   --dl-eu-over: #F0806F;
   --dl-money-soft: #15332A;
+  --dl-stocks-soft: #3A2A14;
   --dl-london-soft: #2A2150;
   --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500;
   --viz-5: #d55181; --viz-6: #008300; --viz-7: #9085e9; --viz-8: #e66767;
@@ -342,6 +344,7 @@
 .tile[data-area="countdown"] { --tile-bg: var(--dl-soft); box-shadow: none; }
 .tile[data-area="eu"] { --tile-bg: var(--dl-eu-soft); box-shadow: none; }
 .tile[data-area="money"] { --tile-bg: var(--dl-money-soft); box-shadow: none; }
+.tile[data-area="stocks"] { --tile-bg: var(--dl-stocks-soft); box-shadow: none; }
 .tile[data-area="london"] { --tile-bg: var(--dl-london-soft); box-shadow: none; }
 /* The classic widget inside a tile takes the tile's colours. */
 .tile { --ink: var(--tile-ink); --muted: color-mix(in srgb, var(--tile-ink) 78%, var(--tile-bg)); --panel: color-mix(in srgb, var(--tile-ink) 10%, var(--tile-bg)); --border: color-mix(in srgb, var(--tile-ink) 22%, var(--tile-bg)); }

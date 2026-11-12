@@ -8,7 +8,7 @@ import { addDays } from '../js/dates.js';
 import { usageLines } from '../js/usage.js';
 
 // Every Daylight tile with a big view, so the ones never opened can be named.
-export const BIG_TILES = ['review', 'body', 'fuel', 'hebrew', 'weeks', 'eu', 'money', 'london', 'map'];
+export const BIG_TILES = ['review', 'body', 'fuel', 'hebrew', 'weeks', 'eu', 'money', 'stocks', 'london', 'map'];
 
 const active = (map) => Object.values(map ?? {}).filter((r) => r?.status === 'active');
 const pct = (n, of) => (of ? `${Math.round((n / of) * 100)}%` : 'none');
