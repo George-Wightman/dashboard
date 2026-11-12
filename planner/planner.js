@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '98d7959b';
+var PLANNER_BUILD = '0d6be57b';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -3218,6 +3218,9 @@ function requireTitle(title, what) {
 function createStore({ storage, now = () => new Date(), newId = () => crypto.randomUUID() }) {
   const loaded = loadDoc(storage);
   let doc = loaded.doc;
+  // The recovery copy is no longer kept (see replaceDoc). One left by an older version is read by
+  // loadDoc above when the document is unreadable; otherwise it is only taking up room.
+  if (!loaded.error) { try { storage.removeItem(BACKUP_KEY); } catch { /* nothing to free */ } }
   let settings = withScreen({ ...DEFAULT_SETTINGS, ...(readJson(storage, SETTINGS_KEY) ?? {}) });
   const loadError = loaded.error;
   const saveErrors = new Map();
@@ -3856,8 +3859,10 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
   function replaceDoc(next, reason = 'sync') {
     if (!isDoc(next)) throw new Error("That isn't a valid dashboard document");
     if (stableStringify(next) === stableStringify(doc)) return;
-    // Best-effort recovery point before external data replaces the working copy.
-    try { storage.setItem(BACKUP_KEY, JSON.stringify(doc)); } catch { /* keep the working copy */ }
+    // No recovery copy in localStorage any more (12 Nov 2026). It was the whole document again —
+    // 4.4MB on his phone — and the allowance is shared with the Hebrew app at this address, so
+    // writing it on every sync filled the store and the Hebrew app's next save failed. The sync
+    // repo's git history holds every earlier version of the document; that is the recovery point.
     doc = withMaps(next);
     commit(reason);
   }

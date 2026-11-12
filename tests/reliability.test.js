@@ -211,3 +211,16 @@ test('visible idle polling uses backoff, pauses while editing, and recovers', as
   idle = true; ok = true; await scheduler.poll(); assert.equal(runs, 2);
   time = 400; await scheduler.poll(); assert.equal(runs, 3);
 });
+
+test('no recovery copy is written to the storage shared with the Hebrew app, and an old one is freed', () => {
+  const storage = new MemoryStorage();
+  const store = makeStore({ storage });
+  store.addItem({ type: 'task', title: 'Original' });
+  const next = JSON.parse(store.exportJson());
+  next.items[Object.keys(next.items)[0]].title = 'Received from another device';
+  store.replaceDoc(next);
+  assert.equal(storage.getItem(BACKUP_KEY), null);
+  storage.setItem(BACKUP_KEY, store.exportJson());
+  makeStore({ storage });
+  assert.equal(storage.getItem(BACKUP_KEY), null);
+});
