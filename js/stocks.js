@@ -69,7 +69,8 @@ export function themeDot(verdicts) {
 }
 
 export function momentToAdd(ticker, lenses, desk) {
-  if (desk?.theses?.[ticker]?.intact === false) return false;
+  // Only once the routine has judged the thesis intact from the news: a dip alone is never enough.
+  if (desk?.theses?.[ticker]?.intact !== true) return false;
   if (lenses.health.dot === 'red' || lenses.expectations.dot === 'red') return false;
   return lenses.risk.dot === 'amber' || lenses.risk.dot === 'red';
 }
@@ -145,7 +146,9 @@ export function stocksView(market, desk, today) {
   const sumOf = (k) => (week.some((r) => r[k] != null) ? week.reduce((t, r) => t + (r[k] ?? 0), 0) : null);
 
   const pos = market?.positions;
-  const positionsNote = pos?.error ? `Couldn't read Trading 212 — holdings as of ${shortWeekday(dayOf(pos.at))} ${shortDate(dayOf(pos.at))}` : null;
+  const positionsNote = !pos?.error ? null
+    : pos.at ? `Couldn't read Trading 212 — holdings as of ${shortWeekday(dayOf(pos.at))} ${shortDate(dayOf(pos.at))}`
+      : `Couldn't read Trading 212 yet (${pos.error})`;
 
   return {
     value: market?.account?.valueGbp ?? null,

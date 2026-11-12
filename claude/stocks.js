@@ -112,6 +112,13 @@ export function mergeDesk(desk, patch, now) {
     }
     d.brief = b ? { at, verdict: 'Nothing that changes your view today.', happened: [], coming: [], look: [], payday: null, ...b } : null;
   }
+  if (patch.symbols) {
+    for (const s of Object.values(patch.symbols)) {
+      if (s === null) continue;
+      need(s.ticker && (s.yahoo || s.stooq), 'A symbol needs its ticker and a yahoo or stooq code for its price');
+      need(['USD', 'EUR', 'GBP', 'GBp'].includes(s.ccy), 'A symbol needs ccy: USD, EUR, GBP, or GBp for a London price in pence');
+    }
+  }
   for (const part of ['symbols', 'theses', 'insider']) if (patch[part]) d[part] = keyed(d[part], patch[part]);
   if (patch.tiers) {
     for (const v of Object.values(patch.tiers)) need(v === null || TIERS.includes(v), `A tier is one of ${TIERS.join(', ')}`);
@@ -166,17 +173,22 @@ export function mergeDesk(desk, patch, now) {
       const gone = mine.filter((n) => !keep.has(n) && !(n.kind === 'next' && !n.closed));
       if (!gone.length) continue;
       d.notes = d.notes.filter((n) => !gone.includes(n));
-      d.notes.push({ at: gone.at(-1).at, subject: f.subject, kind: 'summary', text: f.text, due: null, closed: false });
+      d.notes.push({ at, subject: f.subject, kind: 'summary', text: f.text, due: null, closed: false });
     }
   }
-  // At most five notes a subject: the oldest go first.
+  // At most five notes a subject: the oldest go first, but an open next note is never dropped.
+  const openNext = (n) => n.kind === 'next' && !n.closed;
   const bySubject = new Map();
-  for (const n of [...d.notes].sort((a, b) => (a.at < b.at ? 1 : -1))) {
+  for (const n of [...d.notes].filter((x) => !openNext(x)).sort((a, b) => (a.at < b.at ? 1 : -1))) {
     const list = bySubject.get(n.subject) ?? [];
     list.push(n);
     bySubject.set(n.subject, list);
   }
-  d.notes = d.notes.filter((n) => bySubject.get(n.subject).indexOf(n) < CAPS.notesPerSubject);
+  d.notes = d.notes.filter((n) => {
+    if (openNext(n)) return true;
+    const room = CAPS.notesPerSubject - d.notes.filter((x) => x.subject === n.subject && openNext(x)).length;
+    return bySubject.get(n.subject).indexOf(n) < Math.max(room, 1);
+  });
   if (patch.alert !== undefined) {
     if (patch.alert) {
       need(!(d.alert?.at && londonDay(new Date(d.alert.at)) === londonDay(now) && d.alert.id !== patch.alert.id), 'There is already an alert today: one alert a day at most');

@@ -165,3 +165,43 @@ test('a run never throws, even with the sync repo unreachable', () => {
   const request = () => { throw new Error('offline'); };
   assert.doesNotThrow(() => createStocks({ request, props: propsFrom(), now: at(MORNING), send: () => true }).run());
 });
+
+test('review fix: with desk.json gone, an hourly read keeps the value from each position\'s last currency', () => {
+  const n = net();
+  const props = propsFrom();
+  createStocks({ request: n.request, props, now: at(MORNING), send: () => true }).run();
+  const before = marketOf(n).account.valueGbp;
+  n.files['stocks/desk.json'] = null;
+  createStocks({ request: n.request, props, now: at('2026-11-12T08:00:00Z'), send: () => true }).run();
+  assert.equal(marketOf(n).account.valueGbp, before);
+});
+
+test('review fix: one symbol failing keeps its value in the total, from yesterday\'s quote', () => {
+  const n = net();
+  const props = propsFrom();
+  createStocks({ request: n.request, props, now: at(MORNING), send: () => true }).run();
+  const before = marketOf(n).account.valueGbp;
+  const n2 = net({ market: marketOf(n), yahooStatus: { AAA: 429 }, stooqStatus: { 'aaa.us': 500 } });
+  createStocks({ request: n2.request, props, now: at('2026-11-13T06:30:00Z'), send: () => true }).run();
+  assert.equal(marketOf(n2).account.valueGbp, before);
+});
+
+test('review fix: today\'s move is the live price against the last close', () => {
+  const n = net();
+  createStocks({ request: n.request, props: propsFrom(), now: at(MORNING), send: () => true }).run();
+  const m = marketOf(n);
+  // AAA: 1 × $130 live; BBB: 2 × $40 live. Last closes from the fake price feed (~129.9 each).
+  const close = m.quotes.AAA.close;
+  const expected = Math.round(((1 * 130 - 1 * close) + (2 * 40 - 2 * close)) / 1.25 * 100) / 100;
+  assert.equal(m.account.dayMoveGbp, expected);
+});
+
+test('review fix: a failed save fetches the prices again on the next run', () => {
+  const n = net();
+  const props = propsFrom();
+  const failing = (url, init = {}) => ((init.method ?? 'GET').toUpperCase() === 'PUT' ? { status: 500, text: '' } : n.request(url, init));
+  createStocks({ request: failing, props, now: at(MORNING), send: () => true }).run();
+  const before = n.calls.length;
+  createStocks({ request: n.request, props, now: at('2026-11-12T06:40:00Z'), send: () => true }).run();
+  assert.ok(n.calls.slice(before).some((u) => u.includes('yahoo')));
+});

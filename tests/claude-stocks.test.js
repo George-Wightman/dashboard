@@ -121,3 +121,17 @@ test('emptyDesk is a valid desk', async () => {
   const { validDesk } = await import('../js/stocks.js');
   assert.equal(validDesk(emptyDesk()), true);
 });
+
+test('review fix: an open next note survives the five-note cap; a fold summary is dated now', () => {
+  let d = desk();
+  for (let i = 0; i < 6; i++) d = mergeDesk(d, { notes: [{ subject: 'AAA', kind: 'looked', text: `l${i}` }] }, new Date(NOW.getTime() + i * 60000));
+  assert.ok(d.notes.some((n) => n.subject === 'AAA' && n.kind === 'next' && !n.closed), 'the open next note is kept');
+  const f = mergeDesk(desk(), { fold: [{ subject: 'AAA', text: 'So far.' }] }, NOW);
+  assert.equal(f.notes.find((n) => n.kind === 'summary').at, NOW.toISOString());
+});
+
+test('review fix: a symbol must say where its price comes from and in what currency', () => {
+  assert.throws(() => mergeDesk(desk(), { symbols: { X_US_EQ: { ticker: 'X', name: 'X' } } }, NOW), /yahoo or stooq/);
+  assert.throws(() => mergeDesk(desk(), { symbols: { X_US_EQ: { ticker: 'X', name: 'X', yahoo: 'X', ccy: 'pounds' } } }, NOW), /ccy/);
+  assert.equal(mergeDesk(desk(), { symbols: { XL_EQ: { ticker: 'X', name: 'X', yahoo: 'X.L', ccy: 'GBp' } } }, NOW).symbols.XL_EQ.ccy, 'GBp');
+});

@@ -1,11 +1,11 @@
 {
   "v": 1,
   "symbols": {
-    "AAA_US_EQ": { "ticker": "AAA", "yahoo": "AAA", "stooq": "aaa.us", "cik": null, "name": "Alpha" },
-    "BBB_US_EQ": { "ticker": "BBB", "yahoo": "BBB", "stooq": "bbb.us", "cik": null, "name": "Beta" },
-    "CCC_US_EQ": { "ticker": "CCC", "yahoo": "CCC", "stooq": "ccc.us", "cik": null, "name": "Gamma" },
-    "FUNDl_EQ": { "ticker": "FUND", "yahoo": "FUND.L", "stooq": "fund.uk", "cik": null, "name": "A theme fund" },
-    "PIEl_EQ": { "ticker": "PIE", "yahoo": "PIE.L", "stooq": "pie.uk", "cik": null, "name": "A pie fund" }
+    "AAA_US_EQ": { "ticker": "AAA", "yahoo": "AAA", "stooq": "aaa.us", "cik": null, "name": "Alpha", "ccy": "USD" },
+    "BBB_US_EQ": { "ticker": "BBB", "yahoo": "BBB", "stooq": "bbb.us", "cik": null, "name": "Beta", "ccy": "USD" },
+    "CCC_US_EQ": { "ticker": "CCC", "yahoo": "CCC", "stooq": "ccc.us", "cik": null, "name": "Gamma", "ccy": "USD" },
+    "FUNDl_EQ": { "ticker": "FUND", "yahoo": "FUND.L", "stooq": "fund.uk", "cik": null, "name": "A theme fund", "ccy": "GBP" },
+    "PIEl_EQ": { "ticker": "PIE", "yahoo": "PIE.L", "stooq": "pie.uk", "cik": null, "name": "A pie fund", "ccy": "GBp" }
   },
   "tiers": { "AAA": "watched", "BBB": "watched", "CCC": "watched", "FUND": "fund", "PIE": "pie" },
   "themes": [

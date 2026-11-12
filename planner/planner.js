@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9cf7ecba';
+var PLANNER_BUILD = '7919e21e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8277,7 +8277,8 @@ function themeDot(verdicts) {
 }
 
 function momentToAdd(ticker, lenses, desk) {
-  if (desk?.theses?.[ticker]?.intact === false) return false;
+  // Only once the routine has judged the thesis intact from the news: a dip alone is never enough.
+  if (desk?.theses?.[ticker]?.intact !== true) return false;
   if (lenses.health.dot === 'red' || lenses.expectations.dot === 'red') return false;
   return lenses.risk.dot === 'amber' || lenses.risk.dot === 'red';
 }
@@ -8353,7 +8354,9 @@ function stocksView(market, desk, today) {
   const sumOf = (k) => (week.some((r) => r[k] != null) ? week.reduce((t, r) => t + (r[k] ?? 0), 0) : null);
 
   const pos = market?.positions;
-  const positionsNote = pos?.error ? `Couldn't read Trading 212 — holdings as of ${shortWeekday(dayOf(pos.at))} ${shortDate(dayOf(pos.at))}` : null;
+  const positionsNote = !pos?.error ? null
+    : pos.at ? `Couldn't read Trading 212 — holdings as of ${shortWeekday(dayOf(pos.at))} ${shortDate(dayOf(pos.at))}`
+      : `Couldn't read Trading 212 yet (${pos.error})`;
 
   return {
     value: market?.account?.valueGbp ?? null,
@@ -8642,7 +8645,7 @@ function createStocks({ request, props, log = () => {}, now, send = () => false 
 
   function prices(sym) {
     const tries = [];
-    if (sym.yahoo) tries.push([`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym.yahoo)}?range=5y&interval=1d`, parseYahoo]);
+    if (sym.yahoo) tries.push([`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym.yahoo)}?range=${sym.range ?? '5y'}&interval=1d`, parseYahoo]);
     if (sym.stooq) tries.push([`https://stooq.com/q/d/l/?s=${encodeURIComponent(sym.stooq)}&i=d`, parseStooq]);
     for (const [url, parse] of tries) {
       try {
@@ -8657,7 +8660,7 @@ function createStocks({ request, props, log = () => {}, now, send = () => false 
   function fxRates() {
     const fx = {};
     for (const pair of ['GBPUSD', 'EURGBP']) {
-      const got = prices({ yahoo: `${pair}=X` });
+      const got = prices({ yahoo: `${pair}=X`, range: '5d' });
       if (got) fx[pair] = got.series[got.series.length - 1].close;
     }
     return fx;
@@ -8703,12 +8706,17 @@ function createStocks({ request, props, log = () => {}, now, send = () => false 
         fundamentals: prev?.fundamentals ?? {},
       };
       const symbols = desk?.symbols ?? {};
-      const symFor = (t212) => symbols[t212] ?? null;
+      // Each position keeps the ticker and currency it last had, so a missing desk.json or a price
+      // feed that fails for a day doesn't drop it from the total.
+      const known = new Map((prev?.positions?.list ?? []).map((p) => [p.t212, p]));
+      const symFor = (t212) => symbols[t212] ?? (known.get(t212)?.ticker ? { ticker: known.get(t212).ticker } : null);
+      let refreshed = false;
+      let secDue = false;
 
       if (get('STOCKS_DAY') !== day && hour >= 6) {
         next.fx = { ...next.fx, ...fxRates() };
         const contact = get('SEC_CONTACT');
-        const secDue = contact && t.getTime() - Number(get('STOCKS_SEC_AT') ?? 0) > 7 * 24 * HOUR;
+        secDue = !!contact && t.getTime() - Number(get('STOCKS_SEC_AT') ?? 0) > 7 * 24 * HOUR;
         const lenses = {};
         const quotes = {};
         for (const p of next.positions.list) {
@@ -8732,26 +8740,28 @@ function createStocks({ request, props, log = () => {}, now, send = () => false 
           if (got) quotes[s.ticker] = { close: got.series[got.series.length - 1].close, ccy: got.ccy, at: t.toISOString() };
         }
         next.lenses = lenses;
-        next.quotes = quotes;
-        if (secDue) props.put('STOCKS_SEC_AT', String(t.getTime()));
-        props.put('STOCKS_DAY', day);
+        next.quotes = { ...next.quotes, ...quotes }; // a symbol that failed today keeps yesterday's
+        refreshed = true;
       }
 
       // Each position in pounds, from the price source's currency (GBp is pence).
       let value = 0; let ret = 0; let dayMove = 0;
       next.positions.list = next.positions.list.map((p) => {
         const sym = symFor(p.t212);
-        const ccy = (sym && next.quotes[sym.ticker]?.ccy) ?? p.ccy ?? sym?.ccy ?? null;
+        const before = known.get(p.t212);
+        const ticker = sym?.ticker ?? before?.ticker ?? null;
+        const quote = ticker ? next.quotes[ticker] : null;
+        const ccy = quote?.ccy ?? sym?.ccy ?? p.ccy ?? before?.ccy ?? null;
         const rate = gbpRate(ccy, next.fx);
         const valueGbp = rate != null ? round2(p.qty * p.price * rate) : null;
         const returnGbp = round2(p.ppl ?? p.returnGbp ?? 0);
         if (valueGbp != null) {
           value += valueGbp;
-          const m = sym ? next.lenses[sym.ticker]?.moveToday ?? 0 : 0;
-          dayMove += valueGbp - valueGbp / (1 + m);
+          // Today's move: the live price against the last close the morning refresh saw.
+          if (quote?.close) dayMove += p.qty * (p.price - quote.close) * rate;
         }
         ret += returnGbp;
-        return { t212: p.t212, qty: p.qty, avg: p.avg, price: p.price, ccy, valueGbp, returnGbp, ppl: p.ppl ?? returnGbp };
+        return { t212: p.t212, ticker, qty: p.qty, avg: p.avg, price: p.price, ccy, valueGbp, returnGbp, ppl: p.ppl ?? returnGbp };
       });
       next.account = { valueGbp: round2(value), returnGbp: round2(ret), dayMoveGbp: round2(dayMove), dayMovePct: value ? round2((dayMove / (value - dayMove)) * 100) : 0 };
 
@@ -8759,6 +8769,11 @@ function createStocks({ request, props, log = () => {}, now, send = () => false 
       if (!same) {
         next.at = t.toISOString();
         writeFile(MARKET_PATH, next, marketFile.sha);
+      }
+      // Only once it's saved: a failed save fetches the prices again on the next run.
+      if (refreshed) {
+        if (secDue) props.put('STOCKS_SEC_AT', String(t.getTime()));
+        props.put('STOCKS_DAY', day);
       }
 
       // Claude's alert: once per id, at most one a day.

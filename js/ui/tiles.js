@@ -30,6 +30,15 @@ const stacked = (...parts) => {
   return shown.length ? h('div', { class: 'tile-parts' }, shown) : null;
 };
 
+function stocksSafely(draw) {
+  try {
+    return draw();
+  } catch (e) {
+    console.error(e);
+    return h('p', { class: 'muted' }, `Stocks couldn't be drawn: ${e.message}`);
+  }
+}
+
 function mapSafely(draw) {
   try {
     return draw();
@@ -70,7 +79,8 @@ export const TILES = [
   // Money with Hours inside (js/ui/money.js), and where to live in London (js/ui/london.js).
   { id: 'money', title: 'Money', area: 'money', render: renderMoneyTile, big: renderMoneyBig },
   // His shares checked against why he owns them (js/ui/stocks.js).
-  { id: 'stocks', title: 'Stocks', area: 'stocks', render: renderStocksTile, big: renderStocksBig },
+  // A Stocks file that can't be drawn says so in its own tile rather than taking the rest with it.
+  { id: 'stocks', title: 'Stocks', area: 'stocks', render: (ctx) => stocksSafely(() => renderStocksTile(ctx)), big: (ctx) => stocksSafely(() => renderStocksBig(ctx)) },
   { id: 'london', title: 'London', area: 'london', render: renderLondonTile, big: (ctx) => mapSafely(() => renderLondonBig(ctx)) },
   // The map (js/ui/map.js): its picture opens it big too. A map that can't draw says so in its own
   // tile rather than taking the rest of the screen with it.

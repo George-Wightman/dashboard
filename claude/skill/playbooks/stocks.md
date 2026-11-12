@@ -36,10 +36,21 @@ good brief.
 
 1. `bash run.sh stocks brief-input daily` (or `weekly` on Saturdays). It is your whole picture: don't
    fetch prices yourself, and don't read anything else unless a line asks you to.
-2. Search **only** what it lists under "Search these", in that order, and stop at the cap (8 daily,
+2. **New holdings first, on any run.** If brief-input names new holdings (Trading 212 codes such as
+   `NVDA_US_EQ` or `RRl_EQ`), map each in the same write with `symbols`, a `tiers` entry and, for a
+   company, a draft thesis (tell him in `look` so he can correct it):
+   `"symbols": { "<t212 code>": { "ticker": "RR", "name": "Rolls-Royce", "yahoo": "RR.L", "stooq": "rr.uk", "cik": null, "ccy": "GBp" } }`
+   - `yahoo` must be the **same listing Trading 212 holds**: a London code ending `l_EQ` is `.L`, a
+     US one `_US_EQ` is the plain ticker, a Xetra one is `.DE`.
+   - `ccy` is the currency of that listing's price: `USD`, `EUR`, `GBP`, or **`GBp` for a London
+     price in pence** (most LSE shares and many LSE ETFs; check the price: hundreds or thousands
+     means pence). A wrong `GBP` on a pence price values the holding 100 times too high.
+   - `cik` only for US companies filing 10-Qs (SEC accounts); `null` otherwise.
+   - `notes/stocks.md` has a table of likely codes for his current holdings.
+3. Search **only** what it lists under "Search these", in that order, and stop at the cap (8 daily,
    15 weekly). Then search the themes it names, one search each. Keep each search narrow: the ticker
    or company name plus what triggered it ("results guidance", "uranium ban").
-3. Write one JSON file and `bash run.sh stocks-write <file>`:
+4. Write one JSON file and `bash run.sh stocks-write <file>`:
    - `brief`: `verdict`, `happened` (0–3 items that pass the bar, each `{ text, ticker, url, day }`),
      `coming` (0–3 dated items), `look` (0–2: `kind` `add` for a moment to add, `idea` for a
      shortlist idea, `theme` for an adjacent theme), `payday` (only on the run after his payday).
@@ -55,7 +66,7 @@ good brief.
      `{ id, text, ticker }`, text under 140 characters. Never for something merely coming up.
    - `run`: `{ kind, searches, looked: [subjects], skipped: [subjects] }`, plus `tokens` and `pct`
      when the host can measure them (see below).
-4. Stop. Don't chat, don't summarise in the transcript.
+5. Stop. Don't chat, don't summarise in the transcript.
 
 **Weekly extras (Saturday):**
 - For each non-US watched company that reported this week, set `lensNotes` price and health from its
@@ -66,8 +77,6 @@ good brief.
 - Review the shortlist: for each idea, keep it watching or set `status: "dropped"` with `why`.
   Raise at most one new idea, in one of his themes or clearly next to one, with the price today.
 - `fold` subjects with more than four notes into one "So far: …" line each.
-- New holdings named in brief-input: give each a tier and a draft thesis, and tell him in the brief's
-  `look` so he can correct it in a chat.
 
 ## Measuring cost
 

@@ -154,3 +154,15 @@ test('stocksView: no market yet', () => {
   assert.equal(v.value, null);
   assert.equal(v.themes.length, 3);
 });
+
+test('review fix: a first Trading 212 read that failed has no date and still reads plainly', () => {
+  const m = load('stocks-market.json'); m.positions = { at: null, error: 'Trading 212 answered 401', list: [] };
+  assert.equal(stocksView(m, desk(), TODAY).positionsNote, "Couldn't read Trading 212 yet (Trading 212 answered 401)");
+});
+
+test('review fix: no moment to add until the routine has judged the thesis intact', () => {
+  const d = desk(); delete d.theses.CCC.intact;
+  assert.equal(momentToAdd('CCC', L(['amber', 'green', 'green', 'amber', 'amber']), d), false);
+  delete d.theses.CCC;
+  assert.equal(momentToAdd('CCC', L(['amber', 'green', 'green', 'amber', 'amber']), d), false);
+});
