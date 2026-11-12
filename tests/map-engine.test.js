@@ -194,6 +194,37 @@ test('25 cardio minutes lay two road steps and carry five', () => {
   assert.ok(s.roads.length >= 1 && s.roads.length <= 2);
 });
 
+test('cardio past the last place to join paves the road, then waits', () => {
+  const t = town();
+  const cardio = t.store.addItem({ type: 'quota', title: 'Cardio', area: 'Health', target: 90, unit: 'minutes' });
+  t.store.putGym('config', { cardioQuota: cardio.id });
+  t.store.logAmount({ itemId: cardio.id, amount: 100, day: START });
+  t.done(0);
+  t.store.putGame('claim:town:2,-1', { city: 'town', q: 2, r: -1, day: day(1), at: at(1) });
+  t.store.putGame('claim:town:3,-1', { city: 'town', q: 3, r: -1, day: day(1), at: at(1, 1) });
+  const s = run(t.store, day(1));
+  // Three steps reach the mill (the third paves one tile); the next two pave the rest; five wait.
+  assert.equal(s.roads.length, 3);
+  assert.equal(s.roads[2][1], '3,-1');
+  assert.equal(s.paved.size, 3);
+  assert.equal(s.roadSteps, 5);
+});
+
+test('the road to a sport place goes two tiles a step', () => {
+  const t = town();
+  const cardio = t.store.addItem({ type: 'quota', title: 'Cardio', area: 'Health', target: 90, unit: 'minutes' });
+  t.store.putGym('config', { cardioQuota: cardio.id });
+  t.store.logAmount({ itemId: cardio.id, amount: 10, day: START });
+  for (let n = 0; n < 5; n++) t.done(n);
+  t.store.putGame('claim:town:-2,0', { city: 'town', q: -2, r: 0, day: day(5), at: at(5) });
+  t.store.putGame('place:town:gym', { city: 'town', card: 'gym', q: -2, r: 0, day: day(5), at: at(5, 1) });
+  const s = run(t.store, day(5));
+  assert.equal(s.built.gym, '-2,0');
+  assert.deepEqual(s.roads, [['0,0', '-1,0'], ['-1,0', '-2,0']]);
+  assert.equal(s.paved.size, 0);
+  assert.equal(s.roadSteps, 0);
+});
+
 test('a track card goes only in its zone', () => {
   const t = town();
   for (let n = 0; n < 5; n++) t.done(n);

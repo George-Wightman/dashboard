@@ -90,6 +90,11 @@ else. A finished day drives off the nearest camp.
 
 **Roads.** Each 10 minutes on the cardio target lays one road step, along the shortest path through
 his tiles from the centre to the nearest place, building or wonder not yet joined up.
+A sport place (a building on the sport track) or a built wonder is joined before anything else, two
+tiles a step. Every third step also paves one tile of road into a cobbled lane: the ways between the
+sport places and the wonders first, then the oldest. A step with nowhere left to go paves a tile
+outright; with nothing left to pave either, it waits. The road is drawn along the tiles' edges, in
+front of each place, row by row with the tiles, so buildings in front of it cover it (12 Nov 2026).
 
 **Which city.** The device's time zone picks the place (`placeFor` in `js/sky.js`): the first device
 open of a day stamps the day's place in the shared document; a day with no stamp takes the previous

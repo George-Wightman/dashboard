@@ -4,6 +4,7 @@
 // autumn colours, snow, blossom. Pure.
 
 import { FINDS, SIZE as FINDS_SIZE } from '../map/finds-atlas.js';
+import { ROADS, PAVED, SIZE as ROADS_SIZE } from '../map/roads-atlas.js';
 
 export const S = 24;            // a hex's corner radius, in SVG units
 export const K = 0.75;          // the board's tilt: how far the slanted edges are squashed
@@ -254,9 +255,64 @@ export function levelSvg(level, x, y) {
   if (level >= 3) g += `<path d="M${n1(x - 6)} ${n1(y - 30)} l2 -6 l4 4 l4 -4 l2 6 z" fill="#ffd866" stroke="#7a5a12" stroke-width=".8"/>`;
   return g;
 }
-export function roadSvg(segments) {
-  const d = segments.map(([a, b]) => `M${n1(a[0])} ${n1(a[1])}L${n1(b[0])} ${n1(b[1])}`).join('');
-  return d ? `<path d="${d}" stroke="#8a6a44" stroke-width="5.5" stroke-linecap="round" opacity=".55" fill="none"/><path d="${d}" stroke="#e7d3a1" stroke-width="3.2" stroke-linecap="round" fill="none"/>` : '';
+// The cardio road: painted dirt track (made in Gemini to match the ground tiles, dev/build-roads.py).
+// The tiles are paintings with their buildings in them, so a road drawn from one tile's middle to the
+// next lies over the roofs. It runs along the tiles' edges instead, like a street: every tile on the
+// network is stood for by its front corner, and a step between two tiles is the two edges joining their
+// front corners. A slanted edge's road lies on the front rim of the tile behind it; an upright edge's
+// lies between two tiles of one row. Drawn row by row with the tiles (roadRows), each piece comes after
+// everything behind it and before everything in front, so what stands in front covers it.
+export const ROAD_W = 4;        // the track's width on the ground, in SVG units
+// The edges a set of steps ([[q, r], [q, r], paved] each) runs along: { p, q, row, owner, paved } (an edge
+// two steps share is paved if either is), where `row` is the
+// row of tiles it is drawn after and `owner` the centre of the tile whose rim it lies on (or null).
+export function roadEdges(steps) {
+  const w = (S * SQ3) / 2, a = (S * SIDE) / 2, b = S * BOTTOM, seen = new Map(), out = [];
+  const front = (t) => { const [x, y] = centre(t[0], t[1]); return { c: [x, y], v: [x, y + b], l: [x - w, y + a], r: [x + w, y + a] }; };
+  const add = (p, q, row, owner) => {
+    const k = [p, q].map((v) => v.map(n1).join(',')).sort().join('|');
+    if (!seen.has(k)) { seen.set(k, { p, q, row, owner, paved }); out.push(seen.get(k)); }
+    else if (paved) seen.get(k).paved = true;
+  };
+  let paved = false;
+  for (const [A, B, isPaved] of steps) {
+    paved = !!isPaved;
+    if (A[1] === B[1]) {
+      const [L, R] = A[0] < B[0] ? [A, B] : [B, A], fl = front(L), fr = front(R);
+      if (R[0] - L[0] !== 1) continue;
+      add(fl.v, fl.r, L[1], fl.c); add(fr.l, fr.v, R[1], fr.c);
+    } else {
+      const [U, D] = A[1] < B[1] ? [A, B] : [B, A], fu = front(U), fd = front(D);
+      if (D[1] - U[1] !== 1 || (D[0] !== U[0] && D[0] !== U[0] - 1)) continue;
+      const corner = fd.c[0] > fu.c[0] ? fd.l : fd.r;
+      add(fu.v, corner, D[1], null); add(corner, fd.v, D[1], fd.c);
+    }
+  }
+  return out;
+}
+// One edge's piece: turned to the edge's direction on the un-tilted ground, then squashed by the board's
+// tilt, so it lies on the land the way the tiles do. The same edge always gets the same piece.
+function roadPiece({ p, q, owner, paved }) {
+  const P = [p[0], p[1] / K], Q = [q[0], q[1] / K], dx = Q[0] - P[0], dy = Q[1] - P[1], len = Math.hypot(dx, dy);
+  let mx = (P[0] + Q[0]) / 2, my = (P[1] + Q[1]) / 2;
+  if (owner) {
+    let nx = -dy / len, ny = dx / len;
+    if (nx * (owner[0] - mx) + ny * (owner[1] / K - my) < 0) { nx = -nx; ny = -ny; }
+    mx += (nx * ROAD_W) / 2; my += (ny * ROAD_W) / 2;
+  }
+  const set = paved && PAVED.length ? PAVED : ROADS;
+  const [ax, ay, aw, ah] = set[Math.floor(rng(Math.round(mx * 7), Math.round(my * 13))() * set.length)];
+  const wl = len + ROAD_W * 1.5, deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  return `<g transform="translate(${n1(mx)} ${n1(my * K)}) scale(1 ${K}) rotate(${n1(deg)})">`
+    + `<svg x="${n1(-wl / 2)}" y="${n1(-ROAD_W / 2)}" width="${n1(wl)}" height="${ROAD_W}" viewBox="${ax} ${ay} ${aw} ${ah}" preserveAspectRatio="none" overflow="hidden">`
+    + `<image href="icons/roads.webp" width="${ROADS_SIZE[0]}" height="${ROADS_SIZE[1]}"/></svg></g>`;
+}
+// The road, by the row of tiles each part is drawn after: Map(row -> SVG).
+export function roadRows(steps) {
+  const rows = new Map();
+  for (const e of roadEdges(steps)) rows.set(e.row, (rows.get(e.row) ?? '') + roadPiece(e));
+  for (const [r, g] of rows) rows.set(r, `<g pointer-events="none">${g}</g>`);
+  return rows;
 }
 // The board's lettering uses the app's own fonts (styles/daylight.css loads them; anything else falls
 // back to the system's cursive, which on Windows is Comic Sans).

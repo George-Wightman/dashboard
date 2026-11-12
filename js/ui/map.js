@@ -8,7 +8,7 @@ import { replay, claimable, placeable, makeCityOf, lookups, visibleOf, findName,
 import { key, unkey, DIRS } from '../map/hex.js';
 import {
   S, K, SQ3, DEPTH, ROW, BOTTOM, centre, fromUnits, corners, pts, TERRAIN, CENTRE_TOP, PLAZA, TRACK_COLOUR, seasonOf, seasonTop, groundSvg, clipSvg,
-  decoSvg, findSvg, paintedFindSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadSvg, bannerSvg, pinSvg, mix,
+  decoSvg, findSvg, paintedFindSvg, campSvg, smokeSvg, starSvg, plusSvg, levelSvg, roadRows, bannerSvg, pinSvg, mix,
 } from './map-art.js';
 import { addDays, shortDate, shortWeekday } from '../dates.js';
 import { dayPoints } from '../map/points.js';
@@ -215,8 +215,12 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   }
   let fog = '', ground = '', sprites = '', glow = '', clips = '';
   const sorted = [...L.tiles.values()].sort((a, b) => (a.r - b.r) || (a.q - b.q));
+  // The road goes down with the tiles, row by row: after the tiles behind it, before the ones in front.
+  const roadAt = roadRows(state.roads.map(([a, b]) => [unkey(a), unkey(b), !!state.paved?.has(b)]));
+  const roadsBefore = (r) => { let g = ''; for (const row of [...roadAt.keys()].sort((a, b) => a - b)) if (row < r) { g += roadAt.get(row); roadAt.delete(row); } return g; };
   for (const t of sorted) {
     const k = key(t.q, t.r), [x, y] = centre(t.q, t.r), site = L.at.get(k);
+    ground += roadsBefore(t.r);
     if (!vis.has(k)) {
       if (site?.kind === 'wonder') fog += `<g data-k="${k}"><polygon points="${pts(corners(x, y))}" fill="transparent"/>${starSvg(x, y, false)}</g>`;
       else if (camps.has(k)) fog += smokeSvg(x, y, '#7a4a3a');
@@ -252,6 +256,7 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
     if (picks.has(k)) glow += `<polygon points="${pts(corners(x, y, S * 0.88))}" fill="rgba(243,210,126,.34)" stroke="#ffd866" stroke-width="2.6"/><g class="map-pick">${plusSvg(x, y)}</g>`;
     if (targets.has(k)) glow += `<polygon points="${pts(corners(x, y, S * 0.88))}" fill="rgba(255,255,255,.32)" stroke="#ffffff" stroke-width="3"/><g class="map-pick">${plusSvg(x, y, '#ffffff')}</g>`;
   }
+  ground += roadsBefore(Infinity);
   // Zones he has seen, not yet built: a faint dashed edge in the track's colour.
   let zones = '';
   for (const bld of L.builds) {
@@ -274,7 +279,6 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   const ps = paintSeason(today);
   const [water, glint] = ps === 'winter' ? ['#b9d4e0', '#ffffff'] : ps === 'late' ? ['#6f9cb6', '#e4f1f6'] : ['#3a7fb0', '#a9d6ee'];
   const lines = `<g clip-path="url(#${id}-vis)" fill="none" stroke-linecap="round" stroke-linejoin="round"><g opacity=".55"><path d="${river}" stroke="${water}" stroke-width="2.2"/><path d="${river}" stroke="${glint}" stroke-width=".5" stroke-dasharray="2 9"/></g><g opacity=".32"><path d="${rail}" stroke="#5a4a3c" stroke-width="1"/><path d="${rail}" stroke="#5a4a3c" stroke-width="3" stroke-dasharray=".8 2.6"/></g></g>`;
-  const roads = roadSvg(state.roads.map(([a, b]) => [centre(...unkey(a)), centre(...unkey(b))]));
   let border = '';
   for (const k of state.owned) {
     const [q, r] = unkey(k), [x, y] = centre(q, r), c = corners(x, y, S * 0.93);
@@ -284,8 +288,8 @@ export function mapSvg(state, map, { today, world = false, picks = new Set(), ta
   const [cx, cy] = centre(0, 0);
   // Everything over the tiles lets a tap through to the tile underneath.
   // The header's horizon (horizonSvg): the land and what stands on it, none of the game's marks.
-  if (strip) return `<defs>${defs}${clips}<clipPath id="${id}-vis">${visClip}</clipPath></defs>${ground}<g pointer-events="none">${lines}${roads}${sprites}</g>`;
-  return `<defs>${defs}${clips}<clipPath id="${id}-vis">${visClip}</clipPath></defs>${back}${fog}${ground}<g pointer-events="none">${lines}${roads}${zones}`
+  if (strip) return `<defs>${defs}${clips}<clipPath id="${id}-vis">${visClip}</clipPath></defs>${ground}<g pointer-events="none">${lines}${sprites}</g>`;
+  return `<defs>${defs}${clips}<clipPath id="${id}-vis">${visClip}</clipPath></defs>${back}${fog}${ground}<g pointer-events="none">${lines}${zones}`
     + `<path d="${border}" stroke="${gold}" stroke-width="${state.golden.on ? 7 : 5}" opacity=".45" filter="url(#${id}-glow)" fill="none"/><path d="${border}" stroke="${state.golden.on ? '#ffe9a0' : '#f3d27e'}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`
     + `${sprites}${glow}${bannerSvg(map.name, state.owned.size, cx, cy - 62, state.golden.on)}${farPins}</g>`;
 }
@@ -486,7 +490,7 @@ export function pointsSection(doc, today, map) {
       h('span', { class: 'pt-mark', 'aria-label': POINT_STATE[r.state] }, POINT_MARK[r.state]),
       h('span', { class: 'pt-title' }, r.title, r.note ? h('small', {}, r.note) : null),
       h('span', { class: 'pt-ham' }, r.hammers ? `+${r.hammers}` : '0')))),
-    h('p', { class: 'muted' }, `An hour or more planned is worth 20, anything shorter 10. ${p.cardio.minutes ? `Cardio today: ${p.cardio.minutes} minutes, a road step per ${p.cardio.perStep}. ` : 'Cardio builds roads, a step per 10 minutes. '}Weekly targets don't count; a goal step earns a wonder card.`));
+    h('p', { class: 'muted' }, `An hour or more planned is worth 20, anything shorter 10. ${p.cardio.minutes ? `Cardio today: ${p.cardio.minutes} minutes, a road step per ${p.cardio.perStep}. ` : 'Cardio builds roads, a step per 10 minutes: twice as fast to a sport place or a wonder, and every 30 minutes paves a stretch. '}Weekly targets don't count; a goal step earns a wonder card.`));
 }
 
 function chronicle(state) {
@@ -609,7 +613,7 @@ function playHistory(ctx, svg, { map, state, today, others = [] }) {
     const owned = new Set(f.owned);
     const frame = {
       ...state, owned, visible: visibleOf(map, owned), built: f.built, levels: f.levels, wonders: new Set(f.wonders), camps: f.camps,
-      pillaged: new Set(f.pillaged), roads: f.roads, golden: { on: f.golden, run: 0 }, found: new Set(f.found), claimedFinds: new Set(f.claimedFinds),
+      pillaged: new Set(f.pillaged), roads: f.roads, paved: new Set(f.paved ?? []), golden: { on: f.golden, run: 0 }, found: new Set(f.found), claimedFinds: new Set(f.claimedFinds),
     };
     svg.innerHTML = mapSvg(frame, map, { today: f.day, world: true, id: 'mb', others });
   }, 110);

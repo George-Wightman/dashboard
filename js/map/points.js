@@ -57,7 +57,7 @@ export function pointsLines(p) {
   const mark = { earned: '✓', open: '○', optional: '·', pushed: '↷', missed: '✗', released: '–' };
   const out = [`Today's points: +${p.earned} so far${p.toEarn ? `, +${p.toEarn} still to earn` : ''}; ${p.bonus.earned ? `finished: +${p.bonus.amount} bonus` : p.bonus.possible ? `finish all ${p.total} (${p.bonus.left} to go) for +${p.bonus.amount}` : `fewer than 3 rows count, so no finished-day bonus`}.`];
   for (const r of p.rows) out.push(`  ${mark[r.state]} ${r.title}${r.hammers ? ` +${r.hammers}` : ''}${r.note ? ` · ${r.note}` : ''}`);
-  if (p.cardio.minutes) out.push(`  Cardio ${p.cardio.minutes}m: a road step per ${p.cardio.perStep} minutes.`);
+  if (p.cardio.minutes) out.push(`  Cardio ${p.cardio.minutes}m: a road step per ${p.cardio.perStep} minutes (two tiles towards a sport place or a wonder), and every third step paves a tile.`);
   const open = p.rows.filter((r) => r.state === 'open').length;
   out.push(`  Not counted: weekly targets (Cardio builds roads instead); a goal step earns a wonder card.${open ? ` ${plural(open, 'row')} open: barbarians come only on a day with nothing done; one done row drives one off.` : ''}`);
   return out;

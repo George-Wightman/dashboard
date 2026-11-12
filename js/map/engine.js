@@ -19,6 +19,8 @@ export const LEVEL_STEP = 400;   // track points per building level once a track
 export const MAX_LEVEL = 3;
 export const GOLDEN_RUN = 3;     // finished days in a row for a golden age
 export const ROAD_MINUTES = 10;  // cardio minutes per road step
+export const FAST_STEPS = 2;     // tiles a step covers on the way to a sport place or a wonder
+export const PAVE_STEPS = 3;     // road steps of cardio that pave one tile of road
 export const FINISHED_BONUS = 20;
 export const FIND_VALUE = { coal: 20, wheat: 10, sheep: 10, deer: 10, horses: 10, pub: 15, pitwheel: 15, stone: 10, fish: 10 };
 export const FIND_NAME = { coal: 'Coal seam', wheat: 'Wheat', sheep: 'Sheep', deer: 'Deer', horses: 'Horses', pub: 'A pub', pitwheel: 'An old pit wheel', stone: 'Stone', fish: 'Fish' };
@@ -120,7 +122,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
     map, turn: 0, day: null, owned, visible: visibleOf(map, owned), ready: 1, pool: 0, cost: tileCost(map, false),
     golden: { on: false, run: 0 }, track: Object.fromEntries(Object.keys(map.tracks ?? {}).map((t) => [t, 0])),
     earned: new Set(), cards: [], built: {}, levels: {}, pendingLevels: {}, wonders: new Set(),
-    camps: [], pillaged: new Set(), roads: [], roadNet: new Set([CENTRE]), roadSteps: 0, roadCarry: 0,
+    camps: [], pillaged: new Set(), roads: [], roadNet: new Set([CENTRE]), roadSteps: 0, roadCarry: 0, paved: new Set(), pavePoints: 0,
     found: new Set(), zonesSeen: new Set(), claimedFinds: new Set(),
     chronicle: [], last: null, pending: [], history: snapshots ? [] : null, chapter: null,
   };
@@ -171,34 +173,74 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
       }
     }
   };
-  const layRoads = () => {
-    while (state.roadSteps > 0) {
-      // Joined-up targets: owned tiles holding a place, a building or a built wonder.
-      const builtTiles = new Set(Object.values(state.built));
-      const targets = new Set();
-      for (const k of state.owned) {
-        if (state.roadNet.has(k)) continue;
-        const p = P.at.get(k);
-        if ((p && (p.kind !== 'wonder' || state.wonders.has(p.id))) || builtTiles.has(k)) targets.add(k);
-      }
-      if (!targets.size) break;
-      // Breadth-first from the network through owned tiles to the nearest target.
-      const prev = new Map(); const queue = [...state.roadNet].sort(); let hit = null;
+  // Roads. A step of cardio does two things. It lengthens the track: towards the nearest place,
+  // building or built wonder not yet joined up, but a sport place (the gym, the running track) or a
+  // wonder comes before anything else and is reached FAST_STEPS tiles at a time. And it wears the track
+  // in: every PAVE_STEPS steps pave one tile of it, the way between the sport places and the wonders
+  // first, then the oldest. A step with nowhere left to go paves a tile outright; with nothing to pave
+  // either, it waits.
+  const sportIds = new Set((map.tracks?.sport?.list ?? []).map((e) => e[0]));
+  const fastTiles = () => {
+    const out = new Set(Object.entries(state.built).filter(([id]) => sportIds.has(id)).map(([, k]) => k));
+    for (const id of state.wonders) { const w = P.byId.get(id); if (w) out.add(key(w.q, w.r)); }
+    return out;
+  };
+  const extend = () => {
+    // Joined-up targets: owned tiles holding a place, a building or a built wonder.
+    const builtTiles = new Set(Object.values(state.built));
+    const fast = fastTiles();
+    const targets = new Set();
+    for (const k of state.owned) {
+      if (state.roadNet.has(k)) continue;
+      const p = P.at.get(k);
+      if ((p && (p.kind !== 'wonder' || state.wonders.has(p.id))) || builtTiles.has(k)) targets.add(k);
+    }
+    if (!targets.size) return false;
+    // Breadth-first from the network through owned tiles to the nearest target (of the fast ones, if
+    // any can be reached).
+    const search = (want) => {
+      const prev = new Map(); const queue = [...state.roadNet].sort();
       for (const k of queue) prev.set(k, null);
-      for (let i = 0; i < queue.length && !hit; i++) {
+      for (let i = 0; i < queue.length; i++) {
         for (const n of nbrs(...unkey(queue[i])).sort()) {
           if (prev.has(n) || !state.owned.has(n)) continue;
           prev.set(n, queue[i]);
-          if (targets.has(n)) { hit = n; break; }
+          if (want.has(n)) return { hit: n, prev };
           queue.push(n);
         }
       }
-      if (!hit) break;
-      let step = hit;
-      while (prev.get(step) && !state.roadNet.has(prev.get(step))) step = prev.get(step);
+      return null;
+    };
+    const quick = new Set([...targets].filter((k) => fast.has(k)));
+    const found = (quick.size && search(quick)) || search(targets);
+    if (!found) return false;
+    const path = [];
+    for (let k = found.hit; k && !state.roadNet.has(k); k = found.prev.get(k)) path.unshift(k);
+    for (const step of path.slice(0, fast.has(found.hit) ? FAST_STEPS : 1)) {
       state.roadNet.add(step);
-      state.roads.push([prev.get(step), step]);
+      state.roads.push([found.prev.get(step), step]);
+    }
+    return true;
+  };
+  // The next tile of road to pave: on the way from a joined sport place or wonder back to the centre
+  // first (between them, those ways are the ways from one to another), then in the order laid.
+  const paveOne = () => {
+    const parent = new Map(state.roads.map(([a, b]) => [b, a]));
+    const way = new Set();
+    for (const k of fastTiles()) for (let t = k; parent.has(t); t = parent.get(t)) way.add(t);
+    const open = state.roads.map(([, b]) => b).filter((b) => !state.paved.has(b));
+    const next = open.find((b) => way.has(b)) ?? open[0];
+    if (!next) return false;
+    state.paved.add(next);
+    return true;
+  };
+  const layRoads = () => {
+    while (state.roadSteps > 0) {
+      const grew = extend();
+      if (!grew && state.paved.size >= state.roads.length) break;
       state.roadSteps--;
+      state.pavePoints += grew ? 1 : PAVE_STEPS;
+      while (state.pavePoints >= PAVE_STEPS && paveOne()) state.pavePoints -= PAVE_STEPS;
     }
   };
 
@@ -408,7 +450,7 @@ export function replay({ doc, map, today, cityOf = () => map.id, snapshots = fal
 function snapshot(s) {
   return {
     day: s.day, turn: s.turn, owned: [...s.owned], built: { ...s.built }, levels: { ...s.levels }, wonders: [...s.wonders],
-    camps: s.camps.map((c) => ({ ...c })), pillaged: [...s.pillaged], roads: s.roads.map((r) => [...r]), golden: s.golden.on,
+    camps: s.camps.map((c) => ({ ...c })), pillaged: [...s.pillaged], roads: s.roads.map((r) => [...r]), paved: [...s.paved], golden: s.golden.on,
     found: [...s.found], claimedFinds: [...s.claimedFinds],
   };
 }
