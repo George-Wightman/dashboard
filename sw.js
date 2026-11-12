@@ -3,7 +3,7 @@
 const CACHE = 'today-dashboard-v16';
 const SHELL = [
   './', 'index.html', 'styles.css', 'styles/daylight.css', 'styles/tools.css', 'fonts/BricolageGrotesque.woff2', 'fonts/Figtree.woff2', 'fonts/Rubik-Hebrew.woff2', 'manifest.webmanifest',
-  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png',
   'js/app.js', 'js/commit.js', 'js/data.js', 'js/doc.js', 'js/dates.js', 'js/parse.js', 'js/schedule.js',
   'js/record.js', 'js/merge.js', 'js/sync.js', 'js/hebrewSync.js', 'js/hebrew-voice.js', 'js/duolingo.js', 'js/gemini.js', 'js/look.js', 'js/layout.js', 'js/flags.js', 'js/changes.js', 'js/calendar.js', 'js/attention.js', 'js/gym.js', 'js/checkins.js',
   'js/plan-state.js', 'js/ui/agenda.js', 'js/push-client.js',
@@ -105,7 +105,10 @@ self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch { data = { body: e.data?.text?.() ?? '' }; }
   e.waitUntil(self.registration.showNotification(data.title || 'Dashboard', {
-    body: data.body || '', tag: data.tag || 'checkin', data: { url: data.url || './' }, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
+    body: data.body || '', tag: data.tag || 'checkin', data: { url: data.url || './' }, icon: 'icons/icon-192.png',
+    // The status-bar icon is drawn from transparency alone, so the opaque app icon showed as a
+    // white square; badge-96 is the logo's silhouette in white on transparent.
+    badge: 'icons/badge-96.png',
   }));
 });
 // A tap: the open app shows that check-in, or the app opens at it.
