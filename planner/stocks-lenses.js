@@ -11,7 +11,8 @@ export const THRESHOLDS = {
   // 2.5× is a big move even for a volatile name.
   riskAmber: 1.5,
   riskRed: 2.5,
-  // P/E against its own 5-year median: 20% over is stretched, 50% over is expensive for it.
+  // P/E against its own 2-year median: 20% over is stretched, 50% over is expensive for it. Two years,
+  // because older earnings in SEC data aren't adjusted for share splits.
   pe: { amber: 1.2, red: 1.5 },
   health: {
     grossMargin: 0.40, // pricing power: 40%+ gross margin
@@ -95,14 +96,16 @@ export function priceLens({ price, epsTtm, peHistory }) {
   const ratio = pe / med;
   const dot = ratio >= THRESHOLDS.pe.red ? 'red' : ratio >= THRESHOLDS.pe.amber ? 'amber' : 'green';
   const where = ratio >= 1.05 ? 'above' : ratio <= 0.95 ? 'below' : 'about';
-  return { dot, reason: `P/E ${Math.round(pe)}, ${where === 'about' ? 'about at' : where} its 5-year median of ${Math.round(med)}` };
+  return { dot, reason: `P/E ${Math.round(pe)}, ${where === 'about' ? 'about at' : where} its 2-year median of ${Math.round(med)}` };
 }
 
 // Quarterly values of an SEC us-gaap concept, oldest first: 10-Q quarters (3-month spans when a
 // start is given) and Q4 worked out as the 10-K year minus the three quarters before it.
 export function quarters(facts, names, unit = 'USD') {
   const g = facts?.facts?.['us-gaap'] ?? {};
-  const name = names.find((n) => g[n]?.units?.[unit]);
+  // Companies switch concept names (NVIDIA's "Revenues" stops years ago): the most recent one wins.
+  const lastEnd = (n) => (g[n]?.units?.[unit] ?? []).reduce((m, r) => (r.end > m ? r.end : m), '');
+  const name = names.filter((n) => g[n]?.units?.[unit]).sort((a, b) => (lastEnd(a) < lastEnd(b) ? 1 : -1))[0];
   if (!name) return null;
   const days = (a, b) => (Date.parse(b) - Date.parse(a)) / 86400000;
   const rows = g[name].units[unit];
@@ -134,7 +137,10 @@ const ttm = (qs) => (qs && qs.length >= 4 ? qs.slice(-4).reduce((t, q) => t + q.
 
 export function healthLens(facts) {
   const rev = quarters(facts, REVENUE);
-  const gp = quarters(facts, ['GrossProfit']);
+  // Some companies (Alphabet, Meta) report the cost of revenue instead of gross profit.
+  const cost = quarters(facts, ['CostOfRevenue', 'CostOfGoodsAndServicesSold']);
+  const gp = quarters(facts, ['GrossProfit'])
+    ?? (rev && cost ? cost.map((c) => ({ end: c.end, val: (rev.find((r) => r.end === c.end)?.val ?? NaN) - c.val })).filter((x) => Number.isFinite(x.val)) : null);
   const op = quarters(facts, ['OperatingIncomeLoss']);
   if (!rev || !gp || !op || rev.length < 4 || gp.length < 4 || op.length < 4) return grey('Accounts not available');
   const H = THRESHOLDS.health;

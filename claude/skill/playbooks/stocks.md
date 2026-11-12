@@ -69,6 +69,8 @@ good brief.
 5. Stop. Don't chat, don't summarise in the transcript.
 
 **Weekly extras (Saturday):**
+- First run `stocks-accounts` (laptop only: it needs `secContact` in the skill config). It sets Price
+  and Health for every US company from its SEC accounts with plain code, so don't search for those.
 - For each non-US watched company that reported this week, set `lensNotes` price and health from its
   results (P/E against its own history; margins, returns, debt).
 - Look up the next results date for every watched holding without one in the next 90 days and add

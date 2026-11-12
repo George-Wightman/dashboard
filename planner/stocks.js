@@ -45,10 +45,11 @@ export function parseStooq(text) {
   return rows.length ? { series: rows, ccy: null } : null;
 }
 
-// P/E at each month over the last five years: the close over the four quarters' EPS before it.
+// P/E at each month over the last two years: the close over the four quarters' EPS before it. Not
+// further back: older SEC earnings aren't adjusted for share splits.
 export function peHistory(series, eps) {
   const out = [];
-  for (let i = series.length - 1; i >= 0 && out.length < 60; i -= 21) {
+  for (let i = series.length - 1; i >= 0 && out.length < 24; i -= 21) {
     const before = eps.filter((q) => q.end <= series[i].day).slice(-4);
     const ttm = before.length === 4 ? before.reduce((t, q) => t + q.val, 0) : null;
     if (ttm > 0) out.push(series[i].close / ttm);

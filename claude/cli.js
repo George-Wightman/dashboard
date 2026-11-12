@@ -24,6 +24,7 @@ import { validMap } from '../js/map/files.js';
 import { dayPoints, pointsLines } from '../js/map/points.js';
 import { readMoney, moneyLines, importMoney } from './money.js';
 import { readStocks, stocksLines, briefInput, writeStocks } from './stocks.js';
+import { accountsPatch } from './stocks-accounts.js';
 
 // The map in words, then today's points row by row: what's counting and what isn't.
 const mapLines = (doc, today, got) => [...mapSummary(got), ...pointsLines(dayPoints(doc, today, got.map))];
@@ -37,7 +38,7 @@ export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
   'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · stocks · usage [days] · reference [topic] · handoffs · handoff <name>',
   'Money ledger: money-import <file.json> merges a ledger built from his statements (reference money)',
-  'Stocks: stocks · stocks brief-input [daily|weekly] · stocks-write <file.json> merges brief, notes, theses, themes, tiers, shortlist (reference stocks)',
+  'Stocks: stocks · stocks brief-input [daily|weekly] · stocks-accounts (US company accounts, Saturdays) · stocks-write <file.json> merges brief, notes, theses, themes, tiers, shortlist (reference stocks)',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
   'Discover: capabilities [topic|op] · inspect <id> · workflows. Test any JSON batch with preview before apply; preview writes nothing.',
@@ -188,7 +189,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && command !== 'stocks-accounts' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -294,6 +295,25 @@ export async function main({
         if (!path) throw new Error('stocks-write needs the path of a JSON file');
         say(await writeStocks(files, readText(path)));
         return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+    // US company accounts from the SEC into Price and Health (claude/stocks-accounts.js): the laptop
+    // can say who it is, which Google's script servers can't.
+    if (command === 'stocks-accounts') {
+      try {
+        if (!config.secContact) throw new Error('No secContact in the skill config.json: add "secContact": "<name> <email>" for the SEC.');
+        const { desk } = await readStocks(files);
+        const fetchText = async (url, { contact } = {}) => {
+          const res = await globalThis.fetch(url, { headers: { 'User-Agent': contact || 'Mozilla/5.0' } });
+          return { status: res.status, text: await res.text() };
+        };
+        const r = await accountsPatch({ desk, fetchText, contact: config.secContact });
+        const at = new Date().toISOString();
+        const tag = (l) => ({ ...l, reason: `${l.reason} (SEC accounts)` });
+        const lensNotes = Object.fromEntries(Object.entries(r.lensNotes).map(([t, v]) => [t, { health: tag(v.health), price: tag(v.price) }]));
+        if (Object.keys(lensNotes).length) await writeStocks(files, JSON.stringify({ lensNotes }), new Date(at));
+        say(`Accounts: ${r.done.join(', ') || 'none'}${r.failed.length ? ` · failed: ${r.failed.join(', ')}` : ''}`);
+        return finish(r.done.length || !r.failed.length ? 0 : 1);
       } catch (e) { say(e.message); return finish(1); }
     }
 

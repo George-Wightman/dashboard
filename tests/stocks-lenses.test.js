@@ -50,7 +50,7 @@ test('sigma and moveToday', () => {
   assert.ok(Math.abs(moveToday([100, 110]) - 0.1) < 1e-9);
 });
 
-test('priceLens: P/E against its own 5-year median', () => {
+test('priceLens: P/E against its own 2-year median', () => {
   assert.equal(priceLens({ price: 160, epsTtm: 1, peHistory: [100, 100, 100] }).dot, 'red');
   assert.equal(priceLens({ price: 130, epsTtm: 1, peHistory: [100, 100, 100] }).dot, 'amber');
   const g = priceLens({ price: 90, epsTtm: 1, peHistory: [100, 100, 100] });
