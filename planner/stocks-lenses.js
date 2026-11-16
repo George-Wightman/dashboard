@@ -151,8 +151,16 @@ export function healthLens(facts) {
     const r = rev.find((x) => x.end === q.end)?.val;
     return r ? q.val / r : null;
   }).filter((x) => x != null);
-  const m = margins.reduce((t, x) => t + x, 0) / margins.length;
-  const std = Math.sqrt(margins.reduce((t, x) => t + (x - m) ** 2, 0) / margins.length);
+  // Steadiness is measured around the margin's own straight-line trend, so a company whose margin
+  // climbs every quarter isn't marked unsteady for getting more profitable. A trend that loses more
+  // than the steadiness allowance over the eight quarters counts against it instead.
+  const n = margins.length;
+  const xMean = (n - 1) / 2;
+  const m = margins.reduce((t, x) => t + x, 0) / n;
+  const sxx = margins.reduce((t, _, i) => t + (i - xMean) ** 2, 0);
+  const slope = sxx > 0 ? margins.reduce((t, y, i) => t + (i - xMean) * (y - m), 0) / sxx : 0;
+  const std = Math.sqrt(margins.reduce((t, y, i) => t + (y - (m + slope * (i - xMean))) ** 2, 0) / n);
+  const falling = slope * (n - 1) < -H.opMarginStdMax;
   const equity = latest(facts, ['StockholdersEquity']) ?? 0;
   const debt = latest(facts, ['LongTermDebt', 'LongTermDebtNoncurrent']) ?? 0;
   const roic = equity + debt > 0 ? (opT * 0.79) / (equity + debt) : null;
@@ -160,6 +168,12 @@ export function healthLens(facts) {
   const reason = `${Math.round(gross * 100)}% gross margin, ${Math.round((opT / revT) * 100)}% operating${roic != null ? `, ${Math.round(roic * 100)}% return on capital` : ''}`;
   if (opT <= 0) return { dot: 'red', reason: `Losing money at the operating line; ${Math.round(gross * 100)}% gross margin` };
   if (debtYears > H.debtToEbitdaRed) return { dot: 'red', reason: `${reason}; heavy debt` };
-  if (gross >= H.grossMargin && std <= H.opMarginStdMax && roic != null && roic >= H.roicGreen) return { dot: 'green', reason };
-  return { dot: 'amber', reason };
+  const missed = [
+    gross < H.grossMargin && `gross margin under ${Math.round(H.grossMargin * 100)}%`,
+    std > H.opMarginStdMax && 'operating margin swings quarter to quarter',
+    falling && 'operating margin falling',
+    (roic == null || roic < H.roicGreen) && `return on capital under ${Math.round(H.roicGreen * 100)}%`,
+  ].filter(Boolean);
+  if (!missed.length) return { dot: 'green', reason };
+  return { dot: 'amber', reason: `${reason}; ${missed.join(', ')}` };
 }

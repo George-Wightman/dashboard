@@ -76,6 +76,29 @@ test('healthLens: high steady margins and little debt are green', () => {
   assert.match(h.reason, /60% gross margin/);
 });
 
+test('healthLens: operating margin climbing steadily is still green', () => {
+  // 10% → 45% over eight quarters: a big spread, but a company getting more profitable, not an unsteady one.
+  const h = healthLens(facts({ OperatingIncomeLoss: q([10, 15, 20, 25, 30, 35, 40, 45]) }));
+  assert.equal(h.dot, 'green');
+});
+
+test('healthLens: margins that jump about are amber, and say so', () => {
+  const h = healthLens(facts({ OperatingIncomeLoss: q([10, 45, 12, 40, 15, 45, 10, 42]) }));
+  assert.equal(h.dot, 'amber');
+  assert.match(h.reason, /swings quarter to quarter/);
+});
+
+test('healthLens: operating margin falling steadily is amber, and says so', () => {
+  const h = healthLens(facts({ OperatingIncomeLoss: q([45, 40, 35, 30, 25, 20, 15, 10]) }));
+  assert.equal(h.dot, 'amber');
+  assert.match(h.reason, /falling/);
+});
+
+test('healthLens: amber says which test it missed', () => {
+  assert.match(healthLens(facts({ GrossProfit: q(Array(8).fill(30)) })).reason, /gross margin under 40%/);
+  assert.match(healthLens(facts({ StockholdersEquity: q(Array(8).fill(5000)) })).reason, /return on capital under 10%/);
+});
+
 test('healthLens: no gross profit reported is grey', () => {
   const f = facts(); delete f.facts['us-gaap'].GrossProfit;
   assert.equal(healthLens(f).dot, 'grey');
