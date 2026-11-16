@@ -349,8 +349,7 @@ function svgEl(viewBox, inner, cls) {
 function readSeen() { try { return localStorage.getItem(SEEN_KEY); } catch { return null; } }
 function writeSeen(day) { try { localStorage.setItem(SEEN_KEY, day); } catch { /* this device only */ } }
 
-// The city as the header's horizon (js/ui/sky.js): the tiles he owns in the three rows through the
-// middle, painted for the season, nothing of the game on them. A string and its width over its height,
+// The city as the header's horizon (js/ui/sky.js): all the tiles he owns, painted for the season, nothing of the game on them. A string and its width over its height,
 // or null with no map; worked out again only when the land or the day changes.
 let horizonCache = { key: null, out: null };
 export function horizonSvg(ctx) {
@@ -359,7 +358,8 @@ export function horizonSvg(ctx) {
   const { map, state, today } = got;
   const k = `${cached.key}|${today}`;
   if (horizonCache.key === k) return horizonCache.out;
-  const band = new Set([...state.owned].filter((t) => { const r = unkey(t)[1]; return r >= -1 && r <= 1; }));
+  // Every tile he owns, not a slice of rows through the middle: the strip should match the map.
+  const band = new Set(state.owned);
   if (band.size < 3) { horizonCache = { key: k, out: null }; return null; }
   const at = [...band].map((t) => centre(...unkey(t)));
   const x0 = Math.min(...at.map((p) => p[0])) - S, x1 = Math.max(...at.map((p) => p[0])) + S;

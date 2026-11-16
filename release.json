@@ -1,10 +1,10 @@
 {
-  "id": "a258ffc05f6791e2bec14597947897d458795115520d1d1dd46926c39feb7951",
+  "id": "1dd8dbf3494186537b143af1596d2fec33108e6e6bb0e3fa1f4da7ccaba5b852",
   "files": {
     "./": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
     "index.html": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
     "styles.css": "82757c6e1a2f8af994dc37b125a00f8bf62b90d7bafe61e98bb1dbfa5f674836",
-    "styles/daylight.css": "03681bc1a2200bc85dc1f0a752177f83bc9f66df042f5b92f78d52900edcda91",
+    "styles/daylight.css": "16c92d9219d8e833a1dd4074e999a014e055b6970be43c058efd26a38b12e494",
     "styles/tools.css": "c5668b0ebe769a053c3d5aee6243e1db011ed4273c02556bf72288ec14557d97",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
@@ -111,7 +111,7 @@
     "js/bigstore.js": "94fd3e1756b57be8b2820f7002772d7c12b48150a51fb7c8e97c6043c2b0b8d0",
     "js/map/summary.js": "2474984af9df955b38af09f716387c4cf0a9c84a9ad5ffbea57867fec1a321f9",
     "js/map/points.js": "2c7677e2fc9ce511212ea7bfa3751709fce65e3b7eba07c0c240978b32af57e2",
-    "js/ui/map.js": "31c273c7dab37101ed6f0df3ac276b18906091c83f5c6dc6bdc38bf205f8117c",
+    "js/ui/map.js": "ea96d0149d1104dd154a0f04abe23bd70f6cdb78fd10d88330eb39d118eafe6b",
     "js/ui/map-art.js": "db357f40b7baeab1252e464d1584cd708a46411b377f1bf28ca10f77021a1402",
     "js/map/terrain-atlas.js": "e177ec6d01e9e0ea7ae315359a1b84697624b1585210a36ca7142a05f49bbd8c",
     "icons/terrain.webp": "ce814941f847e84a49a1d63063ccca6c2b82eb4d2b536828d817ac49b904ca06",

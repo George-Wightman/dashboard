@@ -175,14 +175,14 @@
 
 /* The city he's built along the bottom of the sky (js/ui/sky.js horizon): faded at the ends and the
    top, drifting end to end, in the light of the hour. */
-.dl-horizon { --hz-h: 140px; position: absolute; left: 0; right: 0; bottom: 0; height: var(--hz-h); overflow: hidden; pointer-events: none;
+.dl-horizon { --hz-h: 160px; position: absolute; left: 0; right: 0; bottom: 0; height: var(--hz-h); overflow: hidden; pointer-events: none;
   -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); }
 .dl-horizon-land { position: absolute; bottom: 0; left: 50%; height: 100%; width: calc(var(--hz-h) * var(--hz-ratio)); transform: translateX(-50%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%); mask-image: linear-gradient(to bottom, transparent, #000 45%); opacity: .9; }
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%); mask-image: linear-gradient(to bottom, transparent, #000 18%); opacity: .9; }
 .dl-horizon-land svg { display: block; width: 100%; height: 100%; }
 .dl-horizon.drifts .dl-horizon-land { left: 0; transform: none; animation: dl-drift 240s ease-in-out infinite alternate; }
 /* Room under the words for the land, so the greeting sits above it. */
-.dl-sky.has-horizon .dl-sky-words { padding-bottom: 120px; }
+.dl-sky.has-horizon .dl-sky-words { padding-bottom: 140px; }
 @keyframes dl-drift { from { transform: translateX(0); } to { transform: translateX(var(--hz-shift, 0px)); } }
 @media (prefers-reduced-motion: reduce) { .dl-horizon.drifts .dl-horizon-land { animation: none; } }
 .dl-sky[data-phase="dawn"] .dl-horizon-land { filter: sepia(.25) saturate(1.1) brightness(1.02); }
