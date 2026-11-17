@@ -7,6 +7,7 @@ import { h } from './dom.js';
 import { bigSection } from './big.js';
 import { LOGOS } from './sources.js';
 import { stocksView, LENSES } from '../stocks.js';
+import { lensExplainer, termExplainer, splitTerms, verdictExplainer, ADD_EXPLAINER } from '../stocks-explain.js';
 import { shortWeekday, shortDate, daysBetween } from '../dates.js';
 
 const LENS_NAME = { trend: 'Trend', price: 'Price', health: 'Health', expectations: 'Expectations', risk: 'Risk' };
@@ -97,14 +98,44 @@ export function renderStocksTile(ctx) {
     p.look ? h('p', { class: 'st-look' }, p.look.text) : null);
 }
 
-function card(row, today) {
+// Tap to explain (js/stocks-explain.js): one panel open at a time, keyed `<ticker>|<kind>|<key>`,
+// shown right under what was tapped.
+function explainPanel(e) {
+  const SCALE = { green: 'Green', amber: 'Amber', red: 'Red', grey: 'Grey' };
+  return h('div', { class: 'st-explain', role: 'region', 'aria-label': `About ${e.title}` },
+    h('p', { class: 'st-x-title' }, e.title),
+    h('p', {}, e.what),
+    e.look ? h('p', {}, h('b', {}, 'What we look for. '), e.look) : null,
+    e.scale ? h('ul', { class: 'st-x-scale' }, e.scale.map(([d, t]) => h('li', {}, dot(d), h('span', {}, h('b', {}, `${SCALE[d]}: `), t)))) : null,
+    e.yours ? h('p', { class: 'st-x-yours' }, h('b', {}, 'Yours. '), e.yours) : null);
+}
+
+function card(ctx, row, today, rerender) {
   const c = cardParts(row, today);
+  const id = (kind, key) => `${row.ticker}|${kind}|${key}`;
+  const isOpen = (kind, key) => ctx.ui.stocksExplain === id(kind, key);
+  const tap = (kind, key) => () => { ctx.ui.stocksExplain = isOpen(kind, key) ? null : id(kind, key); rerender(); };
+  const xbtn = (kind, key, cls, ...kids) => h('button', { type: 'button', class: `st-xbtn ${cls}`, 'aria-expanded': isOpen(kind, key) ? 'true' : 'false', onclick: tap(kind, key) }, ...kids);
+  const reasonEl = (l) => h('span', { class: 'st-reason' }, l.reason
+    ? splitTerms(l.reason).map((p) => (p.term ? xbtn('term', `${l.key}:${p.term}`, 'st-term', p.text) : p.text))
+    : '—');
+  const openTerm = (l) => splitTerms(l.reason).find((p) => p.term && isOpen('term', `${l.key}:${p.term}`))?.term;
+  const lensItems = c.lenses.flatMap((l) => {
+    const term = l.reason ? openTerm(l) : null;
+    const panel = isOpen('lens', l.key) ? explainPanel(lensExplainer(l.key, l, row.tier))
+      : term ? explainPanel(termExplainer(term)) : null;
+    return [h('li', {}, xbtn('lens', l.key, 'st-lname', l.name), dot(l.dot), reasonEl(l)), panel ? h('li', { class: 'st-x-row' }, panel) : null];
+  }).filter(Boolean);
   return h('div', { class: 'st-card' },
     c.thesis ? h('blockquote', { class: 'st-thesis' }, c.thesis) : null,
-    h('p', { class: `st-vline st-v-${row.verdict ?? 'none'}` }, c.verdictLine),
-    c.add ? h('p', { class: 'st-look' }, c.add) : null,
-    h('ul', { class: 'st-lenses' }, c.lenses.map((l) => h('li', {}, h('span', { class: 'st-lname' }, l.name), dot(l.dot), h('span', { class: 'st-reason' }, l.reason || '—')))),
-    c.small ? h('p', { class: 'st-small' }, c.small) : null,
+    xbtn('verdict', 'v', `st-vline st-v-${row.verdict ?? 'none'}`, c.verdictLine),
+    isOpen('verdict', 'v') ? explainPanel(verdictExplainer(row.verdict, row.tier)) : null,
+    c.add ? xbtn('add', 'a', 'st-look', c.add) : null,
+    c.add && isOpen('add', 'a') ? explainPanel(ADD_EXPLAINER) : null,
+    h('p', { class: 'st-legend' }, 'Tap a lens, the line above or an underlined word to see what it means.'),
+    h('ul', { class: 'st-lenses' }, lensItems),
+    c.small ? h('p', { class: 'st-small' }, c.small.startsWith('RSI') ? [xbtn('term', 'small:RSI', 'st-term', 'RSI'), c.small.slice(3)] : c.small) : null,
+    c.small && isOpen('term', 'small:RSI') ? explainPanel(termExplainer('RSI')) : null,
     h('div', { class: 'st-notes' },
       h('p', { class: 'st-looked' }, claudeMark('Claude’s notes'), c.notes.lastLooked),
       c.notes.thinking ? h('p', {}, c.notes.thinking) : null,
@@ -123,7 +154,7 @@ function rowEl(ctx, row, today, rerender) {
       row.tier === 'pie' ? null : h('span', { class: 'st-dots' }, row.dots.map((d, i) => dot(d, `${LENS_NAME[LENSES[i]]}: ${row.card.lenses[LENSES[i]].reason || d}`))),
       h('span', { class: 'st-val' }, pounds(row.valueGbp)),
       row.hint ? h('span', { class: `st-hint${row.verdict === 'disagrees' ? ' bad' : ''}` }, row.hint) : null),
-    open ? card(row, today) : null);
+    open ? card(ctx, row, today, rerender) : null);
 }
 
 export function renderStocksBig(ctx) {
