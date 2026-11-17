@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { statementSpend, agreedSettings, forecastSettings, runForecast, hoursFor, monthlySpend, FORECAST_ID, WEEKS_A_MONTH } from '../js/forecast.js';
+import { statementSpend, statementSplit, agreedSettings, forecastSettings, forecastPresets, matchingPreset, runForecast, hoursFor, monthlySpend, FORECAST_ID, WEEKS_A_MONTH } from '../js/forecast.js';
 import { emptyMoney, START_ID, validMoney, mergeMoney } from '../js/money.js';
 import { PAY_ID } from '../js/hours.js';
 import { emptyDoc } from '../js/doc.js';
@@ -79,4 +79,47 @@ test('mergeMoney: forecast is replaced whole by an import, cleared by null, and 
   assert.equal(mergeMoney(m, { forecast: null }).forecast, undefined);
   assert.equal(validMoney({ ...m, forecast: { spend: { casino: 100 } } }), false);
   assert.equal(validMoney({ ...m, forecast: { oneOffs: [{ id: 'a', label: 'A', amount: 1, month: 'Dec', on: true }] } }), false);
+});
+
+test('runForecast: days marked in the EU cost the Salzburg rate, the rest the home rate', () => {
+  const m = ledger();
+  const d = doc();
+  for (let day = '2026-12-01'; day <= '2026-12-31'; day = addDays(day, 1)) d.calendar[`eu:${day}`] = { id: `eu:${day}`, status: 'active', day };
+  const settings = { hours: 0, spend: { groceries: 31000 }, away: { groceries: 15500 }, flights: { count: 0, price: 8000 }, oneOffs: [] };
+  const f = runForecast({ money: m, doc: d, today: '2026-11-05', settings });
+  const dec = f.rows.find((r) => r.month === '2026-12');
+  assert.equal(dec.spend, 15500);
+  assert.equal(dec.awayDays, 31);
+  assert.equal(f.rows.find((r) => r.month === '2027-01').spend, 31000);
+  // Without an away rate, Salzburg costs the same as home.
+  const same = runForecast({ money: m, doc: d, today: '2026-11-05', settings: { ...settings, away: undefined } });
+  assert.equal(same.rows.find((r) => r.month === '2026-12').spend, 31000);
+});
+
+test('statementSplit and presets: exact averages at home and away, Claude\'s presets over the agreed figures', () => {
+  const m = ledger();
+  const d = doc();
+  // October in Salzburg, at £20 a day instead of £10.
+  for (let day = '2026-10-01'; day <= '2026-10-31'; day = addDays(day, 1)) { d.calendar[`eu:${day}`] = { id: `eu:${day}`, status: 'active', day }; m.days[day] = { groceries: 2000 }; }
+  const split = statementSplit(m, d);
+  assert.equal(split.awayDays, 31);
+  assert.equal(split.home.groceries, Math.round(1000 * 365.25 / 12));
+  assert.equal(split.away.groceries, Math.round(2000 * 365.25 / 12));
+  m.forecast = { hours: 6, oneOffs: [{ id: 'car', label: 'Car sale', amount: 100000, month: '2027-01', on: false }],
+    presets: [{ id: 'plan', label: 'Plan', hours: 9, spend: { groceries: 25000 }, oneOffs: [{ id: 'car', on: true }] }] };
+  assert.equal(validMoney(m), true);
+  const presets = forecastPresets(m, d, '2026-11-05');
+  assert.deepEqual(presets.map((p) => p.id), ['agreed', 'averages', 'plan']);
+  const plan = presets[2].settings;
+  assert.equal(plan.hours, 9);
+  assert.deepEqual(plan.spend, { groceries: 25000 });
+  assert.equal(plan.oneOffs[0].on, true);
+  assert.equal(plan.oneOffs[0].amount, 100000);
+  assert.equal(presets[1].settings.away.groceries, split.away.groceries);
+  assert.equal(matchingPreset(forecastSettings(m, d), presets).id, 'agreed');
+  assert.equal(matchingPreset({ ...plan, hours: 9.5 }, presets), null);
+  // A preset may only change agreed one-offs, and can't take the built-in ids.
+  assert.equal(validMoney({ ...m, forecast: { ...m.forecast, presets: [{ id: 'p', label: 'P', oneOffs: [{ id: 'nope', on: true }] }] } }), false);
+  assert.equal(validMoney({ ...m, forecast: { ...m.forecast, presets: [{ id: 'agreed', label: 'P' }] } }), false);
+  assert.equal(validMoney({ ...m, forecast: { ...m.forecast, away: { casino: 5 } } }), false);
 });

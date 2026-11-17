@@ -195,6 +195,12 @@
 .fc-foot { display: grid; gap: 6px; margin-top: 12px; }
 .fc-pin { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; margin: 4px 0 6px; border-radius: 12px; background: var(--dl-soft); font-size: 13px; font-variant-numeric: tabular-nums; box-shadow: 0 2px 8px color-mix(in srgb, var(--dl-ink) 10%, transparent); }
 .fc-pin b { font-size: 15px; }
+.fc-presets { display: grid; gap: 4px; margin: 2px 0 6px; }
+.fc-presets .dl-btn { min-height: 36px; padding: 0 14px; font-size: 14px; }
+.fc-preset-note { font-size: 12px; }
+.fc-away { fill: var(--viz-3, var(--viz-6)); stroke: none; }
+.fc-away-fold { margin-top: 8px; }
+.fc-away-fold > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .fc-pin .neg, .fc-pin .warn { color: var(--dl-carry-ink); }
 
 /* Stocks (js/ui/stocks.js): colour dots per lens and per theme (green agrees, amber mixed, red

@@ -67,13 +67,33 @@ export function validMoney(m) {
 
 // The forecast settings Claude has agreed with him (js/forecast.js): hours a week, spending a month
 // by category, flights, and one-off amounts (+ in, - out) in a month, each switched on or off.
+// `away` is spending a month while in Salzburg (his EU days). `presets` are named sets he can switch
+// to, each partial over the agreed figures: one-offs only by an agreed id, changing on/amount/month.
 export function validForecast(f) {
   if (f == null) return true;
   if (typeof f !== 'object') return false;
-  if (f.hours != null && !(typeof f.hours === 'number' && f.hours >= 0 && f.hours <= 60)) return false;
-  if (f.spend != null && !(typeof f.spend === 'object' && Object.entries(f.spend).every(([c, v]) => CATEGORY_IDS.includes(c) && pence(v) && v >= 0))) return false;
-  if (f.flights != null && !(Number.isInteger(f.flights.count) && f.flights.count >= 0 && pence(f.flights.price))) return false;
+  if (!validSettings(f)) return false;
   if (f.oneOffs != null && !(Array.isArray(f.oneOffs) && f.oneOffs.every((o) => o && typeof o.id === 'string' && typeof o.label === 'string' && pence(o.amount) && MONTH.test(o.month ?? '') && typeof o.on === 'boolean'))) return false;
+  if (f.presets != null) {
+    if (!Array.isArray(f.presets)) return false;
+    const ids = new Set((f.oneOffs ?? []).map((o) => o.id));
+    for (const p of f.presets) {
+      if (!p || typeof p.id !== 'string' || !p.id || ['agreed', 'averages'].includes(p.id) || typeof p.label !== 'string' || !p.label.trim()) return false;
+      if (p.note != null && typeof p.note !== 'string') return false;
+      if (!validSettings(p)) return false;
+      if (p.oneOffs != null && !(Array.isArray(p.oneOffs) && p.oneOffs.every((o) => o && ids.has(o.id)
+        && (o.on === undefined || typeof o.on === 'boolean') && (o.amount === undefined || pence(o.amount)) && (o.month === undefined || MONTH.test(o.month))))) return false;
+    }
+    if (new Set(f.presets.map((p) => p.id)).size !== f.presets.length) return false;
+  }
+  return true;
+}
+const spendOk = (s) => typeof s === 'object' && Object.entries(s).every(([c, v]) => CATEGORY_IDS.includes(c) && pence(v) && v >= 0);
+function validSettings(f) {
+  if (f.hours != null && !(typeof f.hours === 'number' && f.hours >= 0 && f.hours <= 60)) return false;
+  if (f.spend != null && !spendOk(f.spend)) return false;
+  if (f.away != null && !spendOk(f.away)) return false;
+  if (f.flights != null && !(Number.isInteger(f.flights.count ?? 0) && (f.flights.count ?? 0) >= 0 && (f.flights.price === undefined || pence(f.flights.price)))) return false;
   return true;
 }
 

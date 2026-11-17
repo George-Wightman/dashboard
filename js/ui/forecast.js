@@ -1,15 +1,16 @@
 // The forecast to the London start (js/forecast.js), inside Money's big view: folded to one line
 // (the pot at the end), open to the answer up front (the pot at the end, its lowest point, the hours a
 // week to break even and to keep a month's money), a chart of the pot month by month with a band
-// from 6 to 12 hours a week, and the sliders: hours, spending by category, flights, one-offs.
+// from 6 to 12 hours a week (Salzburg's months shaded), and the sliders: hours, spending by category
+// at home and in Salzburg, flights, one-offs. Presets above swap every setting at once.
 // Dragging repaints the answer and the chart only; letting go saves his settings (one synced record).
 
 import { h } from './dom.js';
 import { svg, tip } from './svg.js';
 import { gbp, categoryLabel } from '../money.js';
 import { hoursSummary, periodWindow } from '../hours.js';
-import { shortDate, addDays } from '../dates.js';
-import { FORECAST_ID, SAFE_PENCE, BAND, WEEKS_A_MONTH, forecastSettings, agreedSettings, statementAverage, runForecast, hoursFor, monthlySpend } from '../forecast.js';
+import { shortDate, addDays, daysInMonth } from '../dates.js';
+import { FORECAST_ID, SAFE_PENCE, BAND, WEEKS_A_MONTH, forecastSettings, forecastPresets, matchingPreset, statementAverage, statementSplit, runForecast, hoursFor, monthlySpend, monthlyAway } from '../forecast.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthName = (m, year = false) => `${MONTHS[Number(m.slice(5, 7)) - 1]}${year ? ` ${m.slice(0, 4)}` : ''}`;
@@ -37,7 +38,11 @@ function chart(f, lo, hi) {
   const pts = (run) => [[X(0), Y(f.from.total)], ...run.rows.map((r, i) => [X(i + 1), Y(r.pot)])];
   const line = (run) => pts(run).map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join(' ');
   const band = [...pts(hi), ...pts(lo).reverse()].map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join(' ') + 'Z';
+  // Month i runs from point i to point i+1; shade it by the share of its days in Salzburg.
+  const away = f.rows.map((r, i) => (r.awayDays ? svg('rect', { x: X(i), y: T, width: X(i + 1) - X(i), height: H - T - B, class: 'fc-away',
+    'fill-opacity': (0.1 + 0.14 * r.awayDays / daysInMonth(`${r.month}-01`)).toFixed(3) }, tip(`${monthName(r.month)}: ${r.awayDays} day${r.awayDays === 1 ? '' : 's'} in Salzburg`)) : null));
   return svg('svg', { class: 'mo-chart fc-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Your money each month to ${monthName(f.rows.at(-1).month)}: ${gbp(f.end)} at the end` },
+    away,
     grid,
     svg('path', { d: band, class: 'fc-band' }, tip(`${BAND[0]}–${BAND[1]} h a week`)),
     svg('line', { x1: L, x2: W - R, y1: Y(0), y2: Y(0), class: 'fc-zero' }),
@@ -61,20 +66,40 @@ function slider({ label, value, min, max, step, fmt, note, onInput, onChange }) 
 export function forecastBlock(ctx, money, doc, today) {
   const s = structuredClone(forecastSettings(money, doc));
   const avg = statementAverage(money);
+  const split = statementSplit(money, doc);
+  const presets = forecastPresets(money, doc, today);
   const hs = hoursSummary(doc, today);
   const from = addDays(periodWindow(hs.expected.period, hs.pay.cutoff).to, 1);
   const pay = (hours) => Math.round((hours * WEEKS_A_MONTH * (hs.pay.rate ?? 0) * (1 + hs.pay.holidayPct / 100)) * (hs.ratio ?? 1) * 100);
   const run = (hours) => runForecast({ money, doc, today, settings: s, hours });
   const first = run(s.hours);
   if (!first) return h('p', { class: 'muted' }, 'Needs a balance from a statement to start from.');
-  const save = () => ctx.store.putCalendar(FORECAST_ID, {
-    status: 'active', hours: s.hours, spend: s.spend, flights: s.flights,
-    oneOffs: s.oneOffs.map((o) => ({ id: o.id, on: o.on, amount: o.amount, month: o.month })),
-  }, 'me');
-  const reset = () => { ctx.store.putCalendar(FORECAST_ID, { status: 'archived' }, 'me'); ctx.render(); };
+  const record = (x) => ({
+    status: 'active', hours: x.hours, spend: x.spend, away: x.away, flights: x.flights,
+    oneOffs: x.oneOffs.map((o) => ({ id: o.id, on: o.on, amount: o.amount, month: o.month })),
+  });
+  const save = () => { ctx.store.putCalendar(FORECAST_ID, record(s), 'me'); markPreset(); };
+  // A whole preset replaces his settings; the agreed one is no record at all.
+  const choose = (p) => {
+    // His record lies over the agreed figures, so a category the preset leaves out is saved as £0.
+    const zero = (o) => Object.fromEntries(Object.keys(o).map((c) => [c, 0]));
+    const base = presets[0].settings;
+    const x = { ...p.settings, spend: { ...zero(base.spend), ...p.settings.spend }, away: { ...zero(base.away), ...p.settings.away } };
+    ctx.store.putCalendar(FORECAST_ID, p.id === 'agreed' ? { status: 'archived' } : record(x), 'me');
+    ctx.render();
+  };
+  const presetNote = h('small', { class: 'muted fc-preset-note' });
+  const presetBtns = presets.map((p) => h('button', { type: 'button', class: 'dl-btn', 'aria-pressed': 'false', title: p.note ?? '', onclick: () => choose(p) }, p.label));
+  const markPreset = () => {
+    const on = matchingPreset(s, presets);
+    presetBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(presets[i] === on)));
+    presetNote.textContent = on ? (on.note ?? '') : 'Your own mix: tap a preset to start again from it.';
+  };
+  markPreset();
 
   const answer = h('div', {});
   const totalEl = h('span', { class: 'fc-total' });
+  const awayTotalEl = h('span', { class: 'fc-total' });
   // Pinned while he scrolls the sliders, so the result stays in view as he drags.
   const pin = h('div', { class: 'fc-pin', 'aria-live': 'polite' });
   const paint = () => {
@@ -90,8 +115,9 @@ export function forecastBlock(ctx, money, doc, today) {
         stat(hrs(safe), `a week to keep ${gbp(SAFE_PENCE)}`),
         stat(hrs(even), `a week to break even (${gbp(f.from.total)})`)),
       chart(f, lo, hi),
-      h('p', { class: 'muted mo-note' }, `From ${gbp(f.from.total)} on ${shortDate(f.from.day)} (your last statements). Line: ${hrs(s.hours)} a week; band: ${BAND[0]}–${BAND[1]} h.`));
+      h('p', { class: 'muted mo-note' }, `From ${gbp(f.from.total)} on ${shortDate(f.from.day)} (your last statements). Line: ${hrs(s.hours)} a week; band: ${BAND[0]}–${BAND[1]} h.${f.rows.some((r) => r.awayDays) ? ' Shaded: months in Salzburg (your EU days).' : ''}`));
     totalEl.textContent = `${gbp(monthlySpend(s))} a month`;
+    awayTotalEl.textContent = `${gbp(monthlyAway(s))} a month`;
     pin.replaceChildren(
       h('span', {}, h('b', { class: f.end < 0 ? 'neg' : f.end < SAFE_PENCE ? 'warn' : '' }, gbp(f.end)), ` end of ${monthName(lastMonth)}`),
       h('span', {}, `lowest ${gbp(f.lowest.pot)}`),
@@ -102,7 +128,8 @@ export function forecastBlock(ctx, money, doc, today) {
   const live = (fn) => (v) => { fn(v); paint(); };
   const keep = (fn) => (v) => { fn(v); save(); };
   const cats = Object.keys(s.spend).sort((a, b) => s.spend[b] - s.spend[a]);
-  const maxFor = (c) => Math.max(10000, Math.ceil((Math.max(s.spend[c], avg[c] ?? 0) * 2.5) / 5000) * 5000);
+  const awayCats = [...new Set([...Object.keys(s.away), ...cats])].sort((a, b) => (s.away[b] ?? 0) - (s.away[a] ?? 0));
+  const maxFor = (c, v = s.spend[c], a = avg[c]) => Math.max(10000, Math.ceil((Math.max(v ?? 0, a ?? 0) * 2.5) / 5000) * 5000);
   const months = first.rows.map((r) => r.month);
 
   const oneOffRow = (o) => h('div', { class: 'fc-once' },
@@ -116,6 +143,9 @@ export function forecastBlock(ctx, money, doc, today) {
       [...new Set([...months, o.month])].sort().map((m) => h('option', { value: m, selected: m === o.month }, monthName(m)))));
 
   return h('div', { class: 'fc' },
+    h('div', { class: 'fc-presets' },
+      h('div', { class: 'mo-seg', role: 'group', 'aria-label': 'Forecast presets' }, presetBtns),
+      presetNote),
     answer,
     h('div', { class: 'fc-controls' },
       pin,
@@ -125,16 +155,19 @@ export function forecastBlock(ctx, money, doc, today) {
       h('h4', { class: 'mo-sub fc-head' }, 'Spending a month', totalEl),
       cats.map((c) => slider({ label: categoryLabel(c), note: avg[c] != null ? `avg ${gbp(avg[c])}` : null, value: s.spend[c] / 100, min: 0, max: maxFor(c) / 100, step: 5,
         fmt: (v) => gbp(v * 100), onInput: live((v) => { s.spend[c] = v * 100; }), onChange: keep((v) => { s.spend[c] = v * 100; }) })),
+      h('details', { class: 'fc-fold fc-away-fold' },
+        h('summary', { class: 'fc-head' }, h('span', {}, 'In Salzburg'), awayTotalEl),
+        h('small', { class: 'muted' }, `On your EU days instead of the amounts above.${split.awayDays ? ` Your average from ${split.awayDays} days there is beside each.` : ''}`),
+        awayCats.map((c) => slider({ label: categoryLabel(c), note: split.awayDays && split.away[c] != null ? `avg ${gbp(split.away[c])}` : null,
+          value: (s.away[c] ?? 0) / 100, min: 0, max: maxFor(c, s.away[c], split.away[c]) / 100, step: 5,
+          fmt: (v) => gbp(v * 100), onInput: live((v) => { s.away[c] = v * 100; }), onChange: keep((v) => { s.away[c] = v * 100; }) }))),
       h('h4', { class: 'mo-sub' }, 'Flights'),
       slider({ label: 'How many', value: s.flights.count, min: 0, max: 12, step: 1, fmt: (v) => `${v}`,
         onInput: live((v) => { s.flights.count = v; }), onChange: keep((v) => { s.flights.count = v; }) }),
       slider({ label: 'Each', value: s.flights.price / 100, min: 20, max: 250, step: 5, fmt: (v) => gbp(v * 100),
         onInput: live((v) => { s.flights.price = v * 100; }), onChange: keep((v) => { s.flights.price = v * 100; }) }),
       s.oneOffs.length ? h('h4', { class: 'mo-sub' }, 'One-offs') : null,
-      s.oneOffs.map(oneOffRow),
-      h('div', { class: 'fc-foot' },
-        h('button', { type: 'button', class: 'dl-btn', onclick: reset }, 'Reset to the agreed figures'),
-        h('small', { class: 'muted' }, `Agreed: ${gbp(monthlySpend(agreedSettings(money)))} a month, ${hrs(agreedSettings(money).hours)} a week.`))));
+      s.oneOffs.map(oneOffRow)));
 }
 
 // The line the folded section shows: where he ends up with the current settings.

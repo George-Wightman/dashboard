@@ -64,6 +64,15 @@ and never copy the PDFs anywhere. Shop and payee names are stored (he asked for 
   at his average since `since`, 5% over and rounded up to £10; the car never counts. His own slider
   moves are a synced record on top, and `money` shows which you're reading. Never change his settings
   without asking; update the agreed figures when you agree new ones.
+- **Salzburg costs differ.** `"away": {...}` (same shape as `spend`) is spending a month on the days
+  marked as EU days; without it, Salzburg costs what home does. Exact home and Salzburg averages come
+  from his statements split by EU days.
+- **Presets** are buttons above the forecast that swap every setting at once. *Cautious* is the
+  agreed figures, *Your averages* is worked out (exact spending at home and in Salzburg, trips inside
+  it, hours at his 8-week average). Agreed ones go in `forecast.presets`:
+  `[{"id": "new-plan", "label": "New plan", "note": "one line", "hours": 10, "spend": {...}, "away": {...},
+  "flights": {"count": 2, "price": 11000}, "oneOffs": [{"id": "car-sale", "on": true}]}]`. A preset's
+  `spend`/`away` replace the agreed ones whole; its one-offs change only agreed ones, by id.
 
 - `money` shows the months ahead with `~`. A plan line covers a known cost or income: a flight, a
   deposit, a birthday. Send it again with `"amount": 0` to remove it.

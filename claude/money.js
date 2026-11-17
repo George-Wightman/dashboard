@@ -4,7 +4,7 @@
 
 import { MONEY_PATH, validMoney, mergeMoney, potForecast, averageSpend, monthActuals, compare, categoryLabel, gbp, startDay, emptyMoney, lastCovered, inOut } from '../js/money.js';
 import { hoursSummary } from '../js/hours.js';
-import { forecastSettings, runForecast, hoursFor, monthlySpend, SAFE_PENCE, FORECAST_ID } from '../js/forecast.js';
+import { forecastSettings, forecastPresets, matchingPreset, runForecast, hoursFor, monthlySpend, monthlyAway, SAFE_PENCE, FORECAST_ID } from '../js/forecast.js';
 
 export async function readMoney(files) {
   const f = await files.read(MONEY_PATH);
@@ -40,6 +40,13 @@ export function moneyLines(money, doc, today) {
     out.push(`Forecast to the start (${mine ? 'his slider settings' : 'the agreed figures'}): ${fs.hours} h a week, ${gbp(monthlySpend(fs))} a month (${Object.entries(fs.spend).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${categoryLabel(c)} ${gbp(v)}`).join(', ')}), ${fs.flights.count} flights at ${gbp(fs.flights.price)}`);
     if (fs.oneOffs.length) out.push(`  One-offs: ${fs.oneOffs.map((o) => `${o.label} ${o.amount > 0 ? '+' : ''}${gbp(o.amount)} in ${o.month}${o.on ? '' : ' (off)'}`).join(' · ')}`);
     out.push(`  From ${gbp(fc.from.total)} on ${fc.from.day}: ${fc.rows.map((r) => `${r.month} ${gbp(r.pot)}`).join(' · ')}`);
+    if (monthlyAway(fs) !== monthlySpend(fs)) out.push(`  In Salzburg (his EU days): ${gbp(monthlyAway(fs))} a month (${cats(fs.away)})`);
+    const presets = forecastPresets(money, doc, today);
+    const on = matchingPreset(fs, presets);
+    out.push(`  Presets: ${presets.map((p) => {
+      const r = runForecast({ money, doc, today, settings: p.settings });
+      return `${p.label}${p === on ? ' (showing)' : ''} ${p.settings.hours} h → ${r ? gbp(r.end) : '—'}`;
+    }).join(' · ')}`);
     out.push(`  Ends ${gbp(fc.end)}; lowest ${gbp(fc.lowest.pot)} (${fc.lowest.month}); keep ${gbp(SAFE_PENCE)} at ${h1(hoursFor({ money, doc, today, settings: fs, target: SAFE_PENCE }))} a week, break even at ${h1(hoursFor({ money, doc, today, settings: fs, target: fc.from.total }))}`);
   }
   const f = potForecast({ money, doc, today });
