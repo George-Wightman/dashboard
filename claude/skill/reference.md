@@ -434,6 +434,10 @@ cheese"}` corrects a meal Gemini got badly wrong; the why is required and shown 
 meals by saying what he had; the app no longer offers usual meals. Meals he tells you about in a chat:
 `{"op": "meal", "log": "his words, amounts and all", "day": "yesterday", "time": "12:30"}` logs one as if he'd
 said it in the app (his words, not a summary; `time` required); Gemini estimates it when the app next opens.
+Add `"items": [{"name", "qty", "unit", "protein", "kcal", "carbs", "fat", "fibre", "sugar", "veg", "fruit",
+"oilyFish"}]` (and `"name"`, `"plants": […]`) to log it with your own estimate instead, counted at once:
+the usual way since 17 Nov 2026 (`reference food` has the rules). Corrections, usual meals and batches take
+the same carbs, fat, fibre, sugar, veg, fruit, oilyFish and plants.
 Batches (a pot he cooks once and eats over a few days): `{"op": "meal", "batch": {"name": "Chilli",
 "ingredients": "1kg beef mince, 2 tins kidney beans, 400g rice", "protein": 260, "kcal": 4200, "day":
 "yesterday"}}` saves the whole pot (you work out the numbers from what went in). `{"op": "meal", "share":
@@ -444,7 +448,8 @@ refused: check with him, then correct the batch or add `"over": true`. `{"op": "
 "batch:…", "remove": true, "why": "binned the rest"}` takes it out of the fridge (its servings stay).
 `{"op": "meal", "fuel":
 {"protein": 180, "maintenanceKcal": 3100}}` sets the daily protein target and his maintenance calories
-(`null` clears maintenance).
+(`null` clears maintenance); `fibre` (g a day), `fruitVeg` (portions a day), `plants` (a week) and
+`oilyFish` (portions a week) set the balance targets.
 
 ## Optional advanced controls
 

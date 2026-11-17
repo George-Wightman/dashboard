@@ -15,7 +15,7 @@ import { checkSession, notesWith } from '../js/coach.js';
 import { NOTES_MAX } from '../js/parse.js';
 import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
 import { resolveId, shortId } from './ids.js';
-import { batches, batchEaten, parseShare, shareWords, servingValue } from '../js/food.js';
+import { batches, batchEaten, parseShare, shareWords, servingValue, EXTRA, GRAMS, BALANCE_TARGETS, cleanPlants, claudeEstimate, mealValue, macroGap } from '../js/food.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
@@ -732,8 +732,37 @@ function brief(store, op) {
 
 // ---- Food ----------------------------------------------------------------------------------------
 
+// Carbs, fat, fibre, sugar (grams), veg, fruit and oily fish (portions) and plants, from an op or a
+// part of one, for whichever were given.
+function extrasFrom(src, what = 'meal') {
+  const out = {};
+  for (const k of EXTRA) {
+    if (src[k] == null) continue;
+    if (!(typeof src[k] === 'number' && Number.isFinite(src[k]) && src[k] >= 0)) throw new Error(`${what} needs ${k} as a number, 0 or more`);
+    out[k] = src[k];
+  }
+  if (src.plants != null) {
+    if (!Array.isArray(src.plants)) throw new Error(`${what} takes plants as a list of names, e.g. ["spinach", "oat"]`);
+    out.plants = cleanPlants(src.plants);
+  }
+  return out;
+}
+
+const balanceWords = (v) => {
+  const parts = [];
+  if (v.carbs != null) parts.push(`${v.carbs} g carbs`);
+  if (v.fat != null) parts.push(`${v.fat} g fat`);
+  if (v.fibre != null) parts.push(`${v.fibre} g fibre`);
+  const fv = (v.veg ?? 0) + (v.fruit ?? 0);
+  if (v.veg != null || v.fruit != null) parts.push(`${fv} fruit & veg`);
+  if (v.oilyFish) parts.push(`${v.oilyFish} oily fish`);
+  const gap = macroGap(v);
+  return `${parts.length ? `, ${parts.join(', ')}` : ''}${gap ? `. Check it: the grams come to about ${gap} kcal, not ${v.kcal}` : ''}`;
+};
+
 // Correct a meal Gemini got badly wrong, remove one logged twice (with a reason), move one to when it
-// was eaten, save a usual meal, or set Fuel's protein target and maintenance calories.
+// was eaten, log one he told you about (worked out by you, or left for Gemini), save a usual meal, or
+// set Fuel's targets: protein, maintenance calories, fibre, fruit and veg, plants and oily fish.
 function meal(store, op) {
   const amount = (v, what) => {
     if (!(typeof v === 'number' && Number.isFinite(v) && v >= 0)) throw new Error(`meal needs ${what} as a number, 0 or more`);
@@ -772,11 +801,12 @@ function meal(store, op) {
     if (!why) throw new Error('A correction needs a why: say what the estimate missed, e.g. "the oil and cheese"');
     const protein = amount(op.protein, 'protein');
     const kcal = amount(op.kcal, 'kcal');
-    store.updateMeal(id, { correction: { by: 'claude', protein, kcal, why: why.slice(0, 200), at: store.now().toISOString() } });
-    return `Corrected ${q(rec.estimate?.name ?? rec.text ?? 'the meal')} to ${protein} g protein, ${kcal} kcal`;
+    const extras = extrasFrom(op);
+    store.updateMeal(id, { correction: { by: 'claude', protein, kcal, ...extras, why: why.slice(0, 200), at: store.now().toISOString() } });
+    return `Corrected ${q(rec.estimate?.name ?? rec.text ?? 'the meal')} to ${protein} g protein, ${kcal} kcal${balanceWords({ protein, kcal, ...extras })}`;
   }
-  // A meal he tells Claude about, logged as if he'd said it in the app: his words, estimated by Gemini
-  // on whichever device opens the app next (2 Nov 2026: four days dumped in one chat).
+  // A meal he tells Claude about. With items (17 Nov 2026), Claude's own estimate, counted at once;
+  // without, his words, estimated by Gemini on whichever device opens the app next.
   if (op.log != null) {
     const words = String(op.log).trim();
     if (!words) throw new Error('meal log needs his words, e.g. {"op": "meal", "log": "5 fried eggs, 2 pittas", "day": "yesterday", "time": "12:30"}');
@@ -786,18 +816,32 @@ function meal(store, op) {
     const [hh, mm] = clockOf(op.time).split(':').map(Number);
     const at = new Date(y, m - 1, d, hh, mm);
     if (at > store.now()) throw new Error('A meal can’t be logged for a time that hasn’t come yet');
+    if (op.items != null) {
+      const estimate = claudeEstimate({ name: op.name, items: op.items, plants: op.plants });
+      const rec = store.addMeal({ at, text: words, estimate });
+      const v = mealValue(rec);
+      const short = estimate.items.filter((i) => GRAMS.some((k) => i[k] == null)).map((i) => i.name);
+      return tagged(`Logged ${q(estimate.name)} for ${dayName(day, store.today())} at ${clockOf(op.time)}: ${v.protein} g protein, ${v.kcal} kcal${balanceWords(v)}${
+        short.length ? `. No carbs, fat, fibre or sugar for ${short.join(', ')}, so the meal is left out of the balance until you correct it` : ''}`, rec.id);
+    }
     store.addMeal({ at, text: words });
     return `Logged ${q(words.length > 60 ? words.slice(0, 59) + '…' : words)} for ${dayName(day, store.today())} at ${clockOf(op.time)}; Gemini estimates it when the app next opens`;
   }
   if (op.usual) {
-    const u = store.saveUsual({ name: op.usual.name, protein: amount(op.usual.protein, 'protein'), kcal: amount(op.usual.kcal, 'kcal') });
+    const u = store.saveUsual({ name: op.usual.name, protein: amount(op.usual.protein, 'protein'), kcal: amount(op.usual.kcal, 'kcal'), ...extrasFrom(op.usual, 'a usual meal') });
     return `Saved the usual meal ${q(u.name)}: ${u.protein} g, ${u.kcal} kcal`;
   }
   if (op.fuel) {
     const changes = {};
     if (op.fuel.protein !== undefined) changes.protein = amount(op.fuel.protein, 'a protein target');
     if (op.fuel.maintenanceKcal !== undefined) changes.maintenanceKcal = op.fuel.maintenanceKcal === null ? null : amount(op.fuel.maintenanceKcal, 'maintenance kcal');
-    if (!Object.keys(changes).length) throw new Error('meal fuel takes protein and/or maintenanceKcal');
+    for (const k of BALANCE_TARGETS) {
+      if (op.fuel[k] === undefined) continue;
+      const v = op.fuel[k];
+      if (!(typeof v === 'number' && Number.isFinite(v) && v > 0)) throw new Error(`meal fuel needs ${k} as a number above 0`);
+      changes[k] = Math.round(v * 2) / 2;
+    }
+    if (!Object.keys(changes).length) throw new Error(`meal fuel takes protein, maintenanceKcal, ${BALANCE_TARGETS.join(', ')}`);
     store.setFuel(changes);
     return `Changed Fuel: ${Object.entries(changes).map(([k, v]) => `${k} ${v}`).join(', ')}`;
   }
@@ -821,7 +865,8 @@ function batch(store, op) {
     if (b.kcal != null) changes.kcal = num(b.kcal, 'kcal');
     if (b.name != null) changes.name = String(b.name).trim() || rec.name;
     if (b.ingredients != null) changes.ingredients = String(b.ingredients).trim().slice(0, 500);
-    if (!Object.keys(changes).length) throw new Error('A batch correction needs protein, kcal, name or ingredients');
+    Object.assign(changes, extrasFrom(b, 'a batch'));
+    if (!Object.keys(changes).length) throw new Error('A batch correction needs protein, kcal, name, ingredients, or carbs, fat, fibre, sugar, veg, fruit, oilyFish or plants');
     const next = store.updateBatch(id, changes);
     const n = store.doc().meals && Object.values(store.doc().meals).filter((m) => m?.kind === 'meal' && m.status === 'active' && m.batchId === id).length;
     return `Changed the ${next.name.toLowerCase()} to ${next.protein} g protein, ${next.kcal} kcal for the pot${n ? `; ${n} serving${n === 1 ? '' : 's'} moved with it` : ''}`;
@@ -830,8 +875,8 @@ function batch(store, op) {
   if (!words) throw new Error('A batch needs what went in ("ingredients"), so the pot can be checked later');
   const cookedOn = toDay(b.day ?? 'today', store.today());
   if (cookedOn > store.today()) throw new Error('A batch can’t be cooked on a day that hasn’t come yet');
-  const rec = store.saveBatch({ name: b.name, ingredients: words, protein: num(b.protein, 'protein'), kcal: num(b.kcal, 'kcal'), cookedOn });
-  return tagged(`Saved the batch ${q(rec.name)}, cooked ${dayName(cookedOn, store.today())}: ${rec.protein} g protein, ${rec.kcal} kcal for the whole pot`, rec.id);
+  const rec = store.saveBatch({ name: b.name, ingredients: words, protein: num(b.protein, 'protein'), kcal: num(b.kcal, 'kcal'), ...extrasFrom(b, 'a batch'), cookedOn });
+  return tagged(`Saved the batch ${q(rec.name)}, cooked ${dayName(cookedOn, store.today())}: ${rec.protein} g protein, ${rec.kcal} kcal${balanceWords(rec)} for the whole pot`, rec.id);
 }
 
 // The batch a serving comes from: an id, or a name (the latest live batch whose name has the words).
@@ -992,7 +1037,7 @@ function session(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   details: ['id', 'set'],
-  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log', 'batch', 'share', 'of', 'over'],
+  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log', 'batch', 'share', 'of', 'over', 'items', 'name', 'plants', 'carbs', 'fat', 'fibre', 'sugar', 'veg', 'fruit', 'oilyFish'],
   session: ['id', 'date', 'time', 'title', 'session'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],

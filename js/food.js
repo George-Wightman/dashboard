@@ -4,6 +4,12 @@
 // is the number that matters day to day; calories only as a weekly average against maintenance (he's
 // maintaining, not cutting). Meals live in the `meals` map of data.json; a meal's progress is its
 // `state` (pending, estimated, failed), since `status` is the record's own (active, archived). Pure.
+//
+// The balance (17 Nov 2026): a meal also carries carbs, fat, fibre and sugar in grams, portions of veg,
+// fruit and oily fish, and the plants in it (for the week's count of different plants). Claude works
+// these out when George tells him a meal; Gemini when he logs one in the app. Micronutrients are never
+// estimated: no model gives a trustworthy milligram of iron from a sentence, so the food groups stand
+// in for them. A meal from before has protein and calories only, and the balance leaves it out.
 
 import { addDays } from './dates.js';
 
@@ -14,6 +20,15 @@ export const FUEL_ID = 'fuel:settings';
 export const MEAL_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
 export const MEAL_TEMPERATURE = 0.2;
 const DEFAULT_PROTEIN = 180;
+// Fibre in grams a day (the UK's 30 g, more for a big eater), fruit and veg portions a day, different
+// plants a week, oily fish portions a week. Claude can change any of them.
+const DEFAULTS = { fibre: 35, fruitVeg: 5, plants: 30, oilyFish: 1 };
+
+// Grams of carbs, fat, fibre and sugar, and portions (80 g of veg or fruit, 140 g of oily fish).
+export const GRAMS = ['carbs', 'fat', 'fibre', 'sugar'];
+export const GROUPS = ['veg', 'fruit', 'oilyFish'];
+export const EXTRA = [...GRAMS, ...GROUPS];
+const MAX_PLANTS = 30;
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -37,14 +52,17 @@ export function snapTime(now, marker) {
 }
 
 export const MEAL_SYSTEM = [
-  'You estimate the protein and calories in a meal, from what he says about it, and sometimes a photo.',
+  'You estimate what is in a meal (protein, calories, carbs, fat, fibre, sugar, and portions of veg, fruit and oily fish), from what he says about it, and sometimes a photo.',
   'His words are the best guide to how much he ate. When they give amounts (5 eggs, 2 pittas, half the tray), use exactly those. A photo shows what the food is; for how much, trust his words over the photo.',
   'He is a big, active man who eats large portions, around 4,000 kcal a day. When nothing says how much, assume a generous portion, not a typical one.',
   'He often speaks his meals, and voice typing hears "pittas" as "pizzas": with eggs, cheese or salad, or "wholemeal", it means pitta breads. Only count a pizza when the meal really is one (a takeaway, a frozen or fresh-counter pizza).',
-  'List each item with a count he can correct: qty is a number, unit is what is counted (eggs, pittas, slices, g, ml, bowls, portions), and protein and kcal are for that whole quantity.',
-  'Be honest about uncertainty: give a low, a middle and a high value for the whole meal.',
+  'List each item with a count he can correct: qty is a number, unit is what is counted (eggs, pittas, slices, g, ml, bowls, portions), and every number on an item is for that whole quantity.',
+  'Per item: protein, carbs, fat, fibre and sugar in grams (sugar is total sugars), kcal, and portions: veg and fruit (80 g is one portion; potatoes are not veg; beans and lentils count as one at most; juice or a smoothie counts as one at most), oilyFish (140 g of salmon, mackerel, sardines, trout or herring is one; tuna is not oily). Use 0 where there is none.',
+  'Protein and carbs are about 4 kcal a gram and fat about 9: the grams should roughly add up to the calories.',
+  'plants is every different plant food in the meal (vegetables, fruit, wholegrains, beans, nuts, seeds, herbs and spices), each named once, lower case and singular ("tomato", "oat", "chickpea"). White bread, white rice and sugar are not plants for this.',
+  'Be honest about uncertainty: give a low, a middle and a high value of protein and calories for the whole meal.',
   'Reply only with JSON, exactly this shape:',
-  '{"name": "a short name for the meal", "items": [{"name": "fried egg", "qty": 5, "unit": "eggs", "protein": grams, "kcal": calories}], "protein": {"low": g, "mid": g, "high": g}, "kcal": {"low": n, "mid": n, "high": n}}',
+  '{"name": "a short name for the meal", "items": [{"name": "fried egg", "qty": 5, "unit": "eggs", "protein": g, "kcal": n, "carbs": g, "fat": g, "fibre": g, "sugar": g, "veg": 0, "fruit": 0, "oilyFish": 0}], "plants": ["spinach"], "protein": {"low": g, "mid": g, "high": g}, "kcal": {"low": n, "mid": n, "high": n}}',
 ].join('\n');
 
 // `usual` is his usual meals, given for scale: what his own portions come to.
@@ -72,25 +90,82 @@ function range(r, round) {
 }
 
 const round1 = (n) => Math.round(n * 10) / 10;
+const round4 = (n) => Math.round(n * 10000) / 10000;
+const roundHalf = (n) => Math.round(n * 2) / 2;
+// How each number is kept: kcal to the 10, portions to the half, grams whole.
+const roundFor = (k) => (k === 'kcal' ? roundKcal : GROUPS.includes(k) ? roundHalf : roundProtein);
+const NUMS = ['protein', 'kcal', ...EXTRA];
 
-// An item keeps what one of its units is worth (`each`), so changing the count never drifts.
-function item(name, qty, unit, protein, kcal) {
-  return { name, qty, unit, protein: roundProtein(protein), kcal: roundKcal(kcal), each: { protein: round1(protein / qty), kcal: round1(kcal / qty) } };
+// The plants in a meal: named once each, lower case, at most 30.
+export function cleanPlants(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const p of list) {
+    const name = typeof p === 'string' ? p.trim().toLowerCase().slice(0, 40) : '';
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out.slice(0, MAX_PLANTS);
+}
+
+// An item keeps what one of its units is worth (`each`), so changing the count never drifts. Carbs,
+// fat, fibre, sugar and the food groups come along when the estimate gave them.
+function item(raw) {
+  const qty = isNum(raw.qty) && raw.qty > 0 ? round1(raw.qty) : 1;
+  const out = { name: raw.name.trim(), qty, unit: typeof raw.unit === 'string' ? raw.unit.trim().slice(0, 20) : '' };
+  const each = {};
+  for (const k of NUMS) {
+    if (!isNum(raw[k])) continue;
+    out[k] = roundFor(k)(raw[k]);
+    // Four places, so an item counted in grams (4 g of protein in 160 g) keeps its worth per gram.
+    each[k] = round4(raw[k] / qty);
+  }
+  return { ...out, each };
+}
+
+const validItems = (list) => (Array.isArray(list) ? list : [])
+  .filter((i) => i && typeof i.name === 'string' && i.name.trim() && isNum(i.protein) && isNum(i.kcal))
+  .map(item);
+
+// The meal's carbs, fat, fibre, sugar and groups: added up from the items when every item has that
+// number, otherwise the meal's own figure if the reply gave one.
+function extrasOf(items, data = {}) {
+  const out = {};
+  const counted = items.filter((i) => i.qty !== 0);
+  for (const k of EXTRA) {
+    if (counted.length && counted.every((i) => isNum(i[k]))) out[k] = roundFor(k)(counted.reduce((s, i) => s + i[k], 0));
+    else if (isNum(data[k])) out[k] = roundFor(k)(data[k]);
+  }
+  return out;
 }
 
 export function parseEstimate(data) {
   if (!data || typeof data !== 'object' || typeof data.name !== 'string' || !data.name.trim()) throw new Error(BAD);
-  const items = (Array.isArray(data.items) ? data.items : [])
-    .filter((i) => i && typeof i.name === 'string' && i.name.trim() && isNum(i.protein) && isNum(i.kcal))
-    .map((i) => item(i.name.trim(), isNum(i.qty) && i.qty > 0 ? round1(i.qty) : 1, typeof i.unit === 'string' ? i.unit.trim().slice(0, 20) : '', i.protein, i.kcal));
-  return { name: data.name.trim(), items, protein: range(data.protein, roundProtein), kcal: range(data.kcal, roundKcal) };
+  const items = validItems(data.items);
+  const out = { name: data.name.trim(), items, protein: range(data.protein, roundProtein), kcal: range(data.kcal, roundKcal), ...extrasOf(items, data) };
+  const plants = cleanPlants(data.plants);
+  return plants.length ? { ...out, plants } : out;
+}
+
+// A meal Claude worked out in a chat, item by item: the same shape as Gemini's, its range the total.
+export function claudeEstimate({ name, items, plants }) {
+  const list = validItems(items);
+  if (!list.length) throw new Error('A meal you estimate needs items, each with a name, qty, unit, protein and kcal (and carbs, fat, fibre, sugar, veg, fruit and oilyFish)');
+  const total = itemsTotal(list);
+  const title = String(name ?? '').trim() || list.map((i) => i.name).join(', ').slice(0, 60);
+  const out = { name: title, by: 'claude', items: list, protein: { low: total.protein, mid: total.protein, high: total.protein },
+    kcal: { low: total.kcal, mid: total.kcal, high: total.kcal }, ...extrasOf(list) };
+  const named = cleanPlants(plants);
+  return named.length ? { ...out, plants: named } : out;
 }
 
 // The same item with a new count (0 leaves it out of the totals).
 export function withQty(it, qty) {
   const q = isNum(qty) ? round1(qty) : it.qty;
-  const each = it.each ?? { protein: it.protein / (it.qty || 1), kcal: it.kcal / (it.qty || 1) };
-  return { ...it, qty: q, each, protein: roundProtein(each.protein * q), kcal: roundKcal(each.kcal * q) };
+  const each = { ...(it.each ?? {}) };
+  for (const k of NUMS) if (isNum(it[k]) && !isNum(each[k])) each[k] = it[k] / (it.qty || 1);
+  const out = { ...it, qty: q, each };
+  for (const k of NUMS) if (isNum(each[k])) out[k] = roundFor(k)(each[k] * q);
+  return out;
 }
 
 // The count one step up (dir 1) or down (-1): 25 at a time for grams and millilitres, otherwise one,
@@ -102,24 +177,54 @@ export function nextQty(it, dir) {
   return Math.max(0, round1(q + step * dir));
 }
 
-export const itemsTotal = (items) => ({
-  protein: roundProtein(items.reduce((s, i) => s + i.protein, 0)),
-  kcal: roundKcal(items.reduce((s, i) => s + i.kcal, 0)),
-});
+// The items added up; carbs and the rest only when every item counted has them.
+export function itemsTotal(items) {
+  return {
+    protein: roundProtein(items.reduce((s, i) => s + i.protein, 0)),
+    kcal: roundKcal(items.reduce((s, i) => s + i.kcal, 0)),
+    ...extrasOf(items),
+  };
+}
+
+const withPlants = (value, plants) => (plants?.length ? { ...value, plants: [...plants] } : value);
 
 // What a fresh estimate counts for: its items added up when it has them (so changing a count moves
 // the total from where it started), otherwise the middle of the range for the portion picked.
 export function finalFor(estimate, portion = 'right', items = null) {
   const list = items ?? estimate.items;
-  if (list?.length && list.every((i) => isNum(i.qty))) return itemsTotal(list);
+  if (list?.length && list.every((i) => isNum(i.qty))) return withPlants(itemsTotal(list), estimate.plants);
   const k = PORTIONS[portion] ?? 1;
-  return { protein: roundProtein(estimate.protein.mid * k), kcal: roundKcal(estimate.kcal.mid * k) };
+  const out = { protein: roundProtein(estimate.protein.mid * k), kcal: roundKcal(estimate.kcal.mid * k) };
+  for (const x of EXTRA) if (isNum(estimate[x])) out[x] = roundFor(x)(estimate[x] * k);
+  return withPlants(out, estimate.plants);
 }
 
-// What a meal counts for: Claude's correction if he made one, else what George saved.
+// What a meal counts for: what George saved, with Claude's correction over it if he made one (a
+// correction of protein and calories alone keeps the rest of the estimate).
 export function mealValue(meal) {
-  const v = meal?.correction ?? meal?.final;
-  return v && isNum(v.protein) && isNum(v.kcal) ? { protein: v.protein, kcal: v.kcal } : null;
+  const base = meal?.final ?? null;
+  const fix = meal?.correction ?? null;
+  const v = fix ? { ...(base ?? {}), ...fix } : base;
+  if (!v || !isNum(v.protein) || !isNum(v.kcal)) return null;
+  const out = { protein: v.protein, kcal: v.kcal };
+  for (const k of EXTRA) if (isNum(v[k])) out[k] = v[k];
+  return withPlants(out, cleanPlants(v.plants));
+}
+
+// The numbers a record carries (a usual meal, a batch), scaled: protein, kcal, and whichever of the
+// rest it has.
+export function nutrientsOf(rec, scale = 1) {
+  const out = { protein: roundProtein(rec.protein * scale), kcal: roundKcal(rec.kcal * scale) };
+  for (const k of EXTRA) if (isNum(rec[k])) out[k] = roundFor(k)(rec[k] * scale);
+  return withPlants(out, cleanPlants(rec.plants));
+}
+
+// The calories a meal's grams come to (4 a gram of protein and carbs, 9 of fat), when that is more
+// than a fifth away from its own calories: a sign the estimate is off. Otherwise null.
+export function macroGap(value) {
+  if (!value || !isNum(value.carbs) || !isNum(value.fat) || !value.kcal) return null;
+  const sum = value.protein * 4 + value.carbs * 4 + value.fat * 9;
+  return Math.abs(sum - value.kcal) / value.kcal > 0.2 ? roundKcal(sum) : null;
 }
 
 const meals = (doc) => Object.values(doc?.meals ?? {}).filter((m) => m && m.kind === 'meal' && m.status !== 'archived' && m.status !== 'dismissed');
@@ -146,9 +251,47 @@ export function weekKcal(doc, today) {
 export function fuelSettings(doc) {
   const rec = doc?.meals?.[FUEL_ID];
   const live = rec && rec.status !== 'archived' ? rec : {};
+  const pick = (k) => (isNum(live[k]) && live[k] > 0 ? live[k] : DEFAULTS[k]);
   return {
     protein: isNum(live.protein) && live.protein > 0 ? live.protein : DEFAULT_PROTEIN,
     maintenanceKcal: isNum(live.maintenanceKcal) && live.maintenanceKcal > 0 ? live.maintenanceKcal : null,
+    fibre: pick('fibre'), fruitVeg: pick('fruitVeg'), plants: pick('plants'), oilyFish: pick('oilyFish'),
+  };
+}
+export const BALANCE_TARGETS = Object.keys(DEFAULTS);
+
+// The balance of a day. A meal counts towards it once it has fibre (the sign of a full estimate), and
+// `known` of `meals` says how many did. Fruit and veg are portions; plants are the different ones.
+export function dayBalance(doc, day) {
+  const values = mealsOn(doc, day).map(mealValue).filter(Boolean);
+  const known = values.filter((v) => isNum(v.fibre));
+  const sum = (k) => known.reduce((s, v) => s + (isNum(v[k]) ? v[k] : 0), 0);
+  return {
+    meals: values.length, known: known.length,
+    protein: roundProtein(sum('protein')), kcal: roundKcal(sum('kcal')),
+    carbs: roundProtein(sum('carbs')), fat: roundProtein(sum('fat')), fibre: roundProtein(sum('fibre')), sugar: roundProtein(sum('sugar')),
+    fruitVeg: roundHalf(sum('veg') + sum('fruit')), oilyFish: roundHalf(sum('oilyFish')),
+    plants: [...new Set(known.flatMap((v) => v.plants ?? []))],
+  };
+}
+
+// The last seven days' balance. The averages come from full days (every meal fully estimated), so a
+// half-known day never drags them down; plants and oily fish count every meal that has them.
+// `split` is the share of calories from protein, carbs and fat, in percent.
+export function weekBalance(doc, today) {
+  const days = Array.from({ length: 7 }, (_, i) => dayBalance(doc, addDays(today, -i)));
+  const full = days.filter((d) => d.meals && d.known === d.meals);
+  const plants = [...new Set(days.flatMap((d) => d.plants))].sort();
+  const oilyFish = roundHalf(days.reduce((s, d) => s + d.oilyFish, 0));
+  const known = days.some((d) => d.known);
+  if (!full.length) return { days: 0, known, plants, oilyFish, fibre: null, sugar: null, fruitVeg: null, split: null };
+  const avg = (k) => full.reduce((s, d) => s + d[k], 0) / full.length;
+  const p = avg('protein') * 4, c = avg('carbs') * 4, f = avg('fat') * 9;
+  const total = p + c + f;
+  return {
+    days: full.length, known, plants, oilyFish,
+    fibre: Math.round(avg('fibre')), sugar: Math.round(avg('sugar')), fruitVeg: roundHalf(avg('fruitVeg')),
+    split: total ? { protein: Math.round((p / total) * 100), carbs: Math.round((c / total) * 100), fat: Math.round((f / total) * 100) } : null,
   };
 }
 
@@ -203,7 +346,7 @@ export function parseShare(v) {
 const SHARE_WORDS = { 1: 'all', 0.5: 'half', 0.333: 'a third', 0.667: 'two thirds', 0.25: 'a quarter', 0.75: 'three quarters', 0.2: 'a fifth', 0.4: 'two fifths', 0.167: 'a sixth', 0.125: 'an eighth' };
 export const shareWords = (share) => SHARE_WORDS[Math.round(share * 1000) / 1000] ?? `${Math.round(share * 100)}%`;
 
-export const servingValue = (batch, share) => ({ protein: roundProtein(batch.protein * share), kcal: roundKcal(batch.kcal * share) });
+export const servingValue = (batch, share) => nutrientsOf(batch, share);
 
 export const batchServings = (doc, batchId) => meals(doc).filter((m) => m.batchId === batchId).sort((a, b) => String(a.at).localeCompare(String(b.at)));
 

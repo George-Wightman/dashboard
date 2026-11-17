@@ -1,9 +1,11 @@
 // Daylight's Fuel tile: today's protein as a plate filling towards the target, the meals so far
 // (with the photo while this device still has it, each opening again to change), "Log a meal", the week's calories against
 // maintenance, and how many meals are waiting to be estimated. Opened big: the last 14 days.
+// The balance (17 Nov 2026): beside the plate, today's fibre and fruit and veg and the week's
+// different plants, each against its target; opened big, the week's balance in full.
 
 import { h } from './dom.js';
-import { mealsOn, mealValue, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, slotName, MAX_TRIES, liveBatches, batchEaten } from '../food.js';
+import { mealsOn, mealValue, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, slotName, MAX_TRIES, liveBatches, batchEaten, dayBalance, weekBalance } from '../food.js';
 import { addDays, shortWeekday, shortDate } from '../dates.js';
 import { clockLabel } from '../calendar.js';
 import { localPhotos } from '../photos.js';
@@ -83,6 +85,50 @@ function fridgeLine(doc, today) {
   return h('p', { class: 'fuel-week fuel-fridge' }, `In the fridge: ${live.map((b) => `${b.name.toLowerCase()}, ${Math.round((1 - batchEaten(doc, b.id)) * 100)}% not logged`).join(' · ')}.`);
 }
 
+const num = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, '').replace('.5', '½'));
+
+// One measure against its target: a name, "22 of 35 g", and a thin bar.
+function measure(name, value, target, unit = '') {
+  const share = Math.max(0, Math.min(1, value / target));
+  return h('li', { class: `fuel-measure${value >= target ? ' met' : ''}` },
+    h('span', { class: 'fuel-measure-name' }, name),
+    h('span', { class: 'fuel-measure-num' }, `${num(value)} of ${num(target)}${unit}`),
+    h('span', { class: 'fuel-measure-bar', 'aria-hidden': 'true' }, h('span', { style: `width:${(share * 100).toFixed(0)}%` })));
+}
+
+// Today's fibre and fruit and veg, and the week's plants: only once a meal has a full estimate.
+function balanceList(doc, today) {
+  const t = fuelSettings(doc);
+  const day = dayBalance(doc, today);
+  const week = weekBalance(doc, today);
+  if (!day.known && !week.known) return null;
+  return h('ul', { class: 'fuel-balance', 'aria-label': 'Balance' },
+    day.known ? measure('Fibre', day.fibre, t.fibre, ' g') : null,
+    day.known ? measure('Fruit & veg', day.fruitVeg, t.fruitVeg) : null,
+    week.known ? measure('Plants this week', week.plants.length, t.plants) : null);
+}
+
+// The week's balance in full, for the big view.
+function weekBalanceSection(doc, today) {
+  const t = fuelSettings(doc);
+  const w = weekBalance(doc, today);
+  if (!w.known) return h('p', { class: 'muted' }, 'Fibre, fruit and veg and plants show once a meal has a full estimate: tell Claude what you ate.');
+  const rows = [];
+  if (w.days) {
+    rows.push(measure('Fibre a day', w.fibre, t.fibre, ' g'), measure('Fruit & veg a day', w.fruitVeg, t.fruitVeg));
+  }
+  rows.push(measure('Different plants', w.plants.length, t.plants), measure('Oily fish', w.oilyFish, t.oilyFish));
+  const lines = [];
+  if (w.split) lines.push(`Calories from protein ${w.split.protein}%, carbs ${w.split.carbs}%, fat ${w.split.fat}%.`);
+  if (w.days) lines.push(`Sugar about ${w.sugar} g a day.`);
+  if (w.plants.length) lines.push(`Plants: ${w.plants.join(', ')}.`);
+  return h('section', { class: 'fuel-week-balance' },
+    h('h3', {}, 'Balance, last 7 days'),
+    h('ul', { class: 'fuel-balance' }, rows),
+    lines.map((l) => h('p', { class: 'fuel-week' }, l)),
+    h('p', { class: 'muted' }, w.days ? `Averages from ${w.days === 1 ? 'the one day' : `the ${w.days} days`} with every meal fully estimated.` : 'No day has every meal fully estimated yet, so no averages.'));
+}
+
 const waitingCount = (doc) => Object.values(doc.meals ?? {})
   .filter((m) => m?.kind === 'meal' && m.status === 'active' && (m.state === 'pending' || (m.state === 'failed' && (m.tries ?? 0) < MAX_TRIES))).length;
 
@@ -94,6 +140,7 @@ export function renderFuel(ctx) {
   const waiting = waitingCount(doc);
   return h('div', { class: 'fuel' },
     h('div', { class: 'fuel-top' }, plate(dayProtein(doc, today), target),
+      balanceList(doc, today),
       meals.length ? h('ul', { class: 'fuel-meals' }, meals.map((m) => mealLine(ctx, m))) : h('p', { class: 'fuel-none' }, 'Nothing logged yet today.')),
     h('button', { class: 'fuel-snap', type: 'button', onclick: () => openSnap(ctx) }, 'Log a meal'),
     weekLine(doc, today),
@@ -110,13 +157,17 @@ export function renderFuelBig(ctx) {
     weekLine(doc, today),
     fridgeLine(doc, today),
     maintenanceKcal ? null : h('p', { class: 'muted' }, 'Claude sets your maintenance figure once there are two weeks of meals.'),
+    weekBalanceSection(doc, today),
     days.map((day) => {
       const meals = mealsOn(doc, day);
       const protein = dayProtein(doc, day);
       const kcal = meals.map(mealValue).filter(Boolean).reduce((s, v) => s + v.kcal, 0);
+      const bal = dayBalance(doc, day);
+      const partial = bal.known && bal.known < bal.meals ? ` (${bal.known} of ${bal.meals} meals)` : '';
       return h('section', { class: 'fuel-day' },
         h('h3', {}, `${shortWeekday(day)} ${shortDate(day)}`,
-          h('span', { class: protein >= target ? 'met' : 'muted' }, meals.length ? ` · ${protein} of ${target} g · ≈${kcal.toLocaleString('en-GB')} kcal` : ' · nothing logged')),
+          h('span', { class: protein >= target ? 'met' : 'muted' }, meals.length ? ` · ${protein} of ${target} g · ≈${kcal.toLocaleString('en-GB')} kcal` : ' · nothing logged'),
+          bal.known ? h('span', { class: 'muted' }, ` · fibre ${bal.fibre} g · ${num(bal.fruitVeg)} fruit & veg${partial}`) : null),
         meals.length ? h('ul', { class: 'fuel-meals' }, meals.map((m) => mealLine(ctx, m))) : null);
     }));
 }

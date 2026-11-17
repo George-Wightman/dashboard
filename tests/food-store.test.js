@@ -44,7 +44,7 @@ test('updating a meal keeps what it does not touch; archiving hides it', () => {
 test('fuel settings are written by setFuel', () => {
   const store = makeStore();
   store.setFuel({ maintenanceKcal: 3100 });
-  assert.deepEqual(fuelSettings(store.doc()), { protein: 180, maintenanceKcal: 3100 });
+  assert.deepEqual(fuelSettings(store.doc()), { protein: 180, maintenanceKcal: 3100, fibre: 35, fruitVeg: 5, plants: 30, oilyFish: 1 });
 });
 
 test('a phone meal and a laptop meal on the same day both survive the merge', () => {

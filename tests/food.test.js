@@ -62,10 +62,10 @@ test("the week's kcal is a mean over days with meals, and the verdict is ±10%",
 });
 
 test('fuel settings default to 180 g and no maintenance figure', () => {
-  assert.deepEqual(fuelSettings(fixture()), { protein: 180, maintenanceKcal: null });
+  assert.deepEqual(fuelSettings(fixture()), { protein: 180, maintenanceKcal: null, fibre: 35, fruitVeg: 5, plants: 30, oilyFish: 1 });
   const doc = fixture();
   doc.meals = { 'fuel:settings': { id: 'fuel:settings', kind: 'settings', protein: 190, maintenanceKcal: 3100, status: 'active' } };
-  assert.deepEqual(fuelSettings(doc), { protein: 190, maintenanceKcal: 3100 });
+  assert.deepEqual(fuelSettings(doc), { protein: 190, maintenanceKcal: 3100, fibre: 35, fruitVeg: 5, plants: 30, oilyFish: 1 });
 });
 
 test('usual meals by use; work only for meals this device holds a photo for, plus words-only ones', () => {
@@ -113,11 +113,11 @@ test('review: a marker logs the meal it names, at its time, once that time has p
 test('items keep a count, and a new count moves the total from where it started', () => {
   const e = parseEstimate({ name: 'Egg breakfast', items: [{ name: 'Fried egg', qty: 4, unit: 'eggs', protein: 25, kcal: 360 }, { name: 'Pitta', qty: 2, unit: 'pittas', protein: 12, kcal: 330 }],
     protein: { low: 30, mid: 37, high: 45 }, kcal: { low: 600, mid: 700, high: 800 } });
-  assert.deepEqual(e.items[0], { name: 'Fried egg', qty: 4, unit: 'eggs', protein: 25, kcal: 360, each: { protein: 6.3, kcal: 90 } });
+  assert.deepEqual(e.items[0], { name: 'Fried egg', qty: 4, unit: 'eggs', protein: 25, kcal: 360, each: { protein: 6.25, kcal: 90 } });
   assert.deepEqual(finalFor(e), { protein: 37, kcal: 690 });
   const five = withQty(e.items[0], 5);
-  assert.deepEqual([five.qty, five.protein, five.kcal], [5, 32, 450]);
-  assert.deepEqual(itemsTotal([five, e.items[1]]), { protein: 44, kcal: 780 });
+  assert.deepEqual([five.qty, five.protein, five.kcal], [5, 31, 450]);
+  assert.deepEqual(itemsTotal([five, e.items[1]]), { protein: 43, kcal: 780 });
   // Back to four lands where it began: no drift.
   assert.equal(withQty(five, 4).kcal, 360);
 });

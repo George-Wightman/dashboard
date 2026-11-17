@@ -399,6 +399,15 @@
 .fuel-meal-words strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fuel-none, .fuel-week, .fuel-waiting { margin: 0; font-size: 14px; }
 .fuel-snap { min-height: 52px; border: 0; border-radius: 999px; background: var(--tile-ink); color: var(--tile-bg); font: 700 16px/1 var(--dl-text); cursor: pointer; }
+.fuel-balance { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; flex: 1 1 140px; min-width: 0; }
+.fuel-measure { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; line-height: 1.2; }
+.fuel-measure-num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.fuel-measure-bar { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: color-mix(in srgb, currentColor 18%, transparent); overflow: hidden; }
+.fuel-measure-bar > span { display: block; height: 100%; border-radius: inherit; background: currentColor; }
+.fuel-big .fuel-measure-bar > span { background: var(--dl-fuel); }
+.fuel-week-balance { display: flex; flex-direction: column; gap: 8px; }
+.fuel-week-balance h3 { margin: 0; font-size: 15px; }
+.fuel-big .fuel-balance { max-width: 420px; }
 .fuel-big { display: flex; flex-direction: column; gap: 14px; }
 .fuel-day h3 { margin: 0 0 6px; font-size: 15px; }
 .fuel-big .fuel-meal { grid-template-columns: 44px 1fr auto; }

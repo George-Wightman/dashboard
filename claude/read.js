@@ -22,7 +22,7 @@ import {
 import { checkinsSince } from '../js/checkins.js';
 import { duolingoStatusLine } from '../js/duolingo.js';
 import { hebrewPingsLine } from '../js/hebrew-voice.js';
-import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES, batches, batchEaten, batchServings, BATCH_DAYS } from '../js/food.js';
+import { mealsOn, dayProtein, weekKcal, fuelSettings, maintenanceVerdict, MAX_TRIES, batches, batchEaten, batchServings, BATCH_DAYS, mealValue, macroGap, dayBalance, weekBalance } from '../js/food.js';
 import { BACK, backScores, sessionTasks, sessionLines, routinesOf, routineFor, sessionWorkout, readyMarks } from '../js/coach.js';
 
 // A row's notes, on their own indented line under it.
@@ -535,6 +535,13 @@ function mealText(m) {
   else if (m.final) parts.push(`${m.final.protein} g, ${kcalText(m.final.kcal)} kcal (${PORTION_WORDS[m.portion] ?? 'about right'})`);
   else if (m.state === 'failed') parts.push(`couldn't estimate it${m.error ? ` (${m.error})` : ''}, try ${m.tries ?? 0} of ${MAX_TRIES}`);
   else parts.push('waiting to be estimated');
+  const v = mealValue(m);
+  if (v?.fibre != null) {
+    parts.push(`carbs ${v.carbs ?? '?'} g, fat ${v.fat ?? '?'} g, fibre ${v.fibre} g, sugar ${v.sugar ?? '?'} g; veg ${v.veg ?? 0}, fruit ${v.fruit ?? 0}, oily fish ${v.oilyFish ?? 0}${v.plants?.length ? `; plants ${v.plants.join(', ')}` : ''}`);
+    const gap = macroGap(v);
+    if (gap) parts.push(`⚠ the grams come to about ${kcalText(gap)} kcal`);
+  }
+  if (m.estimate?.by === 'claude') parts.push('estimated by you');
   if (m.text && m.estimate?.name && m.text !== m.estimate.name) parts.push(`he said "${m.text}"`);
   if (m.photo) parts.push(`photo ${m.photo}`);
   else if (m.photoState === 'local') parts.push('(photo on the phone, not uploaded yet)');
@@ -546,13 +553,16 @@ function mealText(m) {
 // week's calories against maintenance and what's still waiting.
 function foodRead(doc, today, arg) {
   const days = Math.max(1, Math.min(31, Number.parseInt(arg, 10) || 7));
-  const { protein: target, maintenanceKcal } = fuelSettings(doc);
+  const fuel = fuelSettings(doc);
+  const { protein: target, maintenanceKcal } = fuel;
   const out = [header(doc, today)];
   for (let i = 0; i < days; i++) {
     const day = addDays(today, -i);
     const meals = mealsOn(doc, day);
     if (!meals.length) continue;
-    out.push(`${shortWeekday(day)} ${shortDate(day)}: protein ${dayProtein(doc, day)} of ${target} g`, ...meals.map(mealText));
+    const bal = dayBalance(doc, day);
+    const balText = bal.known ? ` · fibre ${bal.fibre} of ${fuel.fibre} g, fruit & veg ${bal.fruitVeg} of ${fuel.fruitVeg}${bal.known < bal.meals ? ` (from ${bal.known} of ${bal.meals} meals)` : ''}` : '';
+    out.push(`${shortWeekday(day)} ${shortDate(day)}: protein ${dayProtein(doc, day)} of ${target} g${balText}`, ...meals.map(mealText));
   }
   if (out.length === 1) out.push(`No meals logged in the last ${days} day${days === 1 ? '' : 's'}.`);
   const week = weekKcal(doc, today);
@@ -562,6 +572,8 @@ function foodRead(doc, today, arg) {
       ? ` — ${verdict} (${kcalText(maintenanceKcal)})`
       : ' — no maintenance figure yet; set one with {"op": "meal", "fuel": {"maintenanceKcal": …}} once there are two weeks of meals'}`);
   }
+  const bal = weekBalanceText(doc, today, fuel);
+  if (bal) out.push(bal);
   const pots = batches(doc).filter((b) => b.cookedOn > addDays(today, -Math.max(days, BATCH_DAYS)));
   if (pots.length) {
     out.push('Batches (the whole pot; his servings are shares of it, and nobody else’s are logged):');
@@ -574,21 +586,38 @@ function foodRead(doc, today, arg) {
   const waiting = waitingMeals(doc);
   if (waiting) out.push(`${waiting} meal${waiting === 1 ? '' : 's'} waiting to be estimated`);
   out.push('Log his share of a batch with {"op": "meal", "share": "1/4", "of": "chilli", "day": "yesterday", "time": "12:30"}; save a new one with {"op": "meal", "batch": {"name": …, "ingredients": …, "protein": …, "kcal": …, "day": …}}.');
-  out.push('Look at a photo with `photo <meal id>`; correct a big miss with {"op": "meal", "id": "…", "protein": …, "kcal": …, "why": "…"}.');
+  out.push('Look at a photo with `photo <meal id>`; correct a big miss with {"op": "meal", "id": "…", "protein": …, "kcal": …, "carbs": …, "fat": …, "fibre": …, "sugar": …, "veg": …, "fruit": …, "oilyFish": …, "why": "…"}.');
+  out.push('Log a meal he tells you about with your own estimate, item by item: {"op": "meal", "log": "his words", "day": …, "time": …, "items": [{"name", "qty", "unit", "protein", "kcal", "carbs", "fat", "fibre", "sugar", "veg", "fruit", "oilyFish"}], "plants": […]}.');
   return out.join('\n');
+}
+
+// The last seven days' balance against his targets, or null before any meal has a full estimate.
+function weekBalanceText(doc, today, fuel) {
+  const w = weekBalance(doc, today);
+  if (!w.known) return null;
+  const parts = [];
+  if (w.days) {
+    parts.push(`fibre ${w.fibre} g a day (target ${fuel.fibre})`, `fruit & veg ${w.fruitVeg} a day (${fuel.fruitVeg})`, `sugar ${w.sugar} g a day`);
+    if (w.split) parts.push(`calories ${w.split.protein}% protein, ${w.split.carbs}% carbs, ${w.split.fat}% fat`);
+  }
+  parts.push(`${w.plants.length} different plants (${fuel.plants})`, `oily fish ${w.oilyFish} (${fuel.oilyFish})`);
+  return `Balance, last 7 days${w.days ? ` (averages from ${w.days} full day${w.days === 1 ? '' : 's'})` : ' (no full day yet, so no averages)'}: ${parts.join(' · ')}`;
 }
 
 // One line for the catch-up: protein days on target, the week's calories, what's waiting.
 function foodLine(doc, first, today) {
-  const { protein: target, maintenanceKcal } = fuelSettings(doc);
+  const fuel = fuelSettings(doc);
+  const { protein: target, maintenanceKcal } = fuel;
   const days = [];
   for (let d = first; d <= today; d = addDays(d, 1)) if (mealsOn(doc, d).length) days.push(d);
   if (!days.length && !waitingMeals(doc)) return null;
   const onTarget = days.filter((d) => dayProtein(doc, d) >= target).length;
+  const full = days.map((d) => dayBalance(doc, d)).filter((b) => b.known && b.known === b.meals);
   const week = weekKcal(doc, today);
   const verdict = maintenanceVerdict(week.average, maintenanceKcal);
   const waiting = waitingMeals(doc);
   return [`Food: protein on target ${onTarget} of ${days.length} day${days.length === 1 ? '' : 's'}`,
+    full.length ? `fibre on target ${full.filter((b) => b.fibre >= fuel.fibre).length} of ${full.length} full day${full.length === 1 ? '' : 's'}, fruit & veg ${full.filter((b) => b.fruitVeg >= fuel.fruitVeg).length} of ${full.length}` : null,
     week.average != null ? `about ${kcalText(week.average)} kcal a day${verdict ? ` (${verdict})` : ''}` : null,
     waiting ? `${waiting} waiting` : null].filter(Boolean).join(' · ');
 }

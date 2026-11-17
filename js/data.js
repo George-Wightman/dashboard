@@ -10,7 +10,7 @@ import { checkLength, checkClock, checkNotes } from './parse.js';
 import { reviseRecord, recordContent } from './record.js';
 import { checkinId, SAID_MAX } from './checkins.js';
 import { WORKFLOW_MAPS, checkDetails, checkDetailLinks, checkAnswers, checkRule, blockers } from './workflow.js';
-import { slotFor, fuelSettings, FUEL_ID, servingValue, shareWords, batchServings } from './food.js';
+import { slotFor, fuelSettings, FUEL_ID, servingValue, shareWords, batchServings, finalFor, nutrientsOf } from './food.js';
 import { BACK, notesWith, soreRun, soreFlagText } from './coach.js';
 
 export const DATA_KEY = 'dash_data';
@@ -580,14 +580,18 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
 
   // Food (js/food.js): a meal snapped (a photo and/or words, estimated later) or logged from a usual
   // meal (exact at once, and the usual meal counts a use); usual meals; Fuel's settings.
-  function addMeal({ at, text = '', hasPhoto = false, usualId = null }) {
+  // `estimate` is one Claude worked out in a chat (food.js claudeEstimate): counted at once, never sent to Gemini.
+  function addMeal({ at, text = '', hasPhoto = false, usualId = null, estimate = null }) {
     const when = at instanceof Date ? at : new Date(at);
     const base = { kind: 'meal', day: logicalDay(when, settings.dayStartHour), at: when.toISOString(), slot: slotFor(when), portion: 'right', correction: null, tries: 0 };
+    if (estimate) {
+      return create('meals', { ...base, id: `meal:${newId()}`, text: String(text ?? '').trim(), state: 'estimated', photoState: null, estimate, final: finalFor(estimate) });
+    }
     if (usualId) {
       const usual = doc.meals[usualId];
       if (!usual || usual.kind !== 'usual') throw new Error(`No usual meal ${usualId}`);
       const meal = build('meals', { ...base, id: `meal:${newId()}`, text: usual.name, usualId, state: 'estimated', photoState: null, estimate: null,
-        final: { protein: usual.protein, kcal: usual.kcal } });
+        final: nutrientsOf(usual) });
       writeRecord('meals', usualId, { ...usual, uses: (usual.uses ?? 0) + 1, updated: stamp() });
       commit('local');
       return meal;
@@ -609,19 +613,20 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null, batchId: null, share: null });
   }
 
-  function saveUsual({ name, protein, kcal }) {
+  function saveUsual({ name, protein, kcal, ...rest }) {
     const title = requireTitle(name, 'A usual meal');
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
     const id = `usual:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meal'}`;
-    return putRecord('meals', id, { kind: 'usual', name: title, protein, kcal, uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
+    return putRecord('meals', id, { kind: 'usual', name: title, ...nutrientsOf({ protein, kcal, ...rest }), uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
   }
 
   // A batch he cooked (js/food.js): the whole pot's protein and kcal, worked out by Claude from what
   // went in. Correcting one moves every serving already logged from it.
-  function saveBatch({ name, ingredients = '', protein, kcal, cookedOn }) {
+  // Carbs, fat, fibre, sugar, the food groups and plants are the whole pot's too, when Claude gives them.
+  function saveBatch({ name, ingredients = '', protein, kcal, cookedOn, ...rest }) {
     const title = requireTitle(name, 'A batch');
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A batch needs the whole pot’s protein and kcal, 0 or more');
-    return create('meals', { id: `batch:${newId()}`, kind: 'batch', name: title, ingredients: String(ingredients ?? '').trim().slice(0, 500), protein, kcal, cookedOn: cookedOn ?? today() });
+    return create('meals', { id: `batch:${newId()}`, kind: 'batch', name: title, ingredients: String(ingredients ?? '').trim().slice(0, 500), ...nutrientsOf({ protein, kcal, ...rest }), cookedOn: cookedOn ?? today() });
   }
 
   function updateBatch(id, changes) {

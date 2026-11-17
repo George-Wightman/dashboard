@@ -164,6 +164,14 @@ function localStamp(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// The rest of a meal's balance in one quiet line, when the estimate has it.
+function balanceWords(v) {
+  if (v.fibre == null) return '';
+  const fv = (v.veg ?? 0) + (v.fruit ?? 0);
+  return [`${v.carbs ?? '?'} g carbs`, `${v.fat ?? '?'} g fat`, `${v.fibre} g fibre`, `${v.sugar ?? '?'} g sugar`,
+    `${qtyText(fv)} fruit & veg`, v.oilyFish ? `${qtyText(v.oilyFish)} oily fish` : null].filter(Boolean).join(' · ');
+}
+
 function qtyText(q) {
   const whole = Math.floor(q);
   if (q - whole !== 0.5) return String(q);
@@ -216,8 +224,9 @@ function resultStep(ctx) {
     s.preview ? h('img', { class: 'snap-preview small', src: s.preview, alt: 'Your meal' }) : null,
     h('p', { class: 'snap-name' }, h('strong', {}, est?.name ?? meal.text)),
     h('div', { class: 'snap-numbers' },
-      h('div', { class: 'snap-num protein' }, h('span', {}, 'Protein'), h('strong', {}, `≈${value.protein} g`), est && !meal.items ? h('span', {}, `${est.protein.low}–${est.protein.high}`) : null),
-      h('div', { class: 'snap-num' }, h('span', {}, 'Calories'), h('strong', {}, `≈${value.kcal.toLocaleString('en-GB')}`), est && !meal.items ? h('span', {}, `${est.kcal.low}–${est.kcal.high}`) : null)),
+      h('div', { class: 'snap-num protein' }, h('span', {}, 'Protein'), h('strong', {}, `≈${value.protein} g`), est?.protein && !meal.items && est.protein.low !== est.protein.high ? h('span', {}, `${est.protein.low}–${est.protein.high}`) : null),
+      h('div', { class: 'snap-num' }, h('span', {}, 'Calories'), h('strong', {}, `≈${value.kcal.toLocaleString('en-GB')}`), est?.kcal && !meal.items && est.kcal.low !== est.kcal.high ? h('span', {}, `${est.kcal.low}–${est.kcal.high}`) : null)),
+    balanceWords(value) ? h('p', { class: 'muted snap-foot' }, balanceWords(value)) : null,
     meal.correction ? h('p', { class: 'muted snap-foot' }, `Claude corrected this: ${meal.correction.why}. Changing a count replaces it.`) : null,
     counted ? itemRows(ctx, meal, items)
       : items.length ? h('ul', { class: 'snap-items' }, items.map((i) => h('li', {}, h('span', {}, i.name), h('span', { class: 'muted' }, `≈${i.protein} g · ${i.kcal} kcal`)))) : null,
