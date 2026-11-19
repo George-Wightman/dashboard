@@ -113,6 +113,31 @@ test('client.get reads a big file raw, and not again while its sha stays the sam
   assert.equal(calls.filter((c) => c.url.includes('/git/blobs/')).length, 2);
 });
 
+test('client.get asks with the last ETag, and "not modified" is the copy it already has', async () => {
+  const doc = { schema: 1, items: {} };
+  const sent = [];
+  let changed = false;
+  const fetch = async (url, init) => {
+    sent.push(init.headers['If-None-Match'] ?? null);
+    const etag = changed ? '"e2"' : '"e1"';
+    if (init.headers['If-None-Match'] === etag) return { ok: false, status: 304, headers: { get: () => etag }, json: async () => { throw new Error('no body'); } };
+    const body = { content: encodeBase64(JSON.stringify({ ...doc, v: etag })), encoding: 'base64', sha: changed ? 's2' : 's1' };
+    return { ...jsonResponse(200, body), headers: { get: (k) => (k.toLowerCase() === 'etag' ? etag : null) } };
+  };
+  const client = createGitHubClient({ token: 't', repo: 'o/r', fetch });
+  const first = await client.get();
+  const second = await client.get();
+  assert.deepEqual(second, first);
+  assert.notEqual(second.doc, first.doc);
+  assert.deepEqual(sent, [null, '"e1"']);
+  changed = true;
+  assert.deepEqual(await client.get(), { doc: { ...doc, v: '"e2"' }, sha: 's2' });
+  // Without an ETag to read (Apps Script, the relay) it asks plainly every time.
+  const plain = createGitHubClient({ token: 't', repo: 'o/r', fetch: async (url, init) => { sent.push(init.headers['If-None-Match'] ?? 'plain'); return jsonResponse(200, { content: encodeBase64('{"schema":1}'), sha: 'x' }); } });
+  await plain.get(); await plain.get();
+  assert.deepEqual(sent.slice(-2), ['plain', 'plain']);
+});
+
 test('client.get: 404 means no file yet; other errors throw', async () => {
   const missing = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(404, { message: 'Not Found' }) });
   assert.equal(await missing.get(), null);

@@ -320,7 +320,9 @@ function saveSummary(store, summary) {
 
 // Fetch, parse and apply once. Like js/sync.js's syncOnce, this never throws: every failure comes
 // back as { ok: false, error }. No file yet is not a failure — there's nothing to apply yet.
-export async function syncHebrewProgress({ store, client }) {
+// `seen` is the { sha, day } this device last applied: the same file on the same day has nothing new to
+// say, so it isn't unzipped and counted again (every sync, about a minute apart, while the app is open).
+export async function syncHebrewProgress({ store, client, seen = null }) {
   let remote;
   try {
     remote = await client.get();
@@ -328,6 +330,7 @@ export async function syncHebrewProgress({ store, client }) {
     return { ok: false, error: e.message };
   }
   if (!remote) return { ok: true, words: null };
+  if (seen && remote.sha && seen.sha === remote.sha && seen.day === store.today()) return { ok: true, unchanged: true, sha: remote.sha };
   let snapshot;
   try {
     snapshot = await readSnapshot(remote.doc);
@@ -343,5 +346,5 @@ export async function syncHebrewProgress({ store, client }) {
   applyDailyStats(store, snapshot);
   applyAutoMilestones(store, metrics);
   saveSummary(store, hebrewSummary(snapshot, metrics, store.today()));
-  return { ok: true, words: latestWords(snapshot.stats), ...metrics };
+  return { ok: true, words: latestWords(snapshot.stats), ...metrics, sha: remote.sha ?? null };
 }

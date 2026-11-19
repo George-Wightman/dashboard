@@ -52,10 +52,13 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
-  // The last blob this client read, as text. A sha names exactly one content, so a file over 1 MB whose
-  // sha hasn't moved since is not downloaded again: on 19 Nov 2026 data.json was 1.7 MB, read on every
-  // sync (about a minute apart while the app is open) and twice in every planner run.
-  let blob = null;
+  // The last version of the file this client read or wrote, as text, with its sha and GitHub's ETag
+  // for it. On 19 Nov 2026 data.json was 1.7 MB, read on every sync (about a minute apart while the app
+  // is open) and twice in every planner run, and the Hebrew file on every sync too. Now an unchanged
+  // file costs a "not modified" (when the ETag can be read: a browser or Node, not Apps Script or the
+  // relay), and a file over 1 MB whose sha hasn't moved is never downloaded again: a sha names exactly
+  // one content. Each read hands back a fresh copy, never the same object twice.
+  let last = null;
 
   // Bound the entire operation, including body reads. Race as well as abort:
   // a suspended connection (or an adapter ignoring abort) must release sync.
@@ -96,15 +99,18 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
 
   return {
     get: () => bounded(async (signal) => {
-      const res = await fetch(readUrl, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
-      if (res.status === 404) return null;
+      const ask = last?.etag ? { ...headers, 'If-None-Match': last.etag } : headers;
+      const res = await fetch(readUrl, { headers: ask, cache: 'no-store', ...(signal ? { signal } : {}) });
+      if (res.status === 304 && last) return { doc: JSON.parse(last.text), sha: last.sha };
+      if (res.status === 404) { last = null; return null; }
       if (!res.ok) throw await explain(res, repo, 'get');
+      const etag = res.headers?.get?.('etag') ?? null;
       const body = await res.json();
       // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead: asked
       // for raw, so there's no base64 to undo (2.3 MB of it, which in Apps Script goes byte by byte
-      // through Utilities), and not at all when it's the blob this client already has.
+      // through Utilities), and not at all when it's the version this client already has.
       if (!body.content || body.encoding === 'none') {
-        if (blob?.sha === body.sha) return { doc: JSON.parse(blob.text), sha: body.sha };
+        if (last?.sha === body.sha) { last = { ...last, etag }; return { doc: JSON.parse(last.text), sha: body.sha }; }
         const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, {
           headers: { ...headers, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store', ...(signal ? { signal } : {}),
         });
@@ -112,10 +118,13 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
         let text = await blobRes.text();
         let doc = JSON.parse(text);
         if (isBlobJson(doc)) { text = decodeBase64(doc.content); doc = JSON.parse(text); }
-        blob = { sha: body.sha, text };
+        last = { sha: body.sha, text, etag };
         return { doc, sha: body.sha };
       }
-      return { doc: JSON.parse(decodeBase64(body.content)), sha: body.sha };
+      const text = decodeBase64(body.content);
+      const doc = JSON.parse(text);
+      last = { sha: body.sha, text, etag };
+      return { doc, sha: body.sha };
     }),
 
     put: (doc, sha) => bounded(async (signal) => {
@@ -134,8 +143,9 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
       }
       if (!res.ok) throw await explain(res, repo, 'put');
       const written = (await res.json()).content.sha;
-      // What was just written is the blob under its new sha, so the next read needn't fetch it back.
-      if (written) blob = { sha: written, text };
+      // What was just written is the file under its new sha, so the next read needn't fetch it back.
+      // Its ETag isn't known yet, so that read asks plainly.
+      last = written ? { sha: written, text, etag: null } : null;
       return written;
     }),
   };

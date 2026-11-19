@@ -37,6 +37,20 @@ test('no file yet: nothing created, nothing applied', async () => {
   assert.equal(Object.keys(store.doc().items).length, 0);
 });
 
+test('the same file on the same day is not unzipped and counted again; a new day or file is', async () => {
+  const store = makeStore();
+  const file = await envelope({ '2026-09-08': { sec: 600, sessions: 1, spoken: 3, lib: 500 } });
+  const first = await syncHebrewProgress({ store, client: client(file) });
+  assert.equal(first.sha, 's');
+  const seen = { sha: first.sha, day: store.today() };
+  const revision = store.revision();
+  assert.deepEqual(await syncHebrewProgress({ store, client: { get: async () => ({ doc: { enc: 'broken' }, sha: 's' }) }, seen }), { ok: true, unchanged: true, sha: 's' });
+  assert.equal(store.revision(), revision);
+  // Another day, or another sha: read in full (a broken file then says so).
+  assert.equal((await syncHebrewProgress({ store, client: { get: async () => ({ doc: { enc: 'broken' }, sha: 's' }) }, seen: { ...seen, day: '1999-01-01' } })).ok, false);
+  assert.equal((await syncHebrewProgress({ store, client: { get: async () => ({ doc: { enc: 'broken' }, sha: 't' }) }, seen })).ok, false);
+});
+
 test('first sync creates the goal, habit and three weekly targets, and applies each day', async () => {
   const store = makeStore();
   const stats = {

@@ -89,9 +89,9 @@ test('a page with no IndexedDB gets a backend that rejects, not one that throws'
 test('js/app.js keeps the maps in the big-file store, not localStorage', () => {
   const src = read('js/app.js');
   assert.match(src, /createBigStore\(\{ backend: idbBackend\(\), legacy: localStorage, keys: \[MAPS_KEY\] \}\)/);
-  assert.match(src, /refreshMaps\(\{ clientFor, storage: bigFiles \}\)/);
+  assert.match(src, /refreshMaps\(\{ clientFor(: \w+)?, storage: bigFiles \}\)/);
   assert.doesNotMatch(src, /loadCachedMaps\(localStorage\)/);
-  assert.doesNotMatch(src, /refreshMaps\(\{ clientFor, storage: localStorage \}\)/);
+  assert.doesNotMatch(src, /refreshMaps\(\{ clientFor(: \w+)?, storage: localStorage \}\)/);
 });
 
 test('the offline release includes it', () => {

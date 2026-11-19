@@ -336,12 +336,13 @@ function render() {
 // is allowed to run rather than being lost.
 let pendingStored = null;
 
-// One GitHub client for the sync file while the repo and key stay the same: it remembers the last
-// version it read or wrote (js/sync.js), so a sync that finds nothing new downloads nothing big.
-let mainClient = null;
-function syncClient(token, repo) {
-  if (mainClient?.token !== token || mainClient?.repo !== repo) mainClient = { token, repo, client: createGitHubClient({ token, repo }) };
-  return mainClient.client;
+// One GitHub client per file while the repo and key stay the same: each remembers the last version it
+// read or wrote (js/sync.js), so a check that finds nothing new downloads nothing.
+const clients = new Map();
+function clientFor(token, repo, path = 'data.json') {
+  const key = JSON.stringify([token, repo, path]);
+  if (!clients.has(key)) clients.set(key, createGitHubClient({ token, repo, path }));
+  return clients.get(key);
 }
 
 async function runSync() {
@@ -361,7 +362,7 @@ async function runSync() {
     // counts as "waiting" (js/flags.js's waitingFlags).
     const started = new Date().toISOString();
     const t0 = performance.now();
-    const result = await syncOnce({ store, client: syncClient(token, repo) });
+    const result = await syncOnce({ store, client: clientFor(token, repo) });
     usage.synced({ ok: result.ok, ms: performance.now() - t0, kb: (localStorage.getItem(DATA_KEY)?.length ?? 0) / 1024, error: result.error ?? null });
     Object.assign(sync, result.ok
       ? { state: 'ok', at: new Date(), error: null }
@@ -385,11 +386,12 @@ async function runHebrewSync() {
   if (!navigator.onLine) { hebrew.state = 'offline'; return; }
   hebrew.state = 'syncing';
   try {
-    const result = await syncHebrewProgress({ store, client: createGitHubClient({ token: hebrewToken, repo: hebrewRepo, path: 'progress.json' }) });
+    const result = await syncHebrewProgress({ store, client: clientFor(hebrewToken, hebrewRepo, 'progress.json'), seen: hebrew.seen });
     Object.assign(hebrew, result.ok
       ? {
         state: 'ok', at: new Date(), error: null, words: result.words ?? hebrew.words,
         strong: result.strong ?? hebrew.strong, live: result.live ?? hebrew.live, gold: result.gold ?? hebrew.gold,
+        seen: result.sha ? { sha: result.sha, day: store.today() } : null,
       }
       : { state: 'failing', error: result.error });
   } catch (e) {
@@ -402,17 +404,21 @@ async function runMapSync() {
   const { token, repo } = store.settings();
   if (FAKE || !token || !repo || navigator.onLine === false || Date.now() - mapsAt < MAPS_EVERY) return;
   mapsAt = Date.now();
-  try {
-    const clientFor = (path) => createGitHubClient({ token, repo, path });
-    maps = await refreshMaps({ clientFor, storage: bigFiles });
-    money = await refreshFile({ clientFor, storage: localStorage, key: MONEY_KEY, path: MONEY_PATH, valid: validMoney }).catch(() => money);
-    london = await refreshFile({ clientFor, storage: localStorage, key: LONDON_KEY, path: LONDON_PATH, valid: validLondon }).catch(() => london);
-    stocks = {
-      market: await refreshFile({ clientFor, storage: localStorage, key: MARKET_KEY, path: MARKET_PATH, valid: validMarket }).catch(() => stocks.market),
-      desk: await refreshFile({ clientFor, storage: localStorage, key: DESK_KEY, path: DESK_PATH, valid: validDesk }).catch(() => stocks.desk),
-    };
-    if (canRun()) render();
-  } catch { /* offline or refused: the cached maps stay */ }
+  // Each file on its own: one that can't be fetched keeps its cached copy without stopping the others
+  // (a map blip used to leave money, London and stocks unread until the next half hour).
+  const files = (path) => clientFor(token, repo, path);
+  const [nextMaps, nextMoney, nextLondon, nextMarket, nextDesk] = await Promise.all([
+    refreshMaps({ clientFor: files, storage: bigFiles }).catch(() => maps),
+    refreshFile({ clientFor: files, storage: localStorage, key: MONEY_KEY, path: MONEY_PATH, valid: validMoney }).catch(() => money),
+    refreshFile({ clientFor: files, storage: localStorage, key: LONDON_KEY, path: LONDON_PATH, valid: validLondon }).catch(() => london),
+    refreshFile({ clientFor: files, storage: localStorage, key: MARKET_KEY, path: MARKET_PATH, valid: validMarket }).catch(() => stocks.market),
+    refreshFile({ clientFor: files, storage: localStorage, key: DESK_KEY, path: DESK_PATH, valid: validDesk }).catch(() => stocks.desk),
+  ]);
+  maps = nextMaps;
+  money = nextMoney;
+  london = nextLondon;
+  stocks = { market: nextMarket, desk: nextDesk };
+  if (canRun()) render();
 }
 
 // Something half-typed must never be wiped by a sync landing and re-rendering. Only inside the

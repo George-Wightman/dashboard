@@ -142,7 +142,9 @@ try {
   await page.locator('#hebrew-log').getByRole('button', { name: '30 min', exact: true }).click();
   assert.equal(await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('dash_data')).logs).some((l) => l.itemId === 'hebrew-minutes' && l.amount === 30 && l.status === 'active')), true);
   assert.equal(await page.evaluate(() => location.search.includes('do=')), false, 'the shortcut tidies the address');
-  await page.locator('#dl-note-top textarea').waitFor();
+  // The note for Claude was taken off the sky at George's request (Nov 2026); closing the day carries his line now.
+  assert.equal(await page.locator('#dl-note-top textarea').count(), 0);
+  await page.locator('#tiles .tile').first().waitFor();
   assert.ok(await page.locator('#tiles .tile').count() >= 3, 'the tiles draw');
   await page.locator('#tiles .tile[data-tile="weeks"] .tile-open').click();
   await page.locator('#widget-sheet[open]').waitFor();
@@ -151,14 +153,11 @@ try {
   await page.locator('#snap[open]').waitFor();
   await page.keyboard.press('Escape');
   await page.locator('#dl-sky').getByRole('button', { name: 'Arrange', exact: true }).click();
-  await page.locator('.note-place').getByRole('button', { name: 'Under the day', exact: true }).click();
-  await page.locator('#dl-note-day .dl-note textarea').waitFor();
-  await page.locator('.note-place').getByRole('button', { name: 'Top', exact: true }).click();
   await page.locator('#dl-sky').getByRole('button', { name: 'Done', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Daylight fits a phone');
   assert.deepEqual(errors, []);
-  console.log('Browser checks passed: startup, concurrent editing, offline recovery, mobile layout, advanced details, outcome completion, dependency unlocking, queued goal review, and Daylight (sky, note, tiles, big view, snap, the Hebrew shortcut, Arrange, phone width).');
+  console.log('Browser checks passed: startup, concurrent editing, offline recovery, mobile layout, advanced details, outcome completion, dependency unlocking, queued goal review, and Daylight (sky, tiles, big view, snap, the Hebrew shortcut, Arrange, phone width).');
 } finally {
   await browser?.close();
   await new Promise((r) => server.close(r));
