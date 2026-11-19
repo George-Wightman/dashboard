@@ -38,6 +38,7 @@ import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
 import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } from './hebrew-progress.js';
 import { createHebrewNudges } from './hebrew-nudges.js';
 import { hebrewInputFrom } from '../js/hebrew-voice.js';
+import { stopwatch, addPhases } from './timing.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -351,13 +352,17 @@ export function createPlanner({
   }
 
   // How long the planner's runs have taken today, so ⚙ → Claude can show it against Apps Script's
-  // daily allowance (planner/checkins.js reads it).
-  function countRunTime(startedMs) {
+  // daily allowance (planner/checkins.js reads it), and which steps took it: `phases` is the day's
+  // milliseconds by step (planner/timing.js), so the next saving goes where the time actually goes.
+  function countRunTime(startedMs, phases = {}) {
     try {
       const day = logicalDay(now(), dayStartHour());
       const prev = JSON.parse(get('RUN_MS') ?? 'null');
       const same = prev?.day === day;
-      put('RUN_MS', JSON.stringify({ day, ms: (same ? prev.ms : 0) + Math.max(0, clockMs() - startedMs), n: (same ? prev.n ?? 0 : 0) + 1 }));
+      put('RUN_MS', JSON.stringify({
+        day, ms: (same ? prev.ms : 0) + Math.max(0, clockMs() - startedMs), n: (same ? prev.n ?? 0 : 0) + 1,
+        phases: addPhases(same ? prev.phases : null, phases),
+      }));
     } catch { /* only a measurement */ }
   }
 
@@ -365,6 +370,7 @@ export function createPlanner({
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(1000)) return 'busy';
     const startedMs = clockMs();
+    const watch = stopwatch(clockMs);
     let checkins = null;
     try {
       if (get('PAUSED') === '1') return 'paused';
@@ -376,9 +382,13 @@ export function createPlanner({
       if (!(e && e.calendarId) && t.getHours() < 6 && t.getMinutes() >= 10) return 'night';
       const session = await open();
       const { store } = session;
+      watch.lap('open');
       await hevy(store);
+      watch.lap('hevy');
       await health(store);
+      watch.lap('health');
       await duolingo(store);
+      watch.lap('duolingo');
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
       try {
@@ -397,7 +407,9 @@ export function createPlanner({
         log(`Goal reviews paused: ${error?.message ?? error}`);
         store.putCalendar('review-status', { lastError: 'Goal reviews could not run; calendar planning continues. Check the planner logs.' });
       }
+      watch.lap('workflows');
       tag(store, t);
+      watch.lap('tag');
       let doc = store.doc();
       const { config } = readPlannerConfig(doc);
       const cals = calendars();
@@ -406,18 +418,21 @@ export function createPlanner({
       const events = listEvents(watched.map((c) => c.id), at(addDays(today, -1), '00:00').toISOString(), at(addDays(today, config.days), '04:00').toISOString());
       const memory = readProperty(props(), 'DAYS');
       const removed = resolveMissing(events, memory, watched.map((c) => c.id), t);
+      watch.lap('calendarRead');
       // A block dragged to when he did it ticks it, before the drag is read as a move.
       importDrags(store, events, { now: t, dayStartHour: dayStartHour() });
       reconcileCalendar(store, events, removed);
       adoptEvents(store, events, { calendars: cals, config, today, lastDay: addDays(today, config.days - 1) });
       // The 11:00 fallback for locking the day's list, when the app hasn't (js/commit.js).
       ensureCommitment(store, today, t);
+      watch.lap('reconcile');
       // Persist inbound edits before making outbound Calendar changes. Never
       // export from a draft that failed to reach the other interfaces.
       if (session.changed()) {
         const saved = await syncOnce({ store, client: session.client });
         if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
       }
+      watch.lap('inboundSave');
       // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
       recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
       // Shifts booked ahead for Hours (planner/hours.js): the Work calendar only, six weeks out.
@@ -427,6 +442,7 @@ export function createPlanner({
       } catch (error) {
         log(`Shifts ahead skipped: ${error?.message ?? error}`);
       }
+      watch.lap('shifts');
       doc = store.doc();
       const base = webAppUrl(doc, get('WEB_APP_URL'));
       const sign = base ? signer() : null;
@@ -436,7 +452,9 @@ export function createPlanner({
       });
       // Check the storage budget before mutating Calendar; reserve room for Google's event IDs.
       propertyParts(fillIds(result.days, Object.fromEntries(result.actions.filter((a) => a.key).map((a) => [a.key, 'x'.repeat(128)]))));
+      watch.lap('plan');
       const { errors, actual } = apply(result.actions, events);
+      watch.lap('calendarWrite');
       const days = confirmedDays(result.days, actual, cals);
       for (const c of Object.values(store.doc().calendar).filter((c) => c.resolution)) {
         const ev = actual.find((e) => e.status !== 'cancelled' && e.extendedProperties?.private?.[P.mine] === '1'
@@ -470,6 +488,7 @@ export function createPlanner({
         if (day >= today && day < lastRecorded) store.putCalendar(dayRecordId(day), rec);
       }
       if (!doc.calendar?.config) store.putCalendar('config', JSON.parse(JSON.stringify(CALENDAR_DEFAULTS)));
+      watch.lap('record');
       // Check-ins (planner/checkins.js): a question for each task whose block has passed unticked. It
       // can never stop planning.
       try {
@@ -479,12 +498,14 @@ export function createPlanner({
         checkins = null;
         log(clean(`Check-ins stopped: ${err?.message ?? err}`));
       }
+      watch.lap('checkins');
       // Hebrew's own pings, before the save, so their status goes in the same push.
       try {
         hebrewPings(store, t, today, events, cals);
       } catch (err) {
         log(clean(`Hebrew pings failed: ${err?.message ?? err}`));
       }
+      watch.lap('hebrew');
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
@@ -498,6 +519,7 @@ export function createPlanner({
           return 'failed';
         }
       }
+      watch.lap('save');
       // Pings only once data.json holds the questions they open.
       if (checkins) {
         try {
@@ -506,6 +528,7 @@ export function createPlanner({
           log(clean(`Check-in pings failed: ${err?.message ?? err}`));
         }
       }
+      watch.lap('pings');
       // Nudges (planner/nudges.js): a push before a miss. Never stops the planner.
       try {
         const nudges = createNudges({ UrlFetchApp, Utilities, props: { get, put }, log, now, dayStartHour: dayStartHour(), crypto: pushCrypto });
@@ -513,6 +536,7 @@ export function createPlanner({
       } catch (err) {
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
+      watch.lap('nudges');
       // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
       // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
       if (get('T212_KEY')) try {
@@ -532,6 +556,7 @@ export function createPlanner({
       } catch (err) {
         log(clean(`Stocks failed: ${err?.message ?? err}`));
       }
+      watch.lap('stocks');
 
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
@@ -541,7 +566,8 @@ export function createPlanner({
       log(`The planner stopped: ${message}`);
       return 'failed';
     } finally {
-      countRunTime(startedMs);
+      watch.lap('other');
+      countRunTime(startedMs, watch.phases());
       lock.releaseLock();
     }
   }

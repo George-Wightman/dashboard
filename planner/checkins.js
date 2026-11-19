@@ -125,6 +125,7 @@ export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () 
     const content = {
       day: today, lastRun: t.toISOString(), pings: (same ? prev.pings ?? 0 : 0) + sent,
       runMs: run?.day === today ? run.ms : 0, runs: run?.day === today ? run.n ?? 0 : 0,
+      phases: run?.day === today && run.phases && typeof run.phases === 'object' ? run.phases : {},
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
     };
     const due = !same || sent > 0 || prev.lastError !== content.lastError || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;

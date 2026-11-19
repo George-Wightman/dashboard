@@ -10,7 +10,7 @@ import { attention } from '../attention.js';
 import { shortWeekday, shortDate } from '../dates.js';
 import { gymConfig, gymStatusLines, cardioQuotaId, shortLift, kgText } from '../gym.js';
 import { checkinsSince, CHECKIN_STATUS } from '../checkins.js';
-import { jobLines } from '../jobs.js';
+import { jobLines, plannerBudget } from '../jobs.js';
 
 export const CLAUDE_CAN = [
   'Add, change, tick and archive anything on the dashboard — every change is listed below, with Undo',
@@ -36,7 +36,7 @@ export function checkinLines(doc, today) {
   const run = status?.day === today && status.runs ? status : null;
   return [
     recs.length ? `Today: ${recs.length} asked, ${answered} answered${skipped ? `, ${skipped} skipped` : ''}` : 'None asked today yet',
-    ...(run ? [`Pings today: ${run.pings ?? 0}`, `Apps Script today: ${Math.round((run.runMs ?? 0) / 60000)} of Google's 90 minutes, over ${run.runs} planner runs`] : []),
+    ...(run ? [`Pings today: ${run.pings ?? 0}`, plannerBudget(doc, today)?.line ?? ''].filter(Boolean) : []),
     ...(status?.lastError ? [`Problem: ${status.lastError}`] : []),
   ];
 }

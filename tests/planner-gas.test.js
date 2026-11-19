@@ -248,3 +248,16 @@ test('overnight only the first run of each hour does anything; a calendar edit s
   setNow(at(TUE, '06:20'));
   assert.equal(await planner.run(), 'ok');
 });
+
+test('each run counts its time step by step, and the day keeps the totals', async () => {
+  const { env, planner, setNow } = setup();
+  await planner.run();
+  const first = JSON.parse(env.props.get('RUN_MS'));
+  assert.equal(first.n, 1);
+  for (const step of ['open', 'hevy', 'calendarRead', 'plan', 'calendarWrite', 'record', 'save', 'other']) assert.ok(step in first.phases, step);
+  setNow(at(TUE, '08:10'));
+  await planner.run();
+  const second = JSON.parse(env.props.get('RUN_MS'));
+  assert.equal(second.n, 2);
+  assert.ok(second.phases.open >= first.phases.open);
+});
