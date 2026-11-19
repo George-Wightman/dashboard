@@ -43,6 +43,20 @@ export function tapName(el) {
   return `${clean(where)}/${clean(what)}`;
 }
 
+// Why a sync failed, as one word, so the usage read can say what the failures were (19 of 152
+// failed on the laptop in Oct–Nov 2026, with nothing kept to say why). Never the message itself.
+export function syncWhy(message) {
+  const m = String(message ?? '');
+  if (/timed out/i.test(m)) return 'timeout';
+  if (/kept writing|GitHub 409|sha/i.test(m)) return 'clash';
+  if (/network this chat runs in|blocking/i.test(m)) return 'blocked';
+  if (/refused the access key|can't see|GitHub 40[134]/i.test(m)) return 'key';
+  if (/GitHub 5\d\d/i.test(m)) return 'github';
+  if (/failed to fetch|networkerror|load failed|network|offline/i.test(m)) return 'network';
+  if (/merge failed|couldn't apply|isn't a dashboard document|not valid json|unexpected token/i.test(m)) return 'data';
+  return 'other';
+}
+
 // An error as one short line: the message, and the file and line it came from.
 export function errorName(message, source = '', line = null) {
   const file = String(source ?? '').split('/').pop().split('?')[0];
@@ -124,10 +138,14 @@ export function createUsage({ storage, device, today, now = () => Date.now() }) 
     tap(el) { const name = tapName(el); if (name) count('taps', name); },
     big(id) { count('big', clean(id)); },
     error(message, source, line) { count('errors', errorName(message, source, line)); },
-    synced({ ok, ms, kb }) {
+    synced({ ok, ms, kb, error = null }) {
       const s = day().sync;
       s.n += 1;
-      if (!ok) s.fail += 1;
+      if (!ok) {
+        s.fail += 1;
+        const why = syncWhy(error);
+        s.why = { ...(s.why ?? {}), [why]: (s.why?.[why] ?? 0) + 1 };
+      }
       if (Number.isFinite(ms)) { s.ms += Math.round(ms); s.maxMs = Math.max(s.maxMs, Math.round(ms)); }
       if (Number.isFinite(kb) && kb > 0) s.kb = Math.round(kb);
       touch();
@@ -212,8 +230,9 @@ export function usageLines(doc, today, days = 14, tileIds = []) {
     if (dev.tiles?.order?.length) out.push(`  tile order: ${dev.tiles.order.filter((id) => !dev.tiles.hidden?.includes(id)).join(', ')}`);
     const taps = group('taps');
     if (Object.keys(taps).length) out.push(`  taps: ${top(taps, 14).map(([k, n]) => `${k} ${n}`).join(' · ')}`);
-    const s = list.reduce((a, d) => ({ n: a.n + (d.sync?.n ?? 0), fail: a.fail + (d.sync?.fail ?? 0), ms: a.ms + (d.sync?.ms ?? 0), maxMs: Math.max(a.maxMs, d.sync?.maxMs ?? 0), kb: d.sync?.kb || a.kb }), { n: 0, fail: 0, ms: 0, maxMs: 0, kb: 0 });
-    if (s.n) out.push(`  sync: ${s.n} runs, ${s.fail} failed · ${(s.ms / s.n / 1000).toFixed(1)} s on average, ${(s.maxMs / 1000).toFixed(1)} s at worst${s.kb ? ` · file ${s.kb} KB` : ''}`);
+    const s = list.reduce((a, d) => ({ n: a.n + (d.sync?.n ?? 0), fail: a.fail + (d.sync?.fail ?? 0), ms: a.ms + (d.sync?.ms ?? 0), maxMs: Math.max(a.maxMs, d.sync?.maxMs ?? 0), kb: d.sync?.kb || a.kb, why: addInto(a.why, d.sync?.why) }), { n: 0, fail: 0, ms: 0, maxMs: 0, kb: 0, why: {} });
+    const why = Object.keys(s.why).length ? ` (${top(s.why).map(([k, n]) => `${k} ${n}`).join(', ')})` : '';
+    if (s.n) out.push(`  sync: ${s.n} runs, ${s.fail} failed${why} · ${(s.ms / s.n / 1000).toFixed(1)} s on average, ${(s.maxMs / 1000).toFixed(1)} s at worst${s.kb ? ` · file ${s.kb} KB` : ''}`);
     const errors = group('errors');
     out.push(Object.keys(errors).length ? `  errors: ${top(errors, 6).map(([k, n]) => `${n}× ${k}`).join(' | ')}` : '  errors: none');
   }

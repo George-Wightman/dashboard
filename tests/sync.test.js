@@ -78,6 +78,41 @@ test('client.get falls back to the blobs API for files over 1MB (F7)', async () 
   assert.deepEqual(await client.get(), { doc, sha: 's1' });
 });
 
+test('client.get reads a big file raw, and not again while its sha stays the same', async () => {
+  const doc = { schema: 1, items: { a: { id: 'a' } } };
+  let sha = 's1';
+  const calls = [];
+  const fetch = async (url, init) => {
+    calls.push({ url, accept: init?.headers?.Accept, method: init?.method ?? 'GET' });
+    if (url === 'https://api.github.com/repos/o/r/contents/data.json' && init?.method === 'PUT') {
+      sha = 's3';
+      return jsonResponse(200, { content: { sha } });
+    }
+    if (url === 'https://api.github.com/repos/o/r/contents/data.json') return jsonResponse(200, { content: '', encoding: 'none', sha });
+    if (url === `https://api.github.com/repos/o/r/git/blobs/${sha}`) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ...doc, v: sha }), json: async () => ({ ...doc, v: sha }) };
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+  const client = createGitHubClient({ token: 't', repo: 'o/r', fetch });
+  assert.deepEqual(await client.get(), { doc: { ...doc, v: 's1' }, sha: 's1' });
+  assert.equal(calls[1].accept, 'application/vnd.github.raw+json');
+  // Same sha: the contents check only, and a fresh copy each time (never the same object twice).
+  const again = await client.get();
+  const third = await client.get();
+  assert.deepEqual(again, { doc: { ...doc, v: 's1' }, sha: 's1' });
+  assert.notEqual(again.doc, third.doc);
+  assert.equal(calls.filter((c) => c.url.includes('/git/blobs/')).length, 1);
+  // A new sha is downloaded.
+  sha = 's2';
+  assert.equal((await client.get()).doc.v, 's2');
+  assert.equal(calls.filter((c) => c.url.includes('/git/blobs/')).length, 2);
+  // What this client wrote is what it reads back under the new sha, without fetching it.
+  await client.put({ ...doc, v: 'mine' }, 's2');
+  assert.deepEqual(await client.get(), { doc: { ...doc, v: 'mine' }, sha: 's3' });
+  assert.equal(calls.filter((c) => c.url.includes('/git/blobs/')).length, 2);
+});
+
 test('client.get: 404 means no file yet; other errors throw', async () => {
   const missing = createGitHubClient({ token: 't', repo: 'o/r', fetch: async () => jsonResponse(404, { message: 'Not Found' }) });
   assert.equal(await missing.get(), null);

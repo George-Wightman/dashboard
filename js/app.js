@@ -336,6 +336,14 @@ function render() {
 // is allowed to run rather than being lost.
 let pendingStored = null;
 
+// One GitHub client for the sync file while the repo and key stay the same: it remembers the last
+// version it read or wrote (js/sync.js), so a sync that finds nothing new downloads nothing big.
+let mainClient = null;
+function syncClient(token, repo) {
+  if (mainClient?.token !== token || mainClient?.repo !== repo) mainClient = { token, repo, client: createGitHubClient({ token, repo }) };
+  return mainClient.client;
+}
+
 async function runSync() {
   if (pendingStored) {
     store.absorbStored(pendingStored);
@@ -353,8 +361,8 @@ async function runSync() {
     // counts as "waiting" (js/flags.js's waitingFlags).
     const started = new Date().toISOString();
     const t0 = performance.now();
-    const result = await syncOnce({ store, client: createGitHubClient({ token, repo }) });
-    usage.synced({ ok: result.ok, ms: performance.now() - t0, kb: (localStorage.getItem(DATA_KEY)?.length ?? 0) / 1024 });
+    const result = await syncOnce({ store, client: syncClient(token, repo) });
+    usage.synced({ ok: result.ok, ms: performance.now() - t0, kb: (localStorage.getItem(DATA_KEY)?.length ?? 0) / 1024, error: result.error ?? null });
     Object.assign(sync, result.ok
       ? { state: 'ok', at: new Date(), error: null }
       : { state: 'failing', error: result.error });
@@ -362,7 +370,7 @@ async function runSync() {
     return result;
   } catch (e) {
     Object.assign(sync, { state: 'failing', error: e.message });
-    usage.synced({ ok: false });
+    usage.synced({ ok: false, error: e.message });
     return { ok: false, error: e.message };
   } finally {
     renderHeader();

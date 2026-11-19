@@ -4,7 +4,7 @@
 // tests run all of this in Node against fakes; planner/entry.js hands in the real ones.
 
 import { createStore, DATA_KEY, SETTINGS_KEY } from '../js/data.js';
-import { emptyDoc, isDoc } from '../js/doc.js';
+import { emptyDoc, isDoc, stableStringify } from '../js/doc.js';
 import { createGitHubClient, syncOnce, encodeBase64, decodeBase64 } from '../js/sync.js';
 import { readPlannerConfig, dayRecordId, plannerStatus, CALENDAR_DEFAULTS } from '../js/calendar.js';
 import { scrubText } from '../js/flags.js';
@@ -337,6 +337,19 @@ export function createPlanner({
     if (due || moved) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars, timeZone });
   }
 
+  // The agenda (what's booked and what's busy, for the app's Upcoming and the phone's widgets). Its
+  // `syncedAt` used to be stamped on every run, so every run rewrote the whole synced file even when
+  // nothing had changed: on 19 Nov 2026 nine commits an hour, almost all of them only that stamp, each
+  // one a full upload here and a full download on every device. Now it is written when what it holds
+  // changes, and otherwise hourly, like the planner's status (plannerLastRun reads the newer of the two,
+  // and staleSince allows 70 minutes).
+  function writeAgenda(store, t, content) {
+    const prev = store.doc().calendar?.agenda;
+    const same = prev?.status === 'active' && Object.keys(content).every((k) => stableStringify(prev[k]) === stableStringify(content[k]));
+    if (same && t.getTime() - Date.parse(prev.syncedAt ?? 0) < HEARTBEAT_MS) return;
+    store.putCalendar('agenda', { ...content, syncedAt: t.toISOString() });
+  }
+
   // How long the planner's runs have taken today, so ⚙ → Claude can show it against Apps Script's
   // daily allowance (planner/checkins.js reads it).
   function countRunTime(startedMs) {
@@ -435,8 +448,8 @@ export function createPlanner({
         if (baseline && item && JSON.stringify(baseline) === JSON.stringify(taskInput(item))) store.putCalendar(c.id, { resolution: null });
       }
       writeProperty(props(), 'DAYS', days);
-      store.putCalendar('agenda', { from: today, through: addDays(today, config.days - 1),
-        syncedAt: t.toISOString(), busy: events.filter((e) => e.extendedProperties?.private?.[P.mine] !== '1' && e.status !== 'cancelled' && e.transparency !== 'transparent')
+      writeAgenda(store, t, { from: today, through: addDays(today, config.days - 1),
+        busy: events.filter((e) => e.extendedProperties?.private?.[P.mine] !== '1' && e.status !== 'cancelled' && e.transparency !== 'transparent')
           .flatMap((e) => {
             const common = { title: e.summary || 'Busy', calendar: cals.find(c => c.id === e.calendarId)?.name ?? '' };
             if (e.start?.dateTime && e.end?.dateTime) return [{ ...common, start: e.start.dateTime, end: e.end.dateTime }];

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '2172322a';
+var PLANNER_BUILD = '357a4fdc';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -28,6 +28,20 @@ function installShims(g, { Utilities, UrlFetchApp }) {
   if (typeof g.atob !== 'function') {
     g.atob = (b64) => binaryString(Utilities.base64Decode(b64).map((b) => b & 255));
   }
+  // UTF-8 text to and from base64 in one call each (js/sync.js's encodeBase64 and decodeBase64 use them
+  // when they're here), rather than 1.7 MB going byte by byte through Utilities and back on every save.
+  // Each is checked against a known answer first, Hebrew included: if Apps Script ever disagrees, it
+  // isn't installed and the byte-by-byte path above, which has always worked, carries on.
+  const SAMPLE = 'ש ✓ é';
+  const SAMPLE_B64 = '16kg4pyTIMOp';
+  try {
+    const encode = (text) => Utilities.base64Encode(String(text), Utilities.Charset.UTF_8);
+    if (typeof g.__utf8ToBase64 !== 'function' && Utilities.Charset?.UTF_8 && encode(SAMPLE) === SAMPLE_B64) g.__utf8ToBase64 = encode;
+  } catch { /* not this Apps Script: the slower path stays */ }
+  try {
+    const decode = (b64) => Utilities.newBlob(Utilities.base64Decode(b64)).getDataAsString('UTF-8');
+    if (typeof g.__utf8FromBase64 !== 'function' && decode(SAMPLE_B64) === SAMPLE) g.__utf8FromBase64 = decode;
+  } catch { /* the slower path stays */ }
   if (typeof g.structuredClone !== 'function') {
     g.structuredClone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   }
@@ -47,7 +61,9 @@ function installShims(g, { Utilities, UrlFetchApp }) {
       try {
         const res = UrlFetchApp.fetch(url, options);
         const status = res.getResponseCode();
-        const text = res.getContentText();
+        // UTF-8 said outright: the sync file is now read as raw text (js/sync.js), Hebrew and all, and
+        // a wrong guess at the charset would be written straight back to every device.
+        const text = res.getContentText('UTF-8');
         return Promise.resolve({ ok: status >= 200 && status < 300, status, text: async () => text, json: async () => JSON.parse(text) });
       } catch (e) {
         return Promise.reject(e);
@@ -4174,7 +4190,10 @@ class ConflictError extends Error {}
 
 const API = 'https://api.github.com';
 
+// In Apps Script, planner/shims.js puts a one-call UTF-8 base64 on globalThis (checked against a known
+// answer before it's trusted); everywhere else these work byte by byte.
 function encodeBase64(text) {
+  if (typeof globalThis.__utf8ToBase64 === 'function') return globalThis.__utf8ToBase64(text);
   const bytes = new TextEncoder().encode(text);
   let binary = '';
   for (const b of bytes) binary += String.fromCharCode(b);
@@ -4182,6 +4201,7 @@ function encodeBase64(text) {
 }
 
 function decodeBase64(b64) {
+  if (typeof globalThis.__utf8FromBase64 === 'function') return globalThis.__utf8FromBase64(b64.replace(/\s/g, ''));
   const binary = atob(b64.replace(/\s/g, ''));
   return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
 }
@@ -4198,6 +4218,11 @@ function accessError(repo, message = '', status = null) {
   return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}.${said}`);
 }
 
+// GitHub's JSON for a blob, rather than the blob itself: what the relay (planner/relay.js, which always
+// asks for JSON) or anything else that drops the Accept header hands back. A dashboard document never
+// has these fields at its top level.
+const isBlobJson = (v) => !!v && typeof v === 'object' && typeof v.content === 'string' && v.encoding === 'base64';
+
 // `ref` reads a branch instead of the default one (the planner reading what a Claude routine left on
 // its claude/ branch); writes always go to the default branch.
 function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
@@ -4208,6 +4233,10 @@ function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
+  // The last blob this client read, as text. A sha names exactly one content, so a file over 1 MB whose
+  // sha hasn't moved since is not downloaded again: on 19 Nov 2026 data.json was 1.7 MB, read on every
+  // sync (about a minute apart while the app is open) and twice in every planner run.
+  let blob = null;
 
   // Bound the entire operation, including body reads. Race as well as abort:
   // a suspended connection (or an adapter ignoring abort) must release sync.
@@ -4252,22 +4281,31 @@ function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch
       if (res.status === 404) return null;
       if (!res.ok) throw await explain(res, repo, 'get');
       const body = await res.json();
-      // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead.
+      // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead: asked
+      // for raw, so there's no base64 to undo (2.3 MB of it, which in Apps Script goes byte by byte
+      // through Utilities), and not at all when it's the blob this client already has.
       if (!body.content || body.encoding === 'none') {
-        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
+        if (blob?.sha === body.sha) return { doc: JSON.parse(blob.text), sha: body.sha };
+        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, {
+          headers: { ...headers, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store', ...(signal ? { signal } : {}),
+        });
         if (!blobRes.ok) throw await explain(blobRes, repo, 'get');
-        const blob = await blobRes.json();
-        return { doc: JSON.parse(decodeBase64(blob.content)), sha: body.sha };
+        let text = await blobRes.text();
+        let doc = JSON.parse(text);
+        if (isBlobJson(doc)) { text = decodeBase64(doc.content); doc = JSON.parse(text); }
+        blob = { sha: body.sha, text };
+        return { doc, sha: body.sha };
       }
       return { doc: JSON.parse(decodeBase64(body.content)), sha: body.sha };
     }),
 
     put: (doc, sha) => bounded(async (signal) => {
+      const text = JSON.stringify(doc);
       const res = await fetch(url, {
         method: 'PUT',
         ...(signal ? { signal } : {}),
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'sync', content: encodeBase64(JSON.stringify(doc)), ...(sha ? { sha } : {}) }),
+        body: JSON.stringify({ message: 'sync', content: encodeBase64(text), ...(sha ? { sha } : {}) }),
       });
       if (res.status === 409) throw new ConflictError(`GitHub 409`);
       if (res.status === 422) {
@@ -4276,7 +4314,10 @@ function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch
         throw err;
       }
       if (!res.ok) throw await explain(res, repo, 'put');
-      return (await res.json()).content.sha;
+      const written = (await res.json()).content.sha;
+      // What was just written is the blob under its new sha, so the next read needn't fetch it back.
+      if (written) blob = { sha: written, text };
+      return written;
     }),
   };
 }
@@ -10629,7 +10670,7 @@ const __planner_gas = (() => {
 // tests run all of this in Node against fakes; planner/entry.js hands in the real ones.
 
 const { createStore, DATA_KEY, SETTINGS_KEY } = __js_data;
-const { emptyDoc, isDoc } = __js_doc;
+const { emptyDoc, isDoc, stableStringify } = __js_doc;
 const { createGitHubClient, syncOnce, encodeBase64, decodeBase64 } = __js_sync;
 const { readPlannerConfig, dayRecordId, plannerStatus, CALENDAR_DEFAULTS } = __js_calendar;
 const { scrubText } = __js_flags;
@@ -10962,6 +11003,19 @@ function createPlanner({
     if (due || moved) store.putCalendar('status', { lastRun: t.toISOString(), lastError, version, paused: false, takenColors, calendars, timeZone });
   }
 
+  // The agenda (what's booked and what's busy, for the app's Upcoming and the phone's widgets). Its
+  // `syncedAt` used to be stamped on every run, so every run rewrote the whole synced file even when
+  // nothing had changed: on 19 Nov 2026 nine commits an hour, almost all of them only that stamp, each
+  // one a full upload here and a full download on every device. Now it is written when what it holds
+  // changes, and otherwise hourly, like the planner's status (plannerLastRun reads the newer of the two,
+  // and staleSince allows 70 minutes).
+  function writeAgenda(store, t, content) {
+    const prev = store.doc().calendar?.agenda;
+    const same = prev?.status === 'active' && Object.keys(content).every((k) => stableStringify(prev[k]) === stableStringify(content[k]));
+    if (same && t.getTime() - Date.parse(prev.syncedAt ?? 0) < HEARTBEAT_MS) return;
+    store.putCalendar('agenda', { ...content, syncedAt: t.toISOString() });
+  }
+
   // How long the planner's runs have taken today, so ⚙ → Claude can show it against Apps Script's
   // daily allowance (planner/checkins.js reads it).
   function countRunTime(startedMs) {
@@ -11060,8 +11114,8 @@ function createPlanner({
         if (baseline && item && JSON.stringify(baseline) === JSON.stringify(taskInput(item))) store.putCalendar(c.id, { resolution: null });
       }
       writeProperty(props(), 'DAYS', days);
-      store.putCalendar('agenda', { from: today, through: addDays(today, config.days - 1),
-        syncedAt: t.toISOString(), busy: events.filter((e) => e.extendedProperties?.private?.[P.mine] !== '1' && e.status !== 'cancelled' && e.transparency !== 'transparent')
+      writeAgenda(store, t, { from: today, through: addDays(today, config.days - 1),
+        busy: events.filter((e) => e.extendedProperties?.private?.[P.mine] !== '1' && e.status !== 'cancelled' && e.transparency !== 'transparent')
           .flatMap((e) => {
             const common = { title: e.summary || 'Busy', calendar: cals.find(c => c.id === e.calendarId)?.name ?? '' };
             if (e.start?.dateTime && e.end?.dateTime) return [{ ...common, start: e.start.dateTime, end: e.end.dateTime }];

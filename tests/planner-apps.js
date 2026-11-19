@@ -12,7 +12,11 @@ export const fakeUtilities = {
     const buf = typeof data === 'string' ? Buffer.from(data, 'utf8') : Buffer.from(data.map((b) => b & 255));
     return { getBytes: () => Array.from(buf, toSigned), getDataAsString: () => buf.toString('utf8') };
   },
-  base64Encode: (bytes) => Buffer.from(bytes.map((b) => b & 255)).toString('base64'),
+  // Bytes, or (like Apps Script) a string in a given charset.
+  base64Encode: (data, charset) => (typeof data === 'string'
+    ? Buffer.from(data, charset === 'UTF-8' ? 'utf8' : 'latin1').toString('base64')
+    : Buffer.from(data.map((b) => b & 255)).toString('base64')),
+  Charset: { UTF_8: 'UTF-8', US_ASCII: 'US-ASCII' },
   base64Decode: (text) => Array.from(Buffer.from(text, 'base64'), toSigned),
   getUuid: (() => { let n = 0; return () => `uuid-${++n}`; })(),
   DigestAlgorithm: { SHA_256: 'sha256' },
@@ -52,6 +56,18 @@ export class FakeRepo {
       if ((f?.sha ?? undefined) !== sha) return { status: 409, body: { message: 'is at a different sha' } };
       this.others.set(path, { text: Buffer.from(content, 'base64').toString('utf8'), sha: `${path}-sha${++this.n}` });
       return { status: 200, body: { content: { sha: this.others.get(path).sha } } };
+    }
+    // A data.json over 1 MB (`big`): the Contents API leaves the content out and it's read as a blob,
+    // raw when asked for raw, GitHub's base64 JSON otherwise.
+    const blob = /^https:\/\/api\.github\.com\/repos\/o\/r\/git\/blobs\/(.+)$/.exec(url);
+    if (blob) {
+      this.blobReads = (this.blobReads ?? 0) + 1;
+      if (blob[1] !== this.sha || this.text == null) return { status: 404, body: { message: 'Not Found' } };
+      return headers.Accept === 'application/vnd.github.raw+json' ? { status: 200, body: this.text }
+        : { status: 200, body: { sha: this.sha, content: Buffer.from(this.text).toString('base64'), encoding: 'base64' } };
+    }
+    if (this.big && method === 'get' && url === 'https://api.github.com/repos/o/r/contents/data.json' && this.text != null) {
+      return { status: 200, body: { content: '', encoding: 'none', sha: this.sha } };
     }
     if (!url.startsWith('https://api.github.com/repos/o/r/contents/data.json')) return { status: 404, body: { message: 'Not Found' } };
     if (method === 'get' && headers.Accept === 'application/vnd.github.raw+json') {

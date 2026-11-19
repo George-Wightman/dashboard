@@ -9,7 +9,10 @@ export class ConflictError extends Error {}
 
 const API = 'https://api.github.com';
 
+// In Apps Script, planner/shims.js puts a one-call UTF-8 base64 on globalThis (checked against a known
+// answer before it's trusted); everywhere else these work byte by byte.
 export function encodeBase64(text) {
+  if (typeof globalThis.__utf8ToBase64 === 'function') return globalThis.__utf8ToBase64(text);
   const bytes = new TextEncoder().encode(text);
   let binary = '';
   for (const b of bytes) binary += String.fromCharCode(b);
@@ -17,6 +20,7 @@ export function encodeBase64(text) {
 }
 
 export function decodeBase64(b64) {
+  if (typeof globalThis.__utf8FromBase64 === 'function') return globalThis.__utf8FromBase64(b64.replace(/\s/g, ''));
   const binary = atob(b64.replace(/\s/g, ''));
   return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
 }
@@ -33,6 +37,11 @@ export function accessError(repo, message = '', status = null) {
   return new Error(`GitHub refused the access key — check it hasn't expired and has Contents read and write on ${repo}.${said}`);
 }
 
+// GitHub's JSON for a blob, rather than the blob itself: what the relay (planner/relay.js, which always
+// asks for JSON) or anything else that drops the Accept header hands back. A dashboard document never
+// has these fields at its top level.
+const isBlobJson = (v) => !!v && typeof v === 'object' && typeof v.content === 'string' && v.encoding === 'base64';
+
 // `ref` reads a branch instead of the default one (the planner reading what a Claude routine left on
 // its claude/ branch); writes always go to the default branch.
 export function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch = (...args) => globalThis.fetch(...args), timeoutMs = 20000, timers = globalThis }) {
@@ -43,6 +52,10 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
+  // The last blob this client read, as text. A sha names exactly one content, so a file over 1 MB whose
+  // sha hasn't moved since is not downloaded again: on 19 Nov 2026 data.json was 1.7 MB, read on every
+  // sync (about a minute apart while the app is open) and twice in every planner run.
+  let blob = null;
 
   // Bound the entire operation, including body reads. Race as well as abort:
   // a suspended connection (or an adapter ignoring abort) must release sync.
@@ -87,22 +100,31 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
       if (res.status === 404) return null;
       if (!res.ok) throw await explain(res, repo, 'get');
       const body = await res.json();
-      // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead.
+      // Over 1 MB, the Contents API omits `content` and the file must be read as a blob instead: asked
+      // for raw, so there's no base64 to undo (2.3 MB of it, which in Apps Script goes byte by byte
+      // through Utilities), and not at all when it's the blob this client already has.
       if (!body.content || body.encoding === 'none') {
-        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, { headers, cache: 'no-store', ...(signal ? { signal } : {}) });
+        if (blob?.sha === body.sha) return { doc: JSON.parse(blob.text), sha: body.sha };
+        const blobRes = await fetch(`${API}/repos/${repo}/git/blobs/${body.sha}`, {
+          headers: { ...headers, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store', ...(signal ? { signal } : {}),
+        });
         if (!blobRes.ok) throw await explain(blobRes, repo, 'get');
-        const blob = await blobRes.json();
-        return { doc: JSON.parse(decodeBase64(blob.content)), sha: body.sha };
+        let text = await blobRes.text();
+        let doc = JSON.parse(text);
+        if (isBlobJson(doc)) { text = decodeBase64(doc.content); doc = JSON.parse(text); }
+        blob = { sha: body.sha, text };
+        return { doc, sha: body.sha };
       }
       return { doc: JSON.parse(decodeBase64(body.content)), sha: body.sha };
     }),
 
     put: (doc, sha) => bounded(async (signal) => {
+      const text = JSON.stringify(doc);
       const res = await fetch(url, {
         method: 'PUT',
         ...(signal ? { signal } : {}),
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'sync', content: encodeBase64(JSON.stringify(doc)), ...(sha ? { sha } : {}) }),
+        body: JSON.stringify({ message: 'sync', content: encodeBase64(text), ...(sha ? { sha } : {}) }),
       });
       if (res.status === 409) throw new ConflictError(`GitHub 409`);
       if (res.status === 422) {
@@ -111,7 +133,10 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
         throw err;
       }
       if (!res.ok) throw await explain(res, repo, 'put');
-      return (await res.json()).content.sha;
+      const written = (await res.json()).content.sha;
+      // What was just written is the blob under its new sha, so the next read needn't fetch it back.
+      if (written) blob = { sha: written, text };
+      return written;
     }),
   };
 }

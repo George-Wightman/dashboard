@@ -23,6 +23,20 @@ export function installShims(g, { Utilities, UrlFetchApp }) {
   if (typeof g.atob !== 'function') {
     g.atob = (b64) => binaryString(Utilities.base64Decode(b64).map((b) => b & 255));
   }
+  // UTF-8 text to and from base64 in one call each (js/sync.js's encodeBase64 and decodeBase64 use them
+  // when they're here), rather than 1.7 MB going byte by byte through Utilities and back on every save.
+  // Each is checked against a known answer first, Hebrew included: if Apps Script ever disagrees, it
+  // isn't installed and the byte-by-byte path above, which has always worked, carries on.
+  const SAMPLE = 'ש ✓ é';
+  const SAMPLE_B64 = '16kg4pyTIMOp';
+  try {
+    const encode = (text) => Utilities.base64Encode(String(text), Utilities.Charset.UTF_8);
+    if (typeof g.__utf8ToBase64 !== 'function' && Utilities.Charset?.UTF_8 && encode(SAMPLE) === SAMPLE_B64) g.__utf8ToBase64 = encode;
+  } catch { /* not this Apps Script: the slower path stays */ }
+  try {
+    const decode = (b64) => Utilities.newBlob(Utilities.base64Decode(b64)).getDataAsString('UTF-8');
+    if (typeof g.__utf8FromBase64 !== 'function' && decode(SAMPLE_B64) === SAMPLE) g.__utf8FromBase64 = decode;
+  } catch { /* the slower path stays */ }
   if (typeof g.structuredClone !== 'function') {
     g.structuredClone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   }
@@ -42,7 +56,9 @@ export function installShims(g, { Utilities, UrlFetchApp }) {
       try {
         const res = UrlFetchApp.fetch(url, options);
         const status = res.getResponseCode();
-        const text = res.getContentText();
+        // UTF-8 said outright: the sync file is now read as raw text (js/sync.js), Hebrew and all, and
+        // a wrong guess at the charset would be written straight back to every device.
+        const text = res.getContentText('UTF-8');
         return Promise.resolve({ ok: status >= 200 && status < 300, status, text: async () => text, json: async () => JSON.parse(text) });
       } catch (e) {
         return Promise.reject(e);

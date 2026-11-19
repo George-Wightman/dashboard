@@ -53,6 +53,22 @@ test('shims: browser globals over Apps Script, and only where missing', async ()
   assert.equal(h.fetch, own);
 });
 
+test('shims: one-call UTF-8 base64, only when Apps Script gets the known answer right', () => {
+  const g = {};
+  installShims(g, { Utilities: fakeUtilities, UrlFetchApp: {} });
+  const text = 'עברית — Hebrew ✓ café';
+  assert.equal(g.__utf8ToBase64(text), Buffer.from(text, 'utf8').toString('base64'));
+  assert.equal(g.__utf8FromBase64(Buffer.from(text, 'utf8').toString('base64')), text);
+  // A charset it gets wrong (here, Latin-1 whatever it's asked for), or no Charset at all: not installed.
+  const wrong = { ...fakeUtilities, base64Encode: (data) => (typeof data === 'string' ? Buffer.from(data, 'latin1').toString('base64') : fakeUtilities.base64Encode(data)) };
+  const h = {};
+  installShims(h, { Utilities: wrong, UrlFetchApp: {} });
+  assert.equal(h.__utf8ToBase64, undefined);
+  const old = {};
+  installShims(old, { Utilities: { ...fakeUtilities, Charset: undefined }, UrlFetchApp: {} });
+  assert.equal(old.__utf8ToBase64, undefined);
+});
+
 test('tagPrompt and readArea: one of the areas, exactly, or none', () => {
   const { system, prompt } = tagPrompt('Email NatCen', ['Hebrew', 'Job search']);
   assert.match(system, /Answer only with JSON/);
@@ -88,6 +104,38 @@ test('run again: nothing to change, nothing pushed — until the hourly heartbea
   await planner.run();
   assert.equal(repo.puts, 2);
   assert.equal(repo.doc().calendar.status.lastRun, at(TUE, '09:05').toISOString());
+});
+
+test('ten minutes on with nothing changed, the agenda is not restamped, so nothing is pushed', async () => {
+  const { repo, planner, setNow } = setup();
+  await planner.run();
+  const stamped = repo.doc().calendar.agenda.syncedAt;
+  setNow(at(TUE, '08:10'));
+  assert.equal(await planner.run(), 'ok');
+  setNow(at(TUE, '08:20'));
+  assert.equal(await planner.run(), 'ok');
+  assert.equal(repo.puts, 1);
+  assert.equal(repo.doc().calendar.agenda.syncedAt, stamped);
+  // An hour on, the heartbeat writes it again, so the app never reads a working planner as stalled.
+  setNow(at(TUE, '09:00'));
+  await planner.run();
+  assert.equal(repo.puts, 2);
+  assert.equal(repo.doc().calendar.agenda.syncedAt, at(TUE, '09:00').toISOString());
+});
+
+test('a sync file over 1 MB is read raw, once a run, Hebrew and all', async () => {
+  const { repo, planner, setNow } = setup({ items: [
+    { id: 'hebrew', type: 'habit', title: 'עברית — Hebrew practice', area: 'Hebrew', repeat: { kind: 'daily' } },
+    { id: 'chase', type: 'task', title: 'Chase the GSS outcome', area: 'Job search', date: TUE, order: 1 },
+  ] });
+  repo.big = true;
+  assert.equal(await planner.run(), 'ok');
+  // open() and the save's own read share one download: the second finds the same sha.
+  assert.equal(repo.blobReads, 1);
+  assert.equal(repo.doc().items.hebrew.title, 'עברית — Hebrew practice');
+  setNow(at(TUE, '08:10'));
+  assert.equal(await planner.run(), 'ok');
+  assert.equal(repo.doc().items.hebrew.title, 'עברית — Hebrew practice');
 });
 
 test('paused, busy, and its own echo', async () => {

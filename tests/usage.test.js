@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createUsage, deviceOf, tapName, errorName, usageId, usageByDevice, usageLines, USAGE_KEY, FLUSH_GAP_MS } from '../js/usage.js';
+import { createUsage, deviceOf, tapName, errorName, syncWhy, usageId, usageByDevice, usageLines, USAGE_KEY, FLUSH_GAP_MS } from '../js/usage.js';
 import { behaviourLines, usageRead } from '../claude/usage.js';
 import { mergeDocs } from '../js/merge.js';
 import { MemoryStorage, makeStore, clock, fixture } from './helpers.js';
@@ -69,7 +69,7 @@ test('opens, minutes, taps and big views are counted on the day, and survive a r
   assert.deepEqual(day.hours, { '09': 1 });
   assert.deepEqual(day.big, { hebrew: 1 });
   assert.deepEqual(day.taps, { 'tile-hebrew/tile-open': 1 });
-  assert.deepEqual(day.sync, { n: 2, fail: 1, ms: 2400, maxMs: 2400, kb: 2266 });
+  assert.deepEqual(day.sync, { n: 2, fail: 1, ms: 2400, maxMs: 2400, kb: 2266, why: { other: 1 } });
   assert.deepEqual(day.errors, { 'boom @app.js:3': 1 });
   assert.equal([day.w, day.h].join('x'), '400x800');
 });
@@ -125,6 +125,24 @@ test('the read says what each device did, and what was never opened', () => {
   assert.match(text, /sync: 1 runs, 0 failed · 3\.0 s on average/);
   assert.match(text, /errors: none/);
   assert.match(usageLines(store.doc(), '2026-10-01', 14).join('\n'), /^No usage recorded/);
+});
+
+test('a failed sync keeps why, in one word, and the read says it', () => {
+  assert.equal(syncWhy('GitHub sync timed out — will retry'), 'timeout');
+  assert.equal(syncWhy('Another device kept writing at the same moment — will retry next time'), 'clash');
+  assert.equal(syncWhy('GitHub refused the access key — check it hasn\'t expired'), 'key');
+  assert.equal(syncWhy('GitHub 502: Server Error'), 'github');
+  assert.equal(syncWhy('Failed to fetch'), 'network');
+  assert.equal(syncWhy('Merge failed: x'), 'data');
+  assert.equal(syncWhy(undefined), 'other');
+  const { store, usage } = setup();
+  usage.visible({ hour: 10 });
+  usage.synced({ ok: false, error: 'GitHub sync timed out — will retry' });
+  usage.synced({ ok: false, error: 'GitHub sync timed out — will retry' });
+  usage.synced({ ok: false, error: 'Failed to fetch' });
+  usage.synced({ ok: true, ms: 1000 });
+  usage.flush(store, { force: true });
+  assert.match(usageLines(store.doc(), '2026-11-11', 14).join('\n'), /sync: 4 runs, 3 failed \(timeout 2, network 1\)/);
 });
 
 test('what the records show: ticks, check-ins and meals as rates', () => {
