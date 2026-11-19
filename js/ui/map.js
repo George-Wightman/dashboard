@@ -76,7 +76,9 @@ export function describeTile(state, map, k) {
   const t = L.tiles.get(k);
   if (!t) return null;
   const site = L.at.get(k);
-  if (!state.visible.has(k)) return site?.kind === 'wonder' ? ['Something on the horizon', 'Get closer to find out'] : null;
+  // Always [title, lines]: showTip maps over the lines. A bare string here threw on every hover over a
+  // fogged wonder (23 errors in the usage log, Nov 2026).
+  if (!state.visible.has(k)) return site?.kind === 'wonder' ? ['Something on the horizon', ['Get closer to find out']] : null;
   const lines = [];
   let title = k === '0,0' ? (map.centreName ?? map.name) : (TERRAIN[t.terrain]?.name ?? 'Land');
   let special = k === '0,0';

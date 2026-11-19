@@ -25,7 +25,8 @@ test('plain land says nothing; a find, a zone and a place say what they are', ()
 
 test('a wonder in the fog is something on the horizon; in sight, something to build', () => {
   const { state } = fresh();
-  assert.deepEqual(describeTile(state, map, '4,-2'), ['Something on the horizon', 'Get closer to find out']);
+  // [title, lines] like every other tile: the tooltip maps over the lines.
+  assert.deepEqual(describeTile(state, map, '4,-2'), ['Something on the horizon', ['Get closer to find out']]);
   assert.equal(describeTile(state, map, '4,-1'), null);
 });
 
