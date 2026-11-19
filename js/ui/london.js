@@ -10,6 +10,16 @@ import { svg, tip } from './svg.js';
 import { bigSection } from './big.js';
 import { rankAreas, londonSettings, setLondonSettings, spareRoomLink, pounds, takeHome, NEAR, WEIGHTS } from '../london.js';
 import { moneySummary } from '../money.js';
+import { runForecast, forecastSettings } from '../forecast.js';
+
+// What he'll have at the start: where his own forecast in Money ends (his sliders, one-offs and the
+// Salzburg rate), so London and Money say the same number. London was built on the plain average
+// before the forecast existed, and until 19 Nov 2026 showed £2,232 beside Money's £4,456. The plain
+// average stays the fallback for a ledger with no balance yet.
+export function startingPot(money, doc, today) {
+  const f = money ? runForecast({ money, doc, today, settings: forecastSettings(money, doc) }) : null;
+  return f ? f.end : moneySummary(money, doc, today).atStart;
+}
 
 const SIDE = { N: 'North', S: 'South', E: 'East', W: 'West' };
 const mins = (m) => (m == null ? '—' : `${Math.round(m)} min`);
@@ -220,7 +230,7 @@ export function renderLondonBig(ctx) {
   const { ctx: lctx, ranked } = rankAreas(data, s);
   const pick = ranked.find((r) => r.area.id === ctx.ui.londonPick) ?? ranked[0];
   const ceiling = lctx.takeHome == null ? null : (s.ceilingPct / 100) * lctx.takeHome;
-  const pot = moneySummary(ctx.money?.() ?? null, doc, ctx.store.today()).atStart;
+  const pot = startingPot(ctx.money?.() ?? null, doc, ctx.store.today());
   const limit = ctx.ui.londonAll ? ranked.length : 12;
   return h('div', { class: 'big london' },
     h('div', { class: 'lo-layout' },

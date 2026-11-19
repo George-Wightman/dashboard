@@ -50,10 +50,14 @@ export function moneyLines(money, doc, today) {
     out.push(`  Ends ${gbp(fc.end)}; lowest ${gbp(fc.lowest.pot)} (${fc.lowest.month}); keep ${gbp(SAFE_PENCE)} at ${h1(hoursFor({ money, doc, today, settings: fs, target: SAFE_PENCE }))} a week, break even at ${h1(hoursFor({ money, doc, today, settings: fs, target: fc.from.total }))}`);
   }
   const f = potForecast({ money, doc, today });
-  out.push(`Statements cover up to ${lastCovered(money) ?? '—'} · what he'll have at the start: ${gbp(f.atStart)}`);
+  // The forecast above is his plan (the app's Money and London both show where it ends). This one is the
+  // plain average with no one-offs or Salzburg rate: a cross-check, never "what he'll have".
+  out.push(`Statements cover up to ${lastCovered(money) ?? '—'}${fc ? '' : ` · what he'll have at the start: ${gbp(f.atStart)}`}`);
   const avg = averageSpend(money, today);
   if (avg.months) out.push(`Average month (last ${avg.months} full): ${gbp(avg.total)} — ${cats(avg.spend)}`);
-  out.push('Month by month (spend · income · pot after; ~ = planned):');
+  out.push(fc
+    ? `Month by month at the plain average, as a cross-check (no one-offs, no Salzburg rate; ends ${gbp(f.atStart)}; spend · income · pot after; ~ = planned):`
+    : 'Month by month (spend · income · pot after; ~ = planned):');
   for (const r of f.rows) out.push(`  ${r.actual ? ' ' : '~'}${r.month}: ${gbp(r.spend)} · ${gbp(r.income)} · ${gbp(r.pot)}`);
   const m = monthActuals(money, today.slice(0, 7));
   if (m.days) out.push(`This month so far (${m.days} days on statements): ${gbp(m.total)} — ${cats(m.spend)}`);

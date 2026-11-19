@@ -1,5 +1,5 @@
 {
-  "id": "136d4c42ffa4d3fafc36591aefa761e29a0d36c64b0ab0669f5f845f054f6760",
+  "id": "96f74bef4afc8a525a609e8cd23de5b5693f01715dee605670bc4eb97b3c504c",
   "files": {
     "./": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
     "index.html": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
@@ -93,7 +93,7 @@
     "js/stocks-explain.js": "2ead10b3585c0650576a5866a4a13b2270b8c519ae3daa9e8a2409e01f8ccd45",
     "js/forecast.js": "7381ffff9f883ebbbd6fbe0fd2db2644fb5aa6616e12753bbfa987b82b7a1185",
     "js/ui/forecast.js": "3ff0c00898e92071a44f1f000870e01021ac5907acd657691b615c4ffed7527f",
-    "js/ui/london.js": "053e02770edac4267a5a613ea31acc7abf15f4a6dc60deaf00d55da92445ed9f",
+    "js/ui/london.js": "c7e316e3bfb627fbb2c023b0358ebcc11738ac4146355cebaf5f3decf4d2a068",
     "js/ui/svg.js": "9c672f1bc3e7ddb89d25dc33c22a8cd564d71126e0b3ea60d01d533931b377c1",
     "js/vendor/leaflet/leaflet.js": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a",
     "js/vendor/leaflet/leaflet.css": "337bfca5cabd03b39815b2700febe2b3b7edf55921c59cd49f88ecb328212303",

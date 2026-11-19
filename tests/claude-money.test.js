@@ -30,7 +30,26 @@ test('money read: the pot at the start and the months, or how to begin', async (
   await importMoney(f, statement('2026-08-01', '2026-10-31', 1000));
   const text = moneyLines(await readMoney(f), emptyDoc(), '2026-11-05').join('\n');
   assert.match(text, /Start date in London: 2027-05-01/);
-  assert.match(text, /what he'll have at the start: /);
+  // With a balance there's a forecast, and it is "what he'll have"; the plain average is only a cross-check.
+  assert.match(text, /Forecast to the start/);
+  assert.doesNotMatch(text, /what he'll have at the start: /);
+  assert.match(text, /Month by month at the plain average, as a cross-check/);
   assert.match(text, /Average month \(last 3 full\)/);
   assert.match(text, /~2026-11:/);
+  // With no balance there's no forecast, and the plain average says what he'll have.
+  const noBalance = { ...(await readMoney(f)), balances: [] };
+  assert.match(moneyLines(noBalance, emptyDoc(), '2026-11-05').join('\n'), /what he'll have at the start: /);
+});
+
+test('London starts from where his Money forecast ends', async () => {
+  const { startingPot } = await import('../js/ui/london.js');
+  const { runForecast, forecastSettings } = await import('../js/forecast.js');
+  const { moneySummary } = await import('../js/money.js');
+  const f = fakeFiles();
+  await importMoney(f, statement('2026-08-01', '2026-10-31', 1000));
+  const m = await readMoney(f);
+  const doc = emptyDoc();
+  assert.equal(startingPot(m, doc, '2026-11-05'), runForecast({ money: m, doc, today: '2026-11-05', settings: forecastSettings(m, doc) }).end);
+  assert.equal(startingPot({ ...m, balances: [] }, doc, '2026-11-05'), moneySummary({ ...m, balances: [] }, doc, '2026-11-05').atStart);
+  assert.equal(startingPot(null, doc, '2026-11-05'), null);
 });
