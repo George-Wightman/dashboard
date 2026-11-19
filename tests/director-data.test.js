@@ -135,6 +135,16 @@ test('attention: what Claude should look at', () => {
   assert.deepEqual(attention(fixture(), WED), []);
 });
 
+test('attention: the planner close to Google\'s 90 daily minutes, and the planner read says how much', async () => {
+  const { plannerBudget } = await import('../js/jobs.js');
+  const status = (runMs, day = WED) => withCalendar(fixture(), [{ id: 'checkins:status', status: 'active', day, lastRun: `${WED}T18:00:00.000Z`, pings: 0, runMs, runs: 94, lastError: null }]);
+  assert.deepEqual(attention(status(60 * 60000), WED), []);
+  const near = attention(status(Math.round(74.5 * 60000)), WED);
+  assert.ok(near.some((l) => l.startsWith("Planner: Apps Script today: 75 of Google's 90 minutes, over 94 runs (about 48 s each). At 90 Google stops it")), near.join('\n'));
+  // Yesterday's count is not today's.
+  assert.equal(plannerBudget(status(80 * 60000, '2026-09-15'), WED), null);
+});
+
 test('the store: notes and priority on items and goals, and a brief from Claude', () => {
   const s = makeStore();
   const t = s.addItem({ type: 'task', title: 'Email York Careers', notes: ' Say the date is 5 Oct. ', priority: true });

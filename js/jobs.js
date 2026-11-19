@@ -11,6 +11,19 @@ import { CHECKIN_STATUS } from './checkins.js';
 const QUIET_MIN = 70;
 const minutesSince = (iso, now) => (now.getTime() - Date.parse(iso)) / 60000;
 
+// Google gives a free account 90 minutes of Apps Script triggers a day, and the planner then stops until
+// the day resets: no bookings, no pings, no nudges. On 19 Nov 2026 it had used 74.5 of them by 19:07.
+// Its own count (planner/checkins.js writes it hourly) for `today`, or null.
+export const APPS_SCRIPT_MINUTES = 90;
+export const BUDGET_WARN_MINUTES = 75;
+export function plannerBudget(doc, today) {
+  const s = doc?.calendar?.[CHECKIN_STATUS];
+  if (s?.status !== 'active' || s.day !== today || !(s.runs > 0)) return null;
+  const minutes = Math.round((Number(s.runMs) || 0) / 60000);
+  const each = Math.round((Number(s.runMs) || 0) / s.runs / 1000);
+  return { minutes, runs: s.runs, line: `Apps Script today: ${minutes} of Google's ${APPS_SCRIPT_MINUTES} minutes, over ${s.runs} runs (about ${each} s each)` };
+}
+
 export function jobLines(doc, now = new Date()) {
   const out = [];
   const when = (iso) => momentLabel(iso, now);

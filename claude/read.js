@@ -13,6 +13,7 @@ import {
   readPlannerConfig, dayRecord, plannerStatus, plannerLastRun, plannerNotes, clockLabel, offLine, briefFor, isPriority, timeOff, offText, countdowns, daysLeft,
 } from '../js/calendar.js';
 import { attention } from '../js/attention.js';
+import { plannerBudget } from '../js/jobs.js';
 import { zoneNote, deviceZone } from '../js/travel.js';
 import { euDays, euSummary, EU_LIMIT } from '../js/eu.js';
 import { hoursSummary, ordinal } from '../js/hours.js';
@@ -147,6 +148,8 @@ function plannerRead(doc, day) {
     ? `Calendar planner: last ran ${when(plannerLastRun(doc))}${s.paused ? ' · paused' : ''}${s.version ? ` · build ${s.version}` : ''}`
     : "Calendar planner: hasn't run yet.");
   if (s?.lastError) out.push(`  Last problem: ${s.lastError}`);
+  const budget = plannerBudget(doc, day);
+  if (budget) out.push(`  ${budget.line} (written hourly)`);
   out.push(`Settings: hours ${config.hours[0]}–${config.hours[1]} · gapMinutes ${config.gapMinutes} · defaultMinutes ${config.defaultMinutes} · maxBlockMinutes ${config.maxBlockMinutes} · days ${config.days} · exactDays ${config.exactDays} · firmUpHour ${config.firmUpHour}`);
   out.push(`  areaCalendars: ${Object.entries(config.areaCalendars).map(([a, c]) => `${a} → ${c}`).join(', ') || 'none'} · defaultCalendar: ${config.defaultCalendar}`);
   out.push(`  habitEvents: ${config.habitEvents.map((l) => `${l.habit} → "${l.title}" on ${l.calendar}`).join(', ') || 'none'}`);
