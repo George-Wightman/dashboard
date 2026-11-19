@@ -1,5 +1,5 @@
 {
-  "id": "8684ad25fef1932347c12e1719a357ac840695661fd5139d201402e3975a6555",
+  "id": "b3a1d142467a96e5575fe91531805829de9825704bdcacb34939be2ff8d05d6a",
   "files": {
     "./": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
     "index.html": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
@@ -34,7 +34,7 @@
     "js/changes.js": "cec307cf0d73f57fd8da885a07089fcffc9437e6213a1c9b1261cc6f27e47a6f",
     "js/calendar.js": "6775adf426cac495c7b817fd5ad4f16f624a37b5dd8a98b400c83705e0d9c22e",
     "js/attention.js": "36b5c30f04bf54f801c9b0a7ec362cff8db8ef167686cff598610b8a12059c9f",
-    "js/gym.js": "57c4fe5970e6a3c99a1a83e8f0c1d494701188452224a9ab7e98017bbff1f3c2",
+    "js/gym.js": "730f5bef1851d165b655be24e7e550ccc362ebc74efd68ee73bcb2f8c2ccf226",
     "js/checkins.js": "03e42f6c08779d1468ad159ff166cbcf93c91a60c045bea4e789c929bea7df51",
     "js/plan-state.js": "eed9037649112c3adf88d736af93bddd118ecd55f44c8b0820becf32eb17ee2a",
     "js/ui/agenda.js": "01c9557539fb999fa4dbeae271504171fc0a3f4b602659ce7ae67bd10018204a",
@@ -54,9 +54,9 @@
     "js/ui/widgets.js": "09d65ea105d5c693bae5afe254e96c4704e24c0baa80e290b23e9cffbef9cc48",
     "js/ui/flags.js": "2d94fb32ae5edf77ec93636a27e560bb781e011e9ccebbdd997690cd8bf015cf",
     "js/ui/changes.js": "8084189d43eca86a157b9b1e59cde475ccc245aa45f724b4ef73ab916c368524",
-    "js/ui/claude.js": "959e41a2835932add6e9d6f7c5d540e147bc1d347b97bb8fbab92212a4b16163",
+    "js/ui/claude.js": "5e1fb451beca505ab1d05de920e59b5e28cbc50263dbb980a88b28903b1e73f1",
     "js/ui/sources.js": "df9abb62d2b7a9c0da456c3cf85b9f7fa25c4f42a89655adb72b58b9eef0f26d",
-    "js/ui/gym.js": "88f136c3578e6a15e5f4f98d95f721492ed47f311a5120cd5b747506717f71fa",
+    "js/ui/gym.js": "c24089f8338af39382ff8b81132460527a08a9e9c8bd2d22273dd64b92e8fb40",
     "js/ui/hebrew.js": "50e047e8f9ed39d812379b8e60bd2a4d2234e75fadd23829511a2b29da439dc4",
     "js/ui/countdown.js": "d8a480ec23006780a446995a67e0adb3e9043c09ab064dd117e9a4b27685df09",
     "js/ui/big.js": "e4c2e8d28ca10201b78d44e585b0276ebc3d4b37a870e40273312ef784dbac1c",

@@ -7,6 +7,7 @@
 import { h } from './dom.js';
 import {
   workouts, weekStrip, liftSummary, dayLines, gymConfig, cardioQuotaId, kgText, prBoard, sessionDays, groupWeeks, shortLift,
+  keyLiftsNow, measureText, setText, paceText,
 } from '../gym.js';
 import { weekTotal } from '../schedule.js';
 import { shortWeekday, shortDate, daysBetween, weekStart } from '../dates.js';
@@ -57,22 +58,27 @@ function sparkline(s) {
 const when = (day, today) => (daysBetween(day, today) <= 6 ? shortWeekday(day) : shortDate(day));
 
 function paceLine(s) {
-  const parts = [s.pace != null ? `${s.pace >= 0 ? '+' : ''}${s.pace} kg/wk` : 'pace after 4 sessions'];
-  if (s.projection?.reached) parts.push(`${kgText(s.target)} reached`);
-  else if (s.projection) parts.push(`${kgText(s.target)} by ~${s.projection.label}`);
+  const parts = [s.pace != null ? paceText(s.pace, s.unit) : 'pace after 4 sessions'];
+  if (s.projection?.reached) parts.push(`${measureText(s.target, s.unit)} reached`);
+  else if (s.projection) parts.push(`${measureText(s.target, s.unit)} by ~${s.projection.label}`);
   return parts.join(' · ');
 }
 
+// What a card's big number is: a lift's estimated 1RM, a bodyweight exercise's best set, a hold.
+const CAPTION = { kg: 'est. 1RM', reps: 'best set', s: 'longest hold' };
+const BIG_UNIT = { kg: 'kg', reps: 'reps', s: 's' };
+
 function liftCard(s, today) {
   const badge = s.pr ? 'PR' : s.repNote;
+  const number = s.unit === 'kg' ? kgText(s.value) : s.unit === 's' && s.value >= 60 ? measureText(s.value, 's') : String(Math.round(s.value));
   return h('div', { class: 'lift-card' },
-    h('div', {}, `${s.name} · est. 1RM`),
+    h('div', {}, `${s.name} · ${CAPTION[s.unit] ?? ''}`),
     h('div', { class: 'big' },
-      h('span', { class: 'num' }, kgText(s.e1rm)), h('span', {}, 'kg'),
+      h('span', { class: 'num' }, number), s.unit === 's' && s.value >= 60 ? null : h('span', {}, BIG_UNIT[s.unit] ?? ''),
       badge ? h('span', { class: 'pr' }, badge) : null),
     sparkline(s),
     h('div', {}, paceLine(s)),
-    h('div', {}, `Last: ${kgText(s.last.kg)} × ${s.last.reps} · ${when(s.last.day, today)}`));
+    h('div', {}, `Last: ${s.last.text} · ${when(s.last.day, today)}`));
 }
 
 // The key is on hover, not a line of its own: teal where he lifted, the lower line cardio.
@@ -110,7 +116,7 @@ export function renderGym(ctx) {
   const config = gymConfig(doc);
   const strip = weekStrip(doc, today);
   const sessions = strip.reduce((n, c) => n + c.sessions, 0);
-  const lifts = config.keyLifts.map((l) => liftSummary(doc, l, today, config)).filter(Boolean);
+  const lifts = keyLiftsNow(doc, today, config).map((l) => liftSummary(doc, l, today, config)).filter(Boolean);
   const todays = dayLines(doc, today);
   return h('section', { class: 'panel gym' },
     h('h2', {}, 'Gym', h('span', { class: 'count' }, `${sessions} session${sessions === 1 ? '' : 's'} this week`)),
@@ -122,16 +128,17 @@ export function renderGym(ctx) {
 
 // ---- Opened big ----------------------------------------------------------------------------------
 
-// Best ever for each lift he does most: estimated 1RM, the set behind it, and when.
+// Best ever for each exercise he does most: a lift's estimated 1RM, a bodyweight one's most reps, a
+// hold's longest, the set behind it, and when.
 function prTable(doc, today) {
   const rows = prBoard(doc, today);
   if (!rows.length) return null;
   return h('table', { class: 'big-table pr-board' },
-    h('thead', {}, h('tr', {}, h('th', {}, 'Lift'), h('th', {}, 'Est. 1RM'), h('th', {}, 'Best set'), h('th', {}, 'Set on'), h('th', {}, 'Sessions'))),
+    h('thead', {}, h('tr', {}, h('th', {}, 'Exercise'), h('th', {}, 'Best'), h('th', {}, 'Best set'), h('th', {}, 'Set on'), h('th', {}, 'Sessions'))),
     h('tbody', {}, rows.map((r) => h('tr', {},
       h('td', {}, shortLift(r.name)),
-      h('td', { class: 'num' }, `${kgText(r.e1rm)} kg`),
-      h('td', { class: 'num' }, `${kgText(r.best[0])} × ${r.best[1]}`),
+      h('td', { class: 'num' }, r.unit === 'kg' ? `${kgText(r.value)} kg 1RM` : measureText(r.value, r.unit)),
+      h('td', { class: 'num' }, setText(r.unit, r.best, r.value)),
       h('td', { class: daysBetween(r.day, today) <= 14 ? 'recent' : null }, dated(r.day, today)),
       h('td', { class: 'num' }, String(r.sessions))))));
 }

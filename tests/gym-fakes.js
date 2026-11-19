@@ -13,11 +13,18 @@ export const TEMPLATES = {
   ROW: ['Bent Over Row (Barbell)', 'weight_reps', 'upper_back'],
   TM: ['Treadmill', 'distance_duration', 'cardio'],
   WK: ['Walking', 'duration', 'cardio'],
+  PU: ['Pull Up', 'reps_only', 'lats'],
+  DIP: ['Chest Dip', 'reps_only', 'chest'],
+  WPU: ['Pull Up (Weighted)', 'bodyweight_weighted', 'lats'],
+  LS: ['L-Sit Hold', 'duration', 'abdominals'],
 };
 
 // An exercise: lift('SQ', [100, 5], [60, 8, 'warmup']) · cardio('WK', 900, 1200).
 export const lift = (tpl, ...sets) => ({ tpl, sets: sets.map(([kg, reps, type = 'normal', rpe = null]) => ({ type, weight_kg: kg, reps, rpe })) });
 export const cardio = (tpl, seconds, meters = null) => ({ tpl, sets: [{ type: 'normal', duration_seconds: seconds, distance_meters: meters }] });
+// Bodyweight sets by reps (or [kg added, reps]), and holds in seconds: reps('PU', 8, 6) · hold('LS', 20, 15).
+export const reps = (tpl, ...sets) => ({ tpl, sets: sets.map((r) => (Array.isArray(r) ? { type: 'normal', weight_kg: r[0], reps: r[1] } : { type: 'normal', reps: r })) });
+export const hold = (tpl, ...seconds) => ({ tpl, sets: seconds.map((n) => ({ type: 'normal', duration_seconds: n })) });
 
 // A workout as Hevy's API returns it.
 export function hevyWorkout(id, day, from, to, exercises, title = 'Legs A') {

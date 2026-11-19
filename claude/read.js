@@ -19,6 +19,7 @@ import { euDays, euSummary, EU_LIMIT } from '../js/eu.js';
 import { hoursSummary, ordinal } from '../js/hours.js';
 import {
   gymConfig, gymStatus, gymStatusLines, liftSummary, workouts, cardioOf, cardioQuotaId, gymHabitId, sessionLine, kgText, trainingWeek,
+  keyLiftsNow, measureText, paceText,
 } from '../js/gym.js';
 import { checkinsSince } from '../js/checkins.js';
 import { duolingoStatusLine } from '../js/duolingo.js';
@@ -424,15 +425,16 @@ function attentionRead(doc, day) {
 function gymRead(doc, day) {
   const config = gymConfig(doc);
   const out = [header(doc, day), ...gymStatusLines(doc, (iso) => when(iso))];
-  out.push('Key lifts (estimated 1RM, Epley, from sets of 1–12 reps):');
-  for (const lift of config.keyLifts) {
+  const keys = keyLiftsNow(doc, day, config);
+  out.push(`Key lifts now (the set ones while he's doing them, else his most trained in 4 weeks; a lift by estimated 1RM, Epley, bodyweight by best set in reps, a hold in seconds): ${keys.join(', ')}`);
+  for (const lift of keys) {
     const s = liftSummary(doc, lift, day, config);
     if (!s) { out.push(`  ${lift}: no sessions yet`); continue; }
-    const parts = [`est. 1RM ${kgText(s.e1rm)} kg`, `last ${kgText(s.last.kg)} × ${s.last.reps} ${dayName(s.last.day, day)}`];
+    const parts = [s.unit === 'kg' ? `est. 1RM ${kgText(s.value)} kg` : `best ${measureText(s.value, s.unit)}`, `last ${s.last.text} ${dayName(s.last.day, day)}`];
     parts.push(s.prDay ? `last PR ${dayName(s.prDay, day)}${s.pr ? ' (that session)' : ''}` : 'no PR yet');
     if (s.repNote) parts.push(`${s.repNote} at that weight`);
-    parts.push(s.pace != null ? `pace ${s.pace >= 0 ? '+' : ''}${s.pace} kg/wk over 8 weeks` : 'pace: needs 4 sessions in 8 weeks');
-    if (s.target) parts.push(s.projection?.reached ? `target ${kgText(s.target)} reached` : s.projection ? `target ${kgText(s.target)} → ~${s.projection.label}` : `target ${kgText(s.target)}, no projection yet`);
+    parts.push(s.pace != null ? `pace ${paceText(s.pace, s.unit)} over 8 weeks` : 'pace: needs 4 sessions in 8 weeks');
+    if (s.target) parts.push(s.projection?.reached ? `target ${measureText(s.target, s.unit)} reached` : s.projection ? `target ${measureText(s.target, s.unit)} → ~${s.projection.label}` : `target ${measureText(s.target, s.unit)}, no projection yet`);
     parts.push(`${s.sessions} session${s.sessions === 1 ? '' : 's'}`);
     out.push(`  ${lift}: ${parts.join(' · ')}`);
   }

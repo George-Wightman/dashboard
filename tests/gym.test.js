@@ -56,7 +56,9 @@ test("a Hevy workout as the gym map keeps it: warm-ups out, key-lift sets kept, 
   assert.equal(late.day, '2026-09-16', 'before the day starts (4am) it counts for the day before');
   assert.throws(() => workoutRecord({ id: 'x' }, TEMPLATES), /didn't make sense/);
   assert.equal(exerciseKind(undefined, [{ duration_seconds: 600 }]), 'cardio');
-  assert.equal(exerciseKind(['Pull Up', 'bodyweight_reps', 'lats'], [{ reps: 8 }]), 'other');
+  assert.equal(exerciseKind(['Pull Up', 'bodyweight_reps', 'lats'], [{ reps: 8 }]), 'reps');
+  assert.equal(exerciseKind(['L-Sit Hold', 'duration', 'abdominals'], [{ duration_seconds: 20 }]), 'hold', 'a hold is not cardio');
+  assert.equal(exerciseKind(['Walking', 'duration', 'cardio'], [{ duration_seconds: 600 }]), 'cardio');
 });
 
 test('a key lift: estimated 1RM, PR, pace, and when it reaches its target', () => {
@@ -66,7 +68,9 @@ test('a key lift: estimated 1RM, PR, pace, and when it reaches its target', () =
   assert.equal(s.e1rm, 116.7);
   assert.equal(s.pr, true);
   assert.equal(s.prDay, '2026-09-10');
-  assert.deepEqual(s.last, { kg: 100, reps: 5, day: '2026-09-10' });
+  assert.deepEqual(s.last, { kg: 100, reps: 5, value: 116.7, text: '100 × 5', day: '2026-09-10' });
+  assert.equal(s.unit, 'kg');
+  assert.equal(s.value, 116.7);
   assert.equal(s.pace, 2.9);
   assert.deepEqual(s.projection, { reached: false, day: '2026-09-25', label: 'late Sep' });
   assert.equal(s.points.length, 7);

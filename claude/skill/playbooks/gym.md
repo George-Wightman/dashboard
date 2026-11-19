@@ -5,7 +5,8 @@
     bash run.sh gym
     bash run.sh back
 
-`gym` returns his key lifts with estimated 1RMs, PRs and pace over eight weeks, cardio by week against
+`gym` returns his key lifts now (estimated 1RMs for barbell work, best sets in reps for bodyweight work,
+holds in seconds), PRs and pace over eight weeks, cardio by week against
 the linked target, the last fortnight's sessions, the sessions you've planned for the next 7 days, and
 lifts ready for more weight. `back` returns his answer each morning to "How's your back?". Workouts
 come from Hevy through the planner's script every ten minutes.
@@ -77,5 +78,6 @@ dashboard. Nothing else ticks itself: a calendar event never does, however it is
     {"op": "gym", "liftTargets": {"Squat (Barbell)": 120}}
 
 One lift per op. Names are Hevy's own, such as "Squat (Barbell)" or "Bench Press (Barbell)".
-`keyLifts` changes which lifts are followed closely. When he asks for a chart, draw it in the chat
+`keyLifts` names the lifts that lead while he does them; otherwise the key lifts follow what he has trained
+most in the last four weeks (pull-ups and dips, when that is what he trains). When he asks for a chart, draw it in the chat
 from the `gym` read's numbers.

@@ -36,7 +36,10 @@ test("Claude's gym read: the connection, key lifts, cardio, the last 14 days, th
   assert.match(out, /^Today is Thursday 17 September/);
   assert.match(out, /Hevy: last checked .* · 2 workouts/);
   assert.match(out, /  Squat \(Barbell\): est\. 1RM 120 kg · last 100 × 6 .* · no PR yet · pace: needs 4 sessions in 8 weeks · 1 session/);
-  assert.match(out, /  Bench Press \(Barbell\): no sessions yet/);
+  // Bench is a set key lift he hasn't trained in four weeks: not a key lift now, still in the settings.
+  assert.match(out, /Key lifts now \(.*\): Squat \(Barbell\)\n/);
+  assert.doesNotMatch(out, /  Bench Press \(Barbell\):/);
+  assert.match(out, /Settings: keyLifts Squat \(Barbell\), Bench Press \(Barbell\)/);
   assert.match(out, /Cardio: no target linked/);
   assert.match(out, /From Hevy: this week 20 min/);
   assert.match(out, /Last 14 days:\n  .*: Run · 20 min · Treadmill 20 min, 3 km\n  .*: Legs A · 60 min · Squat 100 × 6/);
@@ -79,5 +82,5 @@ test('⚙ → Claude → Gym: the connection, the key lifts, the Cardio target',
   runOp(store, { op: 'gym', liftTargets: { 'Squat (Barbell)': 120 } });
   const lines = gymLines(store.doc(), at(THU, '20:00'));
   assert.match(lines[0], /^Hevy: last checked 19:50 · 2 workouts$/);
-  assert.deepEqual(lines.slice(1), ['Key lifts: Squat, Bench Press', 'Cardio minutes count towards "Cardio"', 'Squat target: 120 kg estimated 1RM']);
+  assert.deepEqual(lines.slice(1), ['Key lifts now: Squat', 'Cardio minutes count towards "Cardio"', 'Squat target: 120 kg estimated 1RM']);
 });

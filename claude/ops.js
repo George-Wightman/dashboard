@@ -10,7 +10,7 @@ import {
   checkCountdown, nextCountdownId, daysLeft,
 } from '../js/calendar.js';
 import { daysBetween } from '../js/dates.js';
-import { gymConfig, gymHabitId, templatesOf } from '../js/gym.js';
+import { gymConfig, gymHabitId, templatesOf, liftSummary, measureText } from '../js/gym.js';
 import { checkSession, notesWith } from '../js/coach.js';
 import { NOTES_MAX } from '../js/parse.js';
 import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
@@ -958,9 +958,10 @@ function gym(store, op) {
         delete targets[key];
         said.push(`${key} target removed`);
       } else {
-        if (!(typeof kg === 'number' && kg > 0 && kg <= 500)) throw new Error('A lift target is an estimated 1RM in kg, above 0 and at most 500');
+        if (!(typeof kg === 'number' && kg > 0 && kg <= 500)) throw new Error("A target is in the exercise's own unit (an estimated 1RM in kg, reps for a bodyweight exercise, seconds for a hold), above 0 and at most 500");
         targets[key] = kg;
-        said.push(`${key} target → ${kg} kg`);
+        const unit = liftSummary(doc, key, store.today(), next)?.unit ?? 'kg';
+        said.push(`${key} target → ${unit === 'kg' ? `${kg} kg` : measureText(kg, unit)}`);
       }
       next.liftTargets = targets;
     } else if (field === 'cardioQuota') {

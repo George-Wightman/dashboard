@@ -191,3 +191,27 @@ test("the planner run puts the coach's session into Hevy as a routine, after rea
   assert.equal(repo.doc().gym.routines.byRoutine['rt-1'].taskId, 'legs');
   assert.ok(!repo.text.includes(HEVY_KEY));
 });
+
+test('records from an older shape are copied again once, and a hold stops counting as cardio', async () => {
+  const { store, target, hevy, sync, now } = setup();
+  store.putGym('config', { cardioQuota: target.id }, 'claude');
+  hevy.templates.LS = ['L-Sit Hold', 'duration', 'abdominals'];
+  hevy.save(hevyWorkout('bars', '2026-09-16', '11:00', '11:40', [cardio('TM', 600, 1500), { tpl: 'LS', sets: [{ type: 'normal', duration_seconds: 120 }] }], 'Bars B'), '2026-09-16T11:40:00Z');
+  await sync();
+  // As the old shape left it: the hold as two cardio minutes, and the status at shape 1 (or none).
+  const rec = store.doc().gym['w:bars'];
+  store.putGym('w:bars', { exercises: rec.exercises.map((e) => (e.name === 'L-Sit Hold' ? { name: e.name, tpl: 'LS', kind: 'cardio', n: 1, minutes: 2, km: 0 } : e)) });
+  store.putLog('hevy-cardio-bars', { amount: 12 });
+  store.putGym('status', { ...gymStatus(store.doc()), shape: 1 }, 'hevy');
+  now.advance(10 * 60000);
+  const pages = hevy.calls.filter((u) => u.includes('/workouts?')).length;
+  const after = await sync();
+  assert.equal(after.shape, 2);
+  assert.equal(after.backfillPage, null, 'one page was enough');
+  assert.equal(hevy.calls.filter((u) => u.includes('/workouts?')).length, pages + 1, 'the history was read again, once');
+  assert.equal(store.doc().gym['w:bars'].exercises.find((e) => e.name === 'L-Sit Hold').kind, 'hold');
+  assert.equal(store.doc().logs['hevy-cardio-bars'].amount, 10, 'the run alone');
+  now.advance(10 * 60000);
+  await sync();
+  assert.equal(hevy.calls.filter((u) => u.includes('/workouts?')).length, pages + 1, 'and not again');
+});

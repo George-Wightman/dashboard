@@ -4,7 +4,7 @@
 // kept as a sentence in the gym's status for the dashboard and never stops the planner.
 
 import {
-  workoutRecord, workouts, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, cardioOf, KEEP_SETS_DAYS,
+  workoutRecord, workouts, gymConfig, gymStatus, templatesOf, gymHabitId, cardioQuotaId, cardioOf, KEEP_SETS_DAYS, RECORD_SHAPE,
 } from '../js/gym.js';
 import { addDays, weekStart, logicalDay } from '../js/dates.js';
 import { countsOn } from '../js/schedule.js';
@@ -108,13 +108,17 @@ export async function syncHevy({
   const t = now();
   const today = logicalDay(t, dayStartHour);
   const prev = gymStatus(store.doc());
+  // Records made by an older shape of workoutRecord (js/gym.js RECORD_SHAPE) are copied again from the
+  // first page, once: the history then follows the same rules as a workout saved today.
+  const reshape = !!prev && (prev.shape ?? 1) < RECORD_SHAPE && prev.backfillPage == null;
   const status = {
     lastSync: prev?.lastSync ?? null,
     lastError: null,
     since: prev?.since ?? t.toISOString(),
-    backfillPage: prev ? prev.backfillPage ?? null : 1,
+    backfillPage: reshape ? 1 : prev ? prev.backfillPage ?? null : 1,
     startedOn: prev?.startedOn ?? weekStart(today),
     count: prev?.count ?? 0,
+    shape: RECORD_SHAPE,
   };
   const backfilling = status.backfillPage != null;
   let writes = 0;

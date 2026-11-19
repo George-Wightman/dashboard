@@ -7,8 +7,8 @@ import { changesPanel } from './changes.js';
 import { changeCountLine } from '../changes.js';
 import { readPlannerConfig, timeOff, plannerSummary, briefFor, offText, momentLabel } from '../calendar.js';
 import { attention } from '../attention.js';
-import { shortWeekday, shortDate } from '../dates.js';
-import { gymConfig, gymStatusLines, cardioQuotaId, shortLift, kgText } from '../gym.js';
+import { shortWeekday, shortDate, logicalDay } from '../dates.js';
+import { gymConfig, gymStatusLines, cardioQuotaId, shortLift, kgText, keyLiftsNow, liftSummary, measureText } from '../gym.js';
 import { checkinsSince, CHECKIN_STATUS } from '../checkins.js';
 import { jobLines, plannerBudget } from '../jobs.js';
 
@@ -42,14 +42,17 @@ export function checkinLines(doc, today) {
 }
 
 // The Gym section: the connection, then what Claude has set.
-export function gymLines(doc, now) {
+export function gymLines(doc, now, today = logicalDay(now, 4)) {
   const config = gymConfig(doc);
   const quota = cardioQuotaId(doc, config);
   return [
     ...gymStatusLines(doc, (iso) => momentLabel(iso, now)),
-    `Key lifts: ${config.keyLifts.map(shortLift).join(', ')}`,
+    `Key lifts now: ${keyLiftsNow(doc, today, config).map(shortLift).join(', ')}`,
     quota ? `Cardio minutes count towards "${doc.items[quota].title}"` : 'No Cardio target yet — Claude sets one up with you',
-    ...Object.entries(config.liftTargets).map(([lift, kg]) => `${shortLift(lift)} target: ${kgText(kg)} kg estimated 1RM`),
+    ...Object.entries(config.liftTargets).map(([lift, v]) => {
+      const unit = liftSummary(doc, lift, today, config)?.unit ?? 'kg';
+      return `${shortLift(lift)} target: ${unit === 'kg' ? `${kgText(v)} kg estimated 1RM` : measureText(v, unit)}`;
+    }),
   ];
 }
 
@@ -106,7 +109,7 @@ export function claudePanel(ctx) {
     section('Time off', lines(timeOff(doc).filter((o) => o.end.slice(0, 10) >= today).map(offText), 'None coming up.')),
     section('Priorities, colours and hours', lines(steering, 'Nothing set.')),
     section('Calendar planner', ...plannerSummary(doc, new Date()).lines.map((l) => h('p', { class: 'note' }, l))),
-    section('Gym', lines(gymLines(doc, new Date()), '')),
+    section('Gym', lines(gymLines(doc, new Date(), today), '')),
     section('Check-ins', lines(checkinLines(doc, today), '')),
     followups,
     section('Needs attention', lines(attention(doc, today), 'Nothing right now.')),

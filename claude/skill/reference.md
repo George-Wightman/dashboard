@@ -192,8 +192,10 @@ whose title isn't a shift (or `false` leaves a shift out). Never touch `work:` r
 map's hammers.
 
 ### `gym`
-Training from Hevy: whether it's connected (and any problem), each key lift (estimated 1RM, last top
-set, last PR, pace in kg a week over 8 weeks, its target and roughly when it'll be reached), cardio
+Training from Hevy: whether it's connected (and any problem), each key lift now (the ones set with `keyLifts`
+while he's doing them, else his most trained in the last four weeks: a lift by estimated 1RM, a
+bodyweight exercise by its best set in reps, a hold in seconds; last top set, last PR, pace a week over
+8 weeks, its target and roughly when it'll be reached). Holds (planks, L-sits) are not cardio. Cardio
 against the linked weekly target and by week, the last 14 days' sessions in a line each, and the
 settings. Then the sessions you've planned for the next 7 days — each with its exercises, whether
 the planner has put it into Hevy yet, and whether he trained it — any problem putting them into Hevy,
@@ -397,9 +399,10 @@ day his plans go over 90, if they do. Tell him when they do, and when he'd have 
 ### `gym`
 Hevy's settings on the dashboard (nothing is ever sent to Hevy). `{"op": "gym", "cardioQuota":
 "Cardio"}` — the weekly target (in minutes, by title or id) that workouts' cardio minutes count
-towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 120}}` — an estimated
-1RM target in kg, one lift per op, `null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
-"Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts followed closely (Hevy's exercise names).
+towards; `null` unlinks it. `{"op": "gym", "liftTargets": {"Squat (Barbell)": 120}}` — a target in the
+exercise's own unit (estimated 1RM kg for a lift, reps for "Pull Up", seconds for a hold), one per op,
+`null` removes it. `{"op": "gym", "keyLifts": ["Squat (Barbell)",
+"Bench Press (Barbell)", "Deadlift (Barbell)"]}` — the lifts that lead whenever he's been doing them in the last four weeks (Hevy's exercise names).
 `{"op": "gym", "habit": "Gym"}` — the habit a workout ticks (by id or the start of its title).
 
 ### `session`
