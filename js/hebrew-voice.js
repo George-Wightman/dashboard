@@ -148,7 +148,27 @@ export function duePing(input, sent = []) {
   if (sent.includes(id)) return null;
   const { inside, ended } = busyState(input.busy, now);
   if (inside || (ended && now.getTime() < Date.parse(ended.end) + HOLD_MIN * 60000)) return null;
-  return { id, title: 'Hebrew', body: `${v.line} ${v.aside}`.slice(0, 140), url: HEBREW_APP };
+  // One card to answer from the lock screen (the Hebrew app's service worker shows it, with Show
+  // answer, then Got it or Missed): practice in fifteen seconds, not just a nudge to go and practise.
+  const card = pingCard(input.words ?? [], id);
+  const body = card ? `Say it in Hebrew: “${card.en}” · ${v.line}` : `${v.line} ${v.aside}`;
+  return { id, title: 'Hebrew', body: body.slice(0, 140), url: HEBREW_APP, ...(card ? { card } : {}) };
+}
+
+// A word he is learning to say (weak first, then progressing), the same for a ping on every device,
+// a different one for each ping. { k, he, tr, en }: `k` is the word's key in the Hebrew app.
+export function pingCard(words, pingId) {
+  const usable = (w) => w && typeof w.he === 'string' && w.he && w.tr && w.en && w.en.length <= 60;
+  const weak = words.filter((w) => usable(w) && w.band === 'weak');
+  const pool = weak.length >= 3 ? weak : words.filter((w) => usable(w) && (w.band === 'weak' || w.band === 'progressing'));
+  if (!pool.length) return null;
+  const sorted = [...pool].sort((a, b) => (a.he < b.he ? -1 : a.he > b.he ? 1 : 0));
+  // FNV-1a with a final mix, so ids that differ only at the end (the moment) spread out.
+  let h = 0x811c9dc5;
+  for (const ch of String(pingId)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  h ^= h >>> 16; h = Math.imul(h, 0x45d9f3b) >>> 0; h = (h ^ (h >>> 16)) >>> 0;
+  const w = sorted[h % sorted.length];
+  return { k: w.he, he: w.he, tr: w.tr, en: w.en };
 }
 
 // The input both callers build: his wall clock (the moments are his times, wherever he is; the planner

@@ -44,7 +44,7 @@ export function createHebrewNudges({ UrlFetchApp, Utilities = null, props, log =
     let sent = 0;
     try {
       const push = makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t });
-      const r = push(live, { title: ping.title, body: ping.body, url: ping.url, tag: ping.id });
+      const r = push(live, { title: ping.title, body: ping.body, url: ping.url, tag: ping.id, ...(ping.card ? { card: ping.card } : {}) });
       for (const id of r.gone) {
         const endpoint = live.find((d) => d.id === id)?.endpoint;
         if (!endpoint) continue;

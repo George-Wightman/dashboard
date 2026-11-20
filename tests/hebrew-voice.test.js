@@ -112,3 +112,29 @@ test("the pings' line for Claude's planner read: what went today, or what's wron
   assert.equal(hebrewPingsLine(doc({ day: '2026-11-04', lastRun: 'X', sent: 3, devices: 1, lastError: null })), 'Hebrew pings: 3 sent on 2026-11-04 to 1 device · last checked X');
   assert.equal(hebrewPingsLine(doc({ day: '2026-11-04', lastRun: 'X', sent: 0, devices: 1, lastError: 'Boom' })), 'Hebrew pings: Boom');
 });
+
+test('a ping carries one card: a weak word first, the same for that ping everywhere, a different one for the next', async () => {
+  const { pingCard } = await import('../js/hebrew-voice.js');
+  const words = [
+    { he: 'עייף', tr: 'ayef', en: 'tired', band: 'weak' },
+    { he: 'בית', tr: 'bayit', en: 'house', band: 'weak' },
+    { he: 'מים', tr: 'mayim', en: 'water', band: 'weak' },
+    { he: 'שלום', tr: 'shalom', en: 'hello', band: 'strong' },
+    { he: 'גדול', tr: 'gadol', en: 'big', band: 'progressing' },
+  ];
+  const p = duePing(input({ now: at(WED, '09:31'), words }), []);
+  assert.ok(['עייף', 'בית', 'מים'].includes(p.card.he), 'weak first when there are three or more');
+  assert.deepEqual(Object.keys(p.card), ['k', 'he', 'tr', 'en']);
+  assert.match(p.body, new RegExp(`^Say it in Hebrew: “${p.card.en}” · `));
+  assert.ok(p.body.length <= 140);
+  assert.deepEqual(pingCard(words, `heb:${WED}:morning`), p.card, 'the same card for the same ping');
+  const cards = new Set(['morning', 'afternoon', 'evening', 'bit'].map((m) => pingCard(words, `heb:${WED}:${m}`).he));
+  assert.ok(cards.size >= 2, 'not the same word all day');
+  // Fewer than three weak words: progressing ones join; strong ones never come.
+  const few = pingCard(words.filter((w) => w.he !== 'בית' && w.he !== 'מים'), 'x');
+  assert.ok(['עייף', 'גדול'].includes(few.he));
+  // Nothing he's learning: no card, and the ping reads as it always did.
+  const plain = duePing(input({ now: at(WED, '09:31'), words: [{ he: 'שלום', tr: 'shalom', en: 'hello', band: 'strong' }] }), []);
+  assert.equal(plain.card, undefined);
+  assert.doesNotMatch(plain.body, /Say it in Hebrew/);
+});
