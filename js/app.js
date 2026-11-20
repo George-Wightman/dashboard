@@ -45,8 +45,18 @@ import { MARKET_PATH, MARKET_KEY, DESK_PATH, DESK_KEY, validMarket, validDesk } 
 import { LETTERS_PATH, LETTERS_KEY, validLetters } from './letter.js';
 import { openLetter } from './ui/letter.js';
 import { createUsage, deviceOf } from './usage.js';
+import { createDocStore, idbDocBackend, CHANNEL } from './docstore.js';
 
-const store = createStore({ storage: localStorage });
+// The document lives in IndexedDB (js/docstore.js), not localStorage, whose small allowance is shared
+// with the Hebrew app at this address. Read before anything else starts: the store needs it whole.
+// Where IndexedDB can't be used it stays in localStorage, as before.
+const docStorage = createDocStore({
+  backend: idbDocBackend(), legacy: localStorage,
+  channel: typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANNEL) : null,
+  onError: (message) => { try { usage.error(message, 'docstore'); } catch { /* only a measurement */ } },
+});
+await docStorage.ready();
+const store = createStore({ storage: docStorage });
 const ui = {
   noteFor: null, expandedGoals: new Set(), historyDay: null, editorDirty: false, closeEditor: null,
   // A past day Today's column shows, gone back to with ‹ (js/ui/timeline.js); null for today.
@@ -368,7 +378,7 @@ async function runSync() {
     const started = new Date().toISOString();
     const t0 = performance.now();
     const result = await syncOnce({ store, client: clientFor(token, repo) });
-    usage.synced({ ok: result.ok, ms: performance.now() - t0, kb: (localStorage.getItem(DATA_KEY)?.length ?? 0) / 1024, error: result.error ?? null });
+    usage.synced({ ok: result.ok, ms: performance.now() - t0, kb: (docStorage.getItem(DATA_KEY)?.length ?? 0) / 1024, error: result.error ?? null });
     Object.assign(sync, result.ok
       ? { state: 'ok', at: new Date(), error: null }
       : { state: 'failing', error: result.error });
@@ -590,10 +600,10 @@ function absorbPending() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { usage.hidden(); absorbPending(); scheduler.flush(); }
+  if (document.hidden) { usage.hidden(); absorbPending(); scheduler.flush(); docStorage.guard(); }
   else wake();
 });
-window.addEventListener('pagehide', () => { usage.hidden(); absorbPending(); scheduler.flush(); });
+window.addEventListener('pagehide', () => { usage.hidden(); absorbPending(); scheduler.flush(); docStorage.guard(); });
 // Every tap on a control, by where it is and what it is (js/usage.js's tapName); and anything that breaks.
 document.addEventListener('click', (e) => { try { usage.tap(e.target); } catch { /* only a measurement */ } }, true);
 window.addEventListener('error', (e) => { try { usage.error(e.message, e.filename, e.lineno); } catch { /* only a measurement */ } });
@@ -612,11 +622,17 @@ window.addEventListener('storage', (e) => {
     return;
   }
   if (e.key !== DATA_KEY || !e.newValue) return;
+  absorbOther(e.newValue);
+});
+// Another window's save: through localStorage's event where the document is still kept there, and
+// through the document store's channel where it is in IndexedDB.
+function absorbOther(raw) {
   // Same hold-back as the sync scheduler: absorbing another window's save must not wipe
   // something half-typed either, so queue it and let it through once a sync is allowed to run.
-  if (!canRun()) { pendingStored = mergeStoredEvents(pendingStored, e.newValue); scheduler.changed(); return; }
-  store.absorbStored(e.newValue);
-});
+  if (!canRun()) { pendingStored = mergeStoredEvents(pendingStored, raw); scheduler.changed(); return; }
+  store.absorbStored(raw);
+}
+docStorage.onRemote((key, raw) => { if (key === DATA_KEY) absorbOther(raw); });
 // Once a minute: roll over to a new day and lock the day's list when it's time. The update check
 // only actually asks the site every ten minutes.
 setInterval(() => {
