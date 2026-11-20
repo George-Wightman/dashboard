@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'd43fe8db';
+var PLANNER_BUILD = 'f7148d5d';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -747,11 +747,42 @@ function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
 // usage weeks (js/usage.js) more than USAGE_DROP_WEEKS behind the newest. Measured from the records
 // themselves, never a clock, so every device, the planner and Claude's tool drop exactly the same
 // ones in every merge and a dropped record can't come back from a copy that still has it.
-const CHANGE_DROP_DAYS = 45;
+//
+// THE FILE WAS 1.75 MB ON 20 NOV 2026, and over 1 MB every read takes two requests. 31% was this
+// change log (414 changes back 44 days, 271 of them already without their snapshots), and a further
+// 150 KB was per-field sync stamps on records no one had touched for a month. So changes now leave
+// after 21 days (their snapshots still go at 14, so nothing that can be undone is lost), and:
+//
+// A RECORD UNTOUCHED FOR SYNC_COLD_DAYS LOSES ITS PER-FIELD STAMPS. Without them the merge counts
+// every field as edited at the record's `updated` (js/record.js, metadata), which for a record no one
+// has changed in a month says the same thing: two copies of it agree, and a newer edit on another
+// device still wins the fields it changed. Measured from the newest `updated` in the document, like
+// the rest, so every copy strips the same ones. The old coach's talks keep theirs (their messages
+// carry their own versions).
+const CHANGE_DROP_DAYS = 21;
 const USAGE_DROP_WEEKS = 16;
+const SYNC_COLD_DAYS = 30;
 const DAY_MS = 86400000;
 
+function coldStamps(doc) {
+  let newest = '';
+  for (const map of MAPS) for (const r of Object.values(doc[map] ?? {})) if (typeof r?.updated === 'string' && r.updated > newest) newest = r.updated;
+  const t = Date.parse(newest);
+  if (!Number.isFinite(t)) return;
+  const cutoff = new Date(t - SYNC_COLD_DAYS * DAY_MS).toISOString();
+  for (const map of MAPS) {
+    const recs = doc[map];
+    if (!recs) continue;
+    for (const [id, r] of Object.entries(recs)) {
+      if (!r?._sync || typeof r.updated !== 'string' || !(r.updated < cutoff) || r.kind === 'talk' || r._sync.messages) continue;
+      const { _sync, ...rest } = r;
+      recs[id] = rest;
+    }
+  }
+}
+
 function expire(doc) {
+  coldStamps(doc);
   const changes = doc.changes ?? {};
   let newest = '';
   for (const c of Object.values(changes)) if (typeof c?.at === 'string' && c.at > newest) newest = c.at;
@@ -801,7 +832,7 @@ function mergeDocs(a, b) {
 function sameDoc(a, b) {
   return stableStringify(mergeDocs(a, null)) === stableStringify(mergeDocs(b, null));
 }
-return { pickWinner, CHANGE_DROP_DAYS, USAGE_DROP_WEEKS, mergeDocs, sameDoc };
+return { pickWinner, CHANGE_DROP_DAYS, USAGE_DROP_WEEKS, SYNC_COLD_DAYS, mergeDocs, sameDoc };
 })();
 
 // ---- js/flags.js

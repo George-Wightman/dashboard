@@ -285,10 +285,10 @@ test('a document from before the journal merges cleanly with one that has it', (
 
 test('old changes and old usage weeks leave in every merge, measured from the newest', async () => {
   const { CHANGE_DROP_DAYS, USAGE_DROP_WEEKS } = await import('../js/merge.js');
-  assert.equal(CHANGE_DROP_DAYS, 45);
+  assert.equal(CHANGE_DROP_DAYS, 21);
   assert.equal(USAGE_DROP_WEEKS, 16);
   const change = (id, at) => ({ id, at, updated: at, created: at.slice(0, 10), status: 'active', summary: id });
-  const a = { schema: 1, changes: { old: change('old', '2026-09-01T10:00:00.000Z'), mid: change('mid', '2026-10-20T10:00:00.000Z') },
+  const a = { schema: 1, changes: { old: change('old', '2026-09-01T10:00:00.000Z'), mid: change('mid', '2026-10-30T10:00:00.000Z') },
     calendar: { 'usage:lap1:2026-06-01': { id: 'usage:lap1:2026-06-01', updated: '2026-06-02T00:00:00.000Z', days: {} }, status: { id: 'status', updated: '2026-06-02T00:00:00.000Z' } } };
   const b = { schema: 1, changes: { now: change('now', '2026-11-11T10:00:00.000Z') },
     calendar: { 'usage:lap1:2026-11-09': { id: 'usage:lap1:2026-11-09', updated: '2026-11-11T00:00:00.000Z', days: {} } } };
@@ -298,7 +298,37 @@ test('old changes and old usage weeks leave in every merge, measured from the ne
   // A copy that still has the old ones can't bring them back, in either order.
   assert.deepEqual(Object.keys(mergeDocs(merged, a).changes).sort(), ['mid', 'now']);
   assert.deepEqual(Object.keys(mergeDocs(a, merged).changes).sort(), ['mid', 'now']);
-  // On its own, a document measures from its own newest change (old is 49 days behind mid).
+  // On its own, a document measures from its own newest change (old is 59 days behind mid).
   assert.deepEqual(Object.keys(mergeDocs(a, null).changes).sort(), ['mid']);
   assert.deepEqual(Object.keys(mergeDocs({ schema: 1, changes: { old: a.changes.old } }, null).changes), ['old']);
+});
+
+test('a record untouched for a month loses its per-field stamps, every copy the same, and still merges right', async () => {
+  const { SYNC_COLD_DAYS } = await import('../js/merge.js');
+  const { reviseRecord } = await import('../js/record.js');
+  assert.equal(SYNC_COLD_DAYS, 30);
+  const base = { id: 't1', type: 'task', title: 'Shelf', status: 'active', created: '2026-09-01', archivedOn: null, source: 'me' };
+  // Edited twice in September: per-field stamps.
+  const sept = reviseRecord(reviseRecord(null, base, '2026-09-01T10:00:00.000Z'), { ...base, title: 'Fix the shelf' }, '2026-09-02T10:00:00.000Z');
+  assert.ok(sept._sync);
+  // Stamps start at a record's first edit.
+  const fresh = reviseRecord(reviseRecord(null, { ...base, id: 't2', title: 'New' }, '2026-11-19T10:00:00.000Z'), { ...base, id: 't2', title: 'Newer' }, '2026-11-20T10:00:00.000Z');
+  const talk = { id: 'j1', kind: 'talk', status: 'active', created: '2026-09-01', updated: '2026-09-01T10:00:00.000Z', messages: [], _sync: { version: '2026-09-01T10:00:00.000Z', fields: {}, messages: {} } };
+  const doc = { schema: 1, items: { t1: sept, t2: fresh }, journal: { j1: talk } };
+  const out = mergeDocs(doc, null);
+  assert.equal(out.items.t1._sync, undefined, 'cold: stamps gone');
+  assert.equal(out.items.t1.title, 'Fix the shelf', 'content untouched');
+  assert.ok(out.items.t2._sync, 'warm: kept');
+  assert.ok(out.journal.j1._sync, "a talk keeps its messages' versions");
+  // A copy that still has the stamps: the same record either way, in either order, and settled.
+  assert.deepEqual(mergeDocs(out, doc).items.t1, out.items.t1);
+  assert.deepEqual(mergeDocs(doc, out).items.t1, out.items.t1);
+  assert.deepEqual(mergeDocs(mergeDocs(out, doc), doc), mergeDocs(out, doc));
+  // A newer edit on another device still wins the field it changed, and the record is warm again.
+  const edited = reviseRecord(sept, { ...sept, title: 'Shelf, done properly' }, '2026-11-19T10:00:00.000Z');
+  const merged = mergeDocs(out, { schema: 1, items: { t1: edited } });
+  assert.equal(merged.items.t1.title, 'Shelf, done properly');
+  assert.equal(merged.items.t1.status, 'active');
+  assert.ok(merged.items.t1._sync);
+  assert.deepEqual(mergeDocs({ schema: 1, items: { t1: edited } }, out).items.t1, merged.items.t1, 'in either order');
 });
