@@ -32,13 +32,25 @@ test('every widget has content, and opens its tile big in the dashboard (Hebrew:
   assert.equal(g.tiles.week.title, 'This week');
 });
 
-test('the day widget is a short calendar: what is still to come, the next marked, the rest counted', () => {
+test('the day widget is a short calendar: what is still to come, the next marked, the ones with no time each on a row', () => {
   const d = doc();
   const morning = glanceOf(d, TODAY, new Date(2026, 9, 21, 8, 0)).tiles.day;
-  assert.deepEqual(morning.lines, ['▸ 08:45  Find a new laptop battery', '10:00  Signify (until 12:00)', '15:30  Email the landlord', '+ 1 any time today']);
+  assert.deepEqual(morning.lines, ['▸ 08:45  Find a new laptop battery', '10:00  Signify (until 12:00)', '15:30  Email the landlord', '○ Call the bank']);
   assert.equal(morning.title, 'Wednesday 21');
   const afternoon = glanceOf(d, TODAY, new Date(2026, 9, 21, 13, 0)).tiles.day;
-  assert.deepEqual(afternoon.lines, ['0 of 1 earlier done', '▸ 15:30  Email the landlord', '+ 1 any time today']);
+  assert.deepEqual(afternoon.lines, ['0 of 1 earlier done', '▸ 15:30  Email the landlord', '○ Call the bank']);
+});
+
+test('each Today row says which item a tap ticks: not a shift, not one done, not a count', () => {
+  const d = doc();
+  const morning = glanceOf(d, TODAY, new Date(2026, 9, 21, 8, 0)).tiles.day;
+  assert.deepEqual(morning.ticks, ['battery', null, 'nca', 'james']);
+  d.items.form = { id: 'form', type: 'task', status: 'active', title: 'Interview', date: TODAY, order: 4, details: { outcomeForm: [{ q: 'How did it go?' }] } };
+  for (let i = 0; i < 6; i++) d.items[`x${i}`] = { id: `x${i}`, type: 'task', status: 'active', title: `Extra ${i}`, date: TODAY, order: 10 + i };
+  const full = glanceOf(d, TODAY, new Date(2026, 9, 21, 8, 0)).tiles.day;
+  assert.equal(full.lines.at(-1), '+ 8 any time today', 'too many to list: counted, as before');
+  assert.equal(full.ticks.at(-1), null);
+  assert.equal(full.lines.length, full.ticks.length);
 });
 
 test('fuel shows protein today and the meals', () => {

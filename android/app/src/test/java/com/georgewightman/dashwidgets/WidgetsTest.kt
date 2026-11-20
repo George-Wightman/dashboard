@@ -26,7 +26,7 @@ import java.io.File
 // What the planner sends (js/glance.js), in its shape, with a made-up day: this repo is public, so
 // never paste a real answer in here.
 private const val SAMPLE = """{"at":"2026-10-21T06:53:24.245Z","day":"2026-10-21","tiles":{
-"day":{"title":"Wednesday 21","number":"1/6","caption":"done today","lines":["▸ 09:00  Water the plants","09:30  Renew the library card","10:00  Shift (until 12:00)","12:15  Read about bike repairs","12:30  Shift (until 15:00)","13:30  Gym (until 15:15)","16:30  Hebrew practice","+ 3 more"],"open":"https://george-wightman.github.io/dashboard/"},
+"day":{"title":"Wednesday 21","number":"1/6","caption":"done today","lines":["▸ 09:00  Water the plants","09:30  Renew the library card","10:00  Shift (until 12:00)","12:15  Read about bike repairs","12:30  Shift (until 15:00)","13:30  Gym (until 15:15)","16:30  Hebrew practice","+ 3 more"],"ticks":["plants","library",null,"bike",null,null,"hebrew-habit",null],"open":"https://george-wightman.github.io/dashboard/"},
 "fuel":{"title":"Fuel","number":"57 g","caption":"of 150 g protein today","lines":["Breakfast: Porridge and eggs · 57 g","This week ≈2,500 kcal a day"],"open":"https://george-wightman.github.io/dashboard/?big=fuel"},
 "hebrew":{"title":"Hebrew","number":"0:45","caption":"of 7 h this week","lines":["12 of 40 reps spoken","3 of 15 words live","○○●····  Mon–Sun"],"open":"https://george-wightman.github.io/dashboard/?big=hebrew"},
 "body":{"title":"Body","number":"30","caption":"of 90 cardio min this week","lines":["Gym 1 of 5 this week","Back this morning: fine"],"open":"https://george-wightman.github.io/dashboard/?big=body"},
@@ -144,6 +144,45 @@ class WidgetsTest {
             assertEquals(if (level == "gold") View.VISIBLE else View.GONE, view.findViewById<View>(R.id.heb_gold_bar).visibility)
         }
         assertTrue(Glance.parse(hebrewSample("none", false, CARDS.getValue("word"))).getValue("hebrew").voice!!.card!!.nextAt > 0)
+    }
+
+    // Widgets that do things (planner/glance.js, applyGlanceAct): Today's rows each with a ○ that ticks
+    // it, where the planner says the row can be ticked; the Hebrew widget's +15.
+    @Test fun todaysRowsCanBeTickedFromTheirCircle() {
+        val day = Glance.parse(SAMPLE).getValue("day")
+        assertEquals(listOf("plants", "library", null, "bike", null, null, "hebrew-habit", null), day.ticks)
+        val view = Widgets.views(ctx, "day", day, 1_761_029_604_000L, null, connected = true).apply(ctx, FrameLayout(ctx))
+        assertEquals(View.GONE, view.findViewById<View>(R.id.lines).visibility)
+        assertEquals(View.VISIBLE, view.findViewById<View>(R.id.rows).visibility)
+        assertEquals("▸ 09:00  Water the plants", view.findViewById<TextView>(R.id.row0_text).text.toString())
+        assertEquals("○", view.findViewById<TextView>(R.id.row0_tick).text.toString())
+        assertEquals(View.INVISIBLE, view.findViewById<View>(R.id.row2_tick).visibility)
+        assertEquals("+ 3 more", view.findViewById<TextView>(R.id.row7_text).text.toString())
+        shoot(view, 340 * 3, 260 * 3, File(File("build/widget-shots").apply { mkdirs() }, "day-rows.png"))
+        // Waiting on the planner: "…" on the one tapped.
+        Glance.setPending(ctx, "bike")
+        val waiting = Widgets.views(ctx, "day", day, 1_761_029_604_000L, null, connected = true).apply(ctx, FrameLayout(ctx))
+        assertEquals("…", waiting.findViewById<TextView>(R.id.row3_tick).text.toString())
+        Glance.setPending(ctx, null)
+    }
+
+    @Test fun withoutTicksTodayIsTheLinesAsBefore() {
+        val day = Glance.parse(SAMPLE.replace(""""ticks":["plants","library",null,"bike",null,null,"hebrew-habit",null],""", "")).getValue("day")
+        val view = Widgets.views(ctx, "day", day, 1_761_029_604_000L, null, connected = true).apply(ctx, FrameLayout(ctx))
+        assertEquals(View.VISIBLE, view.findViewById<View>(R.id.lines).visibility)
+        assertEquals(View.GONE, view.findViewById<View>(R.id.rows).visibility)
+    }
+
+    @Test fun anythingButAnItemIdIsDropped() {
+        val day = Glance.parse("""{"tiles":{"day":{"title":"Today","lines":["a","b","c"],"ticks":["ok-1","a b/../x",null]}}}""").getValue("day")
+        assertEquals(listOf("ok-1", null, null), day.ticks)
+    }
+
+    @Test fun theHebrewWidgetAddsFifteenMinutes() {
+        val tile = Glance.parse(hebrewSample("none", false, CARDS.getValue("cheer"))).getValue("hebrew")
+        val view = Widgets.views(ctx, "hebrew", tile, 1_761_029_604_000L, null, connected = true).apply(ctx, FrameLayout(ctx))
+        assertEquals("+15", view.findViewById<TextView>(R.id.heb_add).text.toString())
+        assertEquals(View.VISIBLE, view.findViewById<View>(R.id.heb_add).visibility)
     }
 
     @Test fun beforeConnectingItSaysHow() {

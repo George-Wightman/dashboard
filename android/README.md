@@ -15,8 +15,12 @@ It's laid out to fit a tall widget (2 × 4) as well as a wide one.
 
 - The planner's web app (the same address as Claude's relay) answers `{"glance": key}` with a summary:
   for each widget a title, a number and caption, and a few lines (`js/glance.js`, `planner/glance.js`).
-  It reads the dashboard and never writes it. What the widgets say is decided there, so changing the
-  wording needs no new app.
+  What the widgets say is decided there, so changing the wording needs no new app.
+- Two things a widget can change, and no others (`planner/glance.js`, `applyGlanceAct`): the ○ at the
+  end of a row on **Today** ticks that task or habit for today, and **+15** on **Hebrew** adds fifteen
+  minutes of Hebrew done away from the app. The app sends `{"glance": key, "act": …}`; the planner
+  writes it to the dashboard and answers with the tiles as they now are, and the widget shows "…" until
+  then and a line saying what happened. A tap anywhere else on a row still opens the dashboard.
 - The app only lays that out (`app/src/main/java/.../Widgets.kt`), keeps the last answer for when
   there's no signal, and asks again at most every five minutes (Android wakes widgets every 30).
   A fetch Android starts (that half-hourly wake, the Hebrew card's alarm) goes through WorkManager,

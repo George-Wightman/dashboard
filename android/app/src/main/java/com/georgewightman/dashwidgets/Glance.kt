@@ -9,7 +9,9 @@ import java.net.URL
 // What the widgets show, as the planner's web app sends it (js/glance.js): for each tile a title, a
 // big number with its caption, a few lines, and the dashboard link a tap opens. The app only lays
 // these out, so what a widget says changes on the dashboard's side without a new app.
-data class Tile(val title: String, val number: String, val caption: String, val lines: List<String>, val open: String, val voice: Voice? = null)
+// `ticks` runs beside `lines` on the Today tile: the item a tap on that row's ○ ticks, or null.
+data class Tile(val title: String, val number: String, val caption: String, val lines: List<String>, val open: String, val voice: Voice? = null,
+    val ticks: List<String?> = emptyList())
 
 // The Hebrew widget's words (js/hebrew-voice.js): a small label, a Hebrew word, the line and its
 // aside, how the day stands (none, bit, done, gold), whether it's the night look, and the week's seven
@@ -31,6 +33,9 @@ object Glance {
     // Not more often than this, however many widgets ask at once.
     private const val FRESH_MS = 5 * 60 * 1000L
     private const val PREFS = "glance"
+    private val ITEM_ID = Regex("^[A-Za-z0-9_:.-]{1,100}$")
+    // How long a tap shows "…" at most, if the answer never comes.
+    private const val PENDING_MS = 60 * 1000L
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -42,7 +47,12 @@ object Glance {
         for (id in TILES) {
             val t = tiles.optJSONObject(id) ?: continue
             val lines = t.optJSONArray("lines")
+            val ticks = t.optJSONArray("ticks")
             out[id] = Tile(
+                // An item's id, or null: anything else the planner never sends is dropped.
+                ticks = if (ticks == null) emptyList() else (0 until ticks.length()).map { i ->
+                    if (ticks.isNull(i)) null else ticks.optString(i).takeIf { ITEM_ID.matches(it) }
+                },
                 title = t.optString("title"),
                 number = t.optString("number"),
                 caption = t.optString("caption"),
@@ -113,6 +123,40 @@ object Glance {
             p.edit().putString("error", e.message ?: "Couldn't reach the planner").apply()
             false
         }
+    }
+
+    // A widget doing something (planner/glance.js, applyGlanceAct): tick one of today's items, or add
+    // Hebrew minutes. The planner answers with the tiles as they now are, kept like a fetch, and a
+    // line saying what happened, which is returned (or what went wrong). Blocking: never on the main thread.
+    @Synchronized
+    fun act(ctx: Context, act: JSONObject): String {
+        val p = prefs(ctx)
+        val url = p.getString("url", null) ?: return "Not connected"
+        val key = p.getString("key", null) ?: return "Not connected"
+        return try {
+            val json = post(url, JSONObject().put("glance", key).put("act", act).toString())
+            val said = JSONObject(json).optJSONObject("acted")?.optString("text")
+            try {
+                parse(json)
+                p.edit().putString("json", json).putLong("fetchedAt", System.currentTimeMillis()).putLong("triedAt", System.currentTimeMillis()).remove("error").apply()
+            } catch (e: Exception) { /* the tiles didn't come; the line still says what happened */ }
+            said?.ifBlank { null } ?: "Done"
+        } catch (e: Exception) {
+            e.message ?: "Couldn't reach the planner"
+        }
+    }
+
+    // What a tap is waiting on (an item's id, or "hebrew"), shown as "…" until the planner answers.
+    fun pending(ctx: Context): String? {
+        val p = prefs(ctx)
+        val at = p.getLong("pendingAt", 0L)
+        return if (System.currentTimeMillis() - at < PENDING_MS) p.getString("pending", null) else null
+    }
+
+    fun setPending(ctx: Context, what: String?) {
+        val e = prefs(ctx).edit()
+        if (what == null) e.remove("pending").remove("pendingAt") else e.putString("pending", what).putLong("pendingAt", System.currentTimeMillis())
+        e.apply()
     }
 
     // Apps Script answers a POST with a redirect to its reply, to be fetched with a GET.

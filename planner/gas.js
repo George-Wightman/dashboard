@@ -34,7 +34,7 @@ import { createStocks } from './stocks.js';
 import { createLetterPush } from './letter.js';
 import { gasCrypto } from './webpush.js';
 import { handleRelay } from './relay.js';
-import { handleGlance } from './glance.js';
+import { handleGlance, glanceKeyProblem, applyGlanceAct } from './glance.js';
 import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
 import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } from './hebrew-progress.js';
 import { createHebrewNudges } from './hebrew-nudges.js';
@@ -663,14 +663,63 @@ export function createPlanner({
       // The phone's widgets ask with { glance: key } (planner/glance.js); everything else is the relay.
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
-      text = req && typeof req === 'object' && 'glance' in req
-        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) })
-        : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+      const glance = () => handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) });
+      if (req && typeof req === 'object' && 'glance' in req && req.act) {
+        // A widget doing something (planner/glance.js, applyGlanceAct): the change, then the tiles as
+        // they now are, with a line saying what happened.
+        const problem = glanceKeyProblem({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+        const acted = problem ? { ok: false, text: problem } : glanceAct(req.act);
+        let out = {};
+        try { out = JSON.parse(glance()); } catch { out = {}; }
+        text = JSON.stringify({ ...out, acted });
+      } else {
+        text = req && typeof req === 'object' && 'glance' in req
+          ? glance()
+          : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+      }
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });
     }
     if (!ContentService) return text;
     return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // A widget's action (planner/glance.js, applyGlanceAct), written straight through UrlFetchApp as the
+  // ✓ links are (see tick below): read data.json, apply, write with its sha, again on a clash.
+  // { ok, text }; never throws.
+  function glanceAct(act) {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) return { ok: false, text: 'The planner is busy: try again in a minute.' };
+    try {
+      const repo = get('SYNC_REPO');
+      const url = `https://api.github.com/repos/${repo}/contents/data.json`;
+      const headers = { Authorization: `Bearer ${get('GITHUB_TOKEN')}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+      const call = (method, to, body) => {
+        const res = UrlFetchApp.fetch(to, { method, headers, muteHttpExceptions: true, ...(body ? { payload: JSON.stringify(body), contentType: 'application/json' } : {}) });
+        return { status: res.getResponseCode(), json: () => JSON.parse(res.getContentText()) };
+      };
+      const t = now();
+      const today = logicalDay(t, dayStartHour());
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const got = call('get', url);
+        if (got.status !== 200) return { ok: false, text: `Couldn't read the dashboard (GitHub ${got.status}).` };
+        const file = got.json();
+        const content = file.content && file.encoding !== 'none' ? file.content : call('get', `https://api.github.com/repos/${repo}/git/blobs/${file.sha}`).json().content;
+        const store = createStore({ storage: new MemoryStorage({ [DATA_KEY]: decodeBase64(content), [SETTINGS_KEY]: JSON.stringify({ dayStartHour: dayStartHour() }) }), now });
+        let changed = false;
+        store.subscribe((reason) => { if (reason === 'local') changed = true; });
+        const res = applyGlanceAct(store, act, { today, now: t });
+        if (!changed) return res;
+        const put = call('put', url, { message: 'sync', content: encodeBase64(JSON.stringify(store.doc())), sha: file.sha });
+        if (put.status === 200 || put.status === 201) return res;
+        if (put.status !== 409 && put.status !== 422) return { ok: false, text: `Couldn't save it (GitHub ${put.status}).` };
+      }
+      return { ok: false, text: 'Another device kept writing at the same moment: try again.' };
+    } catch (err) {
+      return { ok: false, text: `Couldn't do it: ${clean(err?.message ?? err)}` };
+    } finally {
+      lock.releaseLock();
+    }
   }
 
   // The web app's doGet: a tap on a block's ✓ link. Apps Script can't wait for a promise in doGet (2 Nov

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '72bef214';
+var PLANNER_BUILD = 'd43fe8db';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -10435,16 +10435,20 @@ const active = (doc, id) => (doc.items?.[id]?.status === 'active' ? doc.items[id
 const open = (tile) => (tile === 'day' ? SITE : `${SITE}?big=${tile}`);
 const kcal = (n) => Math.round(n).toLocaleString('en-GB');
 
-// The day as a short calendar: what has a time today in order (shifts too), then how many have none.
+// What a widget row can tick (planner/ticks.js's rule): a task or habit with no form to fill in.
+const canTick = (item) => (item?.type === 'task' || item?.type === 'habit') && !item.details?.outcomeForm?.length;
+
+// The day as a short calendar: what has a time today in order (shifts too), then what has none.
+// `ticks` runs beside `lines`: the item a tap on that row ticks (planner/glance.js, glanceAct), or null.
 function day(doc, today, now) {
   const rows = todayRows(doc, today).filter((r) => !r.suggested && !r.blocked && r.kind !== 'quota');
   const slots = todaySlots(doc, today);
   const timed = [];
-  let anytime = 0;
+  const anytime = [];
   for (const r of rows) {
     const s = movedSlot(r.item, slots.get(r.item.id), today);
-    if (s) timed.push({ start: s.start, end: s.end, text: r.item.title, done: r.done });
-    else if (!r.done) anytime++;
+    if (s) timed.push({ start: s.start, end: s.end, text: r.item.title, done: r.done, id: canTick(r.item) ? r.item.id : null });
+    else if (!r.done) anytime.push(r.item);
   }
   for (const c of scheduleView(doc, today).commitments) {
     if (!c.allDay && localDate(c.start) === today) timed.push({ start: c.start, end: c.end, text: c.title, busy: true });
@@ -10454,14 +10458,23 @@ function day(doc, today, now) {
   const over = timed.filter((e) => Date.parse(e.end ?? e.start) <= +now);
   const ahead = timed.filter((e) => !over.includes(e));
   const next = ahead.find((e) => !e.done);
-  const lines = ahead.map((e) => `${e === next ? '▸ ' : ''}${clockLabel(e.start)}  ${e.done ? '✓ ' : ''}${e.text}${e.busy ? ' (until ' + clockLabel(e.end) + ')' : ''}`);
+  const lines = [];
+  const ticks = [];
+  const row = (text, id = null) => { lines.push(text); ticks.push(id); };
   const overTasks = over.filter((e) => !e.busy);
-  if (overTasks.length) lines.unshift(`${overTasks.filter((e) => e.done).length} of ${overTasks.length} earlier done`);
-  if (anytime) lines.push(`+ ${anytime} any time today`);
+  if (overTasks.length) row(`${overTasks.filter((e) => e.done).length} of ${overTasks.length} earlier done`);
+  for (const e of ahead) {
+    row(`${e === next ? '▸ ' : ''}${clockLabel(e.start)}  ${e.done ? '✓ ' : ''}${e.text}${e.busy ? ' (until ' + clockLabel(e.end) + ')' : ''}`,
+      e.busy || e.done ? null : e.id);
+  }
+  // The ones with no time: each on its own row while they fit, so each can be ticked; else a count.
+  if (anytime.length && lines.length + anytime.length <= LINES) for (const item of anytime) row(`○ ${item.title}`, canTick(item) ? item.id : null);
+  else if (anytime.length) row(`+ ${anytime.length} any time today`);
+  if (!lines.length) row('Nothing on today.');
   const { done, total } = dayCompletion(doc, today);
   return {
     title: longDate(today).replace(/ \w+$/, ''), number: `${done}/${total}`, caption: 'done today',
-    lines: lines.length ? lines : ['Nothing on today.'], open: open('day'),
+    lines, ticks, open: open('day'),
   };
 }
 
@@ -10667,71 +10680,6 @@ function ensureDayPlace(store, day, timeZone) {
 return { MAPS_KEY, safeArt, safePaint, validMap, loadCachedMaps, refreshMaps, ensureDayPlace };
 })();
 
-// ---- planner/glance.js
-const __planner_glance = (() => {
-// The widgets' way in (android/, js/glance.js): the phone asks the planner's web app for a summary of
-// the day and the tiles, and gets only that — no way to read the data itself, and none to change it.
-// Synchronous, like the relay (planner/relay.js): a web app's doPost can't wait on a promise, so the
-// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp). Its own key,
-// checked against glance.json in the sync repo, so the widgets can be switched off without the relay.
-
-const { glanceOf } = __js_glance;
-const { logicalDay } = __js_dates;
-const { isDoc } = __js_doc;
-const { decodeBase64 } = __js_sync;
-const { API } = __planner_relay;
-const { validMap } = __js_map_files;
-
-const GLANCE_FILE = 'glance.json';
-
-// The map's private files (js/map/files.js), for the Map widget: none when there are none, or any fails.
-function readMaps(request, repo, headers) {
-  const raw = (path) => {
-    const res = request(`${API}/repos/${repo}/contents/${path}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
-    if (res.status !== 200) return null;
-    try { return JSON.parse(res.text); } catch { return null; }
-  };
-  const index = raw('map/index.json');
-  const ids = Array.isArray(index?.cities) ? index.cities.filter((id) => /^[a-z0-9-]{1,40}$/.test(id)) : [];
-  return ids.map((id) => raw(`map/${id}.json`)).filter((m) => validMap(m));
-}
-
-function sameText(a, b) {
-  const x = String(a);
-  const y = String(b);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x.charCodeAt(i) || 0) ^ (y.charCodeAt(i) || 0);
-  return diff === 0;
-}
-
-// `req` is the request already read as JSON ({ glance: key }). One reply out, a JSON string.
-// `hebrew(today)` reads the Hebrew app's own progress (planner/hebrew-progress.js); without it, or when
-// it fails, the Hebrew widget goes by the dashboard's own minutes.
-function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4, hebrew = null }) {
-  const reply = (obj) => JSON.stringify(obj);
-  if (!repo || !token) return reply({ error: 'The planner has no GITHUB_TOKEN or SYNC_REPO' });
-  if (typeof req?.glance !== 'string' || req.glance.length < 32) return reply({ error: 'The widget key is missing' });
-  const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
-  const stored = request(`${API}/repos/${repo}/contents/${GLANCE_FILE}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github+json' } });
-  if (stored.status === 404) return reply({ error: 'The widgets are switched off: there is no glance.json in the sync repo' });
-  if (stored.status !== 200) return reply({ error: `The widgets couldn't read glance.json (GitHub ${stored.status})` });
-  let hash = '';
-  try { hash = String(JSON.parse(decodeBase64(String(JSON.parse(stored.text).content ?? ''))).sha256 ?? ''); } catch { /* refused below */ }
-  if (!/^[0-9a-f]{64}$/.test(hash) || !sameText(sha256Hex(req.glance), hash)) return reply({ error: 'The planner refused the widget key' });
-  // The raw file, whatever its size (the contents API stops giving it inline past 1 MB).
-  const data = request(`${API}/repos/${repo}/contents/data.json`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
-  if (data.status !== 200) return reply({ error: `The widgets couldn't read the dashboard (GitHub ${data.status})` });
-  let doc;
-  try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
-  if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
-  const today = logicalDay(now, dayStartHour);
-  let progress = null;
-  try { progress = hebrew?.(today) ?? null; } catch { progress = null; }
-  return reply(glanceOf(doc, today, now, readMaps(request, repo, headers), progress?.ok ? progress : null));
-}
-return { GLANCE_FILE, handleGlance };
-})();
-
 // ---- planner/ticks.js
 const __planner_ticks = (() => {
 // Ticking from Google Calendar, so George never has to open the dashboard to say he did something
@@ -10835,7 +10783,117 @@ function handleTick({ params, store, hmacHex, now }) {
     { summary: `Ticked "${item.title}" from its calendar link`, source: 'calendar' });
   return { ok: true, text: `✓ Ticked "${item.title}" for ${when}. Your calendar catches up within ten minutes.` };
 }
-return { tickLogId, importDrags, webAppUrl, tickLink, handleTick };
+return { tickLogId, tickable, doneOn, tick, importDrags, webAppUrl, tickLink, handleTick };
+})();
+
+// ---- planner/glance.js
+const __planner_glance = (() => {
+// The widgets' way in (android/, js/glance.js): the phone asks the planner's web app for a summary of
+// the day and the tiles, and gets only that: no way to read the data itself, and only two things it
+// can change (applyGlanceAct: tick one of today's items, add Hebrew minutes).
+// Synchronous, like the relay (planner/relay.js): a web app's doPost can't wait on a promise, so the
+// caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp). Its own key,
+// checked against glance.json in the sync repo, so the widgets can be switched off without the relay.
+
+const { glanceOf } = __js_glance;
+const { logicalDay } = __js_dates;
+const { isDoc } = __js_doc;
+const { decodeBase64 } = __js_sync;
+const { API } = __planner_relay;
+const { validMap } = __js_map_files;
+const { HEBREW_IDS } = __js_hebrewSync;
+const { tickable, doneOn, tick, tickLogId } = __planner_ticks;
+
+const GLANCE_FILE = 'glance.json';
+
+// The map's private files (js/map/files.js), for the Map widget: none when there are none, or any fails.
+function readMaps(request, repo, headers) {
+  const raw = (path) => {
+    const res = request(`${API}/repos/${repo}/contents/${path}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+    if (res.status !== 200) return null;
+    try { return JSON.parse(res.text); } catch { return null; }
+  };
+  const index = raw('map/index.json');
+  const ids = Array.isArray(index?.cities) ? index.cities.filter((id) => /^[a-z0-9-]{1,40}$/.test(id)) : [];
+  return ids.map((id) => raw(`map/${id}.json`)).filter((m) => validMap(m));
+}
+
+function sameText(a, b) {
+  const x = String(a);
+  const y = String(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x.charCodeAt(i) || 0) ^ (y.charCodeAt(i) || 0);
+  return diff === 0;
+}
+
+// The widget key against glance.json: null when it is good, else what's wrong, in a sentence.
+function glanceKeyProblem({ req, repo, token, request, sha256Hex }) {
+  if (!repo || !token) return 'The planner has no GITHUB_TOKEN or SYNC_REPO';
+  if (typeof req?.glance !== 'string' || req.glance.length < 32) return 'The widget key is missing';
+  const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  const stored = request(`${API}/repos/${repo}/contents/${GLANCE_FILE}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github+json' } });
+  if (stored.status === 404) return 'The widgets are switched off: there is no glance.json in the sync repo';
+  if (stored.status !== 200) return `The widgets couldn't read glance.json (GitHub ${stored.status})`;
+  let hash = '';
+  try { hash = String(JSON.parse(decodeBase64(String(JSON.parse(stored.text).content ?? ''))).sha256 ?? ''); } catch { /* refused below */ }
+  if (!/^[0-9a-f]{64}$/.test(hash) || !sameText(sha256Hex(req.glance), hash)) return 'The planner refused the widget key';
+  return null;
+}
+
+// WHAT A WIDGET MAY CHANGE (2026-11-20). Until now they only showed, and ticking anything still
+// meant opening the app. Two things, no more: tick one of today's tasks or habits (the Today
+// widget's rows), and add Hebrew minutes done away from the app (the Hebrew widget's +15). Applied
+// to a store by the planner's web app (planner/gas.js, glanceAct), which then answers with the
+// tiles as they now are. { ok, text }; never throws.
+const ACT_HEBREW_STEP = 15;
+const ACT_HEBREW_DAY_MAX = 240;
+function applyGlanceAct(store, act, { today, now }) {
+  const doc = store.doc();
+  if (act?.kind === 'tick') {
+    const item = doc.items?.[String(act.item ?? '')];
+    if (!tickable(item)) return { ok: false, text: "That's no longer on today's list." };
+    if (doneOn(doc, item.id, today)) return { ok: true, text: `"${item.title}" is already ticked.` };
+    if (doc.logs?.[tickLogId(item.id, today)]) return { ok: false, text: `"${item.title}" was unticked in the dashboard, so it's been left.` };
+    store.transaction(() => tick(store, item, today, { at: now.toISOString(), source: 'widget' }),
+      { summary: `Ticked "${item.title}" from the phone's widget`, source: 'widget' });
+    return { ok: true, text: `✓ ${item.title}` };
+  }
+  if (act?.kind === 'hebrew') {
+    const minutes = Math.round(Number(act.minutes));
+    const quota = doc.items?.[HEBREW_IDS.minutes];
+    if (!(minutes >= 1 && minutes <= 120)) return { ok: false, text: 'That many minutes makes no sense.' };
+    if (quota?.status !== 'active') return { ok: false, text: "There's no Hebrew target to add minutes to." };
+    const id = `hebrew:widget:${today}`;
+    const had = Number(doc.logs?.[id]?.status === 'active' ? doc.logs[id].amount : 0) || 0;
+    const amount = Math.min(ACT_HEBREW_DAY_MAX, had + minutes);
+    if (amount === had) return { ok: false, text: `${had} minutes from the widget is today's most.` };
+    store.transaction(() => store.putLog(id, { itemId: quota.id, kind: 'amount', amount, day: today, source: 'widget' }),
+      { summary: `Added ${minutes} min of Hebrew from the phone's widget`, source: 'widget' });
+    return { ok: true, text: `+${minutes} min of Hebrew` };
+  }
+  return { ok: false, text: "The widget asked for something the planner doesn't do." };
+}
+
+// `req` is the request already read as JSON ({ glance: key }). One reply out, a JSON string.
+// `hebrew(today)` reads the Hebrew app's own progress (planner/hebrew-progress.js); without it, or when
+// it fails, the Hebrew widget goes by the dashboard's own minutes.
+function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4, hebrew = null }) {
+  const reply = (obj) => JSON.stringify(obj);
+  const problem = glanceKeyProblem({ req, repo, token, request, sha256Hex });
+  if (problem) return reply({ error: problem });
+  const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  // The raw file, whatever its size (the contents API stops giving it inline past 1 MB).
+  const data = request(`${API}/repos/${repo}/contents/data.json`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+  if (data.status !== 200) return reply({ error: `The widgets couldn't read the dashboard (GitHub ${data.status})` });
+  let doc;
+  try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
+  if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
+  const today = logicalDay(now, dayStartHour);
+  let progress = null;
+  try { progress = hebrew?.(today) ?? null; } catch { progress = null; }
+  return reply(glanceOf(doc, today, now, readMaps(request, repo, headers), progress?.ok ? progress : null));
+}
+return { GLANCE_FILE, glanceKeyProblem, ACT_HEBREW_STEP, ACT_HEBREW_DAY_MAX, applyGlanceAct, handleGlance };
 })();
 
 // ---- planner/hebrew-progress.js
@@ -11106,7 +11164,7 @@ const { createStocks } = __planner_stocks;
 const { createLetterPush } = __planner_letter;
 const { gasCrypto } = __planner_webpush;
 const { handleRelay } = __planner_relay;
-const { handleGlance } = __planner_glance;
+const { handleGlance, glanceKeyProblem, applyGlanceAct } = __planner_glance;
 const { importDrags, webAppUrl, tickLink, handleTick } = __planner_ticks;
 const { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } = __planner_hebrew_progress;
 const { createHebrewNudges } = __planner_hebrew_nudges;
@@ -11735,14 +11793,63 @@ function createPlanner({
       // The phone's widgets ask with { glance: key } (planner/glance.js); everything else is the relay.
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
-      text = req && typeof req === 'object' && 'glance' in req
-        ? handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) })
-        : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+      const glance = () => handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) });
+      if (req && typeof req === 'object' && 'glance' in req && req.act) {
+        // A widget doing something (planner/glance.js, applyGlanceAct): the change, then the tiles as
+        // they now are, with a line saying what happened.
+        const problem = glanceKeyProblem({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+        const acted = problem ? { ok: false, text: problem } : glanceAct(req.act);
+        let out = {};
+        try { out = JSON.parse(glance()); } catch { out = {}; }
+        text = JSON.stringify({ ...out, acted });
+      } else {
+        text = req && typeof req === 'object' && 'glance' in req
+          ? glance()
+          : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
+      }
     } catch (err) {
       text = JSON.stringify({ error: `The relay failed: ${clean(err?.message ?? err)}` });
     }
     if (!ContentService) return text;
     return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // A widget's action (planner/glance.js, applyGlanceAct), written straight through UrlFetchApp as the
+  // ✓ links are (see tick below): read data.json, apply, write with its sha, again on a clash.
+  // { ok, text }; never throws.
+  function glanceAct(act) {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) return { ok: false, text: 'The planner is busy: try again in a minute.' };
+    try {
+      const repo = get('SYNC_REPO');
+      const url = `https://api.github.com/repos/${repo}/contents/data.json`;
+      const headers = { Authorization: `Bearer ${get('GITHUB_TOKEN')}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+      const call = (method, to, body) => {
+        const res = UrlFetchApp.fetch(to, { method, headers, muteHttpExceptions: true, ...(body ? { payload: JSON.stringify(body), contentType: 'application/json' } : {}) });
+        return { status: res.getResponseCode(), json: () => JSON.parse(res.getContentText()) };
+      };
+      const t = now();
+      const today = logicalDay(t, dayStartHour());
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const got = call('get', url);
+        if (got.status !== 200) return { ok: false, text: `Couldn't read the dashboard (GitHub ${got.status}).` };
+        const file = got.json();
+        const content = file.content && file.encoding !== 'none' ? file.content : call('get', `https://api.github.com/repos/${repo}/git/blobs/${file.sha}`).json().content;
+        const store = createStore({ storage: new MemoryStorage({ [DATA_KEY]: decodeBase64(content), [SETTINGS_KEY]: JSON.stringify({ dayStartHour: dayStartHour() }) }), now });
+        let changed = false;
+        store.subscribe((reason) => { if (reason === 'local') changed = true; });
+        const res = applyGlanceAct(store, act, { today, now: t });
+        if (!changed) return res;
+        const put = call('put', url, { message: 'sync', content: encodeBase64(JSON.stringify(store.doc())), sha: file.sha });
+        if (put.status === 200 || put.status === 201) return res;
+        if (put.status !== 409 && put.status !== 422) return { ok: false, text: `Couldn't save it (GitHub ${put.status}).` };
+      }
+      return { ok: false, text: 'Another device kept writing at the same moment: try again.' };
+    } catch (err) {
+      return { ok: false, text: `Couldn't do it: ${clean(err?.message ?? err)}` };
+    } finally {
+      lock.releaseLock();
+    }
   }
 
   // The web app's doGet: a tap on a block's ✓ link. Apps Script can't wait for a promise in doGet (2 Nov

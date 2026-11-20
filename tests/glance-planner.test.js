@@ -25,7 +25,7 @@ test('with the right key the widgets get the summary, and the data is only ever 
   const gh = github();
   const g = ask(gh, { glance: KEY });
   assert.equal(g.day, '2026-10-21');
-  assert.match(g.tiles.day.lines.join('\n'), /1 any time today/);
+  assert.match(g.tiles.day.lines.join('\n'), /○ Email the NCA/, 'the one with no time, on its own row');
   assert.ok(gh.seen.every((r) => r.method === 'GET'));
   assert.equal(gh.seen.at(-1).accept, 'application/vnd.github.raw+json', 'the raw file, whatever its size');
 });

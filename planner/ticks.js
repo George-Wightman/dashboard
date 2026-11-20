@@ -13,13 +13,13 @@ const WEB_APP = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
 // stays off however often the block is dragged or the link tapped.
 export const tickLogId = (itemId, day) => `calendar-done-${itemId}-${day}`;
 
-const tickable = (item) => item && item.status === 'active' && (item.type === 'task' || item.type === 'habit')
+export const tickable = (item) => item && item.status === 'active' && (item.type === 'task' || item.type === 'habit')
   && !item.details?.outcomeForm?.length;
 
-const doneOn = (doc, itemId, day) => Object.values(doc.logs ?? {}).some((l) =>
+export const doneOn = (doc, itemId, day) => Object.values(doc.logs ?? {}).some((l) =>
   l.itemId === itemId && l.kind === 'done' && l.status === 'active' && l.day === day);
 
-function tick(store, item, day, fields) {
+export function tick(store, item, day, fields) {
   const id = tickLogId(item.id, day);
   if (store.doc().logs?.[id] || doneOn(store.doc(), item.id, day)) return false;
   store.putLog(id, { itemId: item.id, kind: 'done', day, source: 'calendar', ...fields });

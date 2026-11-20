@@ -8,8 +8,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
+import android.widget.Toast
+import org.json.JSONObject
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
@@ -32,9 +36,19 @@ abstract class TileWidget(private val tileId: String) : AppWidgetProvider() {
     }
 
     override fun onReceive(ctx: Context, intent: Intent) {
-        if (intent.action == Widgets.ACTION_REFRESH) {
-            Widgets.refreshInBackground(ctx, goAsync(), force = true)
-            return
+        when (intent.action) {
+            Widgets.ACTION_REFRESH -> { Widgets.refreshInBackground(ctx, goAsync(), force = true); return }
+            // A row's ○ on Today: tick that item for today.
+            Widgets.ACTION_TICK -> {
+                val item = intent.getStringExtra(Widgets.EXTRA_ITEM) ?: return
+                Widgets.actInBackground(ctx, goAsync(), JSONObject().put("kind", "tick").put("item", item), item)
+                return
+            }
+            // The Hebrew widget's +15.
+            Widgets.ACTION_HEBREW -> {
+                Widgets.actInBackground(ctx, goAsync(), JSONObject().put("kind", "hebrew").put("minutes", Widgets.HEBREW_STEP), "hebrew")
+                return
+            }
         }
         super.onReceive(ctx, intent)
     }
@@ -62,6 +76,28 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params
 
 object Widgets {
     const val ACTION_REFRESH = "com.georgewightman.dashwidgets.REFRESH"
+    const val ACTION_TICK = "com.georgewightman.dashwidgets.TICK"
+    const val ACTION_HEBREW = "com.georgewightman.dashwidgets.HEBREW_ADD"
+    const val EXTRA_ITEM = "item"
+    const val HEBREW_STEP = 15
+
+    // A tap that changes something: "…" on what was tapped straight away, then the planner's answer
+    // (the tiles as they now are) drawn, and a line saying what happened.
+    fun actInBackground(ctx: Context, pending: android.content.BroadcastReceiver.PendingResult?, act: JSONObject, mark: String) {
+        val app = ctx.applicationContext
+        Glance.setPending(app, mark)
+        drawAll(app)
+        Thread {
+            try {
+                val said = Glance.act(app, act)
+                Glance.setPending(app, null)
+                drawAll(app)
+                Handler(Looper.getMainLooper()).post { Toast.makeText(app, said, Toast.LENGTH_SHORT).show() }
+            } finally {
+                pending?.finish()
+            }
+        }.start()
+    }
 
     val PROVIDERS: Map<String, Class<out TileWidget>> = linkedMapOf(
         "day" to DayWidget::class.java, "fuel" to FuelWidget::class.java, "hebrew" to HebrewWidget::class.java,
@@ -151,6 +187,30 @@ object Widgets {
                 v.setTextViewText(R.id.lines, tile.lines.joinToString("\n"))
             }
         }
+        // Today's rows, each with a ○ that ticks it, when the planner says which rows can be ticked.
+        val rows = connected && tile != null && tileId == "day" && tile.ticks.any { it != null }
+        v.setViewVisibility(R.id.lines, if (rows) View.GONE else View.VISIBLE)
+        v.setViewVisibility(R.id.rows, if (rows) View.VISIBLE else View.GONE)
+        if (rows && tile != null) {
+            val waiting = Glance.pending(ctx)
+            for (i in ROW.indices) {
+                val text = tile.lines.getOrNull(i)
+                v.setViewVisibility(ROW[i], if (text == null) View.GONE else View.VISIBLE)
+                if (text == null) continue
+                v.setTextViewText(ROW_TEXT[i], text)
+                for (id in intArrayOf(ROW_TEXT[i], ROW_TICK[i])) {
+                    if (Build.VERSION.SDK_INT >= 31) v.setColorStateList(id, "setTextColor", ink) else v.setTextColor(id, ctx.getColor(ink))
+                }
+                val item = tile.ticks.getOrNull(i)
+                v.setViewVisibility(ROW_TICK[i], if (item == null) View.INVISIBLE else View.VISIBLE)
+                if (item == null) continue
+                v.setTextViewText(ROW_TICK[i], if (item == waiting) "…" else "○")
+                v.setOnClickPendingIntent(ROW_TICK[i], PendingIntent.getBroadcast(
+                    ctx, TICK_CODE + i, Intent(ctx, DayWidget::class.java).setAction(ACTION_TICK).putExtra(EXTRA_ITEM, item),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                ))
+            }
+        }
         val open = if (connected) (tile?.open ?: Glance.SITE) else Glance.SITE
         v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(
             ctx, tileId.hashCode(), Intent(Intent.ACTION_VIEW, Uri.parse(open)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -162,6 +222,12 @@ object Widgets {
         ))
         return v
     }
+
+    private val ROW = intArrayOf(R.id.row0, R.id.row1, R.id.row2, R.id.row3, R.id.row4, R.id.row5, R.id.row6, R.id.row7)
+    private val ROW_TEXT = intArrayOf(R.id.row0_text, R.id.row1_text, R.id.row2_text, R.id.row3_text, R.id.row4_text, R.id.row5_text, R.id.row6_text, R.id.row7_text)
+    private val ROW_TICK = intArrayOf(R.id.row0_tick, R.id.row1_tick, R.id.row2_tick, R.id.row3_tick, R.id.row4_tick, R.id.row5_tick, R.id.row6_tick, R.id.row7_tick)
+    // Each row's ○ its own PendingIntent: the request code is what keeps them apart.
+    private const val TICK_CODE = 9100
 
     private val DOTS = intArrayOf(R.id.dot0, R.id.dot1, R.id.dot2, R.id.dot3, R.id.dot4, R.id.dot5, R.id.dot6)
 
@@ -228,6 +294,12 @@ object Widgets {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         ))
         v.setOnClickPendingIntent(R.id.heb_head, refreshIntent(ctx))
+        // +15: Hebrew done away from the app, added without opening anything.
+        text(R.id.heb_add, if (Glance.pending(ctx) == "hebrew") "…" else "+$HEBREW_STEP", teal)
+        v.setOnClickPendingIntent(R.id.heb_add, PendingIntent.getBroadcast(
+            ctx, "hebrew".hashCode() + 2, Intent(ctx, HebrewWidget::class.java).setAction(ACTION_HEBREW),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        ))
         return v
     }
 

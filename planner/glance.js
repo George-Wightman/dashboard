@@ -1,5 +1,6 @@
 // The widgets' way in (android/, js/glance.js): the phone asks the planner's web app for a summary of
-// the day and the tiles, and gets only that — no way to read the data itself, and none to change it.
+// the day and the tiles, and gets only that: no way to read the data itself, and only two things it
+// can change (applyGlanceAct: tick one of today's items, add Hebrew minutes).
 // Synchronous, like the relay (planner/relay.js): a web app's doPost can't wait on a promise, so the
 // caller hands in a blocking `request(url, init) → { status, text }` (UrlFetchApp). Its own key,
 // checked against glance.json in the sync repo, so the widgets can be switched off without the relay.
@@ -10,6 +11,8 @@ import { isDoc } from '../js/doc.js';
 import { decodeBase64 } from '../js/sync.js';
 import { API } from './relay.js';
 import { validMap } from '../js/map/files.js';
+import { HEBREW_IDS } from '../js/hebrewSync.js';
+import { tickable, doneOn, tick, tickLogId } from './ticks.js';
 
 export const GLANCE_FILE = 'glance.json';
 
@@ -33,20 +36,62 @@ function sameText(a, b) {
   return diff === 0;
 }
 
+// The widget key against glance.json: null when it is good, else what's wrong, in a sentence.
+export function glanceKeyProblem({ req, repo, token, request, sha256Hex }) {
+  if (!repo || !token) return 'The planner has no GITHUB_TOKEN or SYNC_REPO';
+  if (typeof req?.glance !== 'string' || req.glance.length < 32) return 'The widget key is missing';
+  const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  const stored = request(`${API}/repos/${repo}/contents/${GLANCE_FILE}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github+json' } });
+  if (stored.status === 404) return 'The widgets are switched off: there is no glance.json in the sync repo';
+  if (stored.status !== 200) return `The widgets couldn't read glance.json (GitHub ${stored.status})`;
+  let hash = '';
+  try { hash = String(JSON.parse(decodeBase64(String(JSON.parse(stored.text).content ?? ''))).sha256 ?? ''); } catch { /* refused below */ }
+  if (!/^[0-9a-f]{64}$/.test(hash) || !sameText(sha256Hex(req.glance), hash)) return 'The planner refused the widget key';
+  return null;
+}
+
+// WHAT A WIDGET MAY CHANGE (2026-11-20). Until now they only showed, and ticking anything still
+// meant opening the app. Two things, no more: tick one of today's tasks or habits (the Today
+// widget's rows), and add Hebrew minutes done away from the app (the Hebrew widget's +15). Applied
+// to a store by the planner's web app (planner/gas.js, glanceAct), which then answers with the
+// tiles as they now are. { ok, text }; never throws.
+export const ACT_HEBREW_STEP = 15;
+export const ACT_HEBREW_DAY_MAX = 240;
+export function applyGlanceAct(store, act, { today, now }) {
+  const doc = store.doc();
+  if (act?.kind === 'tick') {
+    const item = doc.items?.[String(act.item ?? '')];
+    if (!tickable(item)) return { ok: false, text: "That's no longer on today's list." };
+    if (doneOn(doc, item.id, today)) return { ok: true, text: `"${item.title}" is already ticked.` };
+    if (doc.logs?.[tickLogId(item.id, today)]) return { ok: false, text: `"${item.title}" was unticked in the dashboard, so it's been left.` };
+    store.transaction(() => tick(store, item, today, { at: now.toISOString(), source: 'widget' }),
+      { summary: `Ticked "${item.title}" from the phone's widget`, source: 'widget' });
+    return { ok: true, text: `✓ ${item.title}` };
+  }
+  if (act?.kind === 'hebrew') {
+    const minutes = Math.round(Number(act.minutes));
+    const quota = doc.items?.[HEBREW_IDS.minutes];
+    if (!(minutes >= 1 && minutes <= 120)) return { ok: false, text: 'That many minutes makes no sense.' };
+    if (quota?.status !== 'active') return { ok: false, text: "There's no Hebrew target to add minutes to." };
+    const id = `hebrew:widget:${today}`;
+    const had = Number(doc.logs?.[id]?.status === 'active' ? doc.logs[id].amount : 0) || 0;
+    const amount = Math.min(ACT_HEBREW_DAY_MAX, had + minutes);
+    if (amount === had) return { ok: false, text: `${had} minutes from the widget is today's most.` };
+    store.transaction(() => store.putLog(id, { itemId: quota.id, kind: 'amount', amount, day: today, source: 'widget' }),
+      { summary: `Added ${minutes} min of Hebrew from the phone's widget`, source: 'widget' });
+    return { ok: true, text: `+${minutes} min of Hebrew` };
+  }
+  return { ok: false, text: "The widget asked for something the planner doesn't do." };
+}
+
 // `req` is the request already read as JSON ({ glance: key }). One reply out, a JSON string.
 // `hebrew(today)` reads the Hebrew app's own progress (planner/hebrew-progress.js); without it, or when
 // it fails, the Hebrew widget goes by the dashboard's own minutes.
 export function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), dayStartHour = 4, hebrew = null }) {
   const reply = (obj) => JSON.stringify(obj);
-  if (!repo || !token) return reply({ error: 'The planner has no GITHUB_TOKEN or SYNC_REPO' });
-  if (typeof req?.glance !== 'string' || req.glance.length < 32) return reply({ error: 'The widget key is missing' });
+  const problem = glanceKeyProblem({ req, repo, token, request, sha256Hex });
+  if (problem) return reply({ error: problem });
   const headers = { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
-  const stored = request(`${API}/repos/${repo}/contents/${GLANCE_FILE}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github+json' } });
-  if (stored.status === 404) return reply({ error: 'The widgets are switched off: there is no glance.json in the sync repo' });
-  if (stored.status !== 200) return reply({ error: `The widgets couldn't read glance.json (GitHub ${stored.status})` });
-  let hash = '';
-  try { hash = String(JSON.parse(decodeBase64(String(JSON.parse(stored.text).content ?? ''))).sha256 ?? ''); } catch { /* refused below */ }
-  if (!/^[0-9a-f]{64}$/.test(hash) || !sameText(sha256Hex(req.glance), hash)) return reply({ error: 'The planner refused the widget key' });
   // The raw file, whatever its size (the contents API stops giving it inline past 1 MB).
   const data = request(`${API}/repos/${repo}/contents/data.json`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
   if (data.status !== 200) return reply({ error: `The widgets couldn't read the dashboard (GitHub ${data.status})` });

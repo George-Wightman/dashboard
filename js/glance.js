@@ -26,16 +26,20 @@ const active = (doc, id) => (doc.items?.[id]?.status === 'active' ? doc.items[id
 const open = (tile) => (tile === 'day' ? SITE : `${SITE}?big=${tile}`);
 const kcal = (n) => Math.round(n).toLocaleString('en-GB');
 
-// The day as a short calendar: what has a time today in order (shifts too), then how many have none.
+// What a widget row can tick (planner/ticks.js's rule): a task or habit with no form to fill in.
+const canTick = (item) => (item?.type === 'task' || item?.type === 'habit') && !item.details?.outcomeForm?.length;
+
+// The day as a short calendar: what has a time today in order (shifts too), then what has none.
+// `ticks` runs beside `lines`: the item a tap on that row ticks (planner/glance.js, glanceAct), or null.
 function day(doc, today, now) {
   const rows = todayRows(doc, today).filter((r) => !r.suggested && !r.blocked && r.kind !== 'quota');
   const slots = todaySlots(doc, today);
   const timed = [];
-  let anytime = 0;
+  const anytime = [];
   for (const r of rows) {
     const s = movedSlot(r.item, slots.get(r.item.id), today);
-    if (s) timed.push({ start: s.start, end: s.end, text: r.item.title, done: r.done });
-    else if (!r.done) anytime++;
+    if (s) timed.push({ start: s.start, end: s.end, text: r.item.title, done: r.done, id: canTick(r.item) ? r.item.id : null });
+    else if (!r.done) anytime.push(r.item);
   }
   for (const c of scheduleView(doc, today).commitments) {
     if (!c.allDay && localDate(c.start) === today) timed.push({ start: c.start, end: c.end, text: c.title, busy: true });
@@ -45,14 +49,23 @@ function day(doc, today, now) {
   const over = timed.filter((e) => Date.parse(e.end ?? e.start) <= +now);
   const ahead = timed.filter((e) => !over.includes(e));
   const next = ahead.find((e) => !e.done);
-  const lines = ahead.map((e) => `${e === next ? '▸ ' : ''}${clockLabel(e.start)}  ${e.done ? '✓ ' : ''}${e.text}${e.busy ? ' (until ' + clockLabel(e.end) + ')' : ''}`);
+  const lines = [];
+  const ticks = [];
+  const row = (text, id = null) => { lines.push(text); ticks.push(id); };
   const overTasks = over.filter((e) => !e.busy);
-  if (overTasks.length) lines.unshift(`${overTasks.filter((e) => e.done).length} of ${overTasks.length} earlier done`);
-  if (anytime) lines.push(`+ ${anytime} any time today`);
+  if (overTasks.length) row(`${overTasks.filter((e) => e.done).length} of ${overTasks.length} earlier done`);
+  for (const e of ahead) {
+    row(`${e === next ? '▸ ' : ''}${clockLabel(e.start)}  ${e.done ? '✓ ' : ''}${e.text}${e.busy ? ' (until ' + clockLabel(e.end) + ')' : ''}`,
+      e.busy || e.done ? null : e.id);
+  }
+  // The ones with no time: each on its own row while they fit, so each can be ticked; else a count.
+  if (anytime.length && lines.length + anytime.length <= LINES) for (const item of anytime) row(`○ ${item.title}`, canTick(item) ? item.id : null);
+  else if (anytime.length) row(`+ ${anytime.length} any time today`);
+  if (!lines.length) row('Nothing on today.');
   const { done, total } = dayCompletion(doc, today);
   return {
     title: longDate(today).replace(/ \w+$/, ''), number: `${done}/${total}`, caption: 'done today',
-    lines: lines.length ? lines : ['Nothing on today.'], open: open('day'),
+    lines, ticks, open: open('day'),
   };
 }
 
