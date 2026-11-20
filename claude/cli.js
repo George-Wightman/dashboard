@@ -8,6 +8,7 @@ import { makeClient as githubClient } from './github.js';
 import { READS } from './read.js';
 import { OPS, UNLOGGED, runOp, readHandoff, fieldWarnings } from './ops.js';
 import { createFileStore } from './files.js';
+import { hebrewState, progressKeys, weekInput, readHebrewWeek, writeHebrewWeek } from './hebrew-week.js';
 import { relayingFetch } from './relay.js';
 import { curlFetch } from './curl.js';
 import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
@@ -39,6 +40,7 @@ export const USAGE = [
   'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · stocks · usage [days] · reference [topic] · handoffs · handoff <name>',
   'Money ledger: money-import <file.json> merges a ledger built from his statements (reference money)',
   'Stocks: stocks · stocks brief-input [daily|weekly] · stocks-accounts (US company accounts, Saturdays) · stocks-write <file.json> merges brief, notes, theses, themes, tiers, shortlist (reference stocks)',
+  'Hebrew, his own week: hebrew-week --progress <the Hebrew app\'s progress.json> · hebrew-week-write <file.json> saves the week\'s cards for the Hebrew app',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
   'Discover: capabilities [topic|op] · inspect <id> · workflows. Test any JSON batch with preview before apply; preview writes nothing.',
@@ -189,7 +191,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && command !== 'stocks-accounts' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && command !== 'stocks-accounts' && command !== 'hebrew-week' && command !== 'hebrew-week-write' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -294,6 +296,25 @@ export async function main({
         const path = rest.join(' ').trim();
         if (!path) throw new Error('stocks-write needs the path of a JSON file');
         say(await writeStocks(files, readText(path)));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+    // His own week in Hebrew (claude/hebrew-week.js): what to write from, and saving what was written.
+    if (command === 'hebrew-week') {
+      try {
+        const i = rest.indexOf('--progress');
+        const path = i >= 0 ? rest[i + 1] : null;
+        if (!path) throw new Error("hebrew-week needs --progress <file>: the Hebrew app's progress.json from its sync repo");
+        const state = hebrewState(progressKeys(readText(path)));
+        say(weekInput({ doc: store.doc(), today: store.today(), state, previous: await readHebrewWeek(files) }).join('\n'));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+    if (command === 'hebrew-week-write') {
+      try {
+        const path = rest.join(' ').trim();
+        if (!path) throw new Error('hebrew-week-write needs the path of a JSON file');
+        say(await writeHebrewWeek(files, readText(path), { today: store.today() }));
         return finish(0);
       } catch (e) { say(e.message); return finish(1); }
     }
