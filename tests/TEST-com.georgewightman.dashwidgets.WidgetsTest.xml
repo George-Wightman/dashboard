@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.georgewightman.dashwidgets.WidgetsTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-20T15:00:42" hostname="runnervmccnms" time="8.882">
+  <properties/>
+  <testcase name="anythingButAnItemIdIsDropped" classname="com.georgewightman.dashwidgets.WidgetsTest" time="4.492"/>
+  <testcase name="theQueuedFetchTriesAgainWhenThePlannerCantBeReached" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.131"/>
+  <testcase name="drawsEachWidgetInDayAndNight" classname="com.georgewightman.dashwidgets.WidgetsTest" time="2.845"/>
+  <testcase name="aTapOnlyEverOpensTheDashboard" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.026"/>
+  <testcase name="readsEveryTile" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.02"/>
+  <testcase name="beforeConnectingItSaysHow" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.045"/>
+  <testcase name="withoutTicksTodayIsTheLinesAsBefore" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.052"/>
+  <testcase name="aFetchAndroidStartsWaitsForTheNetwork" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.228"/>
+  <testcase name="takesOnlyAProperSetupLink" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.025"/>
+  <testcase name="todaysRowsCanBeTickedFromTheirCircle" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.13"/>
+  <testcase name="aRefusalIsAnError" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.018"/>
+  <testcase name="theHebrewWidgetDrawsEachCardTallAndWide" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.804"/>
+  <testcase name="theHebrewWidgetAddsFifteenMinutes" classname="com.georgewightman.dashwidgets.WidgetsTest" time="0.064"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
