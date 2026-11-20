@@ -17,6 +17,12 @@ const KEYS = {
   hvr_srs: JSON.stringify({ מטבח: { prod: { n: 3, stab: 8, diff: 4, miss: 0 } }, כלב: { prod: { n: 2, stab: 2, diff: 7, miss: 1 } } }),
   hvr_level: JSON.stringify({ at: 2, lv: {} }),
   hvr_coachlanded: JSON.stringify({ שלום: new Date(2026, 8, 15, 12).getTime(), תודה: new Date(2026, 7, 1).getTime() }),
+  // Said to her (the Hebrew app's "I said it"): its words count as said live; an undone day doesn't.
+  hvr_irl: JSON.stringify({
+    '2026-09-14': { he: 'שלום מטבח', words: ['שלום', 'מטבח'], at: new Date(2026, 8, 14, 21).getTime() },
+    '2026-09-15': { off: true, at: new Date(2026, 8, 15, 22).getTime() },
+  }),
+  hvr_week: JSON.stringify({ week: '2026-09-11', written: 'x', partner: ' Ana ', say: [{ he: 'בוקר טוב', tr: 'boker tov', en: 'good morning' }, { tr: 'no hebrew' }] }),
   hvr_push: JSON.stringify({
     ph1: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'P', auth: 'A', ts: 1 },
     lap: { off: true, ts: 2 },
@@ -38,7 +44,9 @@ test('reads the days, the strong words gained this week and the devices that tur
   assert.equal(gh.seen[0].init.headers.Accept, 'application/vnd.github.raw+json');
   assert.deepEqual(p.words, [{ he: 'מטבח', tr: 'mitbakh', en: 'kitchen', band: 'progressing' }, { he: 'כלב', tr: 'kelev', en: 'dog', band: 'weak' }], 'never-answered words are left out');
   assert.equal(p.level, 2);
-  assert.equal(p.liveWeek, 1);
+  assert.equal(p.liveWeek, 2, 'שלום from the coach, מטבח said to her');
+  assert.deepEqual(p.week, { week: '2026-09-11', partner: 'Ana', say: [{ he: 'בוקר טוב', tr: 'boker tov', en: 'good morning' }] });
+  assert.deepEqual(p.saidOn, ['2026-09-14'], 'an undone day is not a said day');
 });
 
 test("the course phrases come from the Hebrew app's public content, short ones only", () => {

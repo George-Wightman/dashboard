@@ -200,6 +200,7 @@ export function hebrewInputFrom({ doc, now, today, progress = null, busy = [] })
   return {
     now: local, shift, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
     words: progress?.words ?? [], liveWeek: progress?.liveWeek ?? 0, level: progress?.level ?? null,
+    week: progress?.week ?? null, saidOn: progress?.saidOn ?? [],
     countdown: countdown ? { title: countdown.title, days: countdown.days } : null,
     busy: busy.filter((e) => e?.start && e?.end).map((e) => ({ ...e, start: moved(e.start), end: moved(e.end) })),
   };
@@ -232,6 +233,25 @@ function wordOfTheDay(words, today) {
 function phraseOfTheDay(phrases, level, today) {
   const at = phrases.filter((p) => p.lvl === level);
   return ofTheDay(at.length ? at : phrases.filter((p) => !level || p.lvl <= level), today, 3);
+}
+
+// TONIGHT'S PHRASE: one sentence a day to say to her. The Hebrew app makes the same pick (sayPick, in
+// its "SAY IT FOR REAL" section) from the same synced week, the same course file and the same level,
+// so the evening card and the app agree: this week's cards marked "say" in Claude's order, one a day
+// from the batch day while the batch is this week's, else the course's phrase of the day. Change one,
+// change both; tests/hebrew-card.test.js and the app's self-tests share a fixture.
+export const SAY_WEEK_DAYS = 8;
+export function tonightPhrase({ week = null, phrases = [], level = null, today }) {
+  const say = Array.isArray(week?.say) ? week.say.filter((s) => s?.he) : [];
+  if (say.length && /^\d{4}-\d{2}-\d{2}$/.test(week.week ?? '')) {
+    const n = Math.max(0, daysBetween(week.week, today));
+    if (n < SAY_WEEK_DAYS) {
+      const s = say[n % say.length];
+      return { he: s.he, tr: s.tr ?? '', en: s.en ?? '', from: 'week', partner: week.partner ?? '' };
+    }
+  }
+  const p = phraseOfTheDay(phrases, level, today);
+  return p ? { he: p.he, tr: p.tr, en: p.en, from: 'course', partner: week?.partner ?? '' } : null;
 }
 
 // What he's gained this week, never what he's short of. Empty when there's nothing yet.
@@ -267,6 +287,9 @@ export function hebrewCard(input, { phrases = [] } = {}) {
   const slot = SLOT_STARTS.findIndex((s) => t < s);
   const word = wordOfTheDay(input.words ?? [], today);
   const phrase = phraseOfTheDay(phrases, input.level, today);
+  // From his week only: on a course day the rotation's phrase of the day is already the same sentence.
+  const tonight = tonightPhrase({ week: input.week, phrases, level: input.level, today });
+  const sayTonight = tonight?.from === 'week' && !(input.saidOn ?? []).includes(today) ? tonight : null;
   const numbers = weekNumbers(input);
   const { inside, ended } = busyState(input.busy, now);
   const shift = input.shift ?? 0;
@@ -285,10 +308,12 @@ export function hebrewCard(input, { phrases = [] } = {}) {
   const order = ROTATION.map((_, i) => ROTATION[(i + dayIndex(today)) % ROTATION.length]);
   const pending = v.level === 'none' || v.level === 'bit';
   let pick = order[slot === -1 ? 3 : slot];
+  // The evening is for saying it to her, until he has.
+  if ((slot === 3 || slot === -1) && sayTonight) pick = 'tonight';
   if (pending && v.missed >= 2 && (slot <= 0 || pick === 'cheer')) pick = 'cheer';
   if (pending && ended && !inside) pick = 'cheer';
   if (pending && inside && pick === 'cheer') pick = word ? 'word' : 'phrase';
-  const available = (k) => (k === 'word' ? !!word : k === 'phrase' ? !!phrase : k === 'numbers' ? numbers.stats.length > 0 : true);
+  const available = (k) => (k === 'word' ? !!word : k === 'phrase' ? !!phrase : k === 'tonight' ? !!sayTonight : k === 'numbers' ? numbers.stats.length > 0 : true);
   if (!available(pick)) pick = order.find(available) ?? 'cheer';
 
   const base = { label: v.label, hebrew: v.hebrew, nextAt };
@@ -296,6 +321,11 @@ export function hebrewCard(input, { phrases = [] } = {}) {
   if (pick === 'phrase') {
     const label = input.countdown && input.countdown.days > 0 && input.countdown.days <= 14 ? `${input.countdown.title} in ${input.countdown.days} day${input.countdown.days === 1 ? '' : 's'}` : 'Phrase of the day';
     return { ...base, kind: 'phrase', label, hebrew: 'משפט', word: { he: phrase.he, tr: phrase.tr, en: phrase.en } };
+  }
+  // A tap opens the app asking the one question, "Did you say it?" (its sayPaint).
+  if (pick === 'tonight') {
+    return { ...base, kind: 'phrase', label: sayTonight.partner ? `Say to ${sayTonight.partner} tonight` : 'Say it tonight', hebrew: 'הערב',
+      word: { he: sayTonight.he, tr: sayTonight.tr, en: sayTonight.en }, open: `${HEBREW_APP}?say=1` };
   }
   if (pick === 'numbers') return { ...base, kind: 'numbers', label: 'This week', hebrew: 'השבוע', stats: numbers.stats, aside: numbers.aside };
   // The encouragement: what the voice says, as a poster when days have gone by, gold or done once it's in.

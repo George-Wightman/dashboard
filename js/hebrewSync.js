@@ -150,7 +150,23 @@ async function readSnapshot(envelope) {
       return value && typeof value === 'object' ? value : {};
     } catch { return {}; }
   };
-  return { stats: read('hvr_stats'), landed: read('hvr_coachlanded'), pathscores: read('hvr_pathscores') };
+  return { stats: read('hvr_stats'), landed: saidLedger(read('hvr_coachlanded'), read('hvr_irl')), pathscores: read('hvr_pathscores') };
+}
+
+// SAID TO A PERSON COUNTS AS SAID LIVE (2026-11-20). The Hebrew app's "I said it" (hvr_irl, by day:
+// { he, words, at }, or { off, at } once undone) is the point of the whole thing: the words of a
+// sentence said to her. They join the coach's ledger, { word: latest ts }, so the weekly bar, the
+// ladder and the recent words count both. The coach's own copy, which perfects a node in that app,
+// is left alone there.
+export function saidLedger(landed, irl) {
+  const out = { ...(landed ?? {}) };
+  for (const e of Object.values(irl ?? {})) {
+    if (!e || e.off || typeof e.at !== 'number' || !Array.isArray(e.words)) continue;
+    for (const w of e.words) {
+      if (typeof w === 'string' && w.trim() && !(typeof out[w] === 'number' && out[w] >= e.at)) out[w] = e.at;
+    }
+  }
+  return out;
 }
 
 // The day a millisecond timestamp falls on WHERE HE IS, not in UTC: an evening session in a

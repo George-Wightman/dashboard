@@ -116,3 +116,17 @@ test('growth: strong words at the end of each of the last 8 weeks, and words sai
   assert.deepEqual(hebrewGrowth(s), { strong: 79, gained: 78, liveWeek: 2 });
   assert.equal(hebrewGrowth({ strong: 5, strongWeeks: [null, null, null, null, null, null, null, 5], liveWeek: 0 }).gained, null, 'no week before to compare with');
 });
+
+test('said to her counts as said live: the words join the coach\'s ledger, the later time wins, an undone day adds nothing', async () => {
+  const { saidLedger } = await import('../js/hebrewSync.js');
+  const landed = { שלום: 500, תודה: 100 };
+  const irl = {
+    '2026-11-20': { he: 'שלום חבר', words: ['שלום', 'חבר'], at: 300 },
+    '2026-11-21': { he: 'תודה', words: ['תודה'], at: 900 },
+    '2026-11-22': { off: true, at: 1000 },
+    '2026-11-23': { words: 'not a list', at: 5 },
+  };
+  assert.deepEqual(saidLedger(landed, irl), { שלום: 500, תודה: 900, חבר: 300 });
+  assert.deepEqual(saidLedger(landed, null), landed);
+  assert.deepEqual(landed, { שלום: 500, תודה: 100 }, 'the coach\'s copy is not touched');
+});

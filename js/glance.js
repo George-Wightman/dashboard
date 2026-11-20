@@ -79,7 +79,9 @@ function hebrew(doc, today, now, maps, progress) {
   // The tall widget's card for now (word, phrase, encouragement, numbers, gold), beside the voice.
   const voice = { ...hebrewVoice(input), card: hebrewCard(input, { phrases: progress?.phrases ?? [] }) };
   const minutes = active(doc, HEBREW_IDS.minutes);
-  if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open: HEBREW_APP, voice };
+  // The card can carry its own way in (tonight's phrase opens the app asking "Did you say it?").
+  const open = voice.card?.open ?? HEBREW_APP;
+  if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open, voice };
   const total = Math.round(weekTotal(doc, minutes.id, today));
   const lines = [];
   for (const key of ['spoken', 'live']) {
@@ -96,7 +98,7 @@ function hebrew(doc, today, now, maps, progress) {
   lines.push(`${strip}  Mon–Sun`);
   return {
     title: 'Hebrew', number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
-    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: HEBREW_APP, voice,
+    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open, voice,
   };
 }
 

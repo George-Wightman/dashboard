@@ -79,3 +79,39 @@ test('the next change is given in real time when his clock is shifted', () => {
   const c = hebrewCard(input({ now: at(WED, '10:00'), shift: 3600000 }), { phrases: PHRASES });
   assert.equal(c.nextAt, new Date(at(WED, '11:00').getTime() - 3600000).toISOString());
 });
+
+// TONIGHT'S PHRASE. The same fixture as the Hebrew app's self-test "sayPick: this week's say cards one a
+// day from the batch day…": the two picks must agree, or the phone shows one sentence and the app
+// records another.
+test('tonightPhrase: this week\'s say cards one a day from the batch day, then the course by the same rule', async () => {
+  const { tonightPhrase } = await import('../js/hebrew-voice.js');
+  const week = { week: '2026-11-20', partner: 'Ana', say: [{ he: 'א', tr: 'a', en: 'A' }, { he: 'ב', tr: 'b', en: 'B' }, { he: 'ג', tr: 'g', en: 'G' }] };
+  const phrases = [1, 2, 3, 4, 5].map((i) => ({ he: `p${i}`, tr: `p${i}`, en: `P${i}`, lvl: i <= 3 ? 1 : 2 }));
+  const he = (w, lvl, day) => tonightPhrase({ week: w, phrases, level: lvl, today: day })?.he;
+  assert.equal(he(week, 1, '2026-11-20'), 'א');
+  assert.equal(he(week, 1, '2026-11-22'), 'ג');
+  assert.equal(he(week, 1, '2026-11-23'), 'א');
+  assert.deepEqual(tonightPhrase({ week, phrases: [], level: 1, today: '2026-11-21' }), { he: 'ב', tr: 'b', en: 'B', from: 'week', partner: 'Ana' });
+  assert.equal(he(week, 1, '2026-11-28'), 'p2', 'past the week: his level\'s phrase of the day');
+  assert.equal(he(week, 1.5, '2026-11-28'), 'p2');
+  assert.equal(he(null, null, '2026-11-28'), 'p1');
+  assert.equal(tonightPhrase({ week: { week: '2026-11-20', say: [] }, phrases, level: 2, today: '2026-11-21' }).from, 'course');
+  assert.equal(tonightPhrase({ week: null, phrases: [], level: 1, today: '2026-11-28' }), null);
+});
+
+test('the evening card is tonight\'s phrase from his week, opening the app on "Did you say it?", until he has', () => {
+  const FRI = '2026-11-20';
+  const week = { week: FRI, partner: 'Ana', say: [{ he: 'בוקר טוב', tr: 'boker tov', en: 'good morning' }] };
+  // Practised yesterday, so the poster for missed days doesn't take the late slot.
+  const card = (hhmm, over = {}) => hebrewCard(input({ today: FRI, now: at(FRI, hhmm), week, saidOn: [], days: { '2026-11-19': { sec: 1200, sessions: 1 } }, ...over }), { phrases: PHRASES });
+  const eve = card('20:30');
+  assert.equal(eve.kind, 'phrase');
+  assert.equal(eve.label, 'Say to Ana tonight');
+  assert.deepEqual(eve.word, { he: 'בוקר טוב', tr: 'boker tov', en: 'good morning' });
+  assert.match(eve.open, /hebrew-reader\.html\?say=1$/);
+  assert.equal(card('23:30').label, 'Say to Ana tonight', 'still the evening after eleven');
+  assert.ok(['08:00', '12:00', '16:00'].every((h) => card(h).label !== 'Say to Ana tonight'), 'the evening only');
+  assert.notEqual(card('20:30', { saidOn: [FRI] }).label, 'Say to Ana tonight', 'said: back to the rotation');
+  assert.equal(card('20:30', { week: { ...week, partner: '' } }).label, 'Say it tonight');
+  assert.equal(card('20:30', { week: null }).open, undefined, 'a course day keeps the rotation, and the plain way in');
+});

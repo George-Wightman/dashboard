@@ -6,6 +6,7 @@
 
 import { API } from './relay.js';
 import { addDays } from '../js/dates.js';
+import { saidLedger } from '../js/hebrewSync.js';
 
 export const HEBREW_REPO = 'George-Wightman/hebrew-reader-sync';
 
@@ -95,6 +96,15 @@ export function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip,
   const weekFrom = today ? addDays(today, -6) : null;
   const pad = (n) => String(n).padStart(2, '0');
   const dayOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-  const liveWeek = weekFrom ? Object.values(objectAt(keys, 'hvr_coachlanded')).filter((ts) => typeof ts === 'number' && dayOf(ts) >= weekFrom && dayOf(ts) <= today).length : 0;
-  return { ok: true, days, strongGain, words, level, liveWeek, push, device };
+  const liveWeek = weekFrom ? Object.values(saidLedger(objectAt(keys, 'hvr_coachlanded'), objectAt(keys, 'hvr_irl'))).filter((ts) => typeof ts === 'number' && dayOf(ts) >= weekFrom && dayOf(ts) <= today).length : 0;
+  // Tonight's phrase on the widget (js/hebrew-voice.js tonightPhrase): this week's cards to say to
+  // her, as the Hebrew app keeps them (its weekCheck), and the days he said one.
+  const wk = objectAt(keys, 'hvr_week');
+  const week = typeof wk.week === 'string' && Array.isArray(wk.say) ? {
+    week: wk.week, partner: typeof wk.partner === 'string' ? wk.partner.trim().slice(0, 30) : '',
+    say: wk.say.filter((s) => s && typeof s.he === 'string' && s.he).slice(0, 10).map((s) => ({ he: s.he, tr: String(s.tr ?? ''), en: String(s.en ?? '') })),
+  } : null;
+  const irl = objectAt(keys, 'hvr_irl');
+  const saidOn = Object.keys(irl).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && irl[d] && !irl[d].off).sort().slice(-14);
+  return { ok: true, days, strongGain, words, level, liveWeek, week, saidOn, push, device };
 }

@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'd0ffcf1e';
+var PLANNER_BUILD = '9f768472';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -7238,7 +7238,23 @@ async function readSnapshot(envelope) {
       return value && typeof value === 'object' ? value : {};
     } catch { return {}; }
   };
-  return { stats: read('hvr_stats'), landed: read('hvr_coachlanded'), pathscores: read('hvr_pathscores') };
+  return { stats: read('hvr_stats'), landed: saidLedger(read('hvr_coachlanded'), read('hvr_irl')), pathscores: read('hvr_pathscores') };
+}
+
+// SAID TO A PERSON COUNTS AS SAID LIVE (2026-11-20). The Hebrew app's "I said it" (hvr_irl, by day:
+// { he, words, at }, or { off, at } once undone) is the point of the whole thing: the words of a
+// sentence said to her. They join the coach's ledger, { word: latest ts }, so the weekly bar, the
+// ladder and the recent words count both. The coach's own copy, which perfects a node in that app,
+// is left alone there.
+function saidLedger(landed, irl) {
+  const out = { ...(landed ?? {}) };
+  for (const e of Object.values(irl ?? {})) {
+    if (!e || e.off || typeof e.at !== 'number' || !Array.isArray(e.words)) continue;
+    for (const w of e.words) {
+      if (typeof w === 'string' && w.trim() && !(typeof out[w] === 'number' && out[w] >= e.at)) out[w] = e.at;
+    }
+  }
+  return out;
 }
 
 // The day a millisecond timestamp falls on WHERE HE IS, not in UTC: an evening session in a
@@ -7436,7 +7452,7 @@ async function syncHebrewProgress({ store, client, seen = null }) {
   saveSummary(store, hebrewSummary(snapshot, metrics, store.today()));
   return { ok: true, words: latestWords(snapshot.stats), ...metrics, sha: remote.sha ?? null };
 }
-return { HEBREW_IDS, HEBREW_LADDER, ensureHebrewGoal, RECENT_DAYS, hebrewSummary, syncHebrewProgress };
+return { HEBREW_IDS, HEBREW_LADDER, ensureHebrewGoal, saidLedger, RECENT_DAYS, hebrewSummary, syncHebrewProgress };
 })();
 
 // ---- planner/duolingo.js
@@ -10116,6 +10132,7 @@ function hebrewInputFrom({ doc, now, today, progress = null, busy = [] }) {
   return {
     now: local, shift, today, days, duolingo, strongGain: progress?.strongGain ?? 0,
     words: progress?.words ?? [], liveWeek: progress?.liveWeek ?? 0, level: progress?.level ?? null,
+    week: progress?.week ?? null, saidOn: progress?.saidOn ?? [],
     countdown: countdown ? { title: countdown.title, days: countdown.days } : null,
     busy: busy.filter((e) => e?.start && e?.end).map((e) => ({ ...e, start: moved(e.start), end: moved(e.end) })),
   };
@@ -10148,6 +10165,25 @@ function wordOfTheDay(words, today) {
 function phraseOfTheDay(phrases, level, today) {
   const at = phrases.filter((p) => p.lvl === level);
   return ofTheDay(at.length ? at : phrases.filter((p) => !level || p.lvl <= level), today, 3);
+}
+
+// TONIGHT'S PHRASE: one sentence a day to say to her. The Hebrew app makes the same pick (sayPick, in
+// its "SAY IT FOR REAL" section) from the same synced week, the same course file and the same level,
+// so the evening card and the app agree: this week's cards marked "say" in Claude's order, one a day
+// from the batch day while the batch is this week's, else the course's phrase of the day. Change one,
+// change both; tests/hebrew-card.test.js and the app's self-tests share a fixture.
+const SAY_WEEK_DAYS = 8;
+function tonightPhrase({ week = null, phrases = [], level = null, today }) {
+  const say = Array.isArray(week?.say) ? week.say.filter((s) => s?.he) : [];
+  if (say.length && /^\d{4}-\d{2}-\d{2}$/.test(week.week ?? '')) {
+    const n = Math.max(0, daysBetween(week.week, today));
+    if (n < SAY_WEEK_DAYS) {
+      const s = say[n % say.length];
+      return { he: s.he, tr: s.tr ?? '', en: s.en ?? '', from: 'week', partner: week.partner ?? '' };
+    }
+  }
+  const p = phraseOfTheDay(phrases, level, today);
+  return p ? { he: p.he, tr: p.tr, en: p.en, from: 'course', partner: week?.partner ?? '' } : null;
 }
 
 // What he's gained this week, never what he's short of. Empty when there's nothing yet.
@@ -10183,6 +10219,9 @@ function hebrewCard(input, { phrases = [] } = {}) {
   const slot = SLOT_STARTS.findIndex((s) => t < s);
   const word = wordOfTheDay(input.words ?? [], today);
   const phrase = phraseOfTheDay(phrases, input.level, today);
+  // From his week only: on a course day the rotation's phrase of the day is already the same sentence.
+  const tonight = tonightPhrase({ week: input.week, phrases, level: input.level, today });
+  const sayTonight = tonight?.from === 'week' && !(input.saidOn ?? []).includes(today) ? tonight : null;
   const numbers = weekNumbers(input);
   const { inside, ended } = busyState(input.busy, now);
   const shift = input.shift ?? 0;
@@ -10201,10 +10240,12 @@ function hebrewCard(input, { phrases = [] } = {}) {
   const order = ROTATION.map((_, i) => ROTATION[(i + dayIndex(today)) % ROTATION.length]);
   const pending = v.level === 'none' || v.level === 'bit';
   let pick = order[slot === -1 ? 3 : slot];
+  // The evening is for saying it to her, until he has.
+  if ((slot === 3 || slot === -1) && sayTonight) pick = 'tonight';
   if (pending && v.missed >= 2 && (slot <= 0 || pick === 'cheer')) pick = 'cheer';
   if (pending && ended && !inside) pick = 'cheer';
   if (pending && inside && pick === 'cheer') pick = word ? 'word' : 'phrase';
-  const available = (k) => (k === 'word' ? !!word : k === 'phrase' ? !!phrase : k === 'numbers' ? numbers.stats.length > 0 : true);
+  const available = (k) => (k === 'word' ? !!word : k === 'phrase' ? !!phrase : k === 'tonight' ? !!sayTonight : k === 'numbers' ? numbers.stats.length > 0 : true);
   if (!available(pick)) pick = order.find(available) ?? 'cheer';
 
   const base = { label: v.label, hebrew: v.hebrew, nextAt };
@@ -10212,6 +10253,11 @@ function hebrewCard(input, { phrases = [] } = {}) {
   if (pick === 'phrase') {
     const label = input.countdown && input.countdown.days > 0 && input.countdown.days <= 14 ? `${input.countdown.title} in ${input.countdown.days} day${input.countdown.days === 1 ? '' : 's'}` : 'Phrase of the day';
     return { ...base, kind: 'phrase', label, hebrew: 'משפט', word: { he: phrase.he, tr: phrase.tr, en: phrase.en } };
+  }
+  // A tap opens the app asking the one question, "Did you say it?" (its sayPaint).
+  if (pick === 'tonight') {
+    return { ...base, kind: 'phrase', label: sayTonight.partner ? `Say to ${sayTonight.partner} tonight` : 'Say it tonight', hebrew: 'הערב',
+      word: { he: sayTonight.he, tr: sayTonight.tr, en: sayTonight.en }, open: `${HEBREW_APP}?say=1` };
   }
   if (pick === 'numbers') return { ...base, kind: 'numbers', label: 'This week', hebrew: 'השבוע', stats: numbers.stats, aside: numbers.aside };
   // The encouragement: what the voice says, as a poster when days have gone by, gold or done once it's in.
@@ -10223,7 +10269,7 @@ function hebrewCard(input, { phrases = [] } = {}) {
   }
   return { ...base, kind: 'cheer', line: v.line, aside: v.aside };
 }
-return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewPingsLine, hebrewLevel, hebrewVoice, duePing, pingCard, hebrewInputFrom, hebrewCard };
+return { HEBREW_APP, HEBREW_DONE_MIN, HEBREW_GOLD_MIN, MOMENTS, LAST_PING, HEBREW_PINGS_PER_DAY, hebrewPingsLine, hebrewLevel, hebrewVoice, duePing, pingCard, hebrewInputFrom, SAY_WEEK_DAYS, tonightPhrase, hebrewCard };
 })();
 
 // ---- js/glance.js
@@ -10309,7 +10355,9 @@ function hebrew(doc, today, now, maps, progress) {
   // The tall widget's card for now (word, phrase, encouragement, numbers, gold), beside the voice.
   const voice = { ...hebrewVoice(input), card: hebrewCard(input, { phrases: progress?.phrases ?? [] }) };
   const minutes = active(doc, HEBREW_IDS.minutes);
-  if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open: HEBREW_APP, voice };
+  // The card can carry its own way in (tonight's phrase opens the app asking "Did you say it?").
+  const open = voice.card?.open ?? HEBREW_APP;
+  if (!minutes) return { title: 'Hebrew', number: '', caption: '', lines: [voice.line], open, voice };
   const total = Math.round(weekTotal(doc, minutes.id, today));
   const lines = [];
   for (const key of ['spoken', 'live']) {
@@ -10326,7 +10374,7 @@ function hebrew(doc, today, now, maps, progress) {
   lines.push(`${strip}  Mon–Sun`);
   return {
     title: 'Hebrew', number: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
-    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open: HEBREW_APP, voice,
+    caption: `of ${Number((minutes.target / 60).toFixed(1))} h this week`, lines, open, voice,
   };
 }
 
@@ -10667,6 +10715,7 @@ const __planner_hebrew_progress = (() => {
 
 const { API } = __planner_relay;
 const { addDays } = __js_dates;
+const { saidLedger } = __js_hebrewSync;
 
 const HEBREW_REPO = 'George-Wightman/hebrew-reader-sync';
 
@@ -10756,8 +10805,17 @@ function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today 
   const weekFrom = today ? addDays(today, -6) : null;
   const pad = (n) => String(n).padStart(2, '0');
   const dayOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-  const liveWeek = weekFrom ? Object.values(objectAt(keys, 'hvr_coachlanded')).filter((ts) => typeof ts === 'number' && dayOf(ts) >= weekFrom && dayOf(ts) <= today).length : 0;
-  return { ok: true, days, strongGain, words, level, liveWeek, push, device };
+  const liveWeek = weekFrom ? Object.values(saidLedger(objectAt(keys, 'hvr_coachlanded'), objectAt(keys, 'hvr_irl'))).filter((ts) => typeof ts === 'number' && dayOf(ts) >= weekFrom && dayOf(ts) <= today).length : 0;
+  // Tonight's phrase on the widget (js/hebrew-voice.js tonightPhrase): this week's cards to say to
+  // her, as the Hebrew app keeps them (its weekCheck), and the days he said one.
+  const wk = objectAt(keys, 'hvr_week');
+  const week = typeof wk.week === 'string' && Array.isArray(wk.say) ? {
+    week: wk.week, partner: typeof wk.partner === 'string' ? wk.partner.trim().slice(0, 30) : '',
+    say: wk.say.filter((s) => s && typeof s.he === 'string' && s.he).slice(0, 10).map((s) => ({ he: s.he, tr: String(s.tr ?? ''), en: String(s.en ?? '') })),
+  } : null;
+  const irl = objectAt(keys, 'hvr_irl');
+  const saidOn = Object.keys(irl).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && irl[d] && !irl[d].off).sort().slice(-14);
+  return { ok: true, days, strongGain, words, level, liveWeek, week, saidOn, push, device };
 }
 return { HEBREW_REPO, wordBand, HEBREW_CONTENT, readHebrewPhrases, readHebrewProgress };
 })();
