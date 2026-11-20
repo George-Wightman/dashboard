@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '9f768472';
+var PLANNER_BUILD = '72bef214';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -9178,6 +9178,139 @@ function createStocks({ request, props, log = () => {}, now, send = () => false 
 return { parseYahoo, parseStooq, peHistory, createStocks };
 })();
 
+// ---- js/letter.js
+const __js_letter = (() => {
+// THE SUNDAY LETTER. George plans through Claude and Google Calendar, and the week-in-review tile
+// was never opened. So on Sunday evening a Claude routine (his subscription, like the stocks one;
+// the desktop task "sunday-letter") writes the week: what got done and what didn't, by name, his
+// Hebrew, money against the forecast, the map, and a proposed plan for next week. It arrives as one
+// notification (the planner, planner/letter.js) and one page (js/ui/letter.js), and he answers in a
+// chat: the page's button opens Claude with the letter, where "yes" or a change is applied as any
+// other plan is. Nothing in the letter changes the dashboard by itself.
+//
+// Kept in the PRIVATE sync repo as letters/letters.json, the last eight, newest first. Pure: shared
+// by the CLI (`letter`, `letter-write`), the planner and the app.
+
+const LETTERS_PATH = 'letters/letters.json';
+const LETTERS_KEY = 'dash_letters';
+const LETTERS_KEPT = 8;
+// How long after it's written a letter is news: the push, and the review tile's button.
+const LETTER_FRESH_DAYS = 3;
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const LIMITS = { title: 120, head: 60, text: 1600, parts: 8, plan: 14, line: 220 };
+
+const replyUrl = (id) => `https://claude.ai/new?q=${encodeURIComponent(`/dashboard Read my Sunday letter (letter ${id}) and go through the plan it proposes with me.`)}`;
+
+const str = (v) => typeof v === 'string';
+function validLetter(l) {
+  return !!l && DAY.test(l.id ?? '') && str(l.written) && str(l.title) && l.title.length <= LIMITS.title
+    && Array.isArray(l.parts) && l.parts.length >= 1 && l.parts.length <= LIMITS.parts
+    && l.parts.every((p) => p && str(p.head) && str(p.text) && p.head.length <= LIMITS.head && p.text.length <= LIMITS.text)
+    && Array.isArray(l.plan) && l.plan.length <= LIMITS.plan && l.plan.every((x) => str(x) && x.length <= LIMITS.line);
+}
+function validLetters(doc) {
+  return !!doc && doc.v === 1 && Array.isArray(doc.letters) && doc.letters.length <= LETTERS_KEPT && doc.letters.every(validLetter);
+}
+
+const fail = (msg) => { throw new Error(`letter-write: ${msg}`); };
+const tidy = (s) => String(s ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+
+// The routine's file, checked and tidied into a letter. Throws on anything wrong, by name, so a
+// half-right letter never reaches his phone.
+function checkLetter(json, { today, now = new Date() }) {
+  let d;
+  try { d = typeof json === 'string' ? JSON.parse(json) : json; } catch { fail('the file is not JSON'); }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) fail('the file is an object: {"week", "title", "parts", "plan"}');
+  const id = d.week ?? today;
+  if (!DAY.test(id)) fail('"week" is the letter\'s day, YYYY-MM-DD');
+  const title = tidy(d.title);
+  if (!title || title.length > LIMITS.title) fail(`"title" is one line, under ${LIMITS.title} characters: it is the notification`);
+  if (!Array.isArray(d.parts) || !d.parts.length || d.parts.length > LIMITS.parts) fail(`"parts" is a list of 1 to ${LIMITS.parts} {"head", "text"}`);
+  const parts = d.parts.map((p, i) => {
+    const head = tidy(p?.head), text = tidy(p?.text);
+    if (!head || head.length > LIMITS.head) fail(`part ${i + 1}: "head" is a short heading`);
+    if (!text || text.length > LIMITS.text) fail(`part ${i + 1}: "text" is 1 to ${LIMITS.text} characters`);
+    return { head, text };
+  });
+  const plan = (d.plan ?? []);
+  if (!Array.isArray(plan) || plan.length > LIMITS.plan) fail(`"plan" is a list of at most ${LIMITS.plan} lines`);
+  const lines = plan.map((x, i) => {
+    const t = tidy(x);
+    if (!t || t.length > LIMITS.line || t.includes('\n')) fail(`plan line ${i + 1} is one line under ${LIMITS.line} characters`);
+    return t;
+  });
+  return { id, written: now.toISOString(), title, parts, plan: lines };
+}
+
+// The file with a new letter in: one per week day, newest first, the last LETTERS_KEPT.
+function addLetter(file, letter) {
+  const others = (validLetters(file) ? file.letters : []).filter((l) => l.id !== letter.id);
+  return { v: 1, letters: [letter, ...others].sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)).slice(0, LETTERS_KEPT) };
+}
+
+function latestLetter(file) {
+  return validLetters(file) && file.letters.length ? file.letters[0] : null;
+}
+
+// Whether a letter is still news on `today`: written within the last LETTER_FRESH_DAYS days.
+function letterFresh(letter, today) {
+  if (!letter || !DAY.test(today ?? '')) return false;
+  const written = String(letter.written).slice(0, 10);
+  const ms = Date.parse(`${today}T00:00:00Z`) - Date.parse(`${written}T00:00:00Z`);
+  return Number.isFinite(ms) && ms >= 0 && ms < LETTER_FRESH_DAYS * 86400000;
+}
+
+// The chat read: the latest letter as text.
+function letterLines(file) {
+  const l = latestLetter(file);
+  if (!l) return ['No Sunday letter yet: the Sunday routine writes one with `letter-write`.'];
+  return [
+    `Letter ${l.id} (written ${l.written.slice(0, 16).replace('T', ' ')} UTC): ${l.title}`,
+    ...l.parts.flatMap((p) => ['', `## ${p.head}`, p.text]),
+    ...(l.plan.length ? ['', '## Proposed for next week (not applied: he says yes or changes it here)', ...l.plan.map((x) => `- ${x}`)] : []),
+  ];
+}
+return { LETTERS_PATH, LETTERS_KEY, LETTERS_KEPT, LETTER_FRESH_DAYS, replyUrl, validLetters, checkLetter, addLetter, latestLetter, letterFresh, letterLines };
+})();
+
+// ---- planner/letter.js
+const __planner_letter = (() => {
+// The Sunday letter's one notification (js/letter.js). Claude's Sunday routine writes
+// letters/letters.json in the sync repo; when the newest letter is still news and hasn't been sent,
+// this sends it to his devices once, opening the dashboard on it. Looks at most every
+// LETTER_LOOK_MIN minutes, since a letter lands once a week and each look is a GitHub read.
+// `request(url, init) → { status, text }`; `send(message) → true when delivered`.
+
+const { LETTERS_PATH, latestLetter, letterFresh } = __js_letter;
+
+const LETTER_LOOK_MIN = 20;
+
+function createLetterPush({ request, props, send, now, today, log = () => {} }) {
+  const get = (k) => props.get(k) || null;
+  function run() {
+    const t = now().getTime();
+    if (t - (Number(get('LETTER_LOOKED')) || 0) < LETTER_LOOK_MIN * 60000) return null;
+    props.put('LETTER_LOOKED', String(t));
+    const res = request(`https://api.github.com/repos/${get('SYNC_REPO')}/contents/${LETTERS_PATH}`, { method: 'GET',
+      headers: { Authorization: `Bearer ${get('GITHUB_TOKEN')}`, Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28' } });
+    if (res.status === 404) return null;
+    if (res.status !== 200) throw new Error(`GitHub ${res.status} reading ${LETTERS_PATH}`);
+    let file = null;
+    try { file = JSON.parse(res.text); } catch { return null; }
+    const letter = latestLetter(file);
+    if (!letter || get('LETTER_SENT') === letter.id || !letterFresh(letter, today)) return null;
+    // Marked first, as the stocks alert is: one try, never a notification every ten minutes.
+    props.put('LETTER_SENT', letter.id);
+    const ok = send({ title: 'Your week', body: letter.title.slice(0, 140), url: './?big=letter', tag: `letter:${letter.id}` });
+    log(`Sunday letter ${letter.id}: ${ok ? 'sent' : 'no device to send to'}`);
+    return ok ? `letter ${letter.id} sent` : null;
+  }
+  return { run };
+}
+return { LETTER_LOOK_MIN, createLetterPush };
+})();
+
 // ---- planner/relay.js
 const __planner_relay = (() => {
 // The relay: a way into the sync repo for Claude when its sandbox won't let it reach GitHub itself.
@@ -10970,6 +11103,7 @@ const { runGoalReviews } = __planner_reviews;
 const { createCheckins, makePusher, pushSubscriptions } = __planner_checkins;
 const { createNudges } = __planner_nudges;
 const { createStocks } = __planner_stocks;
+const { createLetterPush } = __planner_letter;
 const { gasCrypto } = __planner_webpush;
 const { handleRelay } = __planner_relay;
 const { handleGlance } = __planner_glance;
@@ -11476,26 +11610,35 @@ function createPlanner({
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
       watch.lap('nudges');
+      // A push to his devices, and a GitHub request, for the steps below (stocks, the Sunday letter).
+      const send = (message) => {
+        const tools = pushCrypto ?? (Utilities ? gasCrypto(Utilities) : null);
+        const privateKey = get('VAPID_PRIVATE'); const publicKey = get('VAPID_PUBLIC');
+        const subs = pushSubscriptions(store.doc());
+        if (!tools || !privateKey || !publicKey || !subs.length) return false;
+        return makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t: now() })(subs, message).ok;
+      };
+      const fetchFor = (url, init) => {
+        const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true,
+          ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}) });
+        return { status: res.getResponseCode(), text: res.getContentText() };
+      };
       // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
       // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
       if (get('T212_KEY')) try {
-        const send = (message) => {
-          const tools = pushCrypto ?? (Utilities ? gasCrypto(Utilities) : null);
-          const privateKey = get('VAPID_PRIVATE'); const publicKey = get('VAPID_PUBLIC');
-          const subs = pushSubscriptions(store.doc());
-          if (!tools || !privateKey || !publicKey || !subs.length) return false;
-          return makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t: now() })(subs, message).ok;
-        };
-        const fetchFor = (url, init) => {
-          const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true,
-            ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}) });
-          return { status: res.getResponseCode(), text: res.getContentText() };
-        };
         createStocks({ request: fetchFor, props: { get, put }, log, now, send }).run();
       } catch (err) {
         log(clean(`Stocks failed: ${err?.message ?? err}`));
       }
       watch.lap('stocks');
+      // The Sunday letter (planner/letter.js): one push when Claude's Sunday routine has written a new
+      // one. Never stops the planner.
+      try {
+        createLetterPush({ request: fetchFor, props: { get, put }, now, send, log, today: logicalDay(now(), dayStartHour()) }).run();
+      } catch (err) {
+        log(clean(`Sunday letter failed: ${err?.message ?? err}`));
+      }
+      watch.lap('letter');
 
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';

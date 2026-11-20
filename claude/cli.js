@@ -9,6 +9,7 @@ import { READS } from './read.js';
 import { OPS, UNLOGGED, runOp, readHandoff, fieldWarnings } from './ops.js';
 import { createFileStore } from './files.js';
 import { hebrewState, progressKeys, weekInput, readHebrewWeek, writeHebrewWeek } from './hebrew-week.js';
+import { LETTERS_PATH, checkLetter, addLetter, letterLines } from '../js/letter.js';
 import { relayingFetch } from './relay.js';
 import { curlFetch } from './curl.js';
 import { handoffPath, handoffFile, handoffList, pickHandoff, trailLine, pruneTrail, TRAIL_PATH } from './handoff.js';
@@ -40,6 +41,7 @@ export const USAGE = [
   'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · stocks · usage [days] · reference [topic] · handoffs · handoff <name>',
   'Money ledger: money-import <file.json> merges a ledger built from his statements (reference money)',
   'Stocks: stocks · stocks brief-input [daily|weekly] · stocks-accounts (US company accounts, Saturdays) · stocks-write <file.json> merges brief, notes, theses, themes, tiers, shortlist (reference stocks)',
+  "The Sunday letter: letter (the latest, to go through its plan) · letter-write <file.json> saves the week's letter and the planner sends it to his phone",
   'Hebrew, his own week: hebrew-week --progress <the Hebrew app\'s progress.json> · hebrew-week-write <file.json> saves the week\'s cards for the Hebrew app',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
   `Ops: ${Object.keys(OPS).join(' · ')}`,
@@ -191,7 +193,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && command !== 'stocks-accounts' && command !== 'hebrew-week' && command !== 'hebrew-week-write' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && command !== 'stocks-accounts' && command !== 'hebrew-week' && command !== 'hebrew-week-write' && command !== 'letter' && command !== 'letter-write' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -315,6 +317,27 @@ export async function main({
         const path = rest.join(' ').trim();
         if (!path) throw new Error('hebrew-week-write needs the path of a JSON file');
         say(await writeHebrewWeek(files, readText(path), { today: store.today() }));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+    // The Sunday letter (js/letter.js): the latest one to read, and saving the new one.
+    if (command === 'letter') {
+      try {
+        const f = await files.read(LETTERS_PATH);
+        say(letterLines(f ? JSON.parse(f.text) : null).join('\n'));
+        return finish(0);
+      } catch (e) { say(e.message); return finish(1); }
+    }
+    if (command === 'letter-write') {
+      try {
+        const path = rest.join(' ').trim();
+        if (!path) throw new Error('letter-write needs the path of a JSON file');
+        const letter = checkLetter(readText(path), { today: store.today() });
+        const f = await files.read(LETTERS_PATH);
+        let file = null;
+        try { file = f ? JSON.parse(f.text) : null; } catch { file = null; }
+        await files.write(LETTERS_PATH, `${JSON.stringify(addLetter(file, letter))}\n`, `letters: ${letter.id}`);
+        say(`Saved the letter for ${letter.id} (${letter.parts.length} parts, ${letter.plan.length} plan lines). The planner sends it to his phone within ten minutes.`);
         return finish(0);
       } catch (e) { say(e.message); return finish(1); }
     }

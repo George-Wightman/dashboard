@@ -42,6 +42,8 @@ import { loadCached, refreshFile } from './private.js';
 import { MONEY_PATH, MONEY_KEY, validMoney } from './money.js';
 import { LONDON_PATH, LONDON_KEY, validLondon } from './london.js';
 import { MARKET_PATH, MARKET_KEY, DESK_PATH, DESK_KEY, validMarket, validDesk } from './stocks.js';
+import { LETTERS_PATH, LETTERS_KEY, validLetters } from './letter.js';
+import { openLetter } from './ui/letter.js';
 import { createUsage, deviceOf } from './usage.js';
 
 const store = createStore({ storage: localStorage });
@@ -91,6 +93,8 @@ let mapsAt = 0;
 let money = loadCached(localStorage, MONEY_KEY, validMoney);
 let london = loadCached(localStorage, LONDON_KEY, validLondon);
 let stocks = { market: loadCached(localStorage, MARKET_KEY, validMarket), desk: loadCached(localStorage, DESK_KEY, validDesk) };
+// The Sunday letters (js/letter.js), Claude's, null until there.
+let letters = loadCached(localStorage, LETTERS_KEY, validLetters);
 const MAPS_EVERY = 30 * 60 * 1000;
 
 // Canned Gemini for local testing: only on localhost, only with ?fakegemini (or =<mode>). In
@@ -172,6 +176,7 @@ const ctx = {
   london: () => london,
   // Stocks (js/stocks.js): the planner's market.json and Claude's desk.json, each null until there.
   stocks: () => stocks,
+  letters: () => letters,
   setTiles(next) {
     tiles = normalizeTiles(next);
     saveTiles(localStorage, tiles);
@@ -407,17 +412,19 @@ async function runMapSync() {
   // Each file on its own: one that can't be fetched keeps its cached copy without stopping the others
   // (a map blip used to leave money, London and stocks unread until the next half hour).
   const files = (path) => clientFor(token, repo, path);
-  const [nextMaps, nextMoney, nextLondon, nextMarket, nextDesk] = await Promise.all([
+  const [nextMaps, nextMoney, nextLondon, nextMarket, nextDesk, nextLetters] = await Promise.all([
     refreshMaps({ clientFor: files, storage: bigFiles }).catch(() => maps),
     refreshFile({ clientFor: files, storage: localStorage, key: MONEY_KEY, path: MONEY_PATH, valid: validMoney }).catch(() => money),
     refreshFile({ clientFor: files, storage: localStorage, key: LONDON_KEY, path: LONDON_PATH, valid: validLondon }).catch(() => london),
     refreshFile({ clientFor: files, storage: localStorage, key: MARKET_KEY, path: MARKET_PATH, valid: validMarket }).catch(() => stocks.market),
     refreshFile({ clientFor: files, storage: localStorage, key: DESK_KEY, path: DESK_PATH, valid: validDesk }).catch(() => stocks.desk),
+    refreshFile({ clientFor: files, storage: localStorage, key: LETTERS_KEY, path: LETTERS_PATH, valid: validLetters }).catch(() => letters),
   ]);
   maps = nextMaps;
   money = nextMoney;
   london = nextLondon;
   stocks = { market: nextMarket, desk: nextDesk };
+  letters = nextLetters;
   if (canRun()) render();
 }
 
@@ -683,7 +690,16 @@ if (params.has('big')) {
   url.searchParams.delete('big');
   url.searchParams.delete('ticker');
   history.replaceState(null, '', url.pathname + url.search + url.hash);
-  openTile(ctx, tile);
+  if (tile === 'letter') {
+    // The Sunday letter's notification: open it at once (the copy kept here, if any), and fetch the
+    // newest straight away rather than waiting for the half-hourly read.
+    openLetter(ctx);
+    const { token, repo } = store.settings();
+    if (!FAKE && token && repo) {
+      refreshFile({ clientFor: (path) => clientFor(token, repo, path), storage: localStorage, key: LETTERS_KEY, path: LETTERS_PATH, valid: validLetters })
+        .then((next) => { letters = next; paintBig(ctx); }).catch(() => {});
+    }
+  } else openTile(ctx, tile);
 }
 reportZone();
 updater.check();

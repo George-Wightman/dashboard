@@ -6,6 +6,7 @@ import { h } from './dom.js';
 import { reviewWeek, PLAN_URL } from '../review.js';
 import { shortWeekday, shortDate } from '../dates.js';
 import { bigSection } from './big.js';
+import { letterButton } from './letter.js';
 
 const hours = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 
@@ -35,7 +36,7 @@ export function renderReview(ctx) {
     r.pushed.length ? h('p', { class: 'review-pushed' }, h('strong', {}, 'Pushed after the lock: '),
       r.pushed.slice(0, 4).map((p) => `${p.title} (${shortWeekday(p.day)})`).join(', ')) : null,
     stats(r).length ? h('ul', { class: 'review-stats' }, stats(r).map((s) => h('li', {}, s))) : null,
-    plan());
+    h('div', { class: 'review-actions' }, letterButton(ctx), plan()));
 }
 
 export function renderReviewBig(ctx) {
@@ -48,5 +49,5 @@ export function renderReviewBig(ctx) {
         h('td', { class: 'num' }, `${d.done} of ${d.total}`),
         h('td', {}, d.missed.length ? `missed ${d.missed.join(', ')}` : '')))))),
     stats(r).length ? bigSection('The targets', h('ul', { class: 'review-stats' }, stats(r).map((s) => h('li', {}, s)))) : null,
-    plan());
+    h('div', { class: 'review-actions' }, letterButton(ctx), plan()));
 }

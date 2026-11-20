@@ -547,6 +547,19 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 .review-stats li { padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: color-mix(in srgb, var(--tile-ink, var(--dl-ink)) 10%, transparent); }
 .review-plan { align-self: flex-start; display: inline-flex; align-items: center; text-decoration: none; }
 .tile[data-area="review"] .review-plan { background: var(--dl-on-review); color: var(--dl-review); }
+.review-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* The Sunday letter (js/ui/letter.js), in the sheet. */
+/* Prose reads in one column, whatever the window: not the two-column sheet the other big views use. */
+.letter, .sheet .big.letter { display: flex; flex-direction: column; gap: 14px; columns: auto; column-count: auto; max-width: 680px; }
+.letter-title { margin: 0; font: 700 20px/1.3 var(--dl-display, inherit); }
+.letter-when { margin: -8px 0 0; font-size: 13px; opacity: .7; }
+.letter-p { margin: 0 0 8px; font-size: 15px; line-height: 1.5; white-space: pre-line; }
+.letter-plan { margin: 0; padding-left: 18px; font-size: 15px; line-height: 1.5; }
+.letter-note { margin: 6px 0 0; font-size: 13px; opacity: .7; }
+.letter-reply { align-self: flex-start; display: inline-flex; align-items: center; text-decoration: none; }
+.letter-old summary { cursor: pointer; font-size: 14px; padding: 4px 0; }
+.letter-old h4 { margin: 10px 0 4px; font-size: 14px; }
 
 /* Hebrew growth. */
 .heb-growth { margin: 0; font-size: 14px; font-weight: 600; }

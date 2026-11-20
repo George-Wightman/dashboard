@@ -34,7 +34,7 @@ Everything goes through `run.sh` in this skill's folder (the folder this SKILL.m
     bash <skill folder>/run.sh today
 
 **Reads:** `catchup [days]`, `today`, `week`, `goals`, `list`, `find <words>`, `day <YYYY-MM-DD>`,
-`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `back`, `map`, `usage [days]`, `reference`. Each
+`history`, `checkins [days]`, `flags`, `changes`, `planner`, `attention`, `gym`, `back`, `map`, `usage [days]`, `letter`, `reference`. Each
 starts with today's date — work other dates out from it.
 
 If the tool names an op or a read that isn't in your `reference.md`, your copy is older than the
@@ -86,6 +86,11 @@ day since the last catch-up (what he ticked and when, what wasn't done, what was
 he said in his check-ins, new flags, workouts, what he moved or deleted in Google Calendar, the
 planner's notes and what needs attention — and then remembers where you got to, so the next one
 starts there. `catchup 3` looks back three days without moving the marker.
+
+**The Sunday letter.** On Sunday evenings a routine writes him a letter about his week, with a
+proposed plan for the next one, and his phone opens it. When he comes from it ("Read my Sunday
+letter"), run `letter` as well as `catchup`: go through its plan with him, and book only what he
+says yes to. Nothing in the letter is applied until he does.
 
 Then say it back in a few lines: what got done, **what didn't, by name** (moving or deleting work
 never makes a day a success), what his check-ins tell you, and what you'd change. Make the changes he

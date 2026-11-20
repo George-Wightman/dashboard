@@ -31,6 +31,7 @@ import { runGoalReviews } from './reviews.js';
 import { createCheckins, makePusher, pushSubscriptions } from './checkins.js';
 import { createNudges } from './nudges.js';
 import { createStocks } from './stocks.js';
+import { createLetterPush } from './letter.js';
 import { gasCrypto } from './webpush.js';
 import { handleRelay } from './relay.js';
 import { handleGlance } from './glance.js';
@@ -537,26 +538,35 @@ export function createPlanner({
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
       watch.lap('nudges');
+      // A push to his devices, and a GitHub request, for the steps below (stocks, the Sunday letter).
+      const send = (message) => {
+        const tools = pushCrypto ?? (Utilities ? gasCrypto(Utilities) : null);
+        const privateKey = get('VAPID_PRIVATE'); const publicKey = get('VAPID_PUBLIC');
+        const subs = pushSubscriptions(store.doc());
+        if (!tools || !privateKey || !publicKey || !subs.length) return false;
+        return makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t: now() })(subs, message).ok;
+      };
+      const fetchFor = (url, init) => {
+        const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true,
+          ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}) });
+        return { status: res.getResponseCode(), text: res.getContentText() };
+      };
       // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
       // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
       if (get('T212_KEY')) try {
-        const send = (message) => {
-          const tools = pushCrypto ?? (Utilities ? gasCrypto(Utilities) : null);
-          const privateKey = get('VAPID_PRIVATE'); const publicKey = get('VAPID_PUBLIC');
-          const subs = pushSubscriptions(store.doc());
-          if (!tools || !privateKey || !publicKey || !subs.length) return false;
-          return makePusher({ UrlFetchApp, Utilities, tools, keys: { privateKey, publicKey }, t: now() })(subs, message).ok;
-        };
-        const fetchFor = (url, init) => {
-          const res = UrlFetchApp.fetch(url, { method: String(init.method ?? 'GET').toLowerCase(), headers: init.headers, muteHttpExceptions: true,
-            ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}) });
-          return { status: res.getResponseCode(), text: res.getContentText() };
-        };
         createStocks({ request: fetchFor, props: { get, put }, log, now, send }).run();
       } catch (err) {
         log(clean(`Stocks failed: ${err?.message ?? err}`));
       }
       watch.lap('stocks');
+      // The Sunday letter (planner/letter.js): one push when Claude's Sunday routine has written a new
+      // one. Never stops the planner.
+      try {
+        createLetterPush({ request: fetchFor, props: { get, put }, now, send, log, today: logicalDay(now(), dayStartHour()) }).run();
+      } catch (err) {
+        log(clean(`Sunday letter failed: ${err?.message ?? err}`));
+      }
+      watch.lap('letter');
 
       if (errors.length) log(problem);
       return errors.length ? 'partly' : 'ok';
