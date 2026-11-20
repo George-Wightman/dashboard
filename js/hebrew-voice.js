@@ -163,8 +163,10 @@ export function pingCard(words, pingId) {
   const pool = weak.length >= 3 ? weak : words.filter((w) => usable(w) && (w.band === 'weak' || w.band === 'progressing'));
   if (!pool.length) return null;
   const sorted = [...pool].sort((a, b) => (a.he < b.he ? -1 : a.he > b.he ? 1 : 0));
-  let h = 0;
-  for (const ch of String(pingId)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  // FNV-1a with a final mix, so ids that differ only at the end (the moment) spread out.
+  let h = 0x811c9dc5;
+  for (const ch of String(pingId)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  h ^= h >>> 16; h = Math.imul(h, 0x45d9f3b) >>> 0; h = (h ^ (h >>> 16)) >>> 0;
   const w = sorted[h % sorted.length];
   return { k: w.he, he: w.he, tr: w.tr, en: w.en };
 }
