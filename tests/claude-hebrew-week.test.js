@@ -35,8 +35,12 @@ test('what Claude reads: the dates, his words by band, his week day by day, and 
   assert.match(lines, /^Cards for Fri 20 Nov to Thu 26 Nov \(batch 2026-11-20\)\./);
   assert.match(lines, /The person he is learning for: Ana/);
   assert.match(lines, /His level: 2 of 5/);
-  assert.match(lines, /Words he can say \(1\): עייף ayef = tired \(m\)/);
-  assert.match(lines, /Words he is learning \(1\): חורף khoref = winter/);
+  assert.match(lines, /Strong words, solid enough to hold up a new one \(1\): עייף ayef = tired \(m\)/);
+  assert.match(lines, /Progressing words, he can say them \(0\): none/);
+  assert.match(lines, /Words he is learning, still weak \(1\): חורף khoref = winter/);
+  assert.match(lines, /ONE learning word or ONE new word, never two, and then every other word in that card must be STRONG/);
+  assert.match(lines, /Grammar he knows cold, never listed above and never glossed: the pronouns/);
+  assert.match(lines, /no presents, surprises or plans kept from her/);
   assert.match(lines, / {2}Fri 20 Nov: Shift 12:00–14:00/);
   assert.match(lines, / {2}Sat 21 Nov: task: Fix the shelf/);
   assert.match(lines, /Habits: Gym/);

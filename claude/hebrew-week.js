@@ -17,6 +17,10 @@ export const CARDS_MIN = 12;
 export const CARDS_MAX = 40;
 export const SAY_MAX = 7;
 
+// The Hebrew app's STOPLIST (grammar he knows cold, which it never harvests or drills), so the brief
+// doesn't read as if he couldn't say "I" or "with".
+export const KNOWN_COLD = 'the pronouns (אני, אתה, את, הוא, היא, אנחנו, אתם, הם, הן), their forms with של, ל, את and עם (שלי, לך, אותו, איתה…), של, גם, אז, עם, אבל, מאוד, מה, מי, זה/הזה/הזאת, יש, אין, הרבה, פה, שם, and the joined ה־ ו־ ב־ ל־ מ־ ש־';
+
 const HEBREW = /[֐-׿]/;
 const LATIN = /[A-Za-z]/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -87,15 +91,18 @@ export function weekDays(doc, from) {
 export function weekInput({ doc, today, state, previous = null }) {
   const from = today;
   const to = addDays(from, WEEK_DAYS - 1);
-  const can = state.words.filter((w) => w.band === 'strong' || w.band === 'progressing');
+  const strong = state.words.filter((w) => w.band === 'strong');
+  const progressing = state.words.filter((w) => w.band === 'progressing');
   const learning = state.words.filter((w) => w.band === 'weak');
+  const list = (ws, none) => ws.map((w) => `${w.he} ${w.tr} = ${w.en}`).join(' · ') || none;
   const { days, habits, off } = weekDays(doc, from);
   const out = [
     `Cards for ${shortWeekday(from)} ${shortDate(from)} to ${shortWeekday(to)} ${shortDate(to)} (batch ${from}).`,
     previous?.partner ? `The person he is learning for: ${previous.partner} (keep "partner" in the file).` : 'No partner name on file yet: set "partner" if you know it.',
     `His level: ${state.level} of 5. Write mostly at ${state.level}, a few at ${Math.min(5, state.level + 1)}.`,
-    `Words he can say (${can.length}): ${can.map((w) => `${w.he} ${w.tr} = ${w.en}`).join(' · ') || 'none yet'}`,
-    `Words he is learning (${learning.length}): ${learning.map((w) => `${w.he} ${w.tr} = ${w.en}`).join(' · ') || 'none'}`,
+    `Strong words, solid enough to hold up a new one (${strong.length}): ${list(strong, 'none yet')}`,
+    `Progressing words, he can say them (${progressing.length}): ${list(progressing, 'none')}`,
+    `Words he is learning, still weak (${learning.length}): ${list(learning, 'none')}`,
     'His week:',
     ...days.map((d) => `  ${shortWeekday(d.day)} ${shortDate(d.day)}: ${d.parts.join(' · ') || 'nothing booked'}`),
     `Habits: ${habits.join(', ') || 'none'}`,
@@ -105,7 +112,12 @@ export function weekInput({ doc, today, state, previous = null }) {
   out.push(
     '',
     'Write 20 to 30 cards about this week, things he would actually say or hear: his plans, his day, what he is cooking, training, travelling, the people in it.',
-    'Mostly words he can say; build the learning words in; at most ONE word he does not have per card, and that one glossed.',
+    // The Hebrew app's own gate (bankServable): a card it would hold back is a card he never sees this week.
+    'Most cards: only strong and progressing words, and the grammar below. The app serves those at once.',
+    'Some cards may carry ONE learning word or ONE new word, never two, and then every other word in that card must be STRONG: the app holds back a card that leans a weak word on half-learned ones, and serves it only on a day that word comes up for practice.',
+    'A new word is glossed, and waits in his Pending list for his OK before its card is served, so keep new words to a handful. Forms of his words (עייפה, רוצה) are usually fine; when unsure the app knows a form (חזקה), gloss it, because a word it cannot place that no gloss explains drops the card.',
+    `Grammar he knows cold, never listed above and never glossed: ${KNOWN_COLD}.`,
+    'Nothing she should not hear: these cards show on his phone and the say ones are spoken to her, so no presents, surprises or plans kept from her, and nothing about health or money.',
     `Mark ${SAY_MAX - 3} to ${SAY_MAX} cards "say": true: short things to say to his partner this week, in his own voice (first person, everyday).`,
     'Transliteration, his scheme: kh for ח and כ (never ch); the article and one-letter prepositions join the word (harekhov, bakheder, la\'avoda), with an apostrophe before a vowel (ha\'ir); the conjunction ו is ve- as spoken (ve\'ani). Natural Hebrew a person would say, not a translation of English.',
     'Save with hebrew-week-write <file>, the file being:',
