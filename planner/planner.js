@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'f7148d5d';
+var PLANNER_BUILD = 'ae7d526e';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -721,24 +721,32 @@ function normaliseRecord(rec, repairArchivedOn) {
   return { ...rec, created, archivedOn };
 }
 
+function mergeIn(a, b, normalise, repairArchivedOn) {
+  // Normalise each candidate before picking, not the winner afterwards: normalising only the
+  // winner would let a repaired record's extra fields shift later tie-breaks, so repeated or
+  // differently-grouped merges (a∪b)∪c vs a∪(b∪c) could disagree on the winner.
+  const x = normalise && a ? normaliseRecord(a, repairArchivedOn) : a;
+  const y = normalise && b ? normaliseRecord(b, repairArchivedOn) : b;
+  // null and absent are both "nothing there", but not the same nothing: `x ?? y` alone picks
+  // whichever side happens to be undefined, which is order-dependent when one side is null and
+  // the other absent. Prefer null over absent, in both orders, when neither side has a record.
+  if (x != null && y != null) return normalise ? mergeRecord(x, y, pickWinner) : pickWinner(x, y);
+  if (x == null && y == null) return x === undefined ? y : x;
+  return x ?? y;
+}
+
+// One record of a known map (MAPS), merged exactly as mergeDocs merges it. The archive
+// (js/archive.js) asks with it whether a copy adds anything to the archive's version.
+function mergeOne(map, a, b) {
+  return mergeIn(a, b, true, map !== 'logs');
+}
+
 function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
   const lm = left ?? {};
   const rm = right ?? {};
   const ids = [...new Set([...Object.keys(lm), ...Object.keys(rm)])].sort();
   const map = {};
-  for (const id of ids) {
-    // Normalise each candidate before picking, not the winner afterwards: normalising only the
-    // winner would let a repaired record's extra fields shift later tie-breaks, so repeated or
-    // differently-grouped merges (a∪b)∪c vs a∪(b∪c) could disagree on the winner.
-    const x = normalise && lm[id] ? normaliseRecord(lm[id], repairArchivedOn) : lm[id];
-    const y = normalise && rm[id] ? normaliseRecord(rm[id], repairArchivedOn) : rm[id];
-    // null and absent are both "nothing there", but not the same nothing: `x ?? y` alone picks
-    // whichever side happens to be undefined, which is order-dependent when one side is null and
-    // the other absent. Prefer null over absent, in both orders, when neither side has a record.
-    if (x != null && y != null) map[id] = normalise ? mergeRecord(x, y, pickWinner) : pickWinner(x, y);
-    else if (x == null && y == null) map[id] = x === undefined ? y : x;
-    else map[id] = x ?? y;
-  }
+  for (const id of ids) map[id] = mergeIn(lm[id], rm[id], normalise, repairArchivedOn);
   return map;
 }
 
@@ -781,9 +789,22 @@ function coldStamps(doc) {
   }
 }
 
+// A change's before/after snapshots used to carry a copy of the record's per-field stamps: 71 KB of
+// the 327 KB change log on 20 Nov 2026, and nothing reads them (undo compares and restores content,
+// then stamps afresh). js/changes.js no longer copies them; this takes them out of the old ones, the
+// same in every merge, so a copy from before can't put them back.
+const unstamped = (r) => (r && typeof r === 'object' && r._sync ? (({ _sync, ...rest }) => rest)(r) : r);
+function snapshotStamps(changes) {
+  for (const [id, c] of Object.entries(changes)) {
+    if (!Array.isArray(c?.edits) || !c.edits.some((e) => e?.before?._sync || e?.after?._sync)) continue;
+    changes[id] = { ...c, edits: c.edits.map((e) => (e && typeof e === 'object' ? { ...e, before: unstamped(e.before), after: unstamped(e.after) } : e)) };
+  }
+}
+
 function expire(doc) {
   coldStamps(doc);
   const changes = doc.changes ?? {};
+  snapshotStamps(changes);
   let newest = '';
   for (const c of Object.values(changes)) if (typeof c?.at === 'string' && c.at > newest) newest = c.at;
   const t = Date.parse(newest);
@@ -832,7 +853,7 @@ function mergeDocs(a, b) {
 function sameDoc(a, b) {
   return stableStringify(mergeDocs(a, null)) === stableStringify(mergeDocs(b, null));
 }
-return { pickWinner, CHANGE_DROP_DAYS, USAGE_DROP_WEEKS, SYNC_COLD_DAYS, mergeDocs, sameDoc };
+return { pickWinner, mergeOne, CHANGE_DROP_DAYS, USAGE_DROP_WEEKS, SYNC_COLD_DAYS, mergeDocs, sameDoc };
 })();
 
 // ---- js/flags.js
@@ -1066,6 +1087,7 @@ const __js_changes = (() => {
 // the tool use. Pure. The store writes and undoes changes (js/data.js); this only describes them.
 
 const { MAPS, stableStringify } = __js_doc;
+const { recordContent } = __js_record;
 
 const CHANGE_KEEP_DAYS = 14; // days a change keeps its before/after snapshots (and can be undone)
 
@@ -1074,7 +1096,9 @@ const DAY_MS = 86400000;
 
 // Every record whose serialised form differs between two documents, as { map, id, before, after }
 // (before is null for a new record). Copies, never the documents' own objects, in MAPS order then
-// id order. The change log itself is left out.
+// id order. The change log itself is left out. The copies leave out the record's per-field sync
+// stamps (20 Nov 2026: 71 KB of the synced file): undo compares and restores content, then stamps
+// afresh, so nothing reads them.
 function diffDocs(before, after) {
   const edits = [];
   for (const map of LOGGED) {
@@ -1084,8 +1108,8 @@ function diffDocs(before, after) {
       if (stableStringify(a[id] ?? null) === stableStringify(b[id] ?? null)) continue;
       edits.push({
         map, id,
-        before: a[id] ? structuredClone(a[id]) : null,
-        after: b[id] ? structuredClone(b[id]) : null,
+        before: a[id] ? structuredClone(recordContent(a[id])) : null,
+        after: b[id] ? structuredClone(recordContent(b[id])) : null,
       });
     }
   }
@@ -4347,6 +4371,234 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
 return { DATA_KEY, SETTINGS_KEY, CORRUPT_KEY, BACKUP_KEY, DEFAULT_SETTINGS, createStore };
 })();
 
+// ---- js/archive.js
+const __js_archive = (() => {
+// The archive (docs/superpowers/specs/2026-11-20-archive-design.md): a slim synced file, a full copy
+// everywhere.
+//
+// data.json was 1.4 MB on 20 Nov 2026, and over 1 MB every read of it takes two requests. Nothing about
+// a past day ever left it. Now records about days more than four or five weeks back live in yearly
+// files beside it (archive/2025.json, archive/2026.json), written once a week by the planner
+// (planner/archive.js), and data.json leaves out what they hold.
+//
+// EVERY PLACE THAT OPENS THE DOCUMENT STILL GETS ALL OF IT. A device keeps its whole copy and merges the
+// archive in; the planner, the widgets and Claude's tool read data.json and the archive files together.
+// So no streak, goal total, PR or past day changes, and no writer that makes a record by a fixed id
+// (Hevy ticks, Hebrew day logs) can miss an archived one and write a fresh copy that beats it. Only what
+// is WRITTEN to data.json changes: slimDoc, below, before every push.
+//
+// The pointer, calendar['archive:status'], names each year's file by its git blob sha: a content hash,
+// so `files` names exactly one version of each, and every client given the same document leaves out
+// exactly the same records. No clock is involved.
+
+const { MAPS, emptyDoc, isDoc, stableStringify } = __js_doc;
+const { mergeDocs, mergeOne } = __js_merge;
+const { recordContent } = __js_record;
+const { addDays, weekStart } = __js_dates;
+
+const ARCHIVE_ID = 'archive:status';
+// The cut is the Monday of this week less this many days: records about days before it move, once a
+// week, so data.json holds the last four to five weeks. Nothing on screen depends on it.
+const ARCHIVE_DAYS = 28;
+
+const isDay = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+  && Number.isFinite(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+const day = (v) => (isDay(v) ? v : null);
+const gone = (r) => r.status === 'archived' || r.status === 'dismissed';
+
+function archiveCut(today) {
+  return addDays(weekStart(today), -ARCHIVE_DAYS);
+}
+
+// WHAT MAKES A RECORD COLD: the day it is about, not when it was last touched (on 20 Nov nearly
+// everything had been touched within the month). Null for a record that never moves: anything live
+// (an active habit, a weekly target, an open flag, settings and statuses, the map's claims), and the
+// change log, which expires on its own. Getting this slightly wrong is harmless: every client still
+// sees every record, and one that moves and is then edited comes back into data.json (covered, below).
+const CALENDAR_DAYS = /^(hours|work|eu|commit|closed|count|conflict):/;
+function aboutDay(map, id, rec) {
+  if (!rec || typeof rec !== 'object') return null;
+  switch (map) {
+    case 'items':
+      if (gone(rec)) return day(rec.archivedOn);
+      return rec.status === 'active' && rec.type === 'task' ? day(rec.date) : null;
+    case 'goals':
+    case 'milestones':
+      return gone(rec) ? day(rec.archivedOn) : null;
+    case 'flags':
+      return rec.status === 'active' ? null : day(rec.archivedOn);
+    case 'logs':
+    case 'journal':
+      return day(rec.day);
+    case 'gym':
+      return /^(w|h|back):/.test(id) ? day(rec.day) : null;
+    case 'meals':
+      return rec.kind === 'meal' ? day(rec.day) : null;
+    case 'game':
+      return id.startsWith('day:') ? day(rec.day) : null;
+    case 'calendar':
+      if (CALENDAR_DAYS.test(id)) return day(rec.day);
+      if (id.startsWith('off:')) return day(String(rec.end ?? rec.start ?? '').slice(0, 10));
+      if (id.startsWith('payslip:')) return day(rec.to);
+      return null;
+    default:
+      return null;
+  }
+}
+
+// The year files the pointer names, { '2026': '<sha>' }, or null when there are none. A malformed entry
+// is left out, which only keeps its records in data.json.
+function archiveFiles(doc) {
+  const p = doc?.calendar?.[ARCHIVE_ID];
+  if (!p || p.status !== 'active' || !p.files || typeof p.files !== 'object' || Array.isArray(p.files)) return null;
+  const out = {};
+  for (const year of Object.keys(p.files).sort()) {
+    const sha = p.files[year];
+    if (/^\d{4}$/.test(year) && typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha)) out[year] = sha;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// COVERED: the archive holds a version of this record, and merging this copy into it changes nothing
+// about its content. Only then is the record left out of data.json, so:
+// - nothing leaves before the archive (as named by its hash, which is only named once it was read back)
+//   holds it;
+// - an older copy (an old app, an offline phone) is covered, so it can't come back;
+// - a newer edit isn't, so it goes back into data.json, reaches every device, and moves again at the
+//   next weekly run.
+function covered(map, rec, archived) {
+  if (!rec || typeof rec !== 'object' || !archived || typeof archived !== 'object') return false;
+  return stableStringify(recordContent(mergeOne(map, archived, rec)))
+    === stableStringify(recordContent(mergeOne(map, archived, archived)));
+}
+
+// The document as written to data.json: the whole of it less what the archive covers. Only the archive's
+// records are looked at; a map with nothing left out is the same object.
+function slimDoc(doc, archive) {
+  if (!archive) return doc;
+  const out = { ...doc };
+  for (const map of MAPS) {
+    const arch = archive[map];
+    const recs = doc?.[map];
+    if (!arch || !recs) continue;
+    let kept = null;
+    for (const [id, a] of Object.entries(arch)) {
+      if (!Object.hasOwn(recs, id) || !covered(map, recs[id], a)) continue;
+      kept ??= { ...recs };
+      delete kept[id];
+    }
+    if (kept) out[map] = kept;
+  }
+  return out;
+}
+
+// What the weekly run moves: every record about a day before the cut that the archive doesn't already
+// cover, by the year of that day. { years: { '2026': { logs: { id: rec } } }, count }.
+function coldRecords(doc, archive, cut) {
+  const years = {};
+  let count = 0;
+  for (const map of MAPS) {
+    for (const [id, rec] of Object.entries(doc?.[map] ?? {})) {
+      const d = aboutDay(map, id, rec);
+      if (!d || !(d < cut) || covered(map, rec, archive?.[map]?.[id])) continue;
+      ((years[d.slice(0, 4)] ??= {})[map] ??= {})[id] = rec;
+      count++;
+    }
+  }
+  return { years, count };
+}
+
+// Records as an ordinary document, ready to merge into a year's file.
+function yearDoc(records = {}) {
+  const doc = emptyDoc();
+  for (const [map, recs] of Object.entries(records)) if (MAPS.includes(map)) doc[map] = { ...recs };
+  return doc;
+}
+
+// The archive the pointer names, merged into one document. Each file is read once: from memory, then
+// from `cache` (a device's IndexedDB), then from GitHub by its sha. A sha names exactly one content, so
+// a cached copy is never stale; a damaged one is downloaded again. Throws when a named file can't be
+// read or isn't a document, and the caller then writes nothing to data.json that round.
+//
+// `fresh` is true until the caller says, with merged(key), that this archive is in its store: on a
+// device, the first sync after a load and whenever the pointer moves.
+function createArchiveLoader({ cache = null } = {}) {
+  const texts = new Map();
+  let current = null;
+  let mergedKey = null;
+
+  const parse = (text) => {
+    try {
+      const doc = JSON.parse(text);
+      return isDoc(doc) ? doc : null;
+    } catch {
+      return null;
+    }
+  };
+
+  async function read(year, sha, readBlob) {
+    let text = texts.get(sha);
+    if (typeof text !== 'string' && cache) {
+      try { text = await cache.get(sha); } catch { text = undefined; }
+    }
+    let doc = typeof text === 'string' ? parse(text) : null;
+    if (!doc) {
+      text = await readBlob(sha);
+      doc = typeof text === 'string' ? parse(text) : null;
+      if (!doc) throw new Error(`archive/${year}.json isn't a dashboard document`);
+      if (cache) { try { await cache.put(sha, text); } catch { /* read again next time */ } }
+    }
+    return { text, doc };
+  }
+
+  return {
+    async load(files, readBlob) {
+      const key = stableStringify(files);
+      if (current?.key === key) return { doc: current.doc, key, fresh: key !== mergedKey };
+      const next = new Map();
+      let doc = null;
+      for (const year of Object.keys(files).sort()) {
+        const sha = files[year];
+        const got = await read(year, sha, readBlob);
+        next.set(sha, got.text);
+        doc = mergeDocs(doc ?? got.doc, doc ? got.doc : null);
+      }
+      texts.clear();
+      for (const [sha, text] of next) texts.set(sha, text);
+      current = { key, doc: doc ?? emptyDoc() };
+      if (cache?.keep) { try { await cache.keep([...next.keys()]); } catch { /* tidied next time */ } }
+      return { doc: current.doc, key, fresh: key !== mergedKey };
+    },
+    merged(key) { mergedKey = key; },
+    // A file the planner has just written and read back, so the save after it needn't download it.
+    prime(sha, text) { texts.set(sha, text); },
+  };
+}
+
+// A device's copies of the archive files, over an IndexedDB { get, put, del } (js/bigstore.js), keyed by
+// sha, with an index so that keep() can drop the ones the pointer no longer names. Every call fails soft.
+const INDEX = 'archive:index';
+function archiveCache(backend) {
+  const soft = async (fn) => { try { return await fn(); } catch { return undefined; } };
+  const index = async () => { const v = await backend.get(INDEX); return Array.isArray(v) ? v : []; };
+  return {
+    get: (sha) => soft(async () => { const v = await backend.get(`archive:${sha}`); return typeof v === 'string' ? v : undefined; }),
+    put: (sha, text) => soft(async () => {
+      await backend.put(`archive:${sha}`, text);
+      const list = await index();
+      if (!list.includes(sha)) await backend.put(INDEX, [...list, sha]);
+    }),
+    keep: (shas) => soft(async () => {
+      const wanted = new Set(shas);
+      const list = await index();
+      for (const sha of list) if (!wanted.has(sha)) await backend.del(`archive:${sha}`);
+      await backend.put(INDEX, list.filter((sha) => wanted.has(sha)));
+    }),
+  };
+}
+return { ARCHIVE_ID, ARCHIVE_DAYS, archiveCut, aboutDay, archiveFiles, covered, slimDoc, coldRecords, yearDoc, createArchiveLoader, archiveCache };
+})();
+
 // ---- js/sync.js
 const __js_sync = (() => {
 // Sync with one JSON file in a private GitHub repo: GET → merge → apply locally → PUT with the
@@ -4355,6 +4607,7 @@ const __js_sync = (() => {
 
 const { mergeDocs, sameDoc } = __js_merge;
 const { isDoc } = __js_doc;
+const { archiveFiles, slimDoc } = __js_archive;
 
 class ConflictError extends Error {}
 
@@ -4478,6 +4731,21 @@ function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch
       return { doc, sha: body.sha };
     }),
 
+    // One version of a file, by its blob sha (the archive's year files, js/archive.js): always exactly that
+    // content, in one request at any size. Its text; asked for raw, but the relay (planner/relay.js)
+    // always answers with GitHub's JSON, whose base64 is undone here.
+    blob: (sha) => bounded(async (signal) => {
+      const res = await fetch(`${API}/repos/${repo}/git/blobs/${sha}`, {
+        headers: { ...headers, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store', ...(signal ? { signal } : {}),
+      });
+      if (!res.ok) throw await explain(res, repo, 'get');
+      const text = await res.text();
+      if (text.includes('"encoding"')) {
+        try { const v = JSON.parse(text); if (isBlobJson(v)) return decodeBase64(v.content); } catch { /* the file itself */ }
+      }
+      return text;
+    }),
+
     put: (doc, sha) => bounded(async (signal) => {
       const text = JSON.stringify(doc);
       const res = await fetch(url, {
@@ -4502,7 +4770,12 @@ function createGitHubClient({ token, repo, path = 'data.json', ref = null, fetch
   };
 }
 
-async function syncOnce({ store, client, maxAttempts = 3 }) {
+// With `archive` (js/archive.js's createArchiveLoader), the archive the document names is read (once per
+// version), merged into this copy the first time, and left out of what goes up: data.json gets the
+// slim document, this copy keeps the whole one. If a named archive file can't be read, what came down
+// is still applied here, but nothing goes up that round: a copy written without the archive could put
+// archived records back.
+async function syncOnce({ store, client, archive = null, maxAttempts = 3 }) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let remote;
     try {
@@ -4520,12 +4793,27 @@ async function syncOnce({ store, client, maxAttempts = 3 }) {
     } catch (e) {
       return { ok: false, error: `Merge failed: ${e.message}` };
     }
+    let loaded = null;
+    const files = archive ? archiveFiles(merged) : null;
+    if (files) {
+      try {
+        loaded = await archive.load(files, (sha) => client.blob(sha));
+      } catch (e) {
+        try { store.replaceDoc(merged); } catch { /* reported below either way */ }
+        return { ok: false, error: `Couldn't read the archive, so nothing was sent: ${e.message}` };
+      }
+      if (loaded.fresh) {
+        try { merged = mergeDocs(merged, loaded.doc); } catch (e) { return { ok: false, error: `Merge failed: ${e.message}` }; }
+      }
+    }
     try { store.replaceDoc(merged); }
     catch (e) { return { ok: false, error: `Couldn't apply sync: ${e.message}` }; }
-    if (remote && sameDoc(merged, remote.doc)) return { ok: true, pushed: false };
+    if (loaded?.fresh) archive.merged(loaded.key);
+    const out = loaded ? slimDoc(merged, loaded.doc) : merged;
+    if (remote && sameDoc(out, remote.doc)) return { ok: true, pushed: false };
 
     try {
-      await client.put(merged, remote?.sha);
+      await client.put(out, remote?.sha);
       return { ok: true, pushed: true };
     } catch (e) {
       if (!(e instanceof ConflictError)) return { ok: false, error: e.message };
@@ -10829,6 +11117,8 @@ const __planner_glance = (() => {
 const { glanceOf } = __js_glance;
 const { logicalDay } = __js_dates;
 const { isDoc } = __js_doc;
+const { mergeDocs } = __js_merge;
+const { archiveFiles } = __js_archive;
 const { decodeBase64 } = __js_sync;
 const { API } = __planner_relay;
 const { validMap } = __js_map_files;
@@ -10919,6 +11209,19 @@ function handleGlance({ req, repo, token, request, sha256Hex, now = new Date(), 
   let doc;
   try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
   if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
+  // The archive's year files (js/archive.js), so goal totals and the week count what has moved out of
+  // data.json. One that can't be read is an error, as data.json is: a tile that quietly counts less is
+  // worse than none.
+  const files = archiveFiles(doc);
+  for (const year of Object.keys(files ?? {})) {
+    const res = request(`${API}/repos/${repo}/git/blobs/${files[year]}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+    if (res.status !== 200) return reply({ error: `The widgets couldn't read the dashboard's archive (GitHub ${res.status})` });
+    let part = null;
+    try { part = JSON.parse(res.text); } catch { part = null; }
+    if (typeof part?.content === 'string' && part.encoding === 'base64') { try { part = JSON.parse(decodeBase64(part.content)); } catch { part = null; } }
+    if (!isDoc(part)) return reply({ error: "The dashboard's archive couldn't be read" });
+    doc = mergeDocs(doc, part);
+  }
   const today = logicalDay(now, dayStartHour);
   let progress = null;
   try { progress = hebrew?.(today) ?? null; } catch { progress = null; }
@@ -11157,6 +11460,77 @@ function addPhases(prev, next) {
 return { stopwatch, addPhases };
 })();
 
+// ---- planner/archive.js
+const __planner_archive = (() => {
+// The planner's weekly archive step (js/archive.js; docs/superpowers/specs/2026-11-20-archive-design.md).
+// The planner is the only writer of the archive's files. Once a week, records about days before the cut
+// go into archive/<year>.json, each file is read back by the sha GitHub gives it, and only then does the
+// pointer name it. The run's own save then leaves those records out of data.json (js/sync.js).
+//
+// NOTHING MAY BE LOST, so a year whose write or read-back fails keeps its old sha in the pointer (its
+// records stay in data.json), `through` stays where it was, and the step tries again an hour later.
+// Never throws: a failure is a sentence in the pointer's lastError, which ⚙ shows.
+
+const { ARCHIVE_ID, archiveCut, archiveFiles, coldRecords, covered, yearDoc } = __js_archive;
+const { mergeDocs } = __js_merge;
+const { emptyDoc, isDoc } = __js_doc;
+
+const RETRY_MS = 60 * 60000;
+
+// `loader` is the run's archive loader (it already holds the files the pointer names), `clientFor(path)`
+// a GitHub client for one file in the sync repo, `readBlob(sha)` a file's text by its sha.
+async function runArchive({ store, loader, clientFor, readBlob, today, now }) {
+  const prev = store.doc().calendar?.[ARCHIVE_ID];
+  const live = prev?.status === 'active' ? prev : null;
+  const cut = archiveCut(today);
+  const waiting = !(typeof live?.through === 'string' && live.through >= cut);
+  const resting = !!live?.lastError && now.getTime() - Date.parse(live.lastRun ?? '') < RETRY_MS;
+  if (!waiting || resting) return { ran: false, moved: 0, error: null };
+
+  const errors = [];
+  let moved = 0;
+  const files = { ...(archiveFiles(store.doc()) ?? {}) };
+  try {
+    const archive = Object.keys(files).length ? (await loader.load(files, readBlob)).doc : null;
+    const { years } = coldRecords(store.doc(), archive, cut);
+    for (const year of Object.keys(years).sort()) {
+      const records = years[year];
+      try {
+        const client = clientFor(`archive/${year}.json`);
+        const got = await client.get();
+        if (got && !isDoc(got.doc)) throw new Error(`archive/${year}.json isn't a dashboard document`);
+        const sha = await client.put(mergeDocs(got?.doc ?? emptyDoc(), yearDoc(records)), got?.sha);
+        if (!/^[0-9a-f]{40}$/.test(String(sha))) throw new Error(`GitHub gave archive/${year}.json no sha`);
+        const text = await readBlob(sha);
+        let back = null;
+        try { back = JSON.parse(text); } catch { back = null; }
+        if (!isDoc(back)) throw new Error(`archive/${year}.json read back as something else`);
+        let n = 0;
+        for (const [map, recs] of Object.entries(records)) {
+          for (const [id, rec] of Object.entries(recs)) {
+            if (!covered(map, rec, back[map]?.[id])) throw new Error(`archive/${year}.json read back without ${map} ${id}`);
+            n++;
+          }
+        }
+        files[year] = sha;
+        loader.prime(sha, text);
+        moved += n;
+      } catch (e) {
+        errors.push(`${year}: ${e?.message ?? e}`);
+      }
+    }
+  } catch (e) {
+    errors.push(e?.message ?? String(e));
+  }
+  const lastError = errors.length ? `The archive couldn't be written, so those records stay in data.json (${errors.join('; ')})` : null;
+  store.putCalendar(ARCHIVE_ID, {
+    files, through: errors.length ? (live?.through ?? null) : cut, lastRun: now.toISOString(), lastError, moved,
+  }, 'planner');
+  return { ran: true, moved, error: lastError };
+}
+return { runArchive };
+})();
+
 // ---- planner/gas.js
 const __planner_gas = (() => {
 // The planner inside Google Apps Script. George's calendars come through the Calendar advanced
@@ -11201,6 +11575,9 @@ const { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } = __planner_hebrew_
 const { createHebrewNudges } = __planner_hebrew_nudges;
 const { hebrewInputFrom } = __js_hebrew_voice;
 const { stopwatch, addPhases } = __planner_timing;
+const { runArchive } = __planner_archive;
+const { archiveFiles, createArchiveLoader } = __js_archive;
+const { mergeDocs } = __js_merge;
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -11328,7 +11705,9 @@ function createPlanner({
     return removed;
   }
 
-  // The dashboard, in a store over memory, as the Claude tool opens it.
+  // The dashboard, in a store over memory, as the Claude tool opens it: data.json and the archive files it
+  // names (js/archive.js), so Hevy's ticks, the Hebrew day logs and goal reviews find every record where
+  // it always was, and none is written afresh. Stops, as for data.json, when a named file can't be read.
   async function open() {
     const token = get('GITHUB_TOKEN');
     const repo = get('SYNC_REPO');
@@ -11336,15 +11715,28 @@ function createPlanner({
     const client = createGitHubClient({ token, repo, fetch });
     const remote = await client.get();
     if (remote && !isDoc(remote.doc)) throw new Error("The sync file isn't a dashboard document — nothing was changed");
+    let doc = remote?.doc ?? emptyDoc();
+    const archive = createArchiveLoader();
+    const files = archiveFiles(doc);
+    if (files) {
+      let loaded;
+      try { loaded = await archive.load(files, (sha) => client.blob(sha)); }
+      catch (err) { throw new Error(`Couldn't read the dashboard's archive — nothing was changed: ${err?.message ?? err}`); }
+      doc = mergeDocs(doc, loaded.doc);
+      archive.merged(loaded.key);
+    }
     const storage = new MemoryStorage({
-      [DATA_KEY]: JSON.stringify(remote?.doc ?? emptyDoc()),
+      [DATA_KEY]: JSON.stringify(doc),
       [SETTINGS_KEY]: JSON.stringify({ dayStartHour: dayStartHour() }),
     });
     const store = createStore({ storage, now });
     let changed = false;
     store.subscribe((reason) => { if (reason === 'local') changed = true; });
-    return { client, store, changed: () => changed };
+    return { client, store, archive, changed: () => changed, clientFor: (path) => createGitHubClient({ token, repo, path, fetch }) };
   }
+
+  // The dashboard back to data.json, less what the archive holds (js/sync.js).
+  const save = (session) => syncOnce({ store: session.store, client: session.client, archive: session.archive });
 
   function askArea(key, title, areas) {
     const { system, prompt } = tagPrompt(title, areas);
@@ -11591,7 +11983,7 @@ function createPlanner({
       // Persist inbound edits before making outbound Calendar changes. Never
       // export from a draft that failed to reach the other interfaces.
       if (session.changed()) {
-        const saved = await syncOnce({ store, client: session.client });
+        const saved = await save(session);
         if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
       }
       watch.lap('inboundSave');
@@ -11668,13 +12060,23 @@ function createPlanner({
         log(clean(`Hebrew pings failed: ${err?.message ?? err}`));
       }
       watch.lap('hebrew');
+      // The archive (planner/archive.js): once a week, records about days more than four weeks back move
+      // into archive/<year>.json, and the save below leaves them out of data.json. Never stops the planner.
+      try {
+        const moved = await runArchive({ store, loader: session.archive, clientFor: session.clientFor,
+          readBlob: (sha) => session.client.blob(sha), today, now: t });
+        if (moved.error) log(clean(moved.error));
+      } catch (err) {
+        log(clean(`The archive step failed: ${err?.message ?? err}`));
+      }
+      watch.lap('archive');
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
       heartbeat(store, t, problem ? clean(problem) : null, result.takenColors ?? [], calendarList(cals, new Set(watched.map((c) => c.id))));
       drop('LAST_ERROR');
       if (session.changed()) {
-        const pushed = await syncOnce({ store, client: session.client });
+        const pushed = await save(session);
         if (!pushed.ok) {
           put('LAST_ERROR', clean(pushed.error));
           log(`Couldn't save to the dashboard: ${pushed.error}`);
@@ -11685,7 +12087,7 @@ function createPlanner({
       // Pings only once data.json holds the questions they open.
       if (checkins) {
         try {
-          if (checkins.ping(store).changed) await syncOnce({ store, client: session.client });
+          if (checkins.ping(store).changed) await save(session);
         } catch (err) {
           log(clean(`Check-in pings failed: ${err?.message ?? err}`));
         }
@@ -11694,7 +12096,7 @@ function createPlanner({
       // Nudges (planner/nudges.js): a push before a miss. Never stops the planner.
       try {
         const nudges = createNudges({ UrlFetchApp, Utilities, props: { get, put }, log, now, dayStartHour: dayStartHour(), crypto: pushCrypto });
-        if (nudges.send(store).changed) await syncOnce({ store, client: session.client });
+        if (nudges.send(store).changed) await save(session);
       } catch (err) {
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
@@ -11774,7 +12176,7 @@ function createPlanner({
       const s = await open();
       const prev = plannerStatus(s.store.doc());
       s.store.putCalendar('status', { lastRun: prev?.lastRun ?? null, lastError: prev?.lastError ?? null, version, paused: true, takenColors: prev?.takenColors ?? [] });
-      if (s.changed()) await syncOnce({ store: s.store, client: s.client });
+      if (s.changed()) await save(s);
     } catch (err) {
       log(`Paused, but couldn't tell the dashboard: ${err?.message ?? err}`);
     }

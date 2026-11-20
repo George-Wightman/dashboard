@@ -46,6 +46,7 @@ import { LETTERS_PATH, LETTERS_KEY, validLetters } from './letter.js';
 import { openLetter } from './ui/letter.js';
 import { createUsage, deviceOf } from './usage.js';
 import { createDocStore, idbDocBackend, CHANNEL } from './docstore.js';
+import { createArchiveLoader, archiveCache } from './archive.js';
 
 // The document lives in IndexedDB (js/docstore.js), not localStorage, whose small allowance is shared
 // with the Hebrew app at this address. Read before anything else starts: the store needs it whole.
@@ -360,6 +361,11 @@ function clientFor(token, repo, path = 'data.json') {
   return clients.get(key);
 }
 
+// The archive's year files (js/archive.js), kept in IndexedDB and downloaded once per version: merged
+// into this copy on the first sync after a load and whenever the planner moves records, and left out
+// of what this device writes to data.json.
+const archive = createArchiveLoader({ cache: archiveCache(idbBackend()) });
+
 async function runSync() {
   if (pendingStored) {
     store.absorbStored(pendingStored);
@@ -377,7 +383,7 @@ async function runSync() {
     // counts as "waiting" (js/flags.js's waitingFlags).
     const started = new Date().toISOString();
     const t0 = performance.now();
-    const result = await syncOnce({ store, client: clientFor(token, repo) });
+    const result = await syncOnce({ store, client: clientFor(token, repo), archive });
     usage.synced({ ok: result.ok, ms: performance.now() - t0, kb: (docStorage.getItem(DATA_KEY)?.length ?? 0) / 1024, error: result.error ?? null });
     Object.assign(sync, result.ok
       ? { state: 'ok', at: new Date(), error: null }

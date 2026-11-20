@@ -31,24 +31,32 @@ function normaliseRecord(rec, repairArchivedOn) {
   return { ...rec, created, archivedOn };
 }
 
+function mergeIn(a, b, normalise, repairArchivedOn) {
+  // Normalise each candidate before picking, not the winner afterwards: normalising only the
+  // winner would let a repaired record's extra fields shift later tie-breaks, so repeated or
+  // differently-grouped merges (a∪b)∪c vs a∪(b∪c) could disagree on the winner.
+  const x = normalise && a ? normaliseRecord(a, repairArchivedOn) : a;
+  const y = normalise && b ? normaliseRecord(b, repairArchivedOn) : b;
+  // null and absent are both "nothing there", but not the same nothing: `x ?? y` alone picks
+  // whichever side happens to be undefined, which is order-dependent when one side is null and
+  // the other absent. Prefer null over absent, in both orders, when neither side has a record.
+  if (x != null && y != null) return normalise ? mergeRecord(x, y, pickWinner) : pickWinner(x, y);
+  if (x == null && y == null) return x === undefined ? y : x;
+  return x ?? y;
+}
+
+// One record of a known map (MAPS), merged exactly as mergeDocs merges it. The archive
+// (js/archive.js) asks with it whether a copy adds anything to the archive's version.
+export function mergeOne(map, a, b) {
+  return mergeIn(a, b, true, map !== 'logs');
+}
+
 function mergeMap(left, right, normalise = false, repairArchivedOn = false) {
   const lm = left ?? {};
   const rm = right ?? {};
   const ids = [...new Set([...Object.keys(lm), ...Object.keys(rm)])].sort();
   const map = {};
-  for (const id of ids) {
-    // Normalise each candidate before picking, not the winner afterwards: normalising only the
-    // winner would let a repaired record's extra fields shift later tie-breaks, so repeated or
-    // differently-grouped merges (a∪b)∪c vs a∪(b∪c) could disagree on the winner.
-    const x = normalise && lm[id] ? normaliseRecord(lm[id], repairArchivedOn) : lm[id];
-    const y = normalise && rm[id] ? normaliseRecord(rm[id], repairArchivedOn) : rm[id];
-    // null and absent are both "nothing there", but not the same nothing: `x ?? y` alone picks
-    // whichever side happens to be undefined, which is order-dependent when one side is null and
-    // the other absent. Prefer null over absent, in both orders, when neither side has a record.
-    if (x != null && y != null) map[id] = normalise ? mergeRecord(x, y, pickWinner) : pickWinner(x, y);
-    else if (x == null && y == null) map[id] = x === undefined ? y : x;
-    else map[id] = x ?? y;
-  }
+  for (const id of ids) map[id] = mergeIn(lm[id], rm[id], normalise, repairArchivedOn);
   return map;
 }
 
@@ -91,9 +99,22 @@ function coldStamps(doc) {
   }
 }
 
+// A change's before/after snapshots used to carry a copy of the record's per-field stamps: 71 KB of
+// the 327 KB change log on 20 Nov 2026, and nothing reads them (undo compares and restores content,
+// then stamps afresh). js/changes.js no longer copies them; this takes them out of the old ones, the
+// same in every merge, so a copy from before can't put them back.
+const unstamped = (r) => (r && typeof r === 'object' && r._sync ? (({ _sync, ...rest }) => rest)(r) : r);
+function snapshotStamps(changes) {
+  for (const [id, c] of Object.entries(changes)) {
+    if (!Array.isArray(c?.edits) || !c.edits.some((e) => e?.before?._sync || e?.after?._sync)) continue;
+    changes[id] = { ...c, edits: c.edits.map((e) => (e && typeof e === 'object' ? { ...e, before: unstamped(e.before), after: unstamped(e.after) } : e)) };
+  }
+}
+
 function expire(doc) {
   coldStamps(doc);
   const changes = doc.changes ?? {};
+  snapshotStamps(changes);
   let newest = '';
   for (const c of Object.values(changes)) if (typeof c?.at === 'string' && c.at > newest) newest = c.at;
   const t = Date.parse(newest);

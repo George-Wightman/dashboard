@@ -52,16 +52,31 @@ export class FakeRepo {
     if (path && path !== 'data.json') {
       const f = this.others.get(path);
       if (method === 'get') return f ? { status: 200, body: { content: Buffer.from(f.text).toString('base64'), encoding: 'base64', sha: f.sha } } : { status: 404, body: { message: 'Not Found' } };
+      if (this.failPut?.has(path)) return { status: 500, body: { message: 'Server Error' } };
       const { content, sha } = JSON.parse(payload);
       if ((f?.sha ?? undefined) !== sha) return { status: 409, body: { message: 'is at a different sha' } };
-      this.others.set(path, { text: Buffer.from(content, 'base64').toString('utf8'), sha: `${path}-sha${++this.n}` });
-      return { status: 200, body: { content: { sha: this.others.get(path).sha } } };
+      const text = Buffer.from(content, 'base64').toString('utf8');
+      // The archive's files (js/archive.js) are named by their blob sha, so they get real-looking ones:
+      // git's, of the content.
+      const next = path.startsWith('archive/')
+        ? crypto.createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0${text}`).digest('hex')
+        : `${path}-sha${++this.n}`;
+      if (path.startsWith('archive/')) this.archivePuts = (this.archivePuts ?? 0) + 1;
+      this.others.set(path, { text, sha: next });
+      return { status: 200, body: { content: { sha: next } } };
     }
     // A data.json over 1 MB (`big`): the Contents API leaves the content out and it's read as a blob,
     // raw when asked for raw, GitHub's base64 JSON otherwise.
     const blob = /^https:\/\/api\.github\.com\/repos\/o\/r\/git\/blobs\/(.+)$/.exec(url);
     if (blob) {
       this.blobReads = (this.blobReads ?? 0) + 1;
+      // Any other file's version, by its sha (the archive's year files); `failBlob` names files whose read fails.
+      const other = [...this.others].find(([, f]) => f.sha === blob[1]);
+      if (other) {
+        if (this.failBlob?.has(other[0])) return { status: 502, body: { message: 'Bad Gateway' } };
+        return headers.Accept === 'application/vnd.github.raw+json' ? { status: 200, body: other[1].text }
+          : { status: 200, body: { sha: blob[1], content: Buffer.from(other[1].text).toString('base64'), encoding: 'base64' } };
+      }
       if (blob[1] !== this.sha || this.text == null) return { status: 404, body: { message: 'Not Found' } };
       return headers.Accept === 'application/vnd.github.raw+json' ? { status: 200, body: this.text }
         : { status: 200, body: { sha: this.sha, content: Buffer.from(this.text).toString('base64'), encoding: 'base64' } };

@@ -2,6 +2,7 @@
 // the tool use. Pure. The store writes and undoes changes (js/data.js); this only describes them.
 
 import { MAPS, stableStringify } from './doc.js';
+import { recordContent } from './record.js';
 
 export const CHANGE_KEEP_DAYS = 14; // days a change keeps its before/after snapshots (and can be undone)
 
@@ -10,7 +11,9 @@ const DAY_MS = 86400000;
 
 // Every record whose serialised form differs between two documents, as { map, id, before, after }
 // (before is null for a new record). Copies, never the documents' own objects, in MAPS order then
-// id order. The change log itself is left out.
+// id order. The change log itself is left out. The copies leave out the record's per-field sync
+// stamps (20 Nov 2026: 71 KB of the synced file): undo compares and restores content, then stamps
+// afresh, so nothing reads them.
 export function diffDocs(before, after) {
   const edits = [];
   for (const map of LOGGED) {
@@ -20,8 +23,8 @@ export function diffDocs(before, after) {
       if (stableStringify(a[id] ?? null) === stableStringify(b[id] ?? null)) continue;
       edits.push({
         map, id,
-        before: a[id] ? structuredClone(a[id]) : null,
-        after: b[id] ? structuredClone(b[id]) : null,
+        before: a[id] ? structuredClone(recordContent(a[id])) : null,
+        after: b[id] ? structuredClone(recordContent(b[id])) : null,
       });
     }
   }

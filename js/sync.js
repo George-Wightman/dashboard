@@ -4,6 +4,7 @@
 
 import { mergeDocs, sameDoc } from './merge.js';
 import { isDoc } from './doc.js';
+import { archiveFiles, slimDoc } from './archive.js';
 
 export class ConflictError extends Error {}
 
@@ -127,6 +128,21 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
       return { doc, sha: body.sha };
     }),
 
+    // One version of a file, by its blob sha (the archive's year files, js/archive.js): always exactly that
+    // content, in one request at any size. Its text; asked for raw, but the relay (planner/relay.js)
+    // always answers with GitHub's JSON, whose base64 is undone here.
+    blob: (sha) => bounded(async (signal) => {
+      const res = await fetch(`${API}/repos/${repo}/git/blobs/${sha}`, {
+        headers: { ...headers, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store', ...(signal ? { signal } : {}),
+      });
+      if (!res.ok) throw await explain(res, repo, 'get');
+      const text = await res.text();
+      if (text.includes('"encoding"')) {
+        try { const v = JSON.parse(text); if (isBlobJson(v)) return decodeBase64(v.content); } catch { /* the file itself */ }
+      }
+      return text;
+    }),
+
     put: (doc, sha) => bounded(async (signal) => {
       const text = JSON.stringify(doc);
       const res = await fetch(url, {
@@ -151,7 +167,12 @@ export function createGitHubClient({ token, repo, path = 'data.json', ref = null
   };
 }
 
-export async function syncOnce({ store, client, maxAttempts = 3 }) {
+// With `archive` (js/archive.js's createArchiveLoader), the archive the document names is read (once per
+// version), merged into this copy the first time, and left out of what goes up: data.json gets the
+// slim document, this copy keeps the whole one. If a named archive file can't be read, what came down
+// is still applied here, but nothing goes up that round: a copy written without the archive could put
+// archived records back.
+export async function syncOnce({ store, client, archive = null, maxAttempts = 3 }) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let remote;
     try {
@@ -169,12 +190,27 @@ export async function syncOnce({ store, client, maxAttempts = 3 }) {
     } catch (e) {
       return { ok: false, error: `Merge failed: ${e.message}` };
     }
+    let loaded = null;
+    const files = archive ? archiveFiles(merged) : null;
+    if (files) {
+      try {
+        loaded = await archive.load(files, (sha) => client.blob(sha));
+      } catch (e) {
+        try { store.replaceDoc(merged); } catch { /* reported below either way */ }
+        return { ok: false, error: `Couldn't read the archive, so nothing was sent: ${e.message}` };
+      }
+      if (loaded.fresh) {
+        try { merged = mergeDocs(merged, loaded.doc); } catch (e) { return { ok: false, error: `Merge failed: ${e.message}` }; }
+      }
+    }
     try { store.replaceDoc(merged); }
     catch (e) { return { ok: false, error: `Couldn't apply sync: ${e.message}` }; }
-    if (remote && sameDoc(merged, remote.doc)) return { ok: true, pushed: false };
+    if (loaded?.fresh) archive.merged(loaded.key);
+    const out = loaded ? slimDoc(merged, loaded.doc) : merged;
+    if (remote && sameDoc(out, remote.doc)) return { ok: true, pushed: false };
 
     try {
-      await client.put(merged, remote?.sha);
+      await client.put(out, remote?.sha);
       return { ok: true, pushed: true };
     } catch (e) {
       if (!(e instanceof ConflictError)) return { ok: false, error: e.message };

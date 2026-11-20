@@ -97,3 +97,20 @@ test('the store takes a source for plans, milestones, ticks, amounts and flags',
   assert.equal(store.addFlag('f', null, 'claude').source, 'claude');
   assert.equal(store.addFlag('g').source, 'me');
 });
+
+// The archive (docs/superpowers/specs/2026-11-20-archive-design.md): a snapshot's copy of the record's
+// per-field stamps was 71 KB of the change log, and nothing reads them.
+test('diffDocs snapshots leave out sync stamps', () => {
+  const stamp = '2026-09-02T09:00:00.000Z';
+  const rec = { id: 'a', type: 'task', title: 'A', date: '2026-09-02', status: 'active', updated: stamp,
+    _sync: { version: stamp, fields: { title: stamp } } };
+  const before = fixture({ items: [rec] });
+  const after = structuredClone(before);
+  after.items.a = { ...rec, title: 'B', updated: '2026-09-03T09:00:00.000Z', _sync: { version: '2026-09-03T09:00:00.000Z', fields: { title: '2026-09-03T09:00:00.000Z' } } };
+  const [edit] = diffDocs(before, after);
+  assert.equal(edit.before._sync, undefined);
+  assert.equal(edit.after._sync, undefined);
+  assert.equal(edit.before.title, 'A');
+  assert.equal(edit.after.title, 'B');
+  assert.equal(edit.after.updated, '2026-09-03T09:00:00.000Z');
+});

@@ -8,6 +8,8 @@
 import { glanceOf } from '../js/glance.js';
 import { logicalDay } from '../js/dates.js';
 import { isDoc } from '../js/doc.js';
+import { mergeDocs } from '../js/merge.js';
+import { archiveFiles } from '../js/archive.js';
 import { decodeBase64 } from '../js/sync.js';
 import { API } from './relay.js';
 import { validMap } from '../js/map/files.js';
@@ -98,6 +100,19 @@ export function handleGlance({ req, repo, token, request, sha256Hex, now = new D
   let doc;
   try { doc = JSON.parse(data.text); } catch { return reply({ error: "The dashboard's data couldn't be read" }); }
   if (!isDoc(doc)) return reply({ error: "The sync file isn't a dashboard document" });
+  // The archive's year files (js/archive.js), so goal totals and the week count what has moved out of
+  // data.json. One that can't be read is an error, as data.json is: a tile that quietly counts less is
+  // worse than none.
+  const files = archiveFiles(doc);
+  for (const year of Object.keys(files ?? {})) {
+    const res = request(`${API}/repos/${repo}/git/blobs/${files[year]}`, { method: 'GET', headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+    if (res.status !== 200) return reply({ error: `The widgets couldn't read the dashboard's archive (GitHub ${res.status})` });
+    let part = null;
+    try { part = JSON.parse(res.text); } catch { part = null; }
+    if (typeof part?.content === 'string' && part.encoding === 'base64') { try { part = JSON.parse(decodeBase64(part.content)); } catch { part = null; } }
+    if (!isDoc(part)) return reply({ error: "The dashboard's archive couldn't be read" });
+    doc = mergeDocs(doc, part);
+  }
   const today = logicalDay(now, dayStartHour);
   let progress = null;
   try { progress = hebrew?.(today) ?? null; } catch { progress = null; }

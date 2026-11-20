@@ -134,3 +134,19 @@ test('pruneChanges drops snapshots after 14 days and keeps the summary', () => {
   assert.equal(store.undoChange(old.id).already, true);
   assert.equal(store.pruneChanges(), 0);
 });
+
+test('undo works on a change whose snapshots have no stamps', () => {
+  const now = clock();
+  const store = makeStore({ now });
+  const { id } = store.addItem({ type: 'task', title: 'A' });
+  now.advance(60000);
+  store.updateItem(id, { title: 'B' });
+  now.advance(60000);
+  const c = asClaude(store, 'rename', () => store.updateItem(id, { title: 'C' }));
+  assert.equal(c.edits[0].before._sync, undefined);
+  assert.equal(c.edits[0].after._sync, undefined);
+  now.advance(60000);
+  const r = store.undoChange(c.id);
+  assert.equal(r.undone.length, 1);
+  assert.equal(store.doc().items[id].title, 'B');
+});

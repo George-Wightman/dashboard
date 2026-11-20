@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { createStore, DATA_KEY, SETTINGS_KEY } from '../js/data.js';
 import { emptyDoc, isDoc, stableStringify } from '../js/doc.js';
 import { syncOnce } from '../js/sync.js';
+import { mergeDocs } from '../js/merge.js';
+import { archiveFiles, createArchiveLoader } from '../js/archive.js';
 import { diffDocs } from '../js/changes.js';
 
 export class MemoryStorage {
@@ -15,11 +17,23 @@ export class MemoryStorage {
   removeItem(key) { this.map.delete(key); }
 }
 
-export async function openSession({ client, dayStartHour = 4, now = () => new Date(), newId = randomUUID }) {
+// The whole document: data.json and the archive files it names (js/archive.js), so `history`, `day` for
+// a month back, goal totals and undo see everything, and what goes back up leaves out what the archive
+// holds. Stops, as for data.json, when a named archive file can't be read.
+export async function openSession({ client, dayStartHour = 4, now = () => new Date(), newId = randomUUID, archive = createArchiveLoader() }) {
   const remote = await client.get();
   if (remote && !isDoc(remote.doc)) throw new Error("The sync file isn't a dashboard document — nothing was changed");
+  let doc = remote?.doc ?? emptyDoc();
+  const files = archiveFiles(doc);
+  if (files) {
+    let loaded;
+    try { loaded = await archive.load(files, (sha) => client.blob(sha)); }
+    catch (e) { throw new Error(`Couldn't read the dashboard's archive — nothing was changed: ${e.message}`); }
+    doc = mergeDocs(doc, loaded.doc);
+    archive.merged(loaded.key);
+  }
   const storage = new MemoryStorage({
-    [DATA_KEY]: JSON.stringify(remote?.doc ?? emptyDoc()),
+    [DATA_KEY]: JSON.stringify(doc),
     [SETTINGS_KEY]: JSON.stringify({ dayStartHour }),
   });
   const store = createStore({ storage, now, newId });
@@ -47,7 +61,7 @@ export async function openSession({ client, dayStartHour = 4, now = () => new Da
     async push() {
       if (!changed) return { ok: true, pushed: false };
       store.pruneChanges();
-      return syncOnce({ store, client });
+      return syncOnce({ store, client, archive });
     },
   };
 }

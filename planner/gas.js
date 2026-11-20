@@ -40,6 +40,9 @@ import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } from './hebrew-pro
 import { createHebrewNudges } from './hebrew-nudges.js';
 import { hebrewInputFrom } from '../js/hebrew-voice.js';
 import { stopwatch, addPhases } from './timing.js';
+import { runArchive } from './archive.js';
+import { archiveFiles, createArchiveLoader } from '../js/archive.js';
+import { mergeDocs } from '../js/merge.js';
 
 const HEARTBEAT_MS = 55 * 60000;
 const ECHO_MS = 2 * 60000;
@@ -167,7 +170,9 @@ export function createPlanner({
     return removed;
   }
 
-  // The dashboard, in a store over memory, as the Claude tool opens it.
+  // The dashboard, in a store over memory, as the Claude tool opens it: data.json and the archive files it
+  // names (js/archive.js), so Hevy's ticks, the Hebrew day logs and goal reviews find every record where
+  // it always was, and none is written afresh. Stops, as for data.json, when a named file can't be read.
   async function open() {
     const token = get('GITHUB_TOKEN');
     const repo = get('SYNC_REPO');
@@ -175,15 +180,28 @@ export function createPlanner({
     const client = createGitHubClient({ token, repo, fetch });
     const remote = await client.get();
     if (remote && !isDoc(remote.doc)) throw new Error("The sync file isn't a dashboard document — nothing was changed");
+    let doc = remote?.doc ?? emptyDoc();
+    const archive = createArchiveLoader();
+    const files = archiveFiles(doc);
+    if (files) {
+      let loaded;
+      try { loaded = await archive.load(files, (sha) => client.blob(sha)); }
+      catch (err) { throw new Error(`Couldn't read the dashboard's archive — nothing was changed: ${err?.message ?? err}`); }
+      doc = mergeDocs(doc, loaded.doc);
+      archive.merged(loaded.key);
+    }
     const storage = new MemoryStorage({
-      [DATA_KEY]: JSON.stringify(remote?.doc ?? emptyDoc()),
+      [DATA_KEY]: JSON.stringify(doc),
       [SETTINGS_KEY]: JSON.stringify({ dayStartHour: dayStartHour() }),
     });
     const store = createStore({ storage, now });
     let changed = false;
     store.subscribe((reason) => { if (reason === 'local') changed = true; });
-    return { client, store, changed: () => changed };
+    return { client, store, archive, changed: () => changed, clientFor: (path) => createGitHubClient({ token, repo, path, fetch }) };
   }
+
+  // The dashboard back to data.json, less what the archive holds (js/sync.js).
+  const save = (session) => syncOnce({ store: session.store, client: session.client, archive: session.archive });
 
   function askArea(key, title, areas) {
     const { system, prompt } = tagPrompt(title, areas);
@@ -430,7 +448,7 @@ export function createPlanner({
       // Persist inbound edits before making outbound Calendar changes. Never
       // export from a draft that failed to reach the other interfaces.
       if (session.changed()) {
-        const saved = await syncOnce({ store, client: session.client });
+        const saved = await save(session);
         if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
       }
       watch.lap('inboundSave');
@@ -507,13 +525,23 @@ export function createPlanner({
         log(clean(`Hebrew pings failed: ${err?.message ?? err}`));
       }
       watch.lap('hebrew');
+      // The archive (planner/archive.js): once a week, records about days more than four weeks back move
+      // into archive/<year>.json, and the save below leaves them out of data.json. Never stops the planner.
+      try {
+        const moved = await runArchive({ store, loader: session.archive, clientFor: session.clientFor,
+          readBlob: (sha) => session.client.blob(sha), today, now: t });
+        if (moved.error) log(clean(moved.error));
+      } catch (err) {
+        log(clean(`The archive step failed: ${err?.message ?? err}`));
+      }
+      watch.lap('archive');
       const problem = errors.length
         ? `${errors.length} calendar change${errors.length === 1 ? '' : 's'} failed — first: ${errors[0]}`
         : get('LAST_ERROR');
       heartbeat(store, t, problem ? clean(problem) : null, result.takenColors ?? [], calendarList(cals, new Set(watched.map((c) => c.id))));
       drop('LAST_ERROR');
       if (session.changed()) {
-        const pushed = await syncOnce({ store, client: session.client });
+        const pushed = await save(session);
         if (!pushed.ok) {
           put('LAST_ERROR', clean(pushed.error));
           log(`Couldn't save to the dashboard: ${pushed.error}`);
@@ -524,7 +552,7 @@ export function createPlanner({
       // Pings only once data.json holds the questions they open.
       if (checkins) {
         try {
-          if (checkins.ping(store).changed) await syncOnce({ store, client: session.client });
+          if (checkins.ping(store).changed) await save(session);
         } catch (err) {
           log(clean(`Check-in pings failed: ${err?.message ?? err}`));
         }
@@ -533,7 +561,7 @@ export function createPlanner({
       // Nudges (planner/nudges.js): a push before a miss. Never stops the planner.
       try {
         const nudges = createNudges({ UrlFetchApp, Utilities, props: { get, put }, log, now, dayStartHour: dayStartHour(), crypto: pushCrypto });
-        if (nudges.send(store).changed) await syncOnce({ store, client: session.client });
+        if (nudges.send(store).changed) await save(session);
       } catch (err) {
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
@@ -613,7 +641,7 @@ export function createPlanner({
       const s = await open();
       const prev = plannerStatus(s.store.doc());
       s.store.putCalendar('status', { lastRun: prev?.lastRun ?? null, lastError: prev?.lastError ?? null, version, paused: true, takenColors: prev?.takenColors ?? [] });
-      if (s.changed()) await syncOnce({ store: s.store, client: s.client });
+      if (s.changed()) await save(s);
     } catch (err) {
       log(`Paused, but couldn't tell the dashboard: ${err?.message ?? err}`);
     }

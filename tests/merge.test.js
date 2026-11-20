@@ -332,3 +332,38 @@ test('a record untouched for a month loses its per-field stamps, every copy the 
   assert.ok(merged.items.t1._sync);
   assert.deepEqual(mergeDocs({ schema: 1, items: { t1: edited } }, out).items.t1, merged.items.t1, 'in either order');
 });
+
+// ---- the archive's pieces (docs/superpowers/specs/2026-11-20-archive-design.md) ----------------
+
+test('expire strips sync stamps from change snapshots, the same in either order', async () => {
+  const { mergeDocs: merge } = await import('../js/merge.js');
+  const t = '2026-09-02T09:00:00.000Z';
+  const stamped = { id: 'a', title: 'A', updated: t, _sync: { version: t, fields: { title: t } } };
+  const change = (after) => ({ id: 'c1', status: 'active', source: 'claude', at: t, updated: t, created: '2026-09-02',
+    summary: 'x', edits: [{ map: 'items', id: 'a', before: null, after }], undoneAt: null, undoneBy: null, pruned: false });
+  const a = { ...emptyDoc(), changes: { c1: change(stamped) } };
+  const { _sync, ...plain } = stamped;
+  const b = { ...emptyDoc(), changes: { c1: change(plain) } };
+  assert.equal(merge(a, null).changes.c1.edits[0].after._sync, undefined);
+  assert.equal(merge(a, null).changes.c1.edits[0].after.title, 'A');
+  assert.equal(S(merge(a, b)), S(merge(b, a)));
+  assert.equal(merge(a, b).changes.c1.edits[0].after._sync, undefined);
+});
+
+test('mergeOne merges one record as mergeDocs does', async () => {
+  const { mergeOne } = await import('../js/merge.js');
+  const t1 = '2026-09-02T09:00:00.000Z';
+  const t2 = '2026-09-03T09:00:00.000Z';
+  const pairs = [
+    ['items', { id: 'x', title: 'A', note: 'n', updated: t1, _sync: { version: t1, fields: { title: t1, note: t1 } } },
+      { id: 'x', title: 'B', note: 'n', updated: t2, _sync: { version: t2, fields: { title: t2, note: t1 } } }],
+    ['items', { id: 'x', title: 'A', status: 'archived', updated: t1 }, { id: 'x', title: 'B', updated: t2 }],
+    ['logs', { id: 'x', kind: 'done', day: '2026-09-02', status: 'archived', archivedOn: null, updated: t2 },
+      { id: 'x', kind: 'done', day: '2026-09-02', status: 'active', archivedOn: null, updated: t1 }],
+  ];
+  for (const [map, a, b] of pairs) {
+    const viaDocs = mergeDocs({ schema: 1, [map]: { x: a } }, { schema: 1, [map]: { x: b } })[map].x;
+    assert.deepEqual(mergeOne(map, a, b), viaDocs, map);
+    assert.deepEqual(mergeOne(map, b, a), viaDocs, `${map} reversed`);
+  }
+});
