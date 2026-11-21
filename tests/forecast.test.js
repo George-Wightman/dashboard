@@ -53,8 +53,8 @@ test('runForecast: from the latest balance, pay at his hours, spending, flights 
   const f = runForecast({ money: m, doc: d, today: '2026-11-05', settings });
   assert.deepEqual(f.rows.map((r) => r.month), ['2026-10', '2026-11', '2026-12', '2027-01']);
   assert.equal(f.rows[0].spend, 6000 * 3 / 4); // October: no days left after the balance, a quarter of the flights
-  const pay = Math.round(10 * WEEKS_A_MONTH * 10 * 100);
-  assert.equal(f.rows[2].pay, pay);
+  // December's pay period runs 24 Nov – 23 Dec: 30 days at 10 h a week.
+  assert.equal(f.rows[2].pay, Math.round((10 / 7) * 30 * 10 * 100));
   assert.equal(f.rows[2].oneOff, 50000);
   const total = f.rows.reduce((t, r) => t + r.pay - r.spend + r.oneOff, 0);
   assert.equal(f.end, 200000 + total);

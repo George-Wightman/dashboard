@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isShiftTitle, payPeriodOf, paydayOf, shifts, hoursSummary, payForecast, netRatio, countId, UPCOMING_ID, PAY_ID, payslipId } from '../js/hours.js';
+import { isShiftTitle, payPeriodOf, paydayOf, shifts, hoursSummary, payForecast, netRatio, countId, UPCOMING_ID, PAY_ID, payslipId, payPeriods, periodEndId } from '../js/hours.js';
 import { emptyDoc } from '../js/doc.js';
 
 // Invented figures only: this repo is public.
@@ -88,6 +88,30 @@ test('hoursSummary: this pay period in full: its days, hours done and still book
   assert.equal(c.gross, 100.86);
   assert.equal(c.net, 100.86);
   assert.equal(c.payday, '2026-11-30');
+});
+
+test('payPeriods: a month with its own last day ends there, and the next period starts the day after', () => {
+  const doc = docWith(pay, { id: periodEndId('2026-11'), status: 'active', period: '2026-11', to: '2026-11-19' });
+  const p = payPeriods(doc);
+  assert.deepEqual(p.windowOf('2026-11'), { from: '2026-10-24', to: '2026-11-19' });
+  assert.deepEqual(p.windowOf('2026-12'), { from: '2026-11-20', to: '2026-12-23' });
+  assert.deepEqual(p.windowOf('2026-10'), { from: '2026-09-24', to: '2026-10-23' });
+  assert.equal(p.periodOf('2026-11-19'), '2026-11');
+  assert.equal(p.periodOf('2026-11-20'), '2026-12');
+  assert.equal(p.endSet('2026-11'), true);
+  assert.equal(p.endSet('2026-12'), false);
+});
+
+test('hoursSummary: a moved period end changes this period, its hours and its pay', () => {
+  const recs = [pay, shift('a', '2026-11-10', 4), shift('b', '2026-11-21', 3)];
+  const before = hoursSummary(docWith(...recs), '2026-11-15').current;
+  assert.equal(before.hours, 7);
+  const after = hoursSummary(docWith(...recs, { id: periodEndId('2026-11'), status: 'active', period: '2026-11', to: '2026-11-18' }), '2026-11-15');
+  assert.equal(after.current.to, '2026-11-18');
+  assert.equal(after.current.endSet, true);
+  assert.equal(after.current.hours, 4);
+  assert.equal(after.expected.hours, 4);
+  assert.equal(after.current.gross, 44.83); // 4 × 10 × 1.1207
 });
 
 test('hoursSummary: the payslip difference is paid hours less calendar hours', () => {

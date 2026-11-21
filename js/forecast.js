@@ -9,7 +9,7 @@
 
 import { addDays, daysInMonth, dayOfMonth } from './dates.js';
 import { ONE_OFF_CATS, inOut, wherePlaces, isCovered, startDay } from './money.js';
-import { hoursSummary, grossFor, nextMonth } from './hours.js';
+import { hoursSummary, grossFor, nextMonth, payPeriods } from './hours.js';
 import { euDays } from './eu.js';
 
 export const FORECAST_ID = 'money:forecast';
@@ -154,11 +154,12 @@ export function matchingPreset(settings, presets) {
 
 export const monthlySpend = (s) => Object.values(s.spend).reduce((t, v) => t + v, 0);
 export const monthlyAway = (s) => Object.values(s.away ?? s.spend).reduce((t, v) => t + v, 0);
-const payFor = (hoursAWeek, pay, ratio) => Math.round((grossFor(hoursAWeek * WEEKS_A_MONTH, pay) ?? 0) * ratio * 100);
+const payFor = (hours, pay, ratio) => Math.round((grossFor(hours, pay) ?? 0) * ratio * 100);
+const daysIn = (w) => (Date.parse(w.to) - Date.parse(w.from)) / 86400000 + 1;
 
 // Month by month from the latest balance to the month before the start date. The month of the
 // balance counts only its days after it. The next pay is what Hours has booked or done; every later
-// pay is `hours` a week. Returns { rows: [{ month, pay, spend, oneOff, pot }], end, lowest, start }.
+// pay is `hours` a week over the days its pay period runs. Returns { rows: [{ month, pay, spend, oneOff, pot }], end, lowest, start }.
 export function runForecast({ money, doc, today, settings, hours = settings.hours }) {
   const start = startDay(doc);
   const bal = [...(money?.balances ?? [])].sort((a, b) => a.day.localeCompare(b.day)).at(-1);
@@ -166,6 +167,7 @@ export function runForecast({ money, doc, today, settings, hours = settings.hour
   const lastMonth = monthOf(addDays(`${monthOf(start)}-01`, -1));
   const h = hoursSummary(doc, today);
   const ratio = h.ratio ?? 1;
+  const periods = payPeriods(doc, h.pay.cutoff);
   const months = [];
   for (let m = monthOf(bal.day); m <= lastMonth; m = nextMonth(m)) months.push(m);
   if (!months.length) return null;
@@ -183,7 +185,7 @@ export function runForecast({ money, doc, today, settings, hours = settings.hour
     }
     let pay = 0;
     if (m === h.expected.period) pay = Math.round((h.expected.net ?? 0) * 100);
-    else if (m > h.expected.period) pay = payFor(hours, h.pay, ratio);
+    else if (m > h.expected.period) pay = payFor((hours / 7) * daysIn(periods.windowOf(m)), h.pay, ratio);
     const spend = Math.round((home * homeDays + away * awayDays) / dim + flightsEach);
     const oneOff = settings.oneOffs.filter((o) => o.on && o.month === m).reduce((t, o) => t + o.amount, 0);
     pot += pay - spend + oneOff;

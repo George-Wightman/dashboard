@@ -174,7 +174,11 @@
 .mo-stat-btn:focus-visible { outline: 2px solid var(--viz-6); outline-offset: 2px; }
 .mo-more { font-style: normal; margin-left: 4px; }
 .mo-period { margin: -4px 0 14px; font-size: 14px; }
-.mo-period-when { margin: 0 0 6px; font-weight: 600; }
+.mo-period-when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 6px; }
+.mo-period-when label { display: inline-flex; align-items: center; gap: 6px; }
+.mo-period-when input { font: inherit; font-weight: 600; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--dl-line); background: var(--dl-card); color: var(--dl-ink); min-height: 40px; box-sizing: border-box; }
+.mo-period-sub { display: block; font-size: 12px; color: var(--dl-muted); }
+.mo-link { font: inherit; font-size: 13px; color: var(--dl-muted); background: none; border: 0; padding: 4px 0; text-decoration: underline; cursor: pointer; }
 .fc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 10px 0 8px; }
 .fc-stats .mo-n { font-size: clamp(18px, 5vw, 24px); }
 .mo-stat.neg .mo-n { color: var(--dl-carry-ink); }

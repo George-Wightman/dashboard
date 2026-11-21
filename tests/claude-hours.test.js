@@ -48,3 +48,13 @@ test('hours read: pay, next pay and payslips against the calendar', () => {
   assert.match(text, /2026-08 \(2026-07-24 to 2026-08-23\): paid 4 h, calendar 3 h \(\+1\)/);
   assert.match(text, /Next pay \(2026-09/);
 });
+
+test('hours op: a month\'s pay period can end on its own day, and go back to the cut-off', () => {
+  const s = fresh();
+  runOp(s, { op: 'hours', pay: { rate: 10, cutoff: 23 } });
+  assert.match(runOp(s, { op: 'hours', periodEnd: { period: '2026-09', to: '2026-09-18' } }), /2026-09's pay period ends 2026-09-18/);
+  assert.match(READS.hours(s.doc(), s.today()), /This pay period \(2026-09, 2026-08-24 to 2026-09-18, dates set by hand\)/);
+  runOp(s, { op: 'hours', periodEnd: { period: '2026-09', to: null } });
+  assert.match(READS.hours(s.doc(), s.today()), /This pay period \(2026-09, 2026-08-24 to 2026-09-23\)/);
+  assert.throws(() => runOp(s, { op: 'hours', periodEnd: { period: '2026-09', to: '18 Sep' } }), /YYYY-MM-DD/);
+});

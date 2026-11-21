@@ -10,7 +10,7 @@ import { svg, tip } from './svg.js';
 import { bigSection } from './big.js';
 import { shortDate, shortWeekday, addDays, daysInMonth } from '../dates.js';
 import { moneySummary, compare, gbp, startDay, START_ID, categoryLabel, inOut, wherePlaces, isCovered, UNNAMED, ONE_OFF_CATS } from '../money.js';
-import { hoursSummary, ordinal } from '../hours.js';
+import { hoursSummary, ordinal, periodEndId, prevMonth } from '../hours.js';
 import { forecastBlock } from './forecast.js';
 
 const signed = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
@@ -226,23 +226,37 @@ function compareBlock(ctx, money, doc) {
 }
 
 // This pay period opened up: its days, the hours done and still booked, the rate, and what it comes to.
-function periodDetail(s, today) {
+// Its first and last day can be changed when the payslip's dates differ from the cut-off: the last
+// day is kept for this month, and a new first day moves the end of the month before.
+function periodDetail(ctx, s, today) {
   const c = s.current;
+  const DAY = /^\d{4}-\d{2}-\d{2}$/;
+  const setEnd = (period, to) => ctx.store.putCalendar(periodEndId(period), { status: 'active', period, to }, 'me');
+  const onFrom = (e) => { const v = e.target.value; if (DAY.test(v) && v <= c.to) setEnd(prevMonth(c.period), addDays(v, -1)); else ctx.render(); };
+  const onTo = (e) => { const v = e.target.value; if (DAY.test(v) && v >= c.from) setEnd(c.period, v); else ctx.render(); };
+  const reset = () => {
+    if (c.endSet) ctx.store.putCalendar(periodEndId(c.period), { status: 'archived' }, 'me');
+    if (c.startSet) ctx.store.putCalendar(periodEndId(prevMonth(c.period)), { status: 'archived' }, 'me');
+  };
+  const when = h('div', { class: 'mo-period-when' },
+    h('label', {}, h('span', { class: 'muted' }, 'From'), h('input', { type: 'date', value: c.from, max: c.to, 'aria-label': 'First day of this pay period', onchange: onFrom })),
+    h('label', {}, h('span', { class: 'muted' }, 'to'), h('input', { type: 'date', value: c.to, min: c.from, 'aria-label': 'Last day of this pay period', onchange: onTo })),
+    h('span', { class: 'muted' }, c.daysLeft === 0 ? 'ends today' : `${c.daysLeft} day${c.daysLeft === 1 ? '' : 's'} left`),
+    c.endSet || c.startSet ? h('button', { type: 'button', class: 'mo-link', onclick: reset }, `back to the ${ordinal(s.pay.cutoff)}`) : null);
   const row = (label, value, cls = '') => h('tr', { class: cls }, h('td', {}, label), h('td', { class: 'n' }, value));
-  const left = c.daysLeft === 0 ? 'ends today' : `${c.daysLeft} day${c.daysLeft === 1 ? '' : 's'} left`;
   const taxed = s.ratio < 1 ? `, less ${Math.round((1 - s.ratio) * 100)}% tax and NI (your last payslip)` : '';
   return h('div', { class: 'mo-period', id: 'mo-period' },
-    h('p', { class: 'mo-period-when' }, `${dayText(c.from)} – ${dayText(c.to)}`, h('span', { class: 'muted' }, ` · ${left}`)),
+    when,
     h('table', { class: 'mo-table' }, h('tbody', {},
-      row('Done so far, today included', `${c.done} h`),
+      row(h('span', {}, 'Done so far', h('small', { class: 'mo-period-sub' }, 'today included')), `${c.done} h`),
       row('Booked still to come', `${c.toCome} h`),
       c.shiftsToCome.length ? h('tr', { class: 'mo-sub-row' }, h('td', { colspan: 2 }, c.shiftsToCome.map((x) => `${x.day === today ? 'today' : dayText(x.day)} ${Math.round(x.minutes / 6) / 10} h`).join(' · '))) : null,
       row('This period', `${c.hours} h`, 'mo-total'),
-      row('Rate', c.hourly == null ? 'not set' : `${pounds2(s.pay.rate)} + ${s.pay.holidayPct}% holiday = ${pounds2(c.hourly)} an hour`),
+      row(c.hourly == null ? 'Rate' : h('span', {}, 'Rate', h('small', { class: 'mo-period-sub' }, `${pounds2(s.pay.rate)} + ${s.pay.holidayPct}% holiday`)), c.hourly == null ? 'not set' : `${pounds2(c.hourly)}/h`),
       row(`Pay, ${dayText(c.payday)}`, c.net == null ? '—' : `~${pounds2(c.net)}`, 'mo-total'))),
     h('p', { class: 'muted mo-note' }, c.hourly == null
       ? 'Tell Claude your hourly rate to see the pay.'
-      : `${c.hours} h × ${pounds2(c.hourly)}${taxed}. Shifts after the ${ordinal(s.pay.cutoff)} go into next month's pay.`));
+      : `${c.hours} h × ${pounds2(c.hourly)}${taxed}. Shifts after ${dayText(c.to)} go into next month's pay. Change the dates when your payslip's differ.`));
 }
 
 function hoursBlock(ctx, doc, today) {
@@ -262,9 +276,9 @@ function hoursBlock(ctx, doc, today) {
   return h('div', { class: 'mo-hours' },
     h('div', { class: 'mo-stats' },
       h('button', { type: 'button', class: `mo-stat mo-stat-btn${open ? ' on' : ''}`, 'aria-expanded': String(open), 'aria-controls': 'mo-period', onclick: toggle },
-        h('span', { class: 'mo-n' }, `${s.periodHours} h`), h('span', { class: 'mo-t' }, `this pay period (to the ${ordinal(s.pay.cutoff)})`, h('i', { class: 'mo-more', 'aria-hidden': 'true' }, open ? '▴' : '▾'))),
+        h('span', { class: 'mo-n' }, `${s.periodHours} h`), h('span', { class: 'mo-t' }, `this pay period (to ${shortDate(s.current.to)})`, h('i', { class: 'mo-more', 'aria-hidden': 'true' }, open ? '▴' : '▾'))),
       stat(`${s.weeklyAverage} h`, 'a week, last 8 weeks')),
-    open ? periodDetail(s, today) : null,
+    open ? periodDetail(ctx, s, today) : null,
     weekChart,
     s.slips.length ? fold('Payslips against your calendar',
       h('table', { class: 'mo-table mo-slips' }, h('thead', {}, h('tr', {}, h('th', {}, 'Paid'), h('th', { class: 'n' }, 'Hours'), h('th', { class: 'n' }, 'Calendar'), h('th', { class: 'n' }, 'Net'))),

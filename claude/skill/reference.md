@@ -187,7 +187,10 @@ gives you. Add `"from"` and `"to"` (the first and last day of work it paid) when
 the cut-off rule: match its hours to the calendar to find them; never record his NI number, address or employee id. `{"op": "hours", "shifts": [{"eventId":
 "…", "start": "…", "end": "…", "title": "…"}]}` — imports shifts from before the planner started
 recording them (read them from the Work calendar with the calendar connector); ones the planner
-already has are skipped. `{"op": "hours", "count": {"eventId": "…", "on": true}}` — counts an event
+already has are skipped. `{"op": "hours", "periodEnd": {"period": "2026-11", "to": "2026-11-19"}}` —
+the last day of work a month's pay covers when it isn't the cut-off (the next period starts the day
+after; `"to": null` goes back to the cut-off). He can also change both dates in Money's pay period
+breakdown. `{"op": "hours", "count": {"eventId": "…", "on": true}}` — counts an event
 whose title isn't a shift (or `false` leaves a shift out). Never touch `work:` records: they're the
 map's hammers.
 

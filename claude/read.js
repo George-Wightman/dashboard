@@ -636,7 +636,7 @@ function hoursRead(doc, today) {
   out.push(s.pay.rate == null
     ? 'Pay: no rate set yet — set it with {"op": "hours", "pay": {"rate": …, "holidayPct": …, "cutoff": …}}'
     : `Pay: ${gbp(s.pay.rate)} an hour + ${s.pay.holidayPct}% holiday, hours paid up to the ${ordinal(s.pay.cutoff)}, paid the month's last weekday${s.ratio < 1 ? ` · recent payslips keep ${Math.round(s.ratio * 100)}% after tax` : ''}`);
-  out.push(`This pay period (${s.period}): ${s.periodHours} h so far`);
+  out.push(`This pay period (${s.period}, ${s.current.from} to ${s.current.to}${s.current.endSet || s.current.startSet ? ', dates set by hand' : ''}): ${s.periodHours} h so far, ${s.current.toCome} h still booked`);
   out.push(`Next pay (${s.expected.period}, ~${dayName(s.expected.payday, today)}): ${s.expected.hours} h booked or done${s.expected.net != null ? `, about ${gbp(s.expected.net)}` : ''}`);
   out.push(`Average over the last 8 full weeks: ${s.weeklyAverage} h a week`);
   if (s.slips.length) {

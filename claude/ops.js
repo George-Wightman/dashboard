@@ -20,7 +20,7 @@ import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
 import { setEuDays, dayRange, euSummary, EU_LIMIT } from '../js/eu.js';
-import { hoursSummary, paySettings, countId, payslipId, PAY_ID, ordinal } from '../js/hours.js';
+import { hoursSummary, paySettings, countId, payslipId, periodEndId, PAY_ID, ordinal } from '../js/hours.js';
 
 const extraDetails = (op) => op.details === undefined ? {} : { details: checkDetails(op.details) };
 
@@ -670,8 +670,8 @@ const money2 = (v, what) => {
 };
 function hours(store, op) {
   const today = store.today();
-  const parts = ['shifts', 'payslip', 'pay', 'count'].filter((k) => op[k] != null);
-  if (parts.length !== 1) throw new Error('An hours op takes exactly one of "shifts", "payslip", "pay" or "count"');
+  const parts = ['shifts', 'payslip', 'pay', 'count', 'periodEnd'].filter((k) => op[k] != null);
+  if (parts.length !== 1) throw new Error('An hours op takes exactly one of "shifts", "payslip", "pay", "count" or "periodEnd"');
   let said;
   if (op.shifts) {
     if (!Array.isArray(op.shifts) || !op.shifts.length) throw new Error('"shifts" is a list of {eventId, start, end, title}');
@@ -698,6 +698,17 @@ function hours(store, op) {
       gross: money2(p.gross, 'gross'), tax: money2(p.tax ?? 0, 'tax'), ni: money2(p.ni ?? 0, 'ni'), net: money2(p.net, 'net') };
     store.putCalendar(payslipId(p.period), rec, CLAUDE);
     said = `Payslip for ${p.period}: ${rec.hours} h, £${rec.net.toFixed(2)} paid`;
+  } else if (op.periodEnd) {
+    const p = op.periodEnd;
+    if (!PERIOD_RE.test(p.period ?? '')) throw new Error('"periodEnd" needs "period" as YYYY-MM (the month whose pay it is)');
+    if (p.to === null) {
+      store.putCalendar(periodEndId(p.period), { status: 'archived' }, CLAUDE);
+      said = `${p.period}'s pay period ends on the cut-off again`;
+    } else {
+      if (!DAY_RE.test(p.to ?? '')) throw new Error('"to" is the last day of work the pay covers, YYYY-MM-DD (or null for the cut-off)');
+      store.putCalendar(periodEndId(p.period), { status: 'active', period: p.period, to: p.to }, CLAUDE);
+      said = `${p.period}'s pay period ends ${p.to}; the next starts the day after`;
+    }
   } else if (op.pay) {
     const cur = paySettings(store.doc());
     const next = { ...cur };

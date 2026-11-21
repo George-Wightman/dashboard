@@ -9,7 +9,7 @@
 import { h } from './dom.js';
 import { svg, tip } from './svg.js';
 import { gbp, categoryLabel } from '../money.js';
-import { hoursSummary, periodWindow, ordinal } from '../hours.js';
+import { hoursSummary } from '../hours.js';
 import { shortDate, addDays, daysInMonth } from '../dates.js';
 import { FORECAST_ID, SAFE_PENCE, BAND, WEEKS_A_MONTH, forecastSettings, forecastPresets, matchingPreset, statementAverage, statementSplit, runForecast, hoursFor, monthlySpend, monthlyAway } from '../forecast.js';
 
@@ -70,7 +70,7 @@ export function forecastBlock(ctx, money, doc, today) {
   const split = statementSplit(money, doc);
   const presets = forecastPresets(money, doc, today);
   const hs = hoursSummary(doc, today);
-  const from = addDays(periodWindow(hs.expected.period, hs.pay.cutoff).to, 1);
+  const from = addDays(hs.expected.to, 1);
   const pay = (hours) => Math.round((hours * WEEKS_A_MONTH * (hs.pay.rate ?? 0) * (1 + hs.pay.holidayPct / 100)) * (hs.ratio ?? 1) * 100);
   const run = (hours) => runForecast({ money, doc, today, settings: s, hours });
   const first = run(s.hours);
@@ -106,7 +106,7 @@ export function forecastBlock(ctx, money, doc, today) {
   const inForecast = first.rows.some((r) => r.month === ex.period);
   const known = ex.net != null && inForecast
     ? h('p', { class: 'fc-known' }, h('b', {}, `${monthName(ex.period)} pay ~${gbp(Math.round(ex.net * 100))}`),
-      ` on ${shortDate(ex.payday)}, from the ${ex.hours} h done or booked to the ${ordinal(hs.pay.cutoff)}. After that, the hours slider.`)
+      ` on ${shortDate(ex.payday)}, from the ${ex.hours} h done or booked ${shortDate(ex.from)} – ${shortDate(ex.to)}. After that, the hours slider.`)
     : null;
   const answer = h('div', {});
   const totalEl = h('span', { class: 'fc-total' });
