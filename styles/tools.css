@@ -167,6 +167,14 @@
 .big.money .mo-seg { margin-bottom: 8px; }
 /* Forecast to London (js/ui/forecast.js) */
 .fc-fold > summary { font-size: 15px; color: var(--dl-ink); padding: 4px 0; }
+.fc-fold-note { font-weight: 400; font-size: 13px; }
+.fc-known { font-size: 14px; margin: 4px 0 2px; }
+.mo-stat-btn { font: inherit; color: inherit; text-align: left; border: 0; cursor: pointer; }
+.mo-stat-btn:hover, .mo-stat-btn.on { background: color-mix(in srgb, var(--viz-6) 14%, var(--dl-soft)); }
+.mo-stat-btn:focus-visible { outline: 2px solid var(--viz-6); outline-offset: 2px; }
+.mo-more { font-style: normal; margin-left: 4px; }
+.mo-period { margin: -4px 0 14px; font-size: 14px; }
+.mo-period-when { margin: 0 0 6px; font-weight: 600; }
 .fc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 10px 0 8px; }
 .fc-stats .mo-n { font-size: clamp(18px, 5vw, 24px); }
 .mo-stat.neg .mo-n { color: var(--dl-carry-ink); }

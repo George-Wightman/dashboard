@@ -11,7 +11,7 @@ import { bigSection } from './big.js';
 import { shortDate, shortWeekday, addDays, daysInMonth } from '../dates.js';
 import { moneySummary, compare, gbp, startDay, START_ID, categoryLabel, inOut, wherePlaces, isCovered, UNNAMED, ONE_OFF_CATS } from '../money.js';
 import { hoursSummary, ordinal } from '../hours.js';
-import { forecastBlock, forecastHeadline } from './forecast.js';
+import { forecastBlock } from './forecast.js';
 
 const signed = (p) => `${p > 0 ? '+' : ''}${gbp(p)}`;
 const sinceText = (day) => `${Number(day.slice(8, 10))} ${monthName(day.slice(0, 7))}`;
@@ -225,8 +225,30 @@ function compareBlock(ctx, money, doc) {
       shown.length ? shown.map(row) : h('p', { class: 'muted' }, 'No spending on statements in those days yet.')));
 }
 
+// This pay period opened up: its days, the hours done and still booked, the rate, and what it comes to.
+function periodDetail(s, today) {
+  const c = s.current;
+  const row = (label, value, cls = '') => h('tr', { class: cls }, h('td', {}, label), h('td', { class: 'n' }, value));
+  const left = c.daysLeft === 0 ? 'ends today' : `${c.daysLeft} day${c.daysLeft === 1 ? '' : 's'} left`;
+  const taxed = s.ratio < 1 ? `, less ${Math.round((1 - s.ratio) * 100)}% tax and NI (your last payslip)` : '';
+  return h('div', { class: 'mo-period', id: 'mo-period' },
+    h('p', { class: 'mo-period-when' }, `${dayText(c.from)} – ${dayText(c.to)}`, h('span', { class: 'muted' }, ` · ${left}`)),
+    h('table', { class: 'mo-table' }, h('tbody', {},
+      row('Done so far, today included', `${c.done} h`),
+      row('Booked still to come', `${c.toCome} h`),
+      c.shiftsToCome.length ? h('tr', { class: 'mo-sub-row' }, h('td', { colspan: 2 }, c.shiftsToCome.map((x) => `${x.day === today ? 'today' : dayText(x.day)} ${Math.round(x.minutes / 6) / 10} h`).join(' · '))) : null,
+      row('This period', `${c.hours} h`, 'mo-total'),
+      row('Rate', c.hourly == null ? 'not set' : `${pounds2(s.pay.rate)} + ${s.pay.holidayPct}% holiday = ${pounds2(c.hourly)} an hour`),
+      row(`Pay, ${dayText(c.payday)}`, c.net == null ? '—' : `~${pounds2(c.net)}`, 'mo-total'))),
+    h('p', { class: 'muted mo-note' }, c.hourly == null
+      ? 'Tell Claude your hourly rate to see the pay.'
+      : `${c.hours} h × ${pounds2(c.hourly)}${taxed}. Shifts after the ${ordinal(s.pay.cutoff)} go into next month's pay.`));
+}
+
 function hoursBlock(ctx, doc, today) {
   const s = hoursSummary(doc, today);
+  const open = !!ctx.ui.periodOpen;
+  const toggle = () => { ctx.ui.periodOpen = !open; ctx.render(); };
   const hi = Math.max(1, ...s.weeks.map((w) => w.hours));
   const W = 640, H = 120, L = 8, R = 8, T = 16, B = 22;
   const bw = (W - L - R) / s.weeks.length - 6;
@@ -239,8 +261,10 @@ function hoursBlock(ctx, doc, today) {
       i % 2 === 1 || s.weeks.length <= 6 ? svg('text', { x: X(i), y: H - 6, 'text-anchor': 'middle', class: 'mo-axis' }, shortDate(w.start)) : null)));
   return h('div', { class: 'mo-hours' },
     h('div', { class: 'mo-stats' },
-      stat(`${s.periodHours} h`, `this pay period (to the ${ordinal(s.pay.cutoff)})`),
+      h('button', { type: 'button', class: `mo-stat mo-stat-btn${open ? ' on' : ''}`, 'aria-expanded': String(open), 'aria-controls': 'mo-period', onclick: toggle },
+        h('span', { class: 'mo-n' }, `${s.periodHours} h`), h('span', { class: 'mo-t' }, `this pay period (to the ${ordinal(s.pay.cutoff)})`, h('i', { class: 'mo-more', 'aria-hidden': 'true' }, open ? '▴' : '▾'))),
       stat(`${s.weeklyAverage} h`, 'a week, last 8 weeks')),
+    open ? periodDetail(s, today) : null,
     weekChart,
     s.slips.length ? fold('Payslips against your calendar',
       h('table', { class: 'mo-table mo-slips' }, h('thead', {}, h('tr', {}, h('th', {}, 'Paid'), h('th', { class: 'n' }, 'Hours'), h('th', { class: 'n' }, 'Calendar'), h('th', { class: 'n' }, 'Net'))),
@@ -268,8 +292,7 @@ export function renderMoneyBig(ctx) {
     io ? bigSection(`In and out since ${sinceText(io.from)}`, inOutBlock(ctx, money, io)) : null,
     io ? bigSection(`By category since ${sinceText(io.from)}`, categoryBlock(ctx, money, io)) : null,
     bigSection('Hours', hoursBlock(ctx, doc, today)),
-    io ? bigSection('Forecast to London', h('details', { class: 'mo-fold fc-fold', open: !!ctx.ui.forecastOpen, ontoggle: (e) => { ctx.ui.forecastOpen = e.target.open; } },
-      h('summary', {}, forecastHeadline(money, doc, today) ?? 'Open the forecast'), forecastBlock(ctx, money, doc, today))) : null,
+    io ? bigSection('Forecast to London', forecastBlock(ctx, money, doc, today)) : null,
     money ? bigSection('Compare', h('details', { class: 'mo-fold', open: !!ctx.ui.compareOpen, ontoggle: (e) => { ctx.ui.compareOpen = e.target.open; } },
       h('summary', {}, 'Salzburg vs UK, or any two stretches'), compareBlock(ctx, money, doc))) : null,
     bigSection('Settings',

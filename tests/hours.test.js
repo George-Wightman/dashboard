@@ -73,6 +73,23 @@ test('hoursSummary: expected pay is hours × rate plus holiday, for the first un
   assert.equal(s.slips[0].diff, 0);
 });
 
+test('hoursSummary: this pay period in full: its days, hours done and still booked, the rate and the pay', () => {
+  const doc = docWith(pay, shift('a', '2026-10-24', 4), shift('b', '2026-11-05', 2), shift('c', '2026-11-20', 3), shift('d', '2026-11-24', 5));
+  const c = hoursSummary(doc, '2026-11-05').current;
+  assert.equal(c.period, '2026-11');
+  assert.equal(c.from, '2026-10-24');
+  assert.equal(c.to, '2026-11-23');
+  assert.equal(c.daysLeft, 18);
+  assert.equal(c.done, 6); // today's shift counts as done
+  assert.equal(c.toCome, 3); // the 24th is next period's
+  assert.deepEqual(c.shiftsToCome.map((s) => s.eventId), ['c']);
+  assert.equal(c.hours, 9);
+  assert.equal(c.hourly, 11.21); // 10 × 1.1207
+  assert.equal(c.gross, 100.86);
+  assert.equal(c.net, 100.86);
+  assert.equal(c.payday, '2026-11-30');
+});
+
 test('hoursSummary: the payslip difference is paid hours less calendar hours', () => {
   const doc = docWith(pay, shift('a', '2026-10-05', 2));
   doc.calendar[payslipId('2026-10')] = { id: payslipId('2026-10'), status: 'active', period: '2026-10', hours: 6, gross: 0, net: 0 };

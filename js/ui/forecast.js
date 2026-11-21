@@ -1,14 +1,15 @@
-// The forecast to the London start (js/forecast.js), inside Money's big view: folded to one line
-// (the pot at the end), open to the answer up front (the pot at the end, its lowest point, the hours a
-// week to break even and to keep a month's money), a chart of the pot month by month with a band
-// from 6 to 12 hours a week (Salzburg's months shaded), and the sliders: hours, spending by category
-// at home and in Salzburg, flights, one-offs. Presets above swap every setting at once.
+// The forecast to the London start (js/forecast.js), inside Money's big view. Always open: the answer
+// up front (the pot at the end, its lowest point, the hours a week to break even and to keep a month's
+// money), a chart of the pot month by month with a band from 6 to 12 hours a week (Salzburg's months
+// shaded), and the pay it already knows (the next unpaid period's hours, done or booked). Folded under
+// that: presets that swap every setting at once, and the sliders: hours a week after this pay period,
+// spending by category at home and in Salzburg, flights, one-offs.
 // Dragging repaints the answer and the chart only; letting go saves his settings (one synced record).
 
 import { h } from './dom.js';
 import { svg, tip } from './svg.js';
 import { gbp, categoryLabel } from '../money.js';
-import { hoursSummary, periodWindow } from '../hours.js';
+import { hoursSummary, periodWindow, ordinal } from '../hours.js';
 import { shortDate, addDays, daysInMonth } from '../dates.js';
 import { FORECAST_ID, SAFE_PENCE, BAND, WEEKS_A_MONTH, forecastSettings, forecastPresets, matchingPreset, statementAverage, statementSplit, runForecast, hoursFor, monthlySpend, monthlyAway } from '../forecast.js';
 
@@ -89,14 +90,24 @@ export function forecastBlock(ctx, money, doc, today) {
     ctx.render();
   };
   const presetNote = h('small', { class: 'muted fc-preset-note' });
+  const presetName = () => matchingPreset(s, presets)?.label ?? 'your own mix';
   const presetBtns = presets.map((p) => h('button', { type: 'button', class: 'dl-btn', 'aria-pressed': 'false', title: p.note ?? '', onclick: () => choose(p) }, p.label));
   const markPreset = () => {
     const on = matchingPreset(s, presets);
     presetBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(presets[i] === on)));
     presetNote.textContent = on ? (on.note ?? '') : 'Your own mix: tap a preset to start again from it.';
+    for (const el of foldNotes) el.textContent = ` · ${presetName()}, ${hrs(s.hours)} a week`;
   };
+  const foldNotes = [];
   markPreset();
 
+  // The pay it already knows: what's done or booked in the next unpaid period, before the slider.
+  const ex = hs.expected;
+  const inForecast = first.rows.some((r) => r.month === ex.period);
+  const known = ex.net != null && inForecast
+    ? h('p', { class: 'fc-known' }, h('b', {}, `${monthName(ex.period)} pay ~${gbp(Math.round(ex.net * 100))}`),
+      ` on ${shortDate(ex.payday)}, from the ${ex.hours} h done or booked to the ${ordinal(hs.pay.cutoff)}. After that, the hours slider.`)
+    : null;
   const answer = h('div', {});
   const totalEl = h('span', { class: 'fc-total' });
   const awayTotalEl = h('span', { class: 'fc-total' });
@@ -115,7 +126,8 @@ export function forecastBlock(ctx, money, doc, today) {
         stat(hrs(safe), `a week to keep ${gbp(SAFE_PENCE)}`),
         stat(hrs(even), `a week to break even (${gbp(f.from.total)})`)),
       chart(f, lo, hi),
-      h('p', { class: 'muted mo-note' }, `From ${gbp(f.from.total)} on ${shortDate(f.from.day)} (your last statements). Line: ${hrs(s.hours)} a week; band: ${BAND[0]}–${BAND[1]} h.${f.rows.some((r) => r.awayDays) ? ' Shaded: months in Salzburg (your EU days).' : ''}`));
+      known,
+      h('p', { class: 'muted mo-note' }, `From ${gbp(f.from.total)} on ${shortDate(f.from.day)} (your last statements). Line: ${hrs(s.hours)} a week from ${shortDate(from)}; band: ${BAND[0]}–${BAND[1]} h.${f.rows.some((r) => r.awayDays) ? ' Shaded: months in Salzburg (your EU days).' : ''}`));
     totalEl.textContent = `${gbp(monthlySpend(s))} a month`;
     awayTotalEl.textContent = `${gbp(monthlyAway(s))} a month`;
     pin.replaceChildren(
@@ -142,12 +154,17 @@ export function forecastBlock(ctx, money, doc, today) {
     h('select', { 'aria-label': `${o.label} month`, onchange: (e) => { o.month = e.target.value; paint(); save(); } },
       [...new Set([...months, o.month])].sort().map((m) => h('option', { value: m, selected: m === o.month }, monthName(m)))));
 
+  const foldNote = h('small', { class: 'muted fc-fold-note' });
+  foldNotes.push(foldNote);
+  markPreset();
   return h('div', { class: 'fc' },
-    h('div', { class: 'fc-presets' },
-      h('div', { class: 'mo-seg', role: 'group', 'aria-label': 'Forecast presets' }, presetBtns),
-      presetNote),
     answer,
-    h('div', { class: 'fc-controls' },
+    h('details', { class: 'mo-fold fc-fold', open: !!ctx.ui.forecastOpen, ontoggle: (e) => { ctx.ui.forecastOpen = e.target.open; } },
+      h('summary', {}, 'Change the assumptions', foldNote),
+      h('div', { class: 'fc-presets' },
+        h('div', { class: 'mo-seg', role: 'group', 'aria-label': 'Forecast presets' }, presetBtns),
+        presetNote),
+      h('div', { class: 'fc-controls' },
       pin,
       h('h4', { class: 'mo-sub' }, 'Work'),
       slider({ label: 'Hours a week', note: `from ${shortDate(from)}`, value: s.hours, min: 0, max: 20, step: 0.5,
@@ -167,12 +184,5 @@ export function forecastBlock(ctx, money, doc, today) {
       slider({ label: 'Each', value: s.flights.price / 100, min: 20, max: 250, step: 5, fmt: (v) => gbp(v * 100),
         onInput: live((v) => { s.flights.price = v * 100; }), onChange: keep((v) => { s.flights.price = v * 100; }) }),
       s.oneOffs.length ? h('h4', { class: 'mo-sub' }, 'One-offs') : null,
-      s.oneOffs.map(oneOffRow)));
+      s.oneOffs.map(oneOffRow))));
 }
-
-// The line the folded section shows: where he ends up with the current settings.
-export function forecastHeadline(money, doc, today) {
-  const f = runForecast({ money, doc, today, settings: forecastSettings(money, doc) });
-  return f ? `${gbp(f.end)} at the end of ${monthName(f.rows.at(-1).month)}${f.lowest.pot < 0 ? ` · goes to ${gbp(f.lowest.pot)}` : ''}` : null;
-}
-

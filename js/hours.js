@@ -140,6 +140,20 @@ export function hoursSummary(doc, today) {
   const nextGross = grossFor(nextHours, pay);
   const expected = { period: next, hours: nextHours, gross: nextGross, net: nextGross == null ? null : round2(nextGross * ratio), payday: paydayOf(next) };
 
+  // This pay period in full: its days, the hours done (today's count as done) and still booked in
+  // it, the hourly rate with holiday pay, and what that comes to.
+  const win = periodWindow(period, pay.cutoff);
+  const inPeriod = unpaid.filter((s) => periodOf(s.day) === period);
+  const toCome = inPeriod.filter((s) => s.day > today);
+  const toComeHours = hoursIn(toCome, () => true);
+  const periodGross = grossFor(periodHours + toComeHours, pay);
+  const current = {
+    period, from: win.from, to: win.to, daysLeft: Math.max(0, (Date.parse(win.to) - Date.parse(today)) / 86400000),
+    done: periodHours, toCome: toComeHours, shiftsToCome: toCome, hours: round2(periodHours + toComeHours),
+    hourly: pay.rate == null ? null : round2(pay.rate * (1 + pay.holidayPct / 100)),
+    gross: periodGross, net: periodGross == null ? null : round2(periodGross * ratio), payday: paydayOf(period),
+  };
+
   const thisWeek = weekStart(today);
   const weeks = [];
   for (let i = 11; i >= 0; i--) {
@@ -158,7 +172,7 @@ export function hoursSummary(doc, today) {
   const notCounted = all.filter((s) => !s.counted).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 20);
   const upcoming = counted.filter((s) => s.day > today || s.source === 'upcoming').slice(0, 30);
 
-  return { pay, ratio, paidTo, period, periodHours, expected, weeks, weeklyAverage, slips: withCalendar, notCounted, upcoming };
+  return { pay, ratio, paidTo, period, periodHours, current, expected, weeks, weeklyAverage, slips: withCalendar, notCounted, upcoming };
 }
 
 // Expected take-home in each month from `from` to `to` (inclusive, YYYY-MM): unpaid hours already done
