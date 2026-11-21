@@ -1,11 +1,11 @@
 {
-  "id": "293d3be4309389dcccbf8938ee9784e394ecc5789a2d8ed25764b08f065cc5b5",
+  "id": "9380b7aa7b3da33db968651ccf352f8446d15b2132de240f1740ff4bb766cd15",
   "files": {
     "./": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
     "index.html": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
     "styles.css": "82757c6e1a2f8af994dc37b125a00f8bf62b90d7bafe61e98bb1dbfa5f674836",
     "styles/daylight.css": "6d51f3d7d418e34ede128dbb4b6c4859e8d71152ac05d2352588c52be9b9db6f",
-    "styles/tools.css": "8a25b1ed1c7a77ffe7259f521bca3c6ee2250bf266f6dc170a6d08a3cfe7c66a",
+    "styles/tools.css": "28d70703c513311349fc9af90a35ade8eea3ad08908c5780d6a10b41c0d8abb7",
     "fonts/BricolageGrotesque.woff2": "a97804dc9fbe5fc972a08018c5eda4dab7ef2346f64c57e61419d05e6de4ea1c",
     "fonts/Figtree.woff2": "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",
     "fonts/Rubik-Hebrew.woff2": "197b6dbe5c6bec7276c59b02d70a16ee6acd44322fc2f8d0226c07f8d57976c2",
@@ -93,7 +93,7 @@
     "js/ui/stocks.js": "352a34a4f601c0d161db3bd859b82f4a118599a7fa12f878343dc0a6319acbc5",
     "js/stocks-explain.js": "2ead10b3585c0650576a5866a4a13b2270b8c519ae3daa9e8a2409e01f8ccd45",
     "js/forecast.js": "69579f93c2ac8ffc14eeade23150c399c4ad96120e0709f4e1c07a21ab4d1f0c",
-    "js/ui/forecast.js": "22044e08f0d3e383028a4e776db2d453f70db2a05d440a304e5275e5832ee857",
+    "js/ui/forecast.js": "d70adba2c13caf215ee1f9eb4c154a0dda401bb5d3e17ff442e5981906721bcf",
     "js/ui/london.js": "c7e316e3bfb627fbb2c023b0358ebcc11738ac4146355cebaf5f3decf4d2a068",
     "js/ui/svg.js": "9c672f1bc3e7ddb89d25dc33c22a8cd564d71126e0b3ea60d01d533931b377c1",
     "js/vendor/leaflet/leaflet.js": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a",

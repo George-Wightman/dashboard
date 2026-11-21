@@ -1,8 +1,8 @@
 // The forecast to the London start (js/forecast.js), inside Money's big view. Always open: the answer
 // up front (the pot at the end, its lowest point, the hours a week to break even and to keep a month's
 // money), a chart of the pot month by month with a band from 6 to 12 hours a week (Salzburg's months
-// shaded), and the pay it already knows (the next unpaid period's hours, done or booked). Folded under
-// that: presets that swap every setting at once, and the sliders: hours a week after this pay period,
+// shaded); the next unpaid period's pay, done or booked, is in it (the chart's tooltips say the rest).
+// Folded under that: presets that swap every setting at once, and the sliders: hours a week after this pay period,
 // spending by category at home and in Salzburg, flights, one-offs.
 // Dragging repaints the answer and the chart only; letting go saves his settings (one synced record).
 
@@ -101,13 +101,6 @@ export function forecastBlock(ctx, money, doc, today) {
   const foldNotes = [];
   markPreset();
 
-  // The pay it already knows: what's done or booked in the next unpaid period, before the slider.
-  const ex = hs.expected;
-  const inForecast = first.rows.some((r) => r.month === ex.period);
-  const known = ex.net != null && inForecast
-    ? h('p', { class: 'fc-known' }, h('b', {}, `${monthName(ex.period)} pay ~${gbp(Math.round(ex.net * 100))}`),
-      ` on ${shortDate(ex.payday)}, from the ${ex.hours} h done or booked ${shortDate(ex.from)} – ${shortDate(ex.to)}. After that, the hours slider.`)
-    : null;
   const answer = h('div', {});
   const totalEl = h('span', { class: 'fc-total' });
   const awayTotalEl = h('span', { class: 'fc-total' });
@@ -125,9 +118,7 @@ export function forecastBlock(ctx, money, doc, today) {
         stat(gbp(f.lowest.pot), `lowest, end of ${monthName(f.lowest.month)}`, f.lowest.pot < 0 ? 'neg' : ''),
         stat(hrs(safe), `a week to keep ${gbp(SAFE_PENCE)}`),
         stat(hrs(even), `a week to break even (${gbp(f.from.total)})`)),
-      chart(f, lo, hi),
-      known,
-      h('p', { class: 'muted mo-note' }, `From ${gbp(f.from.total)} on ${shortDate(f.from.day)} (your last statements). Line: ${hrs(s.hours)} a week from ${shortDate(from)}; band: ${BAND[0]}–${BAND[1]} h.${f.rows.some((r) => r.awayDays) ? ' Shaded: months in Salzburg (your EU days).' : ''}`));
+      chart(f, lo, hi));
     totalEl.textContent = `${gbp(monthlySpend(s))} a month`;
     awayTotalEl.textContent = `${gbp(monthlyAway(s))} a month`;
     pin.replaceChildren(

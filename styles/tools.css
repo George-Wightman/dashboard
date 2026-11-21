@@ -168,7 +168,6 @@
 /* Forecast to London (js/ui/forecast.js) */
 .fc-fold > summary { font-size: 15px; color: var(--dl-ink); padding: 4px 0; }
 .fc-fold-note { font-weight: 400; font-size: 13px; }
-.fc-known { font-size: 14px; margin: 4px 0 2px; }
 .mo-stat-btn { font: inherit; color: inherit; text-align: left; border: 0; cursor: pointer; }
 .mo-stat-btn:hover, .mo-stat-btn.on { background: color-mix(in srgb, var(--viz-6) 14%, var(--dl-soft)); }
 .mo-stat-btn:focus-visible { outline: 2px solid var(--viz-6); outline-offset: 2px; }
