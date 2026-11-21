@@ -40,14 +40,14 @@
     const apps = rec('items', { type: 'quota', title: 'Applications', area: 'Job', target: 5, unit: 'count', unitLabel: 'applications', goalId: goal.id, order: 5 });
     rec('items', { type: 'task', title: 'Email Sarah about the reference', area: 'Job', date: ago(2), created: ago(2), goalId: null, order: 6 });
     const dentist = rec('items', { type: 'task', title: 'Book dentist', area: '', date: today, created: today, goalId: null, order: 7 });
-    const natcen = rec('items', { type: 'task', title: 'Finish NatCen supporting statement', area: 'Job', date: today, created: today, goalId: goal.id, source: 'claude', order: 8 });
+    const acme = rec('items', { type: 'task', title: 'Finish Acme supporting statement', area: 'Job', date: today, created: today, goalId: goal.id, source: 'claude', order: 8 });
     rec('items', { type: 'task', title: 'Read one policy brief a day this week', area: '', date: today, created: today, goalId: null, status: 'suggested', source: 'gemini', order: 9 });
 
     for (let i = 20; i >= 1; i--) if (i % 6 !== 0) tick(hebrew.id, ago(i));
     for (let i = 20; i >= 1; i -= 2) tick(gym.id, ago(i));
     for (let i = 20; i >= 1; i--) if (weekday(ago(i)) === 7) tick(review.id, ago(i));
     for (const i of [1, 2, 3, 5, 8, 9, 12]) log(jobs.id, ago(i), 60, 'Applications');
-    log(apps.id, ago(1), 1, 'NatCen');
+    log(apps.id, ago(1), 1, 'Acme');
     log(apps.id, ago(2), 2);
     for (let i = 14; i >= 1; i -= 3) {
       const t = rec('items', { type: 'task', title: `Past task ${i}`, area: '', date: ago(i), created: ago(i), goalId: null, order: 20 + i });
@@ -57,19 +57,19 @@
     // Claude's controls: a brief, a priority, notes, time off (tomorrow for job things, and a past
     // day for everything, so history shows "off"), and planner settings.
     dentist.notes = 'Ask for a Saturday slot; the practice number is on the fridge.';
-    natcen.priority = true;
-    rec('journal', { id: `brief:${today}`, kind: 'brief', day: today, text: 'NatCen statement first; the dentist call can wait till after lunch.', source: 'claude' });
-    rec('calendar', { id: `off:${addDays(today, 1)}`, source: 'claude', start: addDays(today, 1), end: addDays(today, 1), areas: ['Job'], reason: 'Helping Maya move' });
+    acme.priority = true;
+    rec('journal', { id: `brief:${today}`, kind: 'brief', day: today, text: 'Acme statement first; the dentist call can wait till after lunch.', source: 'claude' });
+    rec('calendar', { id: `off:${addDays(today, 1)}`, source: 'claude', start: addDays(today, 1), end: addDays(today, 1), areas: ['Job'], reason: 'Helping Sam move' });
     rec('calendar', { id: `off:${ago(4)}`, source: 'claude', start: ago(4), end: ago(4), areas: [], reason: 'Moving day' });
     rec('calendar', { id: 'config', source: 'claude', priorityAreas: ['Job'], areaColors: { Job: 'Grape' }, dayHours: { [addDays(today, 2)]: ['09:00', '13:00'] } });
 
     // The calendar planner's record for today, so the list shows times and a note.
     const hm = (hh, mm) => new Date(`${today}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`).toISOString();
     rec('calendar', { id: dayRecordId(today), source: 'planner', day: today, skipped: [], missed: [],
-      notes: ['Moved Job search to 15:30 (Signify)'],
+      notes: ['Moved Job search to 15:30 (Shift)'],
       blocks: [
         { key: `${today}||0`, eventId: 'seed-1', calendarId: 'seed', calendar: 'Tasks', title: 'Book dentist', start: hm(10, 30), end: hm(11, 0), state: 'exact', items: [dentist.id] },
-        { key: `${today}|job|0`, eventId: 'seed-2', calendarId: 'seed', calendar: 'Application', title: 'Finish NatCen supporting statement', start: hm(15, 30), end: hm(17, 0), state: 'exact', items: [natcen.id] },
+        { key: `${today}|job|0`, eventId: 'seed-2', calendarId: 'seed', calendar: 'Application', title: 'Finish Acme supporting statement', start: hm(15, 30), end: hm(17, 0), state: 'exact', items: [acme.id] },
       ] });
     rec('calendar', { id: 'status', source: 'planner', lastRun: stamp, lastError: null, version: 'seed', paused: false });
 

@@ -14,7 +14,7 @@ const LIST = [
   { id: 'main', name: 'Tasks', primary: true, backgroundColor: '#9fe1e7' },
   { id: 'app', name: 'Application ', backgroundColor: '#f83a22' },
   { id: 'gym', name: 'Gym ', backgroundColor: '#7bd148' },
-  { id: 'uni', name: 'University of York - Personal timetable: George Wightman', backgroundColor: '#cccccc' },
+  { id: 'uni', name: 'University - Personal timetable', backgroundColor: '#cccccc' },
   { id: 'hol', name: 'Holidays in United Kingdom', backgroundColor: '#16a765' },
 ];
 
@@ -28,13 +28,13 @@ test('local times, across the clocks going back', () => {
 
 test('normEvent: what the planner needs from a Google event', () => {
   const e = normEvent({
-    id: 'e1', summary: 'Signify', description: 'Shift', start: { dateTime: '2026-09-15T14:00:00+01:00' }, end: { dateTime: '2026-09-15T16:00:00+01:00' },
+    id: 'e1', summary: 'Shift', description: 'Shift', start: { dateTime: '2026-09-15T14:00:00+01:00' }, end: { dateTime: '2026-09-15T16:00:00+01:00' },
     attendees: [{ email: 'me', self: true }, { email: 'boss' }], transparency: 'transparent', reminders: { useDefault: false },
     recurringEventId: 'r', originalStartTime: { dateTime: '2026-09-15T13:00:00+01:00' }, colorId: '4',
     extendedProperties: { private: { dash: '1', dashKey: 'k' } },
   }, 'work');
   assert.equal(e.calendarId, 'work');
-  assert.equal(e.title, 'Signify');
+  assert.equal(e.title, 'Shift');
   assert.equal(e.start.toISOString(), '2026-09-15T13:00:00.000Z');
   assert.equal(e.others, 1);
   assert.equal(e.free, true);

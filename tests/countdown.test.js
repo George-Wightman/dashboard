@@ -22,7 +22,7 @@ test('checkCountdown: a name and a date still to come, in plain English when wro
 test('countdowns: still to come, soonest first, with the days left; past and removed ones drop off', () => {
   const store = makeStore();
   const put = (day, title, extra = {}) => store.putCalendar(nextCountdownId(store.doc(), day), { title, day, ...extra }, 'gemini');
-  put('2026-10-14', "Maya's birthday");
+  put('2026-10-14', "Sam's birthday");
   put('2026-10-05', 'Assessment centre');
   put('2026-10-05', 'Another thing that day');
   put(TODAY, 'Today itself');
@@ -32,7 +32,7 @@ test('countdowns: still to come, soonest first, with the days left; past and rem
     ['count:2026-09-10:1', 'Today itself', 0],
     ['count:2026-10-05:2', 'Another thing that day', 25],
     ['count:2026-10-05:1', 'Assessment centre', 25],
-    ['count:2026-10-14:1', "Maya's birthday", 34],
+    ['count:2026-10-14:1', "Sam's birthday", 34],
   ]);
   assert.deepEqual([0, 1, 2, 25].map(daysLeft), ['today', 'tomorrow', '2 days', '25 days']);
 });

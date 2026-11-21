@@ -1,4 +1,4 @@
-// Log Hebrew time by hand: the minutes away from the Hebrew Reader (a conversation with Maya, a
+// Log Hebrew time by hand: the minutes away from the Hebrew Reader (a conversation in Hebrew, a
 // podcast), which its sync can't see. Opened from the home-screen shortcut or the Hebrew tile.
 
 import { h } from './dom.js';

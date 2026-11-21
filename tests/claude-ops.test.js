@@ -57,11 +57,11 @@ test('goal, milestone and plan', () => {
   assert.throws(() => runOp(s, { op: 'milestone', title: 'x' }), /A milestone needs goal/);
   assert.throws(() => runOp(s, { op: 'goal', title: 'x', milestones: 'CV' }), /milestones should be a list/);
   const plan = runOp(s, {
-    op: 'plan', goal: { title: 'NatCen application', targetDate: '2026-10-01' },
+    op: 'plan', goal: { title: 'Acme application', targetDate: '2026-10-01' },
     milestones: ['Research', 'Draft', 'Submit'], tasks: [{ title: 'Read the job pack', date: 'tomorrow' }],
   });
-  assert.match(plan, /^Suggested plan: goal "NatCen application", 3 milestones, 1 task · #rec-\d+$/);
-  const planGoal = Object.values(s.doc().goals).find((g) => g.title === 'NatCen application');
+  assert.match(plan, /^Suggested plan: goal "Acme application", 3 milestones, 1 task · #rec-\d+$/);
+  const planGoal = Object.values(s.doc().goals).find((g) => g.title === 'Acme application');
   assert.equal(planGoal.status, 'suggested');
   assert.equal(planGoal.source, 'claude');
   assert.equal(Object.values(s.doc().items).find((i) => i.title === 'Read the job pack').date, '2026-09-11');
@@ -197,13 +197,13 @@ test('directing: notes and priority, time off, the brief, one-key planner settin
     'Edited task "Email York Careers": notes → "Ask for the earliest slot", priority → false');
   runOp(s, { op: 'target', title: 'AC prep', target: '5h', unit: 'minutes', area: 'Assessment centre' });
 
-  assert.equal(runOp(s, { op: 'off', start: '2026-09-16', end: '2026-09-17', areas: ['job search'], reason: 'Maya leaves for Austria' }),
-    'Time off: Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · job search · #off:2026-09-16');
+  assert.equal(runOp(s, { op: 'off', start: '2026-09-16', end: '2026-09-17', areas: ['job search'], reason: 'Sam visits' }),
+    'Time off: Wed 16 Sep – Thu 17 Sep — Sam visits · job search · #off:2026-09-16');
   assert.equal(runOp(s, { op: 'off', start: 'tomorrow', reason: 'Sick' }), 'Time off: Fri 11 Sep — Sick · everything · #off:2026-09-11');
   assert.equal(runOp(s, { op: 'off', start: '2026-09-18T13:00', end: '2026-09-18T19:00', reason: 'Dentist' }),
     'Time off: Fri 18 Sep, 13:00–19:00 — Dentist · everything · #off:2026-09-18');
   assert.throws(() => runOp(s, { op: 'off', start: '2026-09-20', areas: ['Work'] }), /No item has the area "Work" — areas: Job search, Assessment centre/);
-  assert.equal(runOp(s, { op: 'off', cancel: 'off:2026-09-16' }), 'Cancelled time off: Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · job search');
+  assert.equal(runOp(s, { op: 'off', cancel: 'off:2026-09-16' }), 'Cancelled time off: Wed 16 Sep – Thu 17 Sep — Sam visits · job search');
   assert.equal(s.doc().calendar['off:2026-09-16'].status, 'archived');
   assert.match(runOp(s, { op: 'off', cancel: 'off:2026-09-16' }), /was already cancelled/);
 
@@ -329,10 +329,10 @@ test('countdown: a date still to come, listed in week with its id, and stopped b
 
 test("archive with released: George's reason is kept, so a committed task doesn't count as a miss", () => {
   const s = fresh();
-  runOp(s, { op: 'task', title: 'Check Austria PhDs' });
-  assert.equal(runOp(s, { op: 'archive', id: 'rec-1', released: 'Nathan already sent the list' }),
-    'Archived task "Check Austria PhDs", released: "Nathan already sent the list"');
-  assert.equal(s.doc().items['rec-1'].released, 'Nathan already sent the list');
+  runOp(s, { op: 'task', title: 'Check PhD listings' });
+  assert.equal(runOp(s, { op: 'archive', id: 'rec-1', released: 'Alex already sent the list' }),
+    'Archived task "Check PhD listings", released: "Alex already sent the list"');
+  assert.equal(s.doc().items['rec-1'].released, 'Alex already sent the list');
   assert.equal(s.doc().items['rec-1'].status, 'archived');
   runOp(s, { op: 'task', title: 'Another' });
   assert.throws(() => runOp(s, { op: 'archive', id: 'rec-2', released: 'x'.repeat(201) }), /at most 200/);
@@ -354,7 +354,7 @@ const pickCountdown = (r) => ({ title: r.title, day: r.day, source: r.source });
 test('a task added or moved onto its area\'s day off says it won\'t be listed or booked', () => {
   const store = fresh();
   const today = store.today();
-  runOp(store, { op: 'habit', title: 'Cook for Maya', area: 'Home', repeat: { kind: 'daily' } });
+  runOp(store, { op: 'habit', title: 'Cook for Sam', area: 'Home', repeat: { kind: 'daily' } });
   runOp(store, { op: 'off', start: today, end: today, areas: ['Home'], reason: 'In the UK' });
   assert.match(runOp(store, { op: 'task', title: 'Food shop', area: 'Home' }), /Note: that day is time off for "Home" .*In the UK.*won't be on the list or booked/s);
   assert.doesNotMatch(runOp(store, { op: 'task', title: 'Email James', area: 'Job search' }), /time off/);

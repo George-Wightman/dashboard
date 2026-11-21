@@ -105,8 +105,8 @@ test("Claude's controls on the page: ★, the notes mark, the brief and time off
 
 test('offText and what Claude can do', async () => {
   const { offText, CLAUDE_CAN } = await import('../js/ui/claude.js');
-  assert.equal(offText({ start: '2026-09-16', end: '2026-09-17', areas: ['Job search'], reason: 'Maya leaves for Austria' }),
-    'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search');
+  assert.equal(offText({ start: '2026-09-16', end: '2026-09-17', areas: ['Job search'], reason: 'Sam visits' }),
+    'Wed 16 Sep – Thu 17 Sep — Sam visits · Job search');
   assert.equal(offText({ start: '2026-09-18T13:00', end: '2026-09-18T19:00', areas: [], reason: '' }), 'Fri 18 Sep, 13:00–19:00 — Time off · everything');
   assert.ok(CLAUDE_CAN.some((line) => line.includes('dependencies')));
   assert.ok(CLAUDE_CAN.some((line) => line.includes('goal reviews')));

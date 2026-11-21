@@ -8,3 +8,6 @@ android/.gradle/
 android/build/
 android/app/build/
 android/local.properties
+
+# Design notes, plans and reports: kept on this laptop (and in Drive), never in the public repo.
+docs/

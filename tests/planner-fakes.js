@@ -4,7 +4,7 @@
 import { at } from '../planner/time.js';
 import { plan, fillIds } from '../planner/plan.js';
 
-export const MAIN = 'georgewight03@gmail.com';
+export const MAIN = 'me@example.com';
 export const APP = 'application@group';
 export const GYM = 'gym@group';
 export const WORK = 'work@group';

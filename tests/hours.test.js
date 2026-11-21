@@ -14,8 +14,8 @@ function docWith(...recs) {
 }
 const pay = { id: PAY_ID, status: 'active', rate: 10, holidayPct: 12.07, cutoff: 23 };
 
-test('isShiftTitle: untitled and every spelling of Signify count; an interview does not', () => {
-  for (const t of ['', '  ', 'Signify', 'Signifi', 'signifi', 'Singify', 'Shift']) assert.equal(isShiftTitle(t), true, t);
+test('isShiftTitle: untitled, Shift and Work count; an interview does not', () => {
+  for (const t of ['', '  ', 'Shift', 'shift', 'Work', 'Work (late)']) assert.equal(isShiftTitle(t), true, t);
   for (const t of ['Interview : Pre-Training Assessment', 'Dentist', 'Gym']) assert.equal(isShiftTitle(t), false, t);
 });
 
@@ -31,7 +31,7 @@ test('paydayOf: the last weekday of the month', () => {
 });
 
 test('shifts: a work: record wins over an imported hours: one for the same event', () => {
-  const doc = docWith(shift('e1', '2026-10-01', 2), shift('e1', '2026-10-01', 5, '', 'hours'), shift('e2', '2026-06-01', 3, 'Signifi', 'hours'));
+  const doc = docWith(shift('e1', '2026-10-01', 2), shift('e1', '2026-10-01', 5, '', 'hours'), shift('e2', '2026-06-01', 3, 'Shift', 'hours'));
   const list = shifts(doc);
   assert.equal(list.length, 2);
   assert.equal(list.find((s) => s.eventId === 'e1').minutes, 120);

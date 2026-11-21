@@ -33,7 +33,7 @@ export const CONTROLS = [
   { key: 'hourValue', label: 'What an hour of commuting is worth to me', min: 0, max: 30, step: 1, fmt: (v) => `£${v}`, help: "Each area's commuting hours a month × this is added. At £0 the ranking is on money alone." },
   { key: 'maxCommute', label: "Longest commute I'll accept", min: 20, max: 70, step: 1, fmt: (v) => `${v} min`, help: 'Door to door, each way, on a normal weekday. Areas over it are greyed out and ranked last.' },
   { key: 'west', label: 'Time I might spend on West London placements', min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%`, help: "Mixes the office journey with the average to four points across West London (Paddington to Ealing). You won't know until you're on the programme, so it starts at a third." },
-  { key: 'mansfieldTrips', label: 'Trips home to Mansfield a month', min: 0, max: 4, step: 1, fmt: (v) => String(v), help: "Each adds the journey to King's Cross (or St Pancras) and back, priced at your hour value." },
+  { key: 'homeTrips', label: 'Trips home a month', min: 0, max: 4, step: 1, fmt: (v) => String(v), help: 'Each adds the journey to the London station for home and back, priced at your hour value.' },
   { key: 'salzburgTrips', label: 'Trips to Salzburg a month', min: 0, max: 4, step: 1, fmt: (v) => String(v), help: 'Each adds getting to Stansted for a 7 am flight and back. Areas where that isn\'t possible by public transport add the cost below instead.' },
   { key: 'cab', label: 'A cab or a night before, per early flight', min: 0, max: 120, step: 5, fmt: (v) => `£${v}`, help: "Only for areas that can't reach Stansted by 5:30 am by public transport." },
   { key: 'trust', label: 'Caution with areas that have few rooms', min: 0, max: 15, step: 1, fmt: (v) => (v ? `${v} rooms' worth` : 'trust every price'), help: "Pulls each area's rent towards its side of London's typical rent, harder when few rooms were listed, so two cheap rooms can't top the list." },
@@ -153,7 +153,7 @@ function settingsPanel(ctx, s) {
     h('div', { class: 'lo-sals' }, [0, 1, 2].map(salary)),
     CONTROLS.slice(0, 6).map((c) => control(ctx, s, c)),
     CONTROLS.slice(6, 7).map((c) => control(ctx, s, c)),
-    seg('Getting home', [{ value: 'newark', label: 'Newark + a lift' }, { value: 'nottingham', label: 'Via Nottingham' }], s.mansfieldRoute, (v) => setLondonSettings(store, { mansfieldRoute: v })),
+    s.homeRoutes.length > 1 ? seg('Getting home', s.homeRoutes, s.homeRoute, (v) => setLondonSettings(store, { homeRoute: v })) : null,
     CONTROLS.slice(7).map((c) => control(ctx, s, c)),
     h('div', { class: 'lo-near' }, h('span', { class: 'lo-ctl-label' }, "What's around me"),
       NEAR.map((n) => h('label', { class: 'lo-near-row' }, h('span', {}, n.label),
@@ -178,8 +178,8 @@ function breakdown(sc) {
 function card(r, s, data) {
   const a = r.area, sc = r.score, j = sc.journeys;
   const f = sc.flags;
-  const route = s.mansfieldRoute === 'nottingham' ? data.rail?.nottingham : data.rail?.newark;
-  const home = s.mansfieldRoute === 'nottingham' ? j.stp : j.kx;
+  const route = data.rail?.[s.homeRoute];
+  const home = s.homeFrom === 'stp' ? j.stp : j.kx;
   return h('article', { class: 'lo-card' },
     h('header', {}, h('span', { class: 'lo-rank' }, String(r.rank)), h('div', {}, h('h4', {}, a.name), h('p', { class: 'muted' }, [a.borough, SIDE[a.side], a.line].filter(Boolean).join(' · '))),
       h('div', { class: 'lo-total' }, h('b', {}, pounds(sc.total)), h('small', {}, 'really costs you a month'))),
@@ -193,7 +193,7 @@ function card(r, s, data) {
       h('div', {}, h('h5', {}, 'Getting about'), h('ul', { class: 'lo-j' },
         h('li', {}, h('b', {}, 'Work '), `${mins(j.office)} door to door, arriving 8:30`),
         j.west != null ? h('li', {}, h('b', {}, 'West London '), `${mins(j.west)} on average`) : null,
-        h('li', {}, h('b', {}, 'Mansfield '), home == null ? '—' : `${hrs(home + (route?.mins ?? 0))} (${mins(home)} to ${s.mansfieldRoute === 'nottingham' ? 'St Pancras' : "King's Cross"}, then ${route?.short ?? 'the train'})`),
+        h('li', {}, h('b', {}, `${s.homeName} `), home == null ? '—' : `${hrs(home + (route?.mins ?? 0))} (${mins(home)} to ${s.homeFrom === 'stp' ? 'St Pancras' : "King's Cross"}, then ${route?.short ?? 'the train'})`),
         h('li', {}, h('b', {}, 'Stansted, 7 am flight '), j.stansted ? `leave by ${j.stansted.leave} (${mins(j.stansted.mins)})` : 'not by public transport')),
         h('h5', {}, "What's around"), h('ul', { class: 'lo-near-list' }, NEAR.map((n) => h('li', {}, n.label, h('span', { class: 'lo-meter' }, h('i', { style: `width:${Math.round((sc.nearScores[n.id] ?? 0.5) * 100)}%` }))))))),
     h('a', { class: 'dl-btn lo-sr', href: spareRoomLink(a.name), target: '_blank', rel: 'noopener' }, 'Rooms near this station on SpareRoom ↗'));

@@ -30,7 +30,7 @@ test("a day's tasks: named individually within each area, carried-over first, do
       task('t4', 'Buy stamps', '', TUE),
       task('t5', 'Chase GSS', 'Job search', '2026-09-14'),
       task('t6', 'Done already', 'Job search', TUE),
-      task('t7', 'Call NatCen', 'Job search', TUE, { time: '14:00' }),
+      task('t7', 'Call Acme', 'Job search', TUE, { time: '14:00' }),
       { id: 's1', type: 'task', title: 'Suggested', area: 'Job search', date: TUE, status: 'suggested' },
     ],
     logs: [done('t6', TUE)],

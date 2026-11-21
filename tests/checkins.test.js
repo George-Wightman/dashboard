@@ -298,7 +298,7 @@ test('catchup leads with the notes he left, oldest first, with when and what he 
   const TODAY = '2026-09-13';
   const doc = fixture({
     flags: [
-      { id: 'n2', text: 'Remind me to email Nathan', kind: 'claude', at: '2026-09-13T09:30:00.000Z' },
+      { id: 'n2', text: 'Remind me to email Alex', kind: 'claude', at: '2026-09-13T09:30:00.000Z' },
       { id: 'n1', text: 'Step 3 of the framework keeps falling apart', kind: 'claude', at: '2026-09-12T10:00:00.000Z', doing: 'Scenario practice (10:30–11:30)' },
       { id: 'bug', text: 'The mic cut off', kind: 'bug', at: '2026-09-13T08:00:00.000Z' },
       { id: 'old-coach', text: 'From the Coach', kind: 'claude', source: 'coach', at: '2026-09-13T08:00:00.000Z' },
@@ -309,7 +309,7 @@ test('catchup leads with the notes he left, oldest first, with when and what he 
   const at = lines.indexOf('Notes George left you (act on each, then archive it):');
   assert.ok(at > 0 && at < lines.indexOf('Day by day:'), 'before the days');
   assert.match(lines[at + 1], /during Scenario practice \(10:30–11:30\): "Step 3 of the framework keeps falling apart" #n1$/);
-  assert.match(lines[at + 2], /: "Remind me to email Nathan" #n2$/);
+  assert.match(lines[at + 2], /: "Remind me to email Alex" #n2$/);
   assert.match(text, /^New flags:\n {2}Bug: "The mic cut off" #bug/m);
   assert.doesNotMatch(text.split('New flags:')[1], /Remind me/, 'not listed twice');
   assert.match(READS.flags(doc, TODAY), /"Step 3 of the framework keeps falling apart" #n1 · .* · during Scenario practice \(10:30–11:30\) · from George/);

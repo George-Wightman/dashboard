@@ -5,7 +5,7 @@
 //
 // Inputs, all outside the repo in ~/.dashboard-london/: seed.json (the SpareRoom areas: name, line,
 // side, station minutes, typical walk, rooms, median rent, rent with bills; the prices' date) and
-// private.json (the office, his salary and budget defaults). Each area's station is found with TfL's
+// private.json (the office, the way home, his salary and budget defaults). Each area's station is found with TfL's
 // StopPoint search and its borough with postcodes.io; journeys come from TfL's Journey Planner (free,
 // no key needed at this volume); neighbourhood counts from OpenStreetMap (Overpass) and street crime
 // from police.uk. Every response is cached in ~/.dashboard-london/cache, so a rerun is quick and the
@@ -32,12 +32,8 @@ export const KINGS_CROSS = { lat: 51.5308, lon: -0.1238 };
 export const ST_PANCRAS = { lat: 51.5322, lon: -0.1270 };
 export const STANSTED = { lat: 51.8890, lon: 0.2626 };
 
-// Beyond London, from the timetables (read Oct 2026): LNER King's Cross to Newark Northgate then a lift;
-// EMR St Pancras to Mansfield with a change at Nottingham.
-export const RAIL = {
-  newark: { label: "King's Cross → Newark Northgate, then a lift", short: 'the train to Newark and a lift', mins: 80 + 40, note: 'LNER direct about 1 h 20, around 29 a weekday, Advance from about £17 before Railcard, then about 40 min by car' },
-  nottingham: { label: 'St Pancras → Mansfield via Nottingham', short: 'the train via Nottingham', mins: 146, note: 'East Midlands Railway, one change at Nottingham, seen from £22 to £64 before Railcard' },
-};
+// The ways home beyond London (private.json's "rail": {key: {button, from: 'kx' | 'stp', label, short, mins,
+// note}}, with "home" naming the place) are private, like the office.
 
 async function cached(url, init = {}) {
   mkdirSync(CACHE, { recursive: true });
@@ -150,7 +146,7 @@ async function main() {
   }
   const out = {
     v: 1, prices: seed.prices, built: new Date().toISOString().slice(0, 10), journeysOn: ctx.date,
-    office: priv.office, rail: RAIL, travelcard: { monthly: 175, note: 'Zones 1–3 annual Travelcard through a season ticket loan' },
+    office: priv.office, home: priv.home ?? null, rail: priv.rail ?? {}, travelcard: { monthly: 175, note: 'Zones 1–3 annual Travelcard through a season ticket loan' },
     defaults: priv.defaults ?? {}, areas,
   };
   if (!validLondon(out)) throw new Error('The built file fails validLondon');

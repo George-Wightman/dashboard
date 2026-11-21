@@ -1,5 +1,5 @@
 // The EU days tile (js/eu.js): days left today big, a bar of the 90 (used, then planned), and the
-// few lines George plans visits to Maya by. Its big view is the calendar: 180 days back to a year
+// few lines George plans his trips abroad by. Its big view is the calendar: 180 days back to a year
 // ahead, where he clicks a day, or presses and drags across a stretch, to mark or unmark it. A drag
 // follows the first day pressed (an empty one fills the stretch, a marked one clears it) and is only
 // saved when he lets go, so the page redrawing can't cut it short. On a phone a horizontal drag along

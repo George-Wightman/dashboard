@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '01d80700';
+var PLANNER_BUILD = '7c3e13f0';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1350,12 +1350,12 @@ const { weekday, shortWeekday, shortDate, addDays, daysBetween } = __js_dates;
 const CALENDAR_DEFAULTS = {
   hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
   days: 7, exactDays: 2, firmUpHour: 20,
-  ignore: ['University of York', 'MiM Committee Meetings', 'Family', 'PhD', 'Holidays in United Kingdom'],
+  ignore: ['University', 'Family', 'PhD', 'Holidays in United Kingdom'],
   areaCalendars: { 'Job search': 'Application', 'Assessment centre': 'Application', Health: 'Gym', Challenger: 'Challenger' },
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
   priorityAreas: [],
-  workCalendar: 'Work', // planner/work.js: its events, once over, are Signify shifts for the map
+  workCalendar: 'Work', // planner/work.js: its events, once over, are Work shifts for the map
   uncountedAreas: [], // areas booked as reminders but never a miss, like ["Food"]: worth it if done
   areaColors: {},
   dayHours: {},
@@ -1554,7 +1554,7 @@ function offWindows(doc, day, offs = timeOff(doc)) {
     .filter((w) => w.start < to && w.end > from);
 }
 
-// The line Today shows on a day with time off: 'Time off — Maya leaves for Austria · Job search'.
+// The line Today shows on a day with time off: 'Time off — Sam visits · Job search'.
 function offLine(doc, day) {
   const parts = [];
   for (const o of timeOff(doc)) {
@@ -1582,7 +1582,7 @@ function checkTimeOff({ start, end, areas = [], reason = '' } = {}) {
   return { start: s, end: e, areas: areas.map((a) => a.trim()), reason: why };
 }
 
-// 'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search' or '… · everything'.
+// 'Wed 16 Sep – Thu 17 Sep — Sam visits · Job search' or '… · everything'.
 function offText(o) {
   const dayText = (d) => `${shortWeekday(d)} ${shortDate(d)}`;
   const range = o.start.length === 10
@@ -5874,7 +5874,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
 
   // Tasks George has linked to one of his own events (dashboard:<id> in its description): that event
   // is the task's time, so the planner books it nothing of its own — a task with a set time included
-  // (20 Oct 2026: "Research the Visa D" got a second event at 13:00 beside his).
+  // (20 Oct 2026: "Research the permit" got a second event at 13:00 beside his).
   const resolveRef = (ref) => {
     if (items[ref]) return ref;
     if (ref.length < 4) return null;
@@ -7126,7 +7126,7 @@ return { HEALTH, LOOKBACK_DAYS, healthRecord, healthLabel, countedMinutes, healt
 
 // ---- planner/work.js
 const __planner_work = (() => {
-// Signify shifts (docs/superpowers/specs/2026-10-29-salzburg-era-design.md): each event on his Work
+// Work shifts (docs/superpowers/specs/2026-10-29-salzburg-era-design.md): each event on his Work
 // calendar that has ended becomes a `work:<event id>` record in the calendar map, which the map
 // (js/map/engine.js) turns into hammers. Recorded from the first run onwards, never backfilled, so his
 // map doesn't change under him; a moved shift follows and a deleted one goes, for the days still
@@ -7197,7 +7197,7 @@ const cal = (doc) => doc?.calendar ?? {};
 const num = (v) => (Number.isFinite(v) ? v : null);
 const round2 = (n) => Math.round(n * 100) / 100;
 
-// Untitled, or some spelling of Signify ("Signifi", "Singify"…), or plainly a shift.
+// Untitled, or some spelling of the employer's name, or plainly a shift.
 function isShiftTitle(title) {
   const s = String(title ?? '').trim();
   if (!s) return true;
@@ -9910,11 +9910,11 @@ const FIND_NAME = { coal: 'Coal seam', wheat: 'Wheat', sheep: 'Sheep', deer: 'De
 const values = (o) => Object.values(o ?? {});
 const CENTRE = key(0, 0);
 const rowHammers = (row) => ((row.item.minutes ?? 0) >= 60 ? 20 : 10);
-// A Signify shift (planner/work.js): worth what a row of its length is, but never a miss.
+// A Work shift (planner/work.js): worth what a row of its length is, but never a miss.
 const workHammers = (minutes) => (minutes >= 60 ? 20 : 10);
 // Camps: one per track and one for home. A miss in a track that has one raids but sends no more.
 const campCap = (map) => Object.keys(map.tracks ?? {}).length + 1;
-// A find's name: the city's own (Salzburg's salt), else the engine's (Mansfield's).
+// A find's name: the city's own (Salzburg's salt), else the engine's (the home map's).
 const findName = (map, kind) => map.findNames?.[kind] ?? FIND_NAME[kind] ?? 'A find';
 
 // The shifts George worked, by day: the planner's `work:` records.
@@ -10494,7 +10494,7 @@ function momentAt(now) {
   return current;
 }
 
-const isShift = (e) => /work/i.test(e.calendar ?? '') || /signify|shift/i.test(e.title ?? '');
+const isShift = (e) => /work/i.test(e.calendar ?? '') || /shift/i.test(e.title ?? '');
 
 // Today's busy events against `now`: the one he's in, and one that ended in the last hour.
 function busyState(busy, now) {
@@ -11067,7 +11067,7 @@ function tick(store, item, day, fields) {
 
 // A planner block George has just dragged (it isn't where the planner last put it) to a time that's
 // already over: he's saying when he did it. Each of its items is ticked for the day it landed on, at
-// that time. Dragging into the future is still just a move. 2 Nov 2026: he dragged "Maya's
+// that time. Dragging into the future is still just a move. 2 Nov 2026: he dragged "Sam's
 // storybook" back to the afternoon he'd spent on it; the planner called the day missed, deleted the
 // block and booked another today, again and again.
 function importDrags(store, events, { now, dayStartHour = 4 }) {
@@ -12023,7 +12023,7 @@ function createPlanner({
         if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
       }
       watch.lap('inboundSave');
-      // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
+      // Work shifts for the map (planner/work.js): saved with the run's own push, not before it.
       recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
       // Shifts booked ahead for Hours (planner/hours.js): the Work calendar only, six weeks out.
       try {

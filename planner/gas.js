@@ -452,7 +452,7 @@ export function createPlanner({
         if (!saved.ok) throw new Error('Could not save incoming calendar edits: ' + saved.error);
       }
       watch.lap('inboundSave');
-      // Signify shifts for the map (planner/work.js): saved with the run's own push, not before it.
+      // Work shifts for the map (planner/work.js): saved with the run's own push, not before it.
       recordShifts(store, events, { calendarId: find(config.workCalendar)?.id ?? null, today, now: t, dayStartHour: dayStartHour() });
       // Shifts booked ahead for Hours (planner/hours.js): the Work calendar only, six weeks out.
       try {

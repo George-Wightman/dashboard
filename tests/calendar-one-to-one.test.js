@@ -80,7 +80,7 @@ test('a calendar two areas book into gives its task the priority area', async ()
 test('left alone: the main calendar, Work, repeating sessions, linked habits, all-day and past events', async () => {
   const { repo, cal, planner } = setup({ events: [
     ev(MAIN, 'Dinner with dad', FRI, '18:00', '20:00'),
-    ev(WORK, 'Signify', FRI, '09:00', '13:00'),
+    ev(WORK, 'Shift', FRI, '09:00', '13:00'),
     ev(GYM, 'Run club', FRI, '07:00', '08:00', { recurringEventId: 'club', originalStartTime: { dateTime: at(FRI, '07:00').toISOString() } }),
     ev(GYM, 'Gym', FRI, '17:00', '18:00'),
     allDayEv(APP, 'Assessment centre week', FRI, SAT),

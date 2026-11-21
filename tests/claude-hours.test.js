@@ -12,7 +12,7 @@ test('hours op: imports old shifts, skipping ones the planner already recorded',
   const s = fresh();
   s.putCalendar('work:e2', { status: 'active', day: '2026-09-01', minutes: 120, title: '' });
   const out = runOp(s, { op: 'hours', shifts: [
-    { eventId: 'e1', start: '2026-06-12T12:00:00Z', end: '2026-06-12T14:00:00Z', title: 'Signifi' },
+    { eventId: 'e1', start: '2026-06-12T12:00:00Z', end: '2026-06-12T14:00:00Z', title: 'Shift' },
     { eventId: 'e2', start: '2026-09-01T07:00:00Z', end: '2026-09-01T09:00:00Z' },
   ] });
   assert.match(out, /^Imported 1 shift \(1 already recorded by the planner\)/);

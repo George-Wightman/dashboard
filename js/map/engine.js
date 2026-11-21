@@ -28,11 +28,11 @@ export const FIND_NAME = { coal: 'Coal seam', wheat: 'Wheat', sheep: 'Sheep', de
 const values = (o) => Object.values(o ?? {});
 const CENTRE = key(0, 0);
 export const rowHammers = (row) => ((row.item.minutes ?? 0) >= 60 ? 20 : 10);
-// A Signify shift (planner/work.js): worth what a row of its length is, but never a miss.
+// A Work shift (planner/work.js): worth what a row of its length is, but never a miss.
 export const workHammers = (minutes) => (minutes >= 60 ? 20 : 10);
 // Camps: one per track and one for home. A miss in a track that has one raids but sends no more.
 export const campCap = (map) => Object.keys(map.tracks ?? {}).length + 1;
-// A find's name: the city's own (Salzburg's salt), else the engine's (Mansfield's).
+// A find's name: the city's own (Salzburg's salt), else the engine's (the home map's).
 export const findName = (map, kind) => map.findNames?.[kind] ?? FIND_NAME[kind] ?? 'A find';
 
 // The shifts George worked, by day: the planner's `work:` records.

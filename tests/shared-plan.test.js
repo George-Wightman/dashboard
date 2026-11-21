@@ -173,7 +173,7 @@ test('a STAY block keeps its slot when a shift is booked over it', () => {
   const slot = cal.get(event.id).start.dateTime;
   cal.get(event.id).summary = `STAY ${task.title}`;
   reconcileCalendar(store, cal.all());
-  cal.add(ev(WORK, 'Signify', FRI, '08:00', '19:00'));
+  cal.add(ev(WORK, 'Shift', FRI, '08:00', '19:00'));
   step(cal, store.doc(), now(), first.days);
   assert.equal(store.doc().items[task.id].date, FRI, 'stays on the day it was pinned to');
   assert.equal(cal.get(event.id).start.dateTime, slot, 'stays in its slot under the shift');

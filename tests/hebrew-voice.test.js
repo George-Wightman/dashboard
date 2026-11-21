@@ -8,7 +8,7 @@ process.env.TZ = 'Europe/London';
 
 const WED = '2026-09-16';
 const at = (day, hhmm) => { const [y, m, d] = day.split('-').map(Number); const [h, mi] = hhmm.split(':').map(Number); return new Date(y, m - 1, d, h, mi); };
-const shift = (day, from, to) => ({ title: 'Signify', calendar: 'Work', start: at(day, from).toISOString(), end: at(day, to).toISOString() });
+const shift = (day, from, to) => ({ title: 'Shift', calendar: 'Work', start: at(day, from).toISOString(), end: at(day, to).toISOString() });
 const input = (over = {}) => ({ now: at(WED, '10:00'), today: WED, days: { '2026-09-14': { sec: 1200, sessions: 1 }, '2026-09-15': { sec: 2000, sessions: 2 } }, duolingo: [], busy: [], countdown: null, strongGain: 0, ...over });
 
 test('levels: any session counts, 15 minutes is done, 30 is gold', () => {
@@ -32,7 +32,7 @@ test('morning with nothing booked: the morning line; a shift: it holds, then kno
   const free = hebrewVoice(input());
   assert.ok(['Nothing yet. Loads of day left.', 'Morning. Nothing in yet, and the day is yours.'].includes(free.line), free.line);
   const busy = { busy: [shift(WED, '09:00', '13:00')] };
-  assert.match(hebrewVoice(input({ ...busy, now: at(WED, '09:45') })).line, /Signify till 13:00/);
+  assert.match(hebrewVoice(input({ ...busy, now: at(WED, '09:45') })).line, /Shift till 13:00/);
   assert.equal(duePing(input({ ...busy, now: at(WED, '09:45') }), []), null);
   assert.equal(duePing(input({ ...busy, now: at(WED, '13:05') }), []), null, 'waits ten minutes after it ends');
   const p = duePing(input({ ...busy, now: at(WED, '13:12') }), []);

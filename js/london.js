@@ -22,7 +22,7 @@ export const WEIGHTS = ["Don't care", 'A bit', 'Matters', 'Really matters'];
 
 export const DEFAULTS = Object.freeze({
   year: 0, salaries: [null, null, null], ceilingPct: 50, savings: 300, everythingElse: null,
-  hourValue: 10, maxCommute: 45, west: 0.33, mansfieldTrips: 1, salzburgTrips: 1, mansfieldRoute: 'newark',
+  hourValue: 10, maxCommute: 45, west: 0.33, homeTrips: 1, salzburgTrips: 1,
   trust: 4, cab: 40, stepValue: 25, near: Object.freeze({ gyms: 1, green: 1, eat: 1, safety: 1 }),
 });
 
@@ -36,7 +36,7 @@ export function validLondon(d) {
     && a.j && fin(a.j.office) && finOrNull(a.j.kx) && finOrNull(a.j.stp) && (a.j.west == null || (Array.isArray(a.j.west) && a.j.west.every(fin))));
 }
 
-// --- Take-home: 2026/27 rules (frozen to 2030), Civil Service pension tiers, Plan 2 loan. ---------------
+// --- Take-home: 2026/27 rules (frozen to 2030), the pension scheme's tiers, Plan 2 loan. ---------------
 export function pensionRate(salary) {
   return salary <= 36199 ? 0.046 : salary <= 56000 ? 0.0545 : 0.0735;
 }
@@ -62,13 +62,19 @@ export function londonSettings(doc, data) {
   if (salaries[1] == null && salaries[0] != null) salaries[1] = Math.round((salaries[0] * 1.05) / 100) * 100;
   if (salaries[2] == null && salaries[1] != null) salaries[2] = salaries[1] + (salaries[1] - (salaries[0] ?? salaries[1]));
   const guessed = given.map((v) => v == null);
+  // The ways home come from the private file (rail: {key: {button, from: 'kx' | 'stp', short, mins}}).
+  const rail = data?.rail ?? {};
+  const routes = Object.keys(rail);
+  const homeRoute = routes.includes(saved.homeRoute) ? saved.homeRoute : routes[0] ?? null;
   return {
     year: [0, 1, 2].includes(saved.year) ? saved.year : 0,
     salaries, guessed,
     ceilingPct: pick('ceilingPct'), savings: pick('savings'), everythingElse: pick('everythingElse') ?? 0,
     hourValue: pick('hourValue'), maxCommute: pick('maxCommute'), west: pick('west'),
-    mansfieldTrips: pick('mansfieldTrips'), salzburgTrips: pick('salzburgTrips'),
-    mansfieldRoute: ['newark', 'nottingham'].includes(saved.mansfieldRoute) ? saved.mansfieldRoute : 'newark',
+    homeTrips: pick('homeTrips'), salzburgTrips: pick('salzburgTrips'),
+    homeName: typeof data?.home === 'string' && data.home ? data.home : 'Home',
+    homeRoute, homeFrom: rail[homeRoute]?.from === 'stp' ? 'stp' : 'kx',
+    homeRoutes: routes.map((k) => ({ value: k, label: rail[k]?.button ?? rail[k]?.short ?? k })),
     trust: pick('trust'), cab: pick('cab'), stepValue: pick('stepValue'),
     near: { ...DEFAULTS.near, ...(fileDefaults.near ?? {}), ...(saved.near ?? {}) },
   };
@@ -139,8 +145,8 @@ export function scoreArea(a, s, ctx) {
   const allIn = rentAllIn + travel;
   const commuteHours = (2 * j.weekday * WORK_DAYS) / 60;
   const commute = commuteHours * s.hourValue;
-  const home = s.mansfieldRoute === 'nottingham' ? j.stp : j.kx;
-  const tripHours = (home == null ? 0 : (2 * home * s.mansfieldTrips) / 60) + (j.stansted?.mins != null ? (2 * j.stansted.mins * s.salzburgTrips) / 60 : 0);
+  const home = s.homeFrom === 'stp' ? j.stp : j.kx;
+  const tripHours = (home == null ? 0 : (2 * home * s.homeTrips) / 60) + (j.stansted?.mins != null ? (2 * j.stansted.mins * s.salzburgTrips) / 60 : 0);
   const noEarlyFlight = a.j.stansted === null;
   const trips = tripHours * s.hourValue + (noEarlyFlight ? s.cab * s.salzburgTrips : 0);
   const leftover = ctx.takeHome == null ? null : ctx.takeHome - allIn - s.everythingElse;

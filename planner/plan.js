@@ -282,7 +282,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
 
   // Tasks George has linked to one of his own events (dashboard:<id> in its description): that event
   // is the task's time, so the planner books it nothing of its own — a task with a set time included
-  // (20 Oct 2026: "Research the Visa D" got a second event at 13:00 beside his).
+  // (20 Oct 2026: "Research the permit" got a second event at 13:00 beside his).
   const resolveRef = (ref) => {
     if (items[ref]) return ref;
     if (ref.length < 4) return null;

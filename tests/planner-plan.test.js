@@ -20,7 +20,7 @@ const span = (e) => `${clockLabel(e.start.dateTime)}–${clockLabel(e.end.dateTi
 const inserts = (r) => r.actions.filter((a) => a.op === 'insert');
 const summaries = (cal) => cal.mine().map((e) => `${e.start.dateTime.slice(0, 10)} ${span(e)} ${e.summary}`).sort();
 
-// Tuesday 15 September: Hebrew and Gym on Tuesday and Wednesday, a Signify shift on Tuesday, a
+// Tuesday 15 September: Hebrew and Gym on Tuesday and Wednesday, a Work shift on Tuesday, a
 // family day on a calendar the planner ignores.
 function tuesday() {
   const doc = fixture({ items: [
@@ -30,14 +30,14 @@ function tuesday() {
     task('dayout', 'Write the day out', 'Assessment centre', TUE, { minutes: 60 }),
     task('who', 'Trace the WHO figure', 'Job search', WED),
     task('pharma', 'Trace the pharma figure', 'Job search', WED),
-    task('natcen', 'Read the NatCen pack', 'Job search', THU),
+    task('acme', 'Read the Acme pack', 'Job search', THU),
   ] });
   const cal = new FakeCalendar([
     instance(MAIN, 'Learn Hebrew', TUE, '09:30', '10:15', 'heb'),
     instance(MAIN, 'Learn Hebrew', WED, '09:30', '10:15', 'heb'),
     instance(GYM, 'Gym', TUE, '11:00', '13:00', 'gym'),
     instance(GYM, 'Gym', WED, '11:00', '13:00', 'gym'),
-    ev(WORK, 'Signify', TUE, '14:00', '16:00'),
+    ev(WORK, 'Shift', TUE, '14:00', '16:00'),
     ev(FAMILY, 'Family day', TUE, '09:00', '19:00'),
   ]);
   return { doc, cal };
@@ -60,9 +60,9 @@ test('first run: individually named tasks around fixed events, exact today and t
     '2026-09-15 16:15–17:15 Write the day out',
     '2026-09-16 13:15–13:45 Trace the pharma figure',
     '2026-09-16 14:00–14:30 Trace the WHO figure',
-    '2026-09-17 09:00–09:30 ~ Read the NatCen pack',
+    '2026-09-17 09:00–09:30 ~ Read the Acme pack',
   ]);
-  const rough = cal.byTitle('~ Read the NatCen pack');
+  const rough = cal.byTitle('~ Read the Acme pack');
   assert.equal(rough.colorId, undefined);
   assert.deepEqual(rough.reminders, { useDefault: false, overrides: [] });
   const exact = cal.byTitle('Trace the pharma figure');
@@ -85,12 +85,12 @@ test('running again changes nothing', () => {
 test('a shift on top of a block moves it, and only it, with a note', () => {
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
-  cal.add(ev(WORK, 'Signify', WED, '13:00', '15:00'));
+  cal.add(ev(WORK, 'Shift', WED, '13:00', '15:00'));
   const r = step(cal, doc, now(TUE, '08:30'), first.days);
   assert.deepEqual(r.actions.map((a) => a.op), ['patch', 'patch']);
   assert.equal(span(cal.byTitle('Trace the pharma figure')), '15:15–15:45');
   assert.equal(span(cal.byTitle('Trace the WHO figure')), '16:00–16:30');
-  assert.ok(r.days[TUE].notes.includes('Moved Trace the pharma figure on Wed to 15:15 (Signify)'));
+  assert.ok(r.days[TUE].notes.includes('Moved Trace the pharma figure on Wed to 15:15 (Shift)'));
 });
 
 test('a booked block stays put when earlier time opens up', () => {
@@ -142,7 +142,7 @@ test('a short carried task no longer crowds out a long one the day had room for'
     task('chase', 'Chase the GSS outcome', 'Job search', MON),
     task('dayout', 'Write the day out', 'Assessment centre', TUE, { minutes: 150 }),
   ] });
-  const cal = new FakeCalendar([ev(WORK, 'Signify', TUE, '12:00', '19:00')]);
+  const cal = new FakeCalendar([ev(WORK, 'Shift', TUE, '12:00', '19:00')]);
   const r = step(cal, doc, now(TUE, '08:00'));
   // Carried-first puts the 30-minute chase at 09:00 and leaves no run long enough for the
   // 150-minute one. Tuesday is worth more the other way round, so the other way round is what it gets.
@@ -289,7 +289,7 @@ test('Hebrew and Gym: a session George placed stays; the other one moves off it'
   const cal = new FakeCalendar([
     instance(MAIN, 'Learn Hebrew', TUE, '11:45', '12:30', 'heb', '09:30'),
     instance(GYM, 'Gym', TUE, '11:00', '13:00', 'gym'),
-    ev(WORK, 'Signify', TUE, '14:00', '16:00'),
+    ev(WORK, 'Shift', TUE, '14:00', '16:00'),
   ]);
   const r = step(cal, doc, now(TUE, '08:00'));
   assert.deepEqual(r.actions.map((a) => a.op), ['patch']);
@@ -351,14 +351,14 @@ test('a task with a time moved to a later day takes its block with it, even once
 });
 
 test('at 20:00 the day after tomorrow turns exact where it stands', () => {
-  const doc = fixture({ items: [task('natcen', 'Read the NatCen pack', 'Job search', THU)] });
+  const doc = fixture({ items: [task('acme', 'Read the Acme pack', 'Job search', THU)] });
   const cal = new FakeCalendar();
   const first = step(cal, doc, now(TUE, '19:00'));
-  const roughId = cal.byTitle('~ Read the NatCen pack').id;
+  const roughId = cal.byTitle('~ Read the Acme pack').id;
   const r = step(cal, doc, now(TUE, '20:05'), first.days);
   assert.deepEqual(r.actions.map((a) => a.op), ['delete', 'insert']);
   assert.equal(cal.get(roughId), undefined);
-  const exact = cal.byTitle('Read the NatCen pack');
+  const exact = cal.byTitle('Read the Acme pack');
   assert.equal(span(exact), '09:00–09:30');
   assert.equal(exact.colorId, undefined);
   assert.deepEqual(exact.reminders, { useDefault: true });
@@ -366,7 +366,7 @@ test('at 20:00 the day after tomorrow turns exact where it stands', () => {
 
 test("what doesn't fit moves to the next day, with a note", () => {
   const doc = fixture({ items: [task('who', 'Trace the WHO figure', 'Job search', WED), task('pharma', 'Trace the pharma figure', 'Job search', WED)] });
-  const cal = new FakeCalendar([ev(WORK, 'Signify', WED, '09:00', '19:00')]);
+  const cal = new FakeCalendar([ev(WORK, 'Shift', WED, '09:00', '19:00')]);
   const r = step(cal, doc, now(TUE, '08:00'));
   assert.deepEqual(summaries(cal), ['2026-09-17 09:00–09:30 ~ Trace the pharma figure', '2026-09-17 09:45–10:15 ~ Trace the WHO figure']);
   assert.ok(r.days[TUE].notes.includes("Couldn't fit Trace the pharma figure on Wed — moved to Thu"));
@@ -443,7 +443,7 @@ test('a daily habit that will not fit is missed, not carried into the next day',
   const doc = fixture({ items: [
     { id: 'reading', type: 'habit', title: 'Read ten pages', area: 'Reading', repeat: { kind: 'daily' }, minutes: 20, order: 1 },
   ] });
-  const cal = new FakeCalendar([ev(WORK, 'Signify all day', TUE, '09:00', '19:00')]);
+  const cal = new FakeCalendar([ev(WORK, 'Shift all day', TUE, '09:00', '19:00')]);
   const r = step(cal, doc, now(TUE, '08:00'));
   const onWed = cal.mine().filter((e) => e.start.dateTime.startsWith(WED) && /Read ten pages/.test(e.summary));
   assert.equal(onWed.length, 1, "Wednesday gets its own instance and only its own");
@@ -452,18 +452,18 @@ test('a daily habit that will not fit is missed, not carried into the next day',
 });
 
 test('a task with a time that George has linked to his own event gets no event of its own', () => {
-  const doc = fixture({ items: [task('visa-d', 'Research the Visa D', 'Admin', TUE, { time: '13:00', minutes: 75 })] });
-  const cal = new FakeCalendar([ev(WORK, 'Visa D', TUE, '13:00', '14:15', { description: 'dashboard:visa-d' })]);
+  const doc = fixture({ items: [task('permit-form', 'Research the permit', 'Admin', TUE, { time: '13:00', minutes: 75 })] });
+  const cal = new FakeCalendar([ev(WORK, 'Permit form', TUE, '13:00', '14:15', { description: 'dashboard:permit-form' })]);
   assert.deepEqual(step(cal, doc, now(TUE, '08:00')).actions, []);
   // One the planner made before George linked his: taken away, his stays.
-  const doc2 = fixture({ items: [task('visa-d', 'Research the Visa D', 'Admin', TUE, { time: '13:00', minutes: 75 })] });
+  const doc2 = fixture({ items: [task('permit-form', 'Research the permit', 'Admin', TUE, { time: '13:00', minutes: 75 })] });
   const cal2 = new FakeCalendar();
   step(cal2, doc2, now(TUE, '08:00'));
-  assert.ok(cal2.byTitle('Research the Visa D'), 'booked while unlinked');
-  cal2.add(ev(WORK, 'Visa D', TUE, '13:00', '14:15', { description: 'dashboard:visa-d' }));
+  assert.ok(cal2.byTitle('Research the permit'), 'booked while unlinked');
+  cal2.add(ev(WORK, 'Permit form', TUE, '13:00', '14:15', { description: 'dashboard:permit-form' }));
   step(cal2, doc2, now(TUE, '08:10'));
-  assert.equal(cal2.byTitle('Research the Visa D'), undefined, 'the planner\'s copy went');
-  assert.ok(cal2.byTitle('Visa D'));
+  assert.equal(cal2.byTitle('Research the permit'), undefined, 'the planner\'s copy went');
+  assert.ok(cal2.byTitle('Permit form'));
 });
 
 test('a weekly target raised late in the week never crowds out next week\'s tasks', () => {

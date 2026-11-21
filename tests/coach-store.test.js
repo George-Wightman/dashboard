@@ -71,13 +71,13 @@ test('a workout keeps the Hevy routine it was started from, and every lift set w
 
 test("final review: setting a session keeps George's own notes, before the session's lines", () => {
   const store = makeStore();
-  const t = store.addItem({ type: 'task', title: 'Gym', date: '2026-10-20', notes: 'With Maya, bring the belt' });
+  const t = store.addItem({ type: 'task', title: 'Gym', date: '2026-10-20', notes: 'With Sam, bring the belt' });
   store.setSession(t.id, session);
-  assert.equal(store.doc().items[t.id].notes, 'With Maya, bring the belt\n\nSquat (Barbell) 3×5 @ 95 kg');
+  assert.equal(store.doc().items[t.id].notes, 'With Sam, bring the belt\n\nSquat (Barbell) 3×5 @ 95 kg');
   store.setSession(t.id, { ...session, exercises: [{ ...session.exercises[0], kg: 97.5 }] });
-  assert.equal(store.doc().items[t.id].notes, 'With Maya, bring the belt\n\nSquat (Barbell) 3×5 @ 97.5 kg');
+  assert.equal(store.doc().items[t.id].notes, 'With Sam, bring the belt\n\nSquat (Barbell) 3×5 @ 97.5 kg');
   store.setSession(t.id, null);
-  assert.equal(store.doc().items[t.id].notes, 'With Maya, bring the belt');
+  assert.equal(store.doc().items[t.id].notes, 'With Sam, bring the belt');
 });
 
 test('review minors: two sore mornings leave one flag that morning, whatever the answer changes to', () => {

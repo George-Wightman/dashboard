@@ -99,7 +99,7 @@ covers yesterday and today. `catchup 3` reads the last three days and leaves the
 When George has a map, it ends with the map too (see `map`).
 
 ### `hours`
-His Signify hours and pay (Money's Hours section), from the Work calendar: the pay rules, hours in
+His work hours and pay (Money's Hours section), from the Work calendar: the pay rules, hours in
 this pay period, the next pay with the hours booked or done in it and roughly what it'll be, his
 average week, each payslip's paid hours against the calendar's hours in that period (a gap means a
 missing shift or a pay mistake), shifts booked ahead, and Work events not counted because their
@@ -160,7 +160,7 @@ Your own last n changes (10 by default), with their ids for `undo`.
 
 ### `planner`
 The calendar planner: when it last ran (and any problem), its settings, anything it couldn't use, and
-its notes today (*Moved Job search ×2 on Wed to 15:15 (Signify)*), priority areas, area colours, day
+its notes today (*Moved Job search ×2 on Wed to 15:15 (Shift)*), priority areas, area colours, day
 hours, and the colours George's calendars already take. `week` also lists coming time off and what the
 planner booked for the next seven days (`~` marks a rough time).
 
@@ -179,10 +179,10 @@ something has gone wrong. Each is a page, and each exists because a session got 
 without it.
 
 ### `hours`
-One part per op. `{"op": "hours", "pay": {"rate": 12, "holidayPct": 12.07, "cutoff": 23}}` — the
+One part per op. `{"op": "hours", "pay": {"rate": 15, "holidayPct": 12.07, "cutoff": 20}}` — the
 hourly rate, holiday pay on top (%), and the last day of the month whose hours that month's payslip
-pays. `{"op": "hours", "payslip": {"period": "2026-10", "paid": "2026-10-30", "hours": 20,
-"holiday": 28.97, "gross": 268.97, "tax": 0, "ni": 0, "net": 268.97}}` — read off a payslip PDF he
+pays. `{"op": "hours", "payslip": {"period": "2026-03", "paid": "2026-03-27", "hours": 10,
+"holiday": 18.11, "gross": 168.11, "tax": 0, "ni": 0, "net": 168.11}}` — read off a payslip PDF he
 gives you. Add `"from"` and `"to"` (the first and last day of work it paid) when the hours don't fit
 the cut-off rule: match its hours to the calendar to find them; never record his NI number, address or employee id. `{"op": "hours", "shifts": [{"eventId":
 "…", "start": "…", "end": "…", "title": "…"}]}` — imports shifts from before the planner started
@@ -313,7 +313,7 @@ on its own date.
 ### `archive`
 `{"op": "archive", "id": "…"}` — archives an item, goal or milestone (history is kept), removes a
 logged amount or tick, or marks a flag addressed. Use `dismiss` for a suggestion. A task George has
-said is no longer needed takes his reason: `{"op": "archive", "id": "…", "released": "Nathan already
+said is no longer needed takes his reason: `{"op": "archive", "id": "…", "released": "Alex already
 sent the list"}` — once today has locked, that keeps it from counting as a miss. It works on a task
 that's already archived too (the planner archives one whose block he deleted). Only with his reason,
 never to tidy a bad day.
@@ -358,7 +358,7 @@ their start), `areaCalendars` (`{"Job search": "Application"}`), `defaultCalenda
 name: where tasks of an area with no calendar go, and, unless it's main, a calendar whose own events
 become tasks), `habitEvents` (`[{"habit": "Gym", "calendar": "Gym", "title": "Gym"}]` — a habit by id or the
 start of its title, and the events that are its sessions), `priorityAreas` (areas booked first and
-starred), `workCalendar` (the calendar whose events, once over, are Signify shifts that
+starred), `workCalendar` (the calendar whose events, once over, are Work shifts that
 earn map hammers; `"Work"`), `uncountedAreas` (areas booked as reminders that never count as a miss, like `["Food"]`:
 still worth their hammers when done), `areaColors` (`{"Assessment centre": "Grape"}` — Google's colour names: Lavender, Sage, Grape,
 Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not one George's calendars
@@ -453,7 +453,7 @@ refused: check with him, then correct the batch or add `"over": true`. `{"op": "
 "batch:…", "protein": 300, "kcal": 4800}}` corrects a pot and every serving from it; `{"op": "meal", "id":
 "batch:…", "remove": true, "why": "binned the rest"}` takes it out of the fridge (its servings stay).
 `{"op": "meal", "fuel":
-{"protein": 180, "maintenanceKcal": 3100}}` sets the daily protein target and his maintenance calories
+{"protein": 150, "maintenanceKcal": 2600}}` sets the daily protein target and his maintenance calories
 (`null` clears maintenance); `fibre` (g a day), `fruitVeg` (portions a day), `plants` (a week) and
 `oilyFish` (portions a week) set the balance targets.
 

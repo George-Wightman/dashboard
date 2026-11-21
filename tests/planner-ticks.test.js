@@ -19,7 +19,7 @@ const span = (e) => `${clockLabel(e.start.dateTime)}–${clockLabel(e.end.dateTi
 
 function setup({ props = KEYS, logs = [] } = {}) {
   const doc = fixture({ items: [
-    { id: 'story', type: 'habit', title: "Maya's storybook", area: 'Maya', minutes: 120, repeat: { kind: 'daily' }, order: 1 },
+    { id: 'story', type: 'habit', title: "Sam's storybook", area: 'Sam', minutes: 120, repeat: { kind: 'daily' }, order: 1 },
     { id: 'email', type: 'task', title: 'Email Sarah', area: 'Job search', date: TUE, order: 2 },
   ], logs });
   const cal = new FakeCalendar([]);
@@ -46,13 +46,13 @@ test('a block dragged to when he did it ticks it for that day and stays there', 
   assert.equal(log.day, MON);
   assert.equal(log.source, 'calendar');
   const record = storyBlocks(cal).find((e) => e.start.dateTime.startsWith(MON));
-  assert.equal(record.summary, "✓ Maya's storybook");
+  assert.equal(record.summary, "✓ Sam's storybook");
   assert.equal(span(record), '15:00–17:00');
   // Tuesday's own go is still to do, and booked once.
   assert.equal(storyBlocks(cal).filter((e) => e.start.dateTime.startsWith(TUE)).length, 1);
   setNow(at(TUE, '10:10'));
   await planner.run();
-  assert.ok(cal.byTitle("✓ Maya's storybook"));
+  assert.ok(cal.byTitle("✓ Sam's storybook"));
 });
 
 test('dragged to a time still to come, it is just a move', async () => {

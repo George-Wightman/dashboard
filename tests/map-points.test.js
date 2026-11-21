@@ -64,8 +64,8 @@ test('a shift shows as earned work, never a miss', () => {
   doc.calendar['work:e2'] = { id: 'work:e2', status: 'active', day: '2026-10-22', minutes: 240 };
   const p = dayPoints(doc, DAY, mapTown());
   const shift = p.rows.find((r) => r.id === 'work:e1');
-  assert.deepEqual([shift.state, shift.hammers, shift.title, shift.note], ['earned', 20, 'Signify shift (4h)', 'A shift: never a miss']);
+  assert.deepEqual([shift.state, shift.hammers, shift.title, shift.note], ['earned', 20, 'Work shift (4h)', 'A shift: never a miss']);
   assert.ok(!p.rows.some((r) => r.id === 'work:e2'));
   assert.deepEqual([p.earned, p.done, p.total], [40, 1, 1]);
-  assert.ok(pointsLines(p).includes('  ✓ Signify shift (4h) +20 · A shift: never a miss'));
+  assert.ok(pointsLines(p).includes('  ✓ Work shift (4h) +20 · A shift: never a miss'));
 });

@@ -117,7 +117,7 @@ test('toggleDone unticks every active tick for the day, not just one', () => {
 test('logAmount and removeLog', () => {
   const store = makeStore();
   const quota = store.addItem({ type: 'quota', title: 'Job search', target: 360, unit: 'minutes' });
-  const log = store.logAmount({ itemId: quota.id, amount: 45, note: 'NatCen' });
+  const log = store.logAmount({ itemId: quota.id, amount: 45, note: 'Acme' });
   assert.equal(log.kind, 'amount');
   assert.equal(log.amount, 45);
   assert.equal(log.day, '2026-09-10');

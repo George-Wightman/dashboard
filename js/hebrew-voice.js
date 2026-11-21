@@ -74,7 +74,7 @@ function momentAt(now) {
   return current;
 }
 
-const isShift = (e) => /work/i.test(e.calendar ?? '') || /signify|shift/i.test(e.title ?? '');
+const isShift = (e) => /work/i.test(e.calendar ?? '') || /shift/i.test(e.title ?? '');
 
 // Today's busy events against `now`: the one he's in, and one that ended in the last hour.
 function busyState(busy, now) {

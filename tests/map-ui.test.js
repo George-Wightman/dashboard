@@ -56,7 +56,7 @@ test('the board draws, with nothing that could run', () => {
   assert.ok(!/<script|\son[a-z]+=/i.test(svg));
 });
 
-test('a Salzburg map labels its chapter; Mansfield has none', () => {
+test('a Salzburg map labels its chapter; the home map has none', () => {
   const state = { chapter: { n: 2, start: '2027-01-04' } };
   assert.equal(chapterLabel({ place: 'salzburg' }, state), 'Chapter 2 · since Mon 4 Jan');
   assert.equal(chapterLabel({ place: 'uk' }, state), null);

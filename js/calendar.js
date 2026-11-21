@@ -9,12 +9,12 @@ import { weekday, shortWeekday, shortDate, addDays, daysBetween } from './dates.
 export const CALENDAR_DEFAULTS = {
   hours: ['09:00', '19:00'], gapMinutes: 15, defaultMinutes: 30, maxBlockMinutes: 150,
   days: 7, exactDays: 2, firmUpHour: 20,
-  ignore: ['University of York', 'MiM Committee Meetings', 'Family', 'PhD', 'Holidays in United Kingdom'],
+  ignore: ['University', 'Family', 'PhD', 'Holidays in United Kingdom'],
   areaCalendars: { 'Job search': 'Application', 'Assessment centre': 'Application', Health: 'Gym', Challenger: 'Challenger' },
   defaultCalendar: 'main',
   habitEvents: [{ habit: 'Hebrew', calendar: 'main', title: 'Learn Hebrew' }, { habit: 'Gym', calendar: 'Gym', title: 'Gym' }],
   priorityAreas: [],
-  workCalendar: 'Work', // planner/work.js: its events, once over, are Signify shifts for the map
+  workCalendar: 'Work', // planner/work.js: its events, once over, are Work shifts for the map
   uncountedAreas: [], // areas booked as reminders but never a miss, like ["Food"]: worth it if done
   areaColors: {},
   dayHours: {},
@@ -213,7 +213,7 @@ export function offWindows(doc, day, offs = timeOff(doc)) {
     .filter((w) => w.start < to && w.end > from);
 }
 
-// The line Today shows on a day with time off: 'Time off — Maya leaves for Austria · Job search'.
+// The line Today shows on a day with time off: 'Time off — Sam visits · Job search'.
 export function offLine(doc, day) {
   const parts = [];
   for (const o of timeOff(doc)) {
@@ -241,7 +241,7 @@ export function checkTimeOff({ start, end, areas = [], reason = '' } = {}) {
   return { start: s, end: e, areas: areas.map((a) => a.trim()), reason: why };
 }
 
-// 'Wed 16 Sep – Thu 17 Sep — Maya leaves for Austria · Job search' or '… · everything'.
+// 'Wed 16 Sep – Thu 17 Sep — Sam visits · Job search' or '… · everything'.
 export function offText(o) {
   const dayText = (d) => `${shortWeekday(d)} ${shortDate(d)}`;
   const range = o.start.length === 10

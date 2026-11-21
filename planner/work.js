@@ -1,4 +1,4 @@
-// Signify shifts (docs/superpowers/specs/2026-10-29-salzburg-era-design.md): each event on his Work
+// Work shifts (docs/superpowers/specs/2026-10-29-salzburg-era-design.md): each event on his Work
 // calendar that has ended becomes a `work:<event id>` record in the calendar map, which the map
 // (js/map/engine.js) turns into hammers. Recorded from the first run onwards, never backfilled, so his
 // map doesn't change under him; a moved shift follows and a deleted one goes, for the days still

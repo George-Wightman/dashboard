@@ -84,7 +84,7 @@ against maintenance; and the week's balance.
 6. **Maintenance**: once there are about two weeks of meals and his weight (or how he feels) is
    steady, set his maintenance figure from the weekly average:
 
-       {"op": "meal", "fuel": {"maintenanceKcal": 3100}}
+       {"op": "meal", "fuel": {"maintenanceKcal": 2600}}
 
    The tile then says whether a week was about, above or below it.
 

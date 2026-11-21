@@ -24,7 +24,7 @@ function setup({ props = KEYS, items, clock = at(TUE, '08:00'), calendarConfig, 
   const cal = new FakeCalendar([
     ev(MAIN, 'Learn Hebrew', TUE, '09:30', '10:15'),
     ev(GYM, 'Gym', TUE, '11:00', '13:00'),
-    ev(WORK, 'Signify', TUE, '14:00', '16:00'),
+    ev(WORK, 'Shift', TUE, '14:00', '16:00'),
   ]);
   if (calendarConfig) doc.calendar = { ...(doc.calendar ?? {}), config: { ...CALENDAR_DEFAULTS, ...calendarConfig, status: 'active', id: 'config' } };
   const repo = new FakeRepo(doc);
@@ -70,9 +70,9 @@ test('shims: one-call UTF-8 base64, only when Apps Script gets the known answer 
 });
 
 test('tagPrompt and readArea: one of the areas, exactly, or none', () => {
-  const { system, prompt } = tagPrompt('Email NatCen', ['Hebrew', 'Job search']);
+  const { system, prompt } = tagPrompt('Email Acme', ['Hebrew', 'Job search']);
   assert.match(system, /Answer only with JSON/);
-  assert.equal(prompt, 'Areas: "Hebrew", "Job search"\nTo-do: "Email NatCen"');
+  assert.equal(prompt, 'Areas: "Hebrew", "Job search"\nTo-do: "Email Acme"');
   assert.equal(readArea({ area: 'job search' }, ['Hebrew', 'Job search']), 'Job search');
   assert.equal(readArea({ area: 'Cooking' }, ['Hebrew', 'Job search']), '');
   assert.equal(readArea(null, ['Hebrew']), '');
@@ -173,7 +173,7 @@ test('install: every 10 minutes and on calendar changes, then a first run', asyn
   const { env, planner } = setup({ failTriggers: [WORK] });
   const text = await planner.install();
   assert.match(text, /^Installed: the planner runs every 10 minutes\. Couldn't watch Work for changes — the 10-minute run covers them\. First run: ok\.$/);
-  assert.deepEqual(env.triggers.map((t) => t.everyMinutes ?? t.calendar), [10, 'georgewight03@gmail.com', 'application@group', 'gym@group']);
+  assert.deepEqual(env.triggers.map((t) => t.everyMinutes ?? t.calendar), [10, 'me@example.com', 'application@group', 'gym@group']);
   await planner.install();
   assert.equal(env.triggers.filter((t) => t.everyMinutes).length, 1, 'installing again replaces the triggers');
 });
@@ -195,13 +195,13 @@ test('tagging: an untagged task gets an area from Gemini, asked once', async () 
   const gemini = () => { asked++; return { status: 200, body: { candidates: [{ content: { parts: [{ text: '{"area": "Job search"}' }] } }] } }; };
   const items = [
     { id: 'chase', type: 'task', title: 'Chase the GSS outcome', area: 'Job search', date: TUE, order: 1 },
-    { id: 'natcen', type: 'task', title: 'Email NatCen about the deadline', area: '', date: TUE, order: 2 },
+    { id: 'acme', type: 'task', title: 'Email Acme about the deadline', area: '', date: TUE, order: 2 },
   ];
   const { repo, env, planner } = setup({ props: { ...KEYS, GEMINI_KEY: 'gm-dummy-key' }, items, gemini });
   await planner.run();
-  assert.equal(repo.doc().items.natcen.area, 'Job search');
+  assert.equal(repo.doc().items.acme.area, 'Job search');
   assert.equal(asked, 1);
-  assert.deepEqual(JSON.parse(env.props.get('TAGGED')), { natcen: 'Job search' });
+  assert.deepEqual(JSON.parse(env.props.get('TAGGED')), { acme: 'Job search' });
   await planner.run();
   assert.equal(asked, 1);
   assert.ok(env.calls.every((c) => !c.url.includes('gm-dummy') || c.url.startsWith('https://generativelanguage.googleapis.com/')));

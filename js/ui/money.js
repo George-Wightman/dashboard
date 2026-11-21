@@ -166,7 +166,7 @@ function inOutBlock(ctx, money, io) {
     fold('How this is worked out',
       h('p', { class: 'muted mo-note' },
         `From ${shortDate(io.from)} to ${shortDate(io.to)} (the last day on your statements): in ${gbp(io.totals.in)}, out ${gbp(io.totals.spend)}. `,
-        'Pay is Signify (and a little interest); one-off money is anything else that came in. ',
+        'Pay is wages (and a little interest); one-off money is anything else that came in. ',
         'Money moved between your own accounts, into shares or into your Lifetime ISA isn\'t counted either way.')));
 }
 

@@ -19,7 +19,7 @@
         "http.server",
         "8778",
         "--directory",
-        "C:/Users/gwigh/My Drive (georgewight03@gmail.com)/Hebrew Learning"
+        "../Hebrew Learning"
       ],
       "port": 8778
     },

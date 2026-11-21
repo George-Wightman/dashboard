@@ -38,7 +38,7 @@ test('mergeSetting: one key at a time, null removes it, other settings replace',
 
 test('time off: whole days and stretches of hours, everything or some areas', () => {
   const doc = withCalendar(fixture(), [
-    off('off:2026-09-16', WED, '2026-09-17', { areas: ['Job search', 'assessment centre'], reason: 'Maya leaves for Austria' }),
+    off('off:2026-09-16', WED, '2026-09-17', { areas: ['Job search', 'assessment centre'], reason: 'Sam visits' }),
     off('off:2026-09-18', '2026-09-18T13:00', '2026-09-18T19:00', { reason: 'Dentist and errands' }),
     off('off:2026-09-20', '2026-09-20', '2026-09-20', { status: 'archived' }),
     { id: 'config', status: 'active', hours: ['09:00', '19:00'] },
@@ -56,7 +56,7 @@ test('time off: whole days and stretches of hours, everything or some areas', ()
   const [w] = offWindows(doc, '2026-09-18');
   assert.deepEqual([new Date(w.start).getHours(), new Date(w.end).getHours(), w.areas], [13, 19, []]);
   assert.deepEqual(offWindows(doc, WED), []);
-  assert.equal(offLine(doc, WED), 'Time off — Maya leaves for Austria · Job search, assessment centre');
+  assert.equal(offLine(doc, WED), 'Time off — Sam visits · Job search, assessment centre');
   assert.equal(offLine(doc, '2026-09-18'), 'Time off — Dentist and errands · 13:00–19:00');
   assert.equal(offLine(doc, '2026-09-19'), null);
   assert.equal(nextOffId(doc, '2026-09-16'), 'off:2026-09-16b');
@@ -106,17 +106,17 @@ test('excused items: off the list and the count, a dated task carried to the nex
 
 test('history: a day off for everything shows off, with its reason', () => {
   const doc = withCalendar(fixture({ items: [{ id: 'read', type: 'habit', title: 'Read', repeat: { kind: 'daily' }, created: '2026-09-01' }] }),
-    [off('off:2026-09-16', WED, WED, { reason: 'Maya leaves for Austria' })]);
+    [off('off:2026-09-16', WED, WED, { reason: 'Sam visits' })]);
   const cells = history(doc, '2026-09-17');
   const wed = cells.find((c) => c.day === WED);
-  assert.deepEqual([wed.off, wed.total], ['Maya leaves for Austria', 0]);
+  assert.deepEqual([wed.off, wed.total], ['Sam visits', 0]);
   assert.equal('off' in cells.find((c) => c.day === '2026-09-15'), false);
 });
 
 test('attention: what Claude should look at', () => {
   const doc = withCalendar(fixture({
     items: [
-      { id: 't1', type: 'task', title: 'Email NatCen', area: 'Job search', date: '2026-09-17' },
+      { id: 't1', type: 'task', title: 'Email Acme', area: 'Job search', date: '2026-09-17' },
       { id: 't2', type: 'task', title: 'Update CV', area: 'Job search', date: '2026-09-10', minutes: 30 },
       { id: 't3', type: 'task', title: 'Later', date: '2026-10-30' },
       { id: 'q1', type: 'quota', title: 'Applications', target: 7, unit: 'count', unitLabel: 'applications' },
@@ -127,7 +127,7 @@ test('attention: what Claude should look at', () => {
     { id: 'day:3', status: 'active', day: WED, blocks: [], skipped: [], missed: [], notes: ['Moved Gym to 09:30 (Learn Hebrew)', "Couldn't fit Job search ×2 on Thu — moved to Fri"] },
   ]);
   const lines = attention(doc, WED);
-  assert.ok(lines.includes('1 task with no length (the planner gives it 30 minutes): "Email NatCen"'), lines.join('\n'));
+  assert.ok(lines.includes('1 task with no length (the planner gives it 30 minutes): "Email Acme"'), lines.join('\n'));
   assert.ok(lines.includes('"Update CV" has carried over since Thu 10 Sep'), lines.join('\n'));
   assert.ok(lines.includes('"Applications" is behind: 1 / 7 applications with 5 days left'), lines.join('\n'));
   assert.ok(lines.includes("Planner: Couldn't fit Job search ×2 on Thu — moved to Fri"), lines.join('\n'));

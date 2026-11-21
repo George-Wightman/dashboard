@@ -198,7 +198,7 @@ George ticks things off and renames them; you run the dashboard. Beyond adding a
 have controls he doesn't use himself — he sees all of them in ⚙ → Claude:
 
 - **Time off** — `{"op": "off", "start": "2026-09-16", "end": "2026-09-17", "areas": ["Job search"],
-  "reason": "Maya leaves for Austria"}`. Whole days excuse what they cover: nothing booked, streaks
+  "reason": "Sam visits"}`. Whole days excuse what they cover: nothing booked, streaks
   safe, dated tasks move to the next day. A stretch of hours (`"2026-09-18T13:00"` to `"…T19:00"`)
   only keeps the planner out. Leave `areas` out for everything. Cancel: `{"op": "off", "cancel": "<id>"}`.
 - **Notes** — `notes` on any task, habit, weekly target or goal, for the detail that doesn't fit a

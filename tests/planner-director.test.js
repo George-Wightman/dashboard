@@ -26,10 +26,10 @@ function docWith(items, { config = {}, offs = [] } = {}) {
 
 test('a day off for everything: nothing booked on it, and its tasks move to the next day', () => {
   const doc = docWith([task('who', 'Trace the WHO figure', 'Job search', WED), task('pharma', 'Trace the pharma figure', 'Job search', WED),
-    task('natcen', 'Read the NatCen pack', 'Job search', THU)], { offs: [{ id: 'off:2026-09-16', start: WED, end: WED }] });
+    task('acme', 'Read the Acme pack', 'Job search', THU)], { offs: [{ id: 'off:2026-09-16', start: WED, end: WED }] });
   const cal = new FakeCalendar();
   step(cal, doc, at(TUE, '08:00'));
-  assert.deepEqual(summaries(cal), ['2026-09-17 09:00–09:30 ~ Trace the pharma figure', '2026-09-17 09:45–10:15 ~ Trace the WHO figure', '2026-09-17 10:30–11:00 ~ Read the NatCen pack']);
+  assert.deepEqual(summaries(cal), ['2026-09-17 09:00–09:30 ~ Trace the pharma figure', '2026-09-17 09:45–10:15 ~ Trace the WHO figure', '2026-09-17 10:30–11:00 ~ Read the Acme pack']);
 });
 
 test('time off for some areas: the others are still booked that day', () => {

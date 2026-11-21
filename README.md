@@ -6,9 +6,8 @@ Works offline and syncs between the laptop and the phone through a private GitHu
 happens in a chat with Claude, which reads and changes everything here; the app asks one short
 question about each piece of work as it's done or missed, and keeps the answer for Claude.
 
-Pieces 1, 3 and 6 of 6: the core hub, the Claude skill and the calendar planner. The designs are in
-[`docs/superpowers/specs/`](docs/superpowers/specs/), and the build plans are in
-[`docs/superpowers/plans/`](docs/superpowers/plans/).
+Pieces 1, 3 and 6 of 6: the core hub, the Claude skill and the calendar planner. The designs and build plans
+(`docs/`) are kept off the public repo.
 
 ## Using it
 
@@ -53,7 +52,7 @@ load — the theme is set before the page even paints.
 ## Daylight
 
 The default screen since 19 Oct 2026
-([`docs/superpowers/specs/2026-10-18-daylight-health-design.md`](docs/superpowers/specs/2026-10-18-daylight-health-design.md)).
+(`docs/superpowers/specs/2026-10-18-daylight-health-design.md`).
 The classic screen is still there: ⚙ → **Look → Screen: Classic**, or for one visit add `?classic` to the
 address.
 
@@ -88,7 +87,7 @@ its big view); Last 3 weeks became Your weeks.
 
 ## Food
 
-Snap a meal and get on with your day ([`docs/superpowers/plans/2026-10-18-food.md`](docs/superpowers/plans/2026-10-18-food.md)).
+Snap a meal and get on with your day (`docs/superpowers/plans/2026-10-18-food.md`).
 
 - **Snap a meal** on the Fuel tile, or a breakfast, lunch or dinner marker on the timeline (they show
   until that meal is logged). Take a photo, choose one, or just type or say what it was; a line about
@@ -118,7 +117,7 @@ tier they may use it to improve their products. Your watch data is never sent to
 ## Coach
 
 Claude coaches your training in a chat; the dashboard shows the plan and keeps a few fixed rules
-([`docs/superpowers/plans/2026-10-18-coach.md`](docs/superpowers/plans/2026-10-18-coach.md)).
+(`docs/superpowers/plans/2026-10-18-coach.md`).
 
 - **Ask Claude to plan your training.** It reads Hevy, your back mornings, your meals and your
   calendar, follows your own training rules (kept in the private sync repo as `notes/gym.md`, never
@@ -185,7 +184,7 @@ Ask Claude "how am I using the dashboard?": its `usage` read gives this beside w
 ## Check-ins (retired 11 Nov 2026, off by default)
 
 The Coach — a Gemini conversation in the app, with a background "mind" and a Claude routine behind it —
-was retired on 26 September 2026 ([`docs/superpowers/specs/2026-09-26-checkins-design.md`](docs/superpowers/specs/2026-09-26-checkins-design.md)):
+was retired on 26 September 2026 (`docs/superpowers/specs/2026-09-26-checkins-design.md`):
 it couldn't plan well enough to be worth talking to, and Claude in a chat can. What stayed is the one
 thing only something running in the background can do — ask about a piece of work at the moment it
 happens.
@@ -299,7 +298,7 @@ Follow-up rules** lets you pause a rule. Open-ended practice planning stays in C
 Claude discovers these controls with `capabilities`, reads one record with `inspect`, and can use
 `preview` to validate changes without saving. The focused `workflows` and `reviews` playbooks
 explain the boundaries. Plans now retain task durations, areas and advanced details, and their
-tasks link to the proposed goal. See [the implementation and expansion notes](docs/ai-controls-2026-09-17.md).
+tasks link to the proposed goal. See the implementation and expansion notes.
 
 ## Flags
 
@@ -464,7 +463,7 @@ phone's clock. The sky follows your device too (anywhere on Central European tim
 ## Stocks
 
 A tile that checks each holding against why you own it, and says only what matters
-([`docs/superpowers/specs/2026-11-12-stocks-design.md`](docs/superpowers/specs/2026-11-12-stocks-design.md)).
+(`docs/superpowers/specs/2026-11-12-stocks-design.md`).
 The planner fetches holdings and free prices each morning and works out five lenses (trend, price,
 health, expectations, risk); a morning Claude routine reads them, searches only where something has
 changed, and writes a short brief and its notes. Never buy or sell advice.

@@ -1,4 +1,4 @@
-// Signify shifts (planner/work.js): the Work calendar's events, once over, become `work:` records the
+// Work shifts (planner/work.js): the Work calendar's events, once over, become `work:` records the
 // map turns into hammers (docs/superpowers/specs/2026-10-29-salzburg-era-design.md).
 
 process.env.TZ = 'Europe/London';
@@ -12,7 +12,7 @@ import { makeStore } from './helpers.js';
 const WED = '2026-11-11', THU = '2026-11-12';
 const WORK = 'work-cal';
 const ev = (id, day, from, to, extra = {}) => ({
-  id, calendarId: WORK, summary: 'Signify', status: 'confirmed',
+  id, calendarId: WORK, summary: 'Shift', status: 'confirmed',
   start: { dateTime: at(day, from).toISOString() }, end: { dateTime: at(day, to).toISOString() }, ...extra,
 });
 const shifts = (store) => Object.values(store.doc().calendar).filter((r) => String(r.id).startsWith('work:') && r.status === 'active');
@@ -23,7 +23,7 @@ test('an ended shift on the Work calendar is recorded once, with its day and min
   const events = [ev('a', WED, '09:00', '13:00')];
   run(store, events, at(WED, '14:00'));
   run(store, events, at(WED, '15:00'));
-  assert.deepEqual(shifts(store).map((r) => [r.id, r.day, r.minutes, r.title]), [['work:a', WED, 240, 'Signify']]);
+  assert.deepEqual(shifts(store).map((r) => [r.id, r.day, r.minutes, r.title]), [['work:a', WED, 240, 'Shift']]);
   assert.equal(store.doc().calendar['work-status'].startedOn, WED);
 });
 

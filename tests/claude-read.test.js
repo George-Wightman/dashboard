@@ -27,7 +27,7 @@ const doc = () => fixture({
   ],
   goals: [
     { id: 'g1', title: 'Research job', targetDate: '2026-12-01', target: null },
-    { id: 'g2', title: 'NatCen application', status: 'suggested', source: 'claude', target: null },
+    { id: 'g2', title: 'Acme application', status: 'suggested', source: 'claude', target: null },
   ],
   milestones: [
     { id: 'm1', goalId: 'g1', title: 'CV updated', done: true, order: 1 },
@@ -120,7 +120,7 @@ test('week, goals and list', () => {
   assert.match(week, /^This week \(from Mon 7 Sep\):$/m);
   assert.match(week, /^ {2}target "Applications" #q1 · 2 \/ 5 applications$/m);
   const goals = READS.goals(doc(), TODAY);
-  assert.match(goals, /^\? suggested goal "NatCen application" #g2 · 0 of 0 milestones \(0%\) · by Claude$/m);
+  assert.match(goals, /^\? suggested goal "Acme application" #g2 · 0 of 0 milestones \(0%\) · by Claude$/m);
   assert.match(goals, /^goal "Research job" #g1 · 1 of 2 milestones \(50%\) · by Tue 1 Dec$/m);
   assert.match(goals, /^ {2}\[x\] milestone "CV updated" #m1$/m);
   assert.match(goals, /^ {2}\[ \] milestone "Apply to 5" #m2$/m);

@@ -8,7 +8,7 @@ process.env.TZ = 'Europe/London';
 
 const WED = '2026-09-16';
 const at = (day, hhmm) => { const [y, m, d] = day.split('-').map(Number); const [h, mi] = hhmm.split(':').map(Number); return new Date(y, m - 1, d, h, mi); };
-const shift = (from, to) => ({ title: 'Signify', calendar: 'Work', start: at(WED, from).toISOString(), end: at(WED, to).toISOString() });
+const shift = (from, to) => ({ title: 'Shift', calendar: 'Work', start: at(WED, from).toISOString(), end: at(WED, to).toISOString() });
 const WORDS = [
   { he: 'מטבח', tr: 'mitbakh', en: 'kitchen', band: 'progressing' },
   { he: 'רחוב', tr: 'rekhov', en: 'street', band: 'progressing' },

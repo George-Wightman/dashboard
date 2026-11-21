@@ -22,7 +22,7 @@ const cal = (doc) => doc?.calendar ?? {};
 const num = (v) => (Number.isFinite(v) ? v : null);
 const round2 = (n) => Math.round(n * 100) / 100;
 
-// Untitled, or some spelling of Signify ("Signifi", "Singify"…), or plainly a shift.
+// Untitled, or some spelling of the employer's name, or plainly a shift.
 export function isShiftTitle(title) {
   const s = String(title ?? '').trim();
   if (!s) return true;

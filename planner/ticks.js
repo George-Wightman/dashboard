@@ -28,7 +28,7 @@ export function tick(store, item, day, fields) {
 
 // A planner block George has just dragged (it isn't where the planner last put it) to a time that's
 // already over: he's saying when he did it. Each of its items is ticked for the day it landed on, at
-// that time. Dragging into the future is still just a move. 2 Nov 2026: he dragged "Maya's
+// that time. Dragging into the future is still just a move. 2 Nov 2026: he dragged "Sam's
 // storybook" back to the afternoon he'd spent on it; the planner called the day missed, deleted the
 // block and booked another today, again and again.
 export function importDrags(store, events, { now, dayStartHour = 4 }) {

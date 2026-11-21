@@ -13,11 +13,11 @@ test('timed rows and commitments in start order; untimed and suggested rows go t
   const m = timelineModel({
     rows: [row('gym'), row('gp'), row('heb', { done: true }), row('socks', { suggested: true })],
     slots, today, now,
-    commitments: [{ title: 'Signify QA shift', calendar: 'Work', start: '2026-10-20T13:00:00Z', end: '2026-10-20T16:00:00Z' },
+    commitments: [{ title: 'QA shift', calendar: 'Work', start: '2026-10-20T13:00:00Z', end: '2026-10-20T16:00:00Z' },
       { title: 'Bank holiday', calendar: 'UK', start: '2026-10-20T00:00:00Z', end: '2026-10-21T00:00:00Z', allDay: true },
       { title: 'Tomorrow thing', calendar: 'Work', start: '2026-10-21T10:00:00Z', end: '2026-10-21T11:00:00Z' }],
   });
-  assert.deepEqual(m.timed.map((e) => e.kind === 'row' ? e.row.item.id : e.title), ['heb', 'Signify QA shift', 'gym']);
+  assert.deepEqual(m.timed.map((e) => e.kind === 'row' ? e.row.item.id : e.title), ['heb', 'QA shift', 'gym']);
   assert.deepEqual(m.anytime.map((r) => r.item.id), ['gp', 'socks']);
   assert.equal(m.nowIndex, 1);
 });
