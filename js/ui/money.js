@@ -225,28 +225,55 @@ function compareBlock(ctx, money, doc) {
       shown.length ? shown.map(row) : h('p', { class: 'muted' }, 'No spending on statements in those days yet.')));
 }
 
+// A date box that saves once he has finished with it. Each digit typed into a date box is a change of
+// its own, and saving (which redraws the box) on the first would throw the rest away: typed dates save
+// on Enter or on leaving the box, a date picked from the calendar a moment after it's picked. A date
+// outside min–max is put back when he leaves.
+export function dateBox({ value, label, min = null, max = null, save }) {
+  let timer = null;
+  let typing = false;
+  const input = h('input', { type: 'date', value, 'aria-label': label, ...(min ? { min } : {}), ...(max ? { max } : {}) });
+  const ok = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && (!min || v >= min) && (!max || v <= max);
+  const commit = (leaving) => {
+    clearTimeout(timer);
+    timer = null;
+    const v = input.value;
+    if (v !== value && ok(v)) { value = v; save(v); } else if (leaving) input.value = value;
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(true); } else if (e.key !== 'Tab') typing = true;
+  });
+  input.addEventListener('change', () => { if (!typing) { clearTimeout(timer); timer = setTimeout(() => commit(false), 600); } });
+  input.addEventListener('blur', () => { typing = false; commit(true); });
+  return input;
+}
+
 // This pay period opened up: its days, the hours done and still booked, the rate, and what it comes to.
 // Its first and last day can be changed when the payslip's dates differ from the cut-off: the last
 // day is kept for this month, and a new first day moves the end of the month before.
 function periodDetail(ctx, s, today) {
   const c = s.current;
-  const DAY = /^\d{4}-\d{2}-\d{2}$/;
   const setEnd = (period, to) => ctx.store.putCalendar(periodEndId(period), { status: 'active', period, to }, 'me');
-  const onFrom = (e) => { const v = e.target.value; if (DAY.test(v) && v <= c.to) setEnd(prevMonth(c.period), addDays(v, -1)); else ctx.render(); };
-  const onTo = (e) => { const v = e.target.value; if (DAY.test(v) && v >= c.from) setEnd(c.period, v); else ctx.render(); };
   const reset = () => {
     if (c.endSet) ctx.store.putCalendar(periodEndId(c.period), { status: 'archived' }, 'me');
     if (c.startSet) ctx.store.putCalendar(periodEndId(prevMonth(c.period)), { status: 'archived' }, 'me');
   };
   const when = h('div', { class: 'mo-period-when' },
-    h('label', {}, h('span', { class: 'muted' }, 'From'), h('input', { type: 'date', value: c.from, max: c.to, 'aria-label': 'First day of this pay period', onchange: onFrom })),
-    h('label', {}, h('span', { class: 'muted' }, 'to'), h('input', { type: 'date', value: c.to, min: c.from, 'aria-label': 'Last day of this pay period', onchange: onTo })),
+    h('label', {}, h('span', { class: 'muted' }, 'From'), dateBox({ value: c.from, max: c.to, label: 'First day of this pay period', save: (v) => setEnd(prevMonth(c.period), addDays(v, -1)) })),
+    h('label', {}, h('span', { class: 'muted' }, 'to'), dateBox({ value: c.to, min: c.from, label: 'Last day of this pay period', save: (v) => setEnd(c.period, v) })),
     h('span', { class: 'muted' }, c.daysLeft === 0 ? 'ends today' : `${c.daysLeft} day${c.daysLeft === 1 ? '' : 's'} left`),
     c.endSet || c.startSet ? h('button', { type: 'button', class: 'mo-link', onclick: reset }, `back to the ${ordinal(s.pay.cutoff)}`) : null);
   const row = (label, value, cls = '') => h('tr', { class: cls }, h('td', {}, label), h('td', { class: 'n' }, value));
   const taxed = s.ratio < 1 ? `, less ${Math.round((1 - s.ratio) * 100)}% tax and NI (your last payslip)` : '';
+  // When this period ends before today, the one before it is still to be paid: say so.
+  const ex = s.expected;
+  const earlier = ex.period < c.period
+    ? h('p', { class: 'mo-note' }, h('b', {}, `${monthName(ex.period)} pay still to come: `),
+      `${ex.hours} h from ${dayText(ex.from)} to ${dayText(ex.to)}${ex.net != null ? `, ~${pounds2(ex.net)}` : ''} on ${dayText(ex.payday)}.`)
+    : null;
   return h('div', { class: 'mo-period', id: 'mo-period' },
     when,
+    earlier,
     h('table', { class: 'mo-table' }, h('tbody', {},
       row(h('span', {}, 'Done so far', h('small', { class: 'mo-period-sub' }, 'today included')), `${c.done} h`),
       row('Booked still to come', `${c.toCome} h`),
@@ -297,7 +324,7 @@ export function renderMoneyBig(ctx) {
   const s = moneySummary(money, doc, today);
   const io = money ? inOut(money) : null;
   const start = startDay(doc);
-  const setStart = (e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) ctx.store.putCalendar(START_ID, { status: 'active', day: e.target.value }, 'me'); };
+  const setStart = (v) => ctx.store.putCalendar(START_ID, { status: 'active', day: v }, 'me');
   return h('div', { class: 'big money' },
     h('div', { class: 'mo-stats' },
       stat(s.nextPay.net != null ? `~${pounds2(s.nextPay.net)}` : `${s.nextPay.hours} h`, `next pay, ${dayText(s.nextPay.payday)}`),
@@ -310,6 +337,6 @@ export function renderMoneyBig(ctx) {
     money ? bigSection('Compare', h('details', { class: 'mo-fold', open: !!ctx.ui.compareOpen, ontoggle: (e) => { ctx.ui.compareOpen = e.target.open; } },
       h('summary', {}, 'Salzburg vs UK, or any two stretches'), compareBlock(ctx, money, doc))) : null,
     bigSection('Settings',
-      h('label', { class: 'mo-start' }, 'London start date ', h('input', { type: 'date', value: start, onchange: setStart })),
+      h('label', { class: 'mo-start' }, 'London start date ', dateBox({ value: start, label: 'London start date', save: setStart })),
       money?.plan?.length ? h('ul', { class: 'mo-list' }, money.plan.map((p) => h('li', {}, `${monthName(p.month, true)} · ${p.label} · ${p.kind === 'income' ? '+' : '−'}${gbp(p.amount)}${p.cat ? ` (${categoryLabel(p.cat)})` : ''}`))) : null));
 }
