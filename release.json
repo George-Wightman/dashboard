@@ -1,5 +1,5 @@
 {
-  "id": "9380b7aa7b3da33db968651ccf352f8446d15b2132de240f1740ff4bb766cd15",
+  "id": "8ef106784a6d0c1e8e56cf659756480093a503587e20f7521d21a047c669e1a3",
   "files": {
     "./": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
     "index.html": "b4c4b4195fa2e728e5242a818148864b3c031413871a2b998d547f2c7504d4e0",
@@ -92,8 +92,8 @@
     "js/ui/money.js": "8b728142b816431f14f80663dfced103f4e30b460aca2aa684114ba68d27d2da",
     "js/ui/stocks.js": "352a34a4f601c0d161db3bd859b82f4a118599a7fa12f878343dc0a6319acbc5",
     "js/stocks-explain.js": "2ead10b3585c0650576a5866a4a13b2270b8c519ae3daa9e8a2409e01f8ccd45",
-    "js/forecast.js": "69579f93c2ac8ffc14eeade23150c399c4ad96120e0709f4e1c07a21ab4d1f0c",
-    "js/ui/forecast.js": "d70adba2c13caf215ee1f9eb4c154a0dda401bb5d3e17ff442e5981906721bcf",
+    "js/forecast.js": "072834f212db5775858d7782b72ba50e2edc6c0efe481aa8de89deb0975fb4a6",
+    "js/ui/forecast.js": "40e73f58df41e71869a7c2ddbd12cf7bcf0629bb5a869bffce05211ab4750cbd",
     "js/ui/london.js": "c7e316e3bfb627fbb2c023b0358ebcc11738ac4146355cebaf5f3decf4d2a068",
     "js/ui/svg.js": "9c672f1bc3e7ddb89d25dc33c22a8cd564d71126e0b3ea60d01d533931b377c1",
     "js/vendor/leaflet/leaflet.js": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a",

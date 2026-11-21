@@ -2,7 +2,7 @@
 // up front (the pot at the end, its lowest point, the hours a week to break even and to keep a month's
 // money), a chart of the pot month by month with a band from 6 to 12 hours a week (Salzburg's months
 // shaded); the next unpaid period's pay, done or booked, is in it (the chart's tooltips say the rest).
-// Folded under that: presets that swap every setting at once, and the sliders: hours a week after this pay period,
+// Folded under that: presets that swap his spending (not his hours, flights or one-offs), and the sliders: hours a week after this pay period,
 // spending by category at home and in Salzburg, flights, one-offs.
 // Dragging repaints the answer and the chart only; letting go saves his settings (one synced record).
 
@@ -11,7 +11,7 @@ import { svg, tip } from './svg.js';
 import { gbp, categoryLabel } from '../money.js';
 import { hoursSummary } from '../hours.js';
 import { shortDate, addDays, daysInMonth } from '../dates.js';
-import { FORECAST_ID, SAFE_PENCE, BAND, WEEKS_A_MONTH, forecastSettings, forecastPresets, matchingPreset, statementAverage, statementSplit, runForecast, hoursFor, monthlySpend, monthlyAway } from '../forecast.js';
+import { FORECAST_ID, SAFE_PENCE, BAND, WEEKS_A_MONTH, forecastSettings, forecastPresets, matchingPreset, withPreset, statementAverage, statementSplit, runForecast, hoursFor, monthlySpend, monthlyAway } from '../forecast.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthName = (m, year = false) => `${MONTHS[Number(m.slice(5, 7)) - 1]}${year ? ` ${m.slice(0, 4)}` : ''}`;
@@ -68,7 +68,7 @@ export function forecastBlock(ctx, money, doc, today) {
   const s = structuredClone(forecastSettings(money, doc));
   const avg = statementAverage(money);
   const split = statementSplit(money, doc);
-  const presets = forecastPresets(money, doc, today);
+  const presets = forecastPresets(money, doc);
   const hs = hoursSummary(doc, today);
   const from = addDays(hs.expected.to, 1);
   const pay = (hours) => Math.round((hours * WEEKS_A_MONTH * (hs.pay.rate ?? 0) * (1 + hs.pay.holidayPct / 100)) * (hs.ratio ?? 1) * 100);
@@ -80,13 +80,12 @@ export function forecastBlock(ctx, money, doc, today) {
     oneOffs: x.oneOffs.map((o) => ({ id: o.id, on: o.on, amount: o.amount, month: o.month })),
   });
   const save = () => { ctx.store.putCalendar(FORECAST_ID, record(s), 'me'); markPreset(); };
-  // A whole preset replaces his settings; the agreed one is no record at all.
+  // A preset swaps his spending at home and in Salzburg; hours, flights and one-offs stay as they are.
   const choose = (p) => {
     // His record lies over the agreed figures, so a category the preset leaves out is saved as £0.
     const zero = (o) => Object.fromEntries(Object.keys(o).map((c) => [c, 0]));
-    const base = presets[0].settings;
-    const x = { ...p.settings, spend: { ...zero(base.spend), ...p.settings.spend }, away: { ...zero(base.away), ...p.settings.away } };
-    ctx.store.putCalendar(FORECAST_ID, p.id === 'agreed' ? { status: 'archived' } : record(x), 'me');
+    const base = presets[0];
+    ctx.store.putCalendar(FORECAST_ID, record({ ...withPreset(s, p), spend: { ...zero(base.spend), ...p.spend }, away: { ...zero(base.away), ...p.away } }), 'me');
     ctx.render();
   };
   const presetNote = h('small', { class: 'muted fc-preset-note' });
@@ -95,7 +94,7 @@ export function forecastBlock(ctx, money, doc, today) {
   const markPreset = () => {
     const on = matchingPreset(s, presets);
     presetBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(presets[i] === on)));
-    presetNote.textContent = on ? (on.note ?? '') : 'Your own mix: tap a preset to start again from it.';
+    presetNote.textContent = on ? (on.note ?? '') : 'Your own mix: tap a preset to set your spending to it.';
     for (const el of foldNotes) el.textContent = ` · ${presetName()}, ${hrs(s.hours)} a week`;
   };
   const foldNotes = [];

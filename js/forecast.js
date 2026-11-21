@@ -4,8 +4,9 @@
 // from, a little over and rounded up to £10), what Claude has agreed with him (`money.forecast` in
 // the private ledger), and what he has moved the sliders to (one synced record, FORECAST_ID). Pure.
 // Spending has two rates: at home (`spend`) and in Salzburg (`away`), used on the days he has
-// marked as EU days (js/eu.js). Presets are whole sets of settings he can switch between: the
-// agreed figures, his exact averages, and any Claude has agreed with him (`money.forecast.presets`).
+// marked as EU days (js/eu.js). Presets are sets of spending he can switch between, leaving his hours,
+// flights and one-offs alone: the agreed figures, his exact averages, and any Claude has agreed with
+// him (`money.forecast.presets`).
 
 import { addDays, daysInMonth, dayOfMonth } from './dates.js';
 import { ONE_OFF_CATS, inOut, wherePlaces, isCovered, startDay } from './money.js';
@@ -20,6 +21,21 @@ const DEFAULT_HOURS = 7;
 const monthOf = (day) => day.slice(0, 7);
 const roundUp10 = (pence) => Math.ceil(pence / 1000) * 1000;
 
+// Flights, which the forecast's Flights setting counts: left out of Trips in every average here, or
+// they'd be counted twice. Known by the airline's name on the statement.
+export const AIRLINE = /ryanair|easyjet|easy jet|wizz|jet2|british airways|lufthansa|austrian airlines|eurowings|vueling|klm|air france|swiss air|tui airways|aer lingus|loganair|skyscanner/i;
+const flightsOn = (money, day) => Object.entries(money.places?.[day]?.trips ?? {}).filter(([p]) => AIRLINE.test(p)).reduce((t, [, v]) => t + v, 0);
+// Spending by category between two days, totals only, without flights.
+function spendBetween(money, from, to) {
+  const out = [];
+  for (const e of wherePlaces(money, from, to)) {
+    let total = e.total;
+    if (e.cat === 'trips') for (let d = from; d <= to; d = addDays(d, 1)) total -= flightsOn(money, d);
+    out.push({ cat: e.cat, total });
+  }
+  return out;
+}
+
 // Monthly spending by category from the statements: the average since he counts from, 5% over,
 // rounded up to £10. One-off categories (the car) are left out.
 export function statementSpend(money) {
@@ -30,7 +46,7 @@ export function statementSpend(money) {
   const months = days / (365.25 / 12);
   if (months < 1) return {};
   const out = {};
-  for (const e of wherePlaces(money, io.from, io.to)) {
+  for (const e of spendBetween(money, io.from, io.to)) {
     if (ONE_OFF_CATS.includes(e.cat) || e.total <= 0) continue;
     out[e.cat] = roundUp10((e.total / months) * 1.05);
   }
@@ -46,7 +62,7 @@ export function statementAverage(money) {
   const months = days / (365.25 / 12);
   const out = {};
   if (months < 1) return out;
-  for (const e of wherePlaces(money, io.from, io.to)) if (!ONE_OFF_CATS.includes(e.cat)) out[e.cat] = Math.round(e.total / months);
+  for (const e of spendBetween(money, io.from, io.to)) if (!ONE_OFF_CATS.includes(e.cat)) out[e.cat] = Math.round(e.total / months);
   return out;
 }
 
@@ -66,7 +82,7 @@ export function statementSplit(money, doc) {
     out[`${where}Days`]++;
     for (const [c, v] of Object.entries(money.days[d] ?? {})) {
       if (ONE_OFF_CATS.includes(c)) continue;
-      if (c === 'trips') { trips += v; continue; }
+      if (c === 'trips') { trips += v - flightsOn(money, d); continue; }
       sums[where][c] = (sums[where][c] ?? 0) + v;
     }
   }
@@ -117,39 +133,36 @@ export function forecastSettings(money, doc) {
   return r?.status === 'active' ? overlay(base, r) : base;
 }
 
-// The presets he can switch between: the agreed figures, his exact averages (home and Salzburg
-// apart, flights inside them, hours at his last-8-weeks average), then Claude's. [{ id, label, note, settings }].
-export function forecastPresets(money, doc, today) {
+// The presets he can switch between: spending only (at home and in Salzburg). His hours, flights and
+// one-offs stay as he has set them. The agreed figures, his exact averages (home and Salzburg apart),
+// then any Claude has agreed with him. [{ id, label, note, spend, away }].
+export function forecastPresets(money, doc) {
   const agreed = agreedSettings(money);
-  const out = [{ id: 'agreed', label: 'Cautious', note: 'The agreed figures, rounded up', settings: agreed }];
+  const out = [{ id: 'agreed', label: 'Cautious', note: 'The agreed figures, rounded up', spend: agreed.spend, away: agreed.away }];
   const split = statementSplit(money, doc);
   if (split.homeDays >= 28) {
-    const avg = hoursSummary(doc, today).weeklyAverage;
-    out.push({ id: 'averages', label: 'Your averages', note: 'Exactly what you spent and worked, nothing added', settings: {
-      hours: typeof avg === 'number' && avg > 0 ? Math.round(avg * 2) / 2 : agreed.hours,
-      spend: split.home,
-      away: split.awayDays >= 14 ? split.away : { ...split.home },
-      flights: { ...agreed.flights, count: 0 },
-      oneOffs: clean(agreed.oneOffs),
-    } });
+    // To the nearest £5, the sliders' step, so the sliders can sit on it.
+    const r5 = (o) => Object.fromEntries(Object.entries(o).map(([c, v]) => [c, Math.round(v / 500) * 500]).filter(([, v]) => v > 0));
+    out.push({ id: 'averages', label: 'Your averages', note: 'What you really spent a month since you started counting (to the nearest £5; flights are the Flights setting)',
+      spend: r5(split.home), away: r5(split.awayDays >= 14 ? split.away : split.home) });
   }
+  // A preset's spending replaces the agreed one whole, so a category it leaves out is £0.
   for (const p of money?.forecast?.presets ?? []) {
-    const s = overlay(agreed, p);
-    // A preset's spending replaces the agreed one whole, so a category it leaves out is £0.
-    if (p.spend) s.spend = clean(p.spend);
-    if (p.away) s.away = clean(p.away);
-    out.push({ id: p.id, label: p.label, note: p.note ?? null, settings: s });
+    const spend = p.spend ? clean(p.spend) : { ...agreed.spend };
+    out.push({ id: p.id, label: p.label, note: p.note ?? null, spend, away: p.away ? clean(p.away) : { ...spend } });
   }
   return out;
 }
 
-// The preset the settings match exactly, or null once he has moved a slider away from it.
+// His settings with a preset's spending in place of his own.
+export const withPreset = (settings, p) => ({ ...settings, spend: { ...p.spend }, away: { ...p.away } });
+
+// The preset whose spending the settings match exactly, or null once he has moved a spending slider.
 const sorted = (o) => Object.entries(o ?? {}).filter(([, v]) => v).sort(([a], [b]) => a.localeCompare(b));
 export function matchingPreset(settings, presets) {
-  const key = (s) => JSON.stringify([s.hours, sorted(s.spend), sorted(s.away), s.flights.count, s.flights.price,
-    s.oneOffs.map((o) => [o.id, o.on, o.amount, o.month])]);
+  const key = (s) => JSON.stringify([sorted(s.spend), sorted(s.away)]);
   const k = key(settings);
-  return presets.find((p) => key(p.settings) === k) ?? null;
+  return presets.find((p) => key(p) === k) ?? null;
 }
 
 export const monthlySpend = (s) => Object.values(s.spend).reduce((t, v) => t + v, 0);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { statementSpend, statementSplit, agreedSettings, forecastSettings, forecastPresets, matchingPreset, runForecast, hoursFor, monthlySpend, FORECAST_ID, WEEKS_A_MONTH } from '../js/forecast.js';
+import { statementSpend, statementSplit, agreedSettings, forecastSettings, forecastPresets, matchingPreset, withPreset, runForecast, hoursFor, monthlySpend, FORECAST_ID, WEEKS_A_MONTH } from '../js/forecast.js';
 import { emptyMoney, START_ID, validMoney, mergeMoney } from '../js/money.js';
 import { PAY_ID } from '../js/hours.js';
 import { emptyDoc } from '../js/doc.js';
@@ -108,18 +108,38 @@ test('statementSplit and presets: exact averages at home and away, Claude\'s pre
   m.forecast = { hours: 6, oneOffs: [{ id: 'car', label: 'Car sale', amount: 100000, month: '2027-01', on: false }],
     presets: [{ id: 'plan', label: 'Plan', hours: 9, spend: { groceries: 25000 }, oneOffs: [{ id: 'car', on: true }] }] };
   assert.equal(validMoney(m), true);
-  const presets = forecastPresets(m, d, '2026-11-05');
+  const presets = forecastPresets(m, d);
   assert.deepEqual(presets.map((p) => p.id), ['agreed', 'averages', 'plan']);
-  const plan = presets[2].settings;
-  assert.equal(plan.hours, 9);
+  const plan = presets[2];
   assert.deepEqual(plan.spend, { groceries: 25000 });
-  assert.equal(plan.oneOffs[0].on, true);
-  assert.equal(plan.oneOffs[0].amount, 100000);
-  assert.equal(presets[1].settings.away.groceries, split.away.groceries);
+  assert.deepEqual(plan.away, { groceries: 25000 });
+  assert.equal(presets[1].away.groceries, Math.round(split.away.groceries / 500) * 500); // to the nearest £5
+  // A preset swaps spending only: his hours, flights and one-offs stay.
+  const mine = { ...forecastSettings(m, d), hours: 12.5, flights: { count: 4, price: 9000 } };
+  const applied = withPreset(mine, plan);
+  assert.equal(applied.hours, 12.5);
+  assert.deepEqual(applied.flights, { count: 4, price: 9000 });
+  assert.equal(applied.oneOffs[0].on, false);
+  assert.deepEqual(applied.spend, { groceries: 25000 });
   assert.equal(matchingPreset(forecastSettings(m, d), presets).id, 'agreed');
-  assert.equal(matchingPreset({ ...plan, hours: 9.5 }, presets), null);
+  assert.equal(matchingPreset(applied, presets).id, 'plan');
+  assert.equal(matchingPreset({ ...applied, hours: 3 }, presets).id, 'plan');
+  assert.equal(matchingPreset({ ...applied, spend: { groceries: 26000 } }, presets), null);
   // A preset may only change agreed one-offs, and can't take the built-in ids.
   assert.equal(validMoney({ ...m, forecast: { ...m.forecast, presets: [{ id: 'p', label: 'P', oneOffs: [{ id: 'nope', on: true }] }] } }), false);
   assert.equal(validMoney({ ...m, forecast: { ...m.forecast, presets: [{ id: 'agreed', label: 'P' }] } }), false);
   assert.equal(validMoney({ ...m, forecast: { ...m.forecast, away: { casino: 5 } } }), false);
+});
+
+test('averages leave flights out of Trips: the Flights setting counts them', () => {
+  const m = ledger();
+  const d = doc();
+  const day = Object.keys(m.days).filter((x) => x >= m.since).sort()[3];
+  m.days[day] = { ...m.days[day], trips: 12000 };
+  m.places = { ...(m.places ?? {}), [day]: { trips: { Ryanair: 9000, Trainline: 3000 } } };
+  const split = statementSplit(m, d);
+  const days = split.homeDays + split.awayDays;
+  assert.equal(split.home.trips, Math.round((3000 / days) * 365.25 / 12));
+  const presets = forecastPresets(m, d);
+  assert.equal(presets[1].spend.trips % 500, 0);
 });

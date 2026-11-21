@@ -67,12 +67,11 @@ and never copy the PDFs anywhere. Shop and payee names are stored (he asked for 
 - **Salzburg costs differ.** `"away": {...}` (same shape as `spend`) is spending a month on the days
   marked as EU days; without it, Salzburg costs what home does. Exact home and Salzburg averages come
   from his statements split by EU days.
-- **Presets** are buttons above the forecast that swap every setting at once. *Cautious* is the
-  agreed figures, *Your averages* is worked out (exact spending at home and in Salzburg, trips inside
-  it, hours at his 8-week average). Agreed ones go in `forecast.presets`:
-  `[{"id": "new-plan", "label": "New plan", "note": "one line", "hours": 10, "spend": {...}, "away": {...},
-  "flights": {"count": 2, "price": 11000}, "oneOffs": [{"id": "car-sale", "on": true}]}]`. A preset's
-  `spend`/`away` replace the agreed ones whole; its one-offs change only agreed ones, by id.
+- **Presets** are buttons above the sliders that swap his spending, at home and in Salzburg, and
+  nothing else: his hours, flights and one-offs stay as he set them. *Cautious* is the agreed figures,
+  *Your averages* is worked out from his statements (home and Salzburg apart). Agreed ones go in
+  `forecast.presets`: `[{"id": "lean", "label": "Lean", "note": "one line", "spend": {...}, "away": {...}}]`.
+  A preset's `spend`/`away` replace the agreed ones whole.
 
 - `money` shows the months ahead with `~`. A plan line covers a known cost or income: a flight, a
   deposit, a birthday. Send it again with `"amount": 0` to remove it.
