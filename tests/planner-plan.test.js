@@ -572,3 +572,36 @@ test('a weekly target raised late in the week never crowds out next week\'s task
   assert.ok(!notes.some((n) => /unscheduled time.*moved to/.test(n)), notes.join('\n'));
   assert.ok(!notes.some((n) => /Role play/.test(n) && /Couldn't fit/.test(n)), notes.join('\n'));
 });
+
+// The same for a habit the planner books itself (on George's calendars, Hebrew practice and reading).
+const onTue = (cal) => cal.mine().filter((e) => e.start.dateTime.startsWith(TUE));
+const practice = (extra = {}) => fixture({ items: [
+  { id: 'read', type: 'habit', title: 'Read ten pages', area: 'Reading', minutes: 30, repeat: { kind: 'daily' } },
+], ...extra });
+
+test('a habit block the planner booked moves to the first free time once it passes unlogged', () => {
+  const doc = practice();
+  const cal = new FakeCalendar([ev(WORK, 'Shift', TUE, '09:45', '12:00')]);
+  const first = step(cal, doc, now(TUE, '08:00'));
+  assert.equal(span(cal.byTitle('Read ten pages')), '09:00–09:30');
+  const r = step(cal, doc, now(TUE, '09:35'), first.days);
+  assert.deepEqual(onTue(cal).map(span), ['12:15–12:45']);
+  assert.ok(r.days[TUE].notes.includes('Moved Read ten pages to 12:15 — its time passed without it being logged'));
+  assert.deepEqual(step(cal, doc, now(TUE, '09:45'), r.days).actions, []);
+});
+
+test('a habit block with no free time left is removed, not booked again, and comes back as a record once logged', () => {
+  const doc = practice();
+  const cal = new FakeCalendar([ev(WORK, 'Shift', TUE, '09:45', '19:00')]);
+  const first = step(cal, doc, now(TUE, '08:00'));
+  const r = step(cal, doc, now(TUE, '09:35'), first.days);
+  assert.deepEqual(onTue(cal), []);
+  assert.deepEqual(r.days[TUE].missed.map((m) => m.itemId), ['read']);
+  const quiet = step(cal, doc, now(TUE, '09:45'), r.days);
+  assert.deepEqual(quiet.actions, []);
+  const logged = practice({ logs: [done('read', TUE, { at: at(TUE, '20:30').toISOString() })] });
+  const back = step(cal, logged, now(TUE, '20:35'), quiet.days);
+  assert.deepEqual(onTue(cal).map((e) => `${span(e)} ${e.summary}`), ['20:00–20:30 ✓ Read ten pages']);
+  assert.deepEqual(back.days[TUE].missed, []);
+  assert.deepEqual(step(cal, logged, now(TUE, '20:45'), back.days).actions, []);
+});

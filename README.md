@@ -488,8 +488,9 @@ writes a workout and never touches your own routines. Hevy can't delete routines
 the few in *Dashboard* are reused for each new session.
 
 - **A workout ticks Gym**, and the Gym block in your calendar moves to when you actually trained.
-  A Gym or Hebrew session that passes without being logged moves to the first free time left that
-  day, or is removed if there's none — never to another day, and never over anything already booked.
+  A Gym session, Hebrew practice or any other habit's block that passes without being logged moves
+  to the first free time left that day, or is removed if there's none — never to another day, and
+  never over anything already booked. A task's block still waits for its tick.
   Its cardio minutes count towards your Cardio target (Claude links it). Untick it and it stays
   unticked; edit or delete the workout in Hevy and the dashboard follows.
 - **The Gym panel** (a widget — Arrange moves or hides it): the week, the Cardio target, and a card for

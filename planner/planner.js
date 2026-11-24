@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '800c2791';
+var PLANNER_BUILD = '56723d0c';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -5887,8 +5887,27 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     for (const id of linkedIds(ev.description).map(resolveRef).filter(Boolean)) linkedByGeorge.add(id);
   }
 
+  // The first free start for `length` later on day `d`, or null: inside the day's hours (or the area's
+  // own), clear of time off and of everything busy on a watched calendar — the planner's own blocks
+  // included, so a missed session never pushes anything (24 Nov 2026, George's choice).
+  function freeLater(d, area, length, exceptId) {
+    if (dayClosed(doc, d)) return null;
+    const own = Object.keys(config.areaHours ?? {}).find((a) => norm(a) === norm(area));
+    const [from, until] = own === undefined ? (config.dayHours[d] ?? config.hours) : config.areaHours[own];
+    const win = { start: Math.max(at(d, from).getTime(), ceilQuarter(nowMs)), end: at(d, until).getTime() };
+    const taken = [...hard, ...offBusy(d, area),
+      ...timed.filter((e) => e.id !== exceptId && !e.free).map((e) => ({ start: e.start.getTime(), end: e.end.getTime() }))];
+    return earliestFit(length, win, taken, gap);
+  }
+  // A session removed unlogged, remembered so a tick later that day puts a record back (below).
+  function missSession(d, itemId, length, calendarId, title) {
+    const r = rec(d);
+    if (!r.missed.some((m) => m.itemId === itemId)) r.missed.push({ itemId, minutes: Math.round(length / MINUTE), calendarId, title });
+    note(`Removed ${title}${onDay(d)} — its time passed without it being logged, and there's no free time left`);
+  }
+
   // ---- The planner's own events -----------------------------------------------------------------
-  const fixedAll = fixedTasks({ doc, days, config, links }).filter((f) => !linkedByGeorge.has(f.itemId));
+  const fixedAll =fixedTasks({ doc, days, config, links }).filter((f) => !linkedByGeorge.has(f.itemId));
   const fixedWanted = new Map(fixedAll.map((f) => [f.key, f]));
   for (const ev of timed.filter((e) => e.mine)) {
     const key = ev.props[P.key] ?? '';
@@ -5903,7 +5922,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     let baseline = null;
     try { baseline = JSON.parse(ev.props[P.input] || 'null'); } catch {}
     const inputChanged = baseline && currentItem && ['date', 'time', 'minutes', 'hold'].some((k) => baseline[k] !== taskInput(currentItem)[k]);
-    const pinned = movedByGeorge(ev) && !inputChanged && !ids.some((id) => doc.calendar?.['conflict:' + id]?.resolution === 'dashboard');
+    let pinned = movedByGeorge(ev) && !inputChanged && !ids.some((id) => doc.calendar?.['conflict:' + id]?.resolution === 'dashboard');
     if (pinned && ids.length > 1 && !HISTORY.has(state)) base = ids.map((id) => items[id]?.title ?? id).join(' · ').slice(0, 1000);
     if (ids.some((id) => doc.calendar?.['conflict:' + id]?.open)) {
       busy(start, end, ev.title); cover(kd, ids); useKey(kd, key); fixedWanted.delete(key);
@@ -6007,6 +6026,18 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
         settle({ start, end }, 'partial', blockTitle(base, 'partial', doneCount, ids.length), ids.filter((_, i) => ticks[i].finished));
       } else if (!ids.length) {
         settle({ start, end }, 'done', base);
+      } else if (blockDay === today && ids.every((id) => items[id]?.type === 'habit')) {
+        // A habit's session (Hebrew practice, reading) is flexible, like the Gym: passed unlogged, it
+        // goes to the first free time left today, or goes (24 Nov 2026). A task still waits for its tick.
+        const to = freeLater(today, areaOfKey(key, ids), end - start, ev.id);
+        if (to != null) {
+          pinned = false;
+          settle({ start: to, end: to + (end - start) }, 'exact', blockTitle(base, 'exact'));
+          note(`Moved ${base} to ${hhmm(to)} — its time passed without it being logged`);
+        } else {
+          actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
+          for (const id of ids) missSession(today, id, end - start, ev.calendarId, base);
+        }
       } else if (logicalDay(ev.start, dayStartHour) >= today || (logicalDay(ev.start, dayStartHour) === yesterday && nowMs < morning)) {
         // Over and not ticked: waiting for its tick, where it was, until his next day's hours begin. It used to
         // go the moment it ended, booked again later or the next day, and the task left that day's
@@ -6070,12 +6101,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   // is. Logged after it's gone, it comes back as a record of when it happened (the missed list, below).
   function missedSession(ev, link, d) {
     const length = ev.end.getTime() - ev.start.getTime();
-    const own = Object.keys(config.areaHours ?? {}).find((a) => norm(a) === norm(link.area));
-    const [from, until] = own === undefined ? (config.dayHours[d] ?? config.hours) : config.areaHours[own];
-    const win = { start: Math.max(at(d, from).getTime(), ceilQuarter(nowMs)), end: at(d, until).getTime() };
-    const taken = [...hard, ...offBusy(d, link.area),
-      ...timed.filter((e) => e.id !== ev.id && !e.free).map((e) => ({ start: e.start.getTime(), end: e.end.getTime() }))];
-    const to = dayClosed(doc, d) ? null : earliestFit(length, win, taken, gap);
+    const to = freeLater(d, link.area, length, ev.id);
     if (to != null) {
       // The pin comes off: it was for where he'd put it, and that time has gone.
       patchHabit(ev, { start: to, end: to + length }, { [P.habit]: link.habitId, [P.pin]: '' });
@@ -6084,11 +6110,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       return;
     }
     actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
-    const r = rec(d);
-    if (!r.missed.some((m) => m.itemId === link.habitId)) {
-      r.missed.push({ itemId: link.habitId, minutes: Math.round(length / MINUTE), calendarId: ev.calendarId, title: ev.title });
-    }
-    note(`Removed ${ev.title}${onDay(d)} — its time passed without it being logged, and there's no free time left`);
+    missSession(d, link.habitId, length, ev.calendarId, ev.title);
   }
 
   // ---- Everything else: fixed events, links to tasks, Hebrew and Gym ------------------------------
@@ -6173,7 +6195,8 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
   };
   const todayWindow = windowOf(today);
   const todayClosed = dayClosed(doc, today) || todayWindow.start + MIN_BLOCK > todayWindow.end;
-  for (const d of days) cover(d, rec(d).skipped);
+  // A session removed unlogged isn't booked again that day: its time has gone (missSession).
+  for (const d of days) cover(d, [...rec(d).skipped, ...rec(d).missed.filter((m) => m.calendarId).map((m) => m.itemId)]);
   const { blocks: wanted } = demand({ doc, today, days, config, links, covered, usedKeys, todayClosed });
 
   // ---- Series: tasks that only make sense in order (planner/series.js) ---------------------------
