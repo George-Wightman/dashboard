@@ -122,10 +122,14 @@ export function createCheckins({ UrlFetchApp, Utilities = null, props, log = () 
     const same = live(prev) && prev.day === today;
     let run = null;
     try { run = JSON.parse(props.get('RUN_MS') ?? 'null'); } catch { /* only a measurement */ }
+    let calls = null;
+    try { calls = JSON.parse(props.get('FETCHES') ?? 'null'); } catch { /* only a measurement */ }
     const content = {
       day: today, lastRun: t.toISOString(), pings: (same ? prev.pings ?? 0 : 0) + sent,
       runMs: run?.day === today ? run.ms : 0, runs: run?.day === today ? run.n ?? 0 : 0,
       phases: run?.day === today && run.phases && typeof run.phases === 'object' ? run.phases : {},
+      // The day's web calls by where they came from (planner/cache.js): Google allows 20,000.
+      fetches: calls?.day === today && Number.isFinite(calls.total) ? { total: calls.total, by: calls.by ?? {} } : null,
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
     };
     const due = !same || sent > 0 || prev.lastError !== content.lastError || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;

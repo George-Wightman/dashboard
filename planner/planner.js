@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '56723d0c';
+var PLANNER_BUILD = '8e5bfed5';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -8851,10 +8851,14 @@ function createCheckins({ UrlFetchApp, Utilities = null, props, log = () => {}, 
     const same = live(prev) && prev.day === today;
     let run = null;
     try { run = JSON.parse(props.get('RUN_MS') ?? 'null'); } catch { /* only a measurement */ }
+    let calls = null;
+    try { calls = JSON.parse(props.get('FETCHES') ?? 'null'); } catch { /* only a measurement */ }
     const content = {
       day: today, lastRun: t.toISOString(), pings: (same ? prev.pings ?? 0 : 0) + sent,
       runMs: run?.day === today ? run.ms : 0, runs: run?.day === today ? run.n ?? 0 : 0,
       phases: run?.day === today && run.phases && typeof run.phases === 'object' ? run.phases : {},
+      // The day's web calls by where they came from (planner/cache.js): Google allows 20,000.
+      fetches: calls?.day === today && Number.isFinite(calls.total) ? { total: calls.total, by: calls.by ?? {} } : null,
       lastError: problems.length ? problems.join('; ').slice(0, 500) : null,
     };
     const due = !same || sent > 0 || prev.lastError !== content.lastError || t.getTime() - Date.parse(prev.lastRun ?? 0) > HEARTBEAT_MS;
@@ -11452,6 +11456,74 @@ function tickHebrew(store, progress, day, now) {
 return { HEBREW_REPO, wordBand, HEBREW_CONTENT, readHebrewPhrases, readHebrewProgress, tickHebrew };
 })();
 
+// ---- planner/cache.js
+const __planner_cache = (() => {
+// Fewer web calls (24 Nov 2026: the planner ran out of Google's 20,000 a day — the phone's Hebrew
+// widget asked every few minutes, and each answer cost about ten). Apps Script's CacheService, for text
+// bigger than one entry allows (100 KB), and a blocking request whose GET answers for slow-changing
+// files are kept a while. Both do nothing without a cache, and never throw: a cache is only a saving.
+
+const PART = 30000; // characters: under 100 KB even when every one takes three bytes
+const MAX_PARTS = 40;
+
+function textCache(cache, hash = (s) => s) {
+  const id = (key) => `t:${hash(String(key))}`.slice(0, 200);
+  if (!cache) return { get: () => null, put: () => {} };
+  return {
+    get(key) {
+      try {
+        const k = id(key);
+        const n = Number(cache.get(`${k}#n`));
+        if (!Number.isInteger(n) || n < 1 || n > MAX_PARTS) return null;
+        const keys = Array.from({ length: n }, (_, i) => `${k}#${i}`);
+        const got = cache.getAll(keys) ?? {};
+        if (keys.some((x) => typeof got[x] !== 'string')) return null;
+        return keys.map((x) => got[x]).join('');
+      } catch { return null; }
+    },
+    // The count goes in last, so a half-written or half-expired entry reads as nothing.
+    put(key, text, seconds) {
+      try {
+        const k = id(key);
+        const s = String(text);
+        const n = Math.max(1, Math.ceil(s.length / PART));
+        if (n > MAX_PARTS) return;
+        const parts = {};
+        for (let i = 0; i < n; i++) parts[`${k}#${i}`] = s.slice(i * PART, (i + 1) * PART);
+        const ttl = Math.min(21600, Math.max(1, Math.round(seconds)));
+        cache.putAll(parts, ttl);
+        cache.put(`${k}#n`, String(n), ttl);
+      } catch { /* only a saving */ }
+    },
+  };
+}
+
+// `request(url, init) → { status, text }`, with a 200 to a GET kept for `secondsFor(url)` seconds
+// (0: not kept).
+function cachedRequest(request, cache, secondsFor) {
+  return (url, init = {}) => {
+    const ttl = String(init.method ?? 'GET').toUpperCase() === 'GET' ? secondsFor(url) : 0;
+    if (!ttl) return request(url, init);
+    const hit = cache.get(`url:${url}`);
+    if (hit != null) return { status: 200, text: hit };
+    const res = request(url, init);
+    if (res.status === 200) cache.put(`url:${url}`, res.text, ttl);
+    return res;
+  };
+}
+
+// The day's web calls by where they came from, for ⚙ → Claude and the `planner` read: { day, total,
+// by: { timer, calendar, widget, relay, tick } }. Pure.
+function addFetches(prev, day, kind, n) {
+  const same = prev && prev.day === day && prev.by && typeof prev.by === 'object';
+  const by = same ? { ...prev.by } : {};
+  const add = Math.max(0, Math.round(Number(n) || 0));
+  if (/^[a-z]{1,12}$/.test(kind)) by[kind] = (Number(by[kind]) || 0) + add;
+  return { day, total: (same ? Number(prev.total) || 0 : 0) + add, by };
+}
+return { textCache, cachedRequest, addFetches };
+})();
+
 // ---- planner/hebrew-nudges.js
 const __planner_hebrew_nudges = (() => {
 // Hebrew's own pings (docs/superpowers/specs/2026-11-02-hebrew-nudges-design.md): to the devices that
@@ -11678,7 +11750,8 @@ const { gasCrypto } = __planner_webpush;
 const { handleRelay } = __planner_relay;
 const { handleGlance, glanceKeyProblem, applyGlanceAct } = __planner_glance;
 const { importDrags, webAppUrl, tickLink, handleTick } = __planner_ticks;
-const { readHebrewProgress, readHebrewPhrases, HEBREW_REPO, tickHebrew } = __planner_hebrew_progress;
+const { readHebrewProgress, readHebrewPhrases, HEBREW_REPO, HEBREW_CONTENT, tickHebrew } = __planner_hebrew_progress;
+const { textCache, cachedRequest, addFetches } = __planner_cache;
 const { createHebrewNudges } = __planner_hebrew_nudges;
 const { hebrewInputFrom } = __js_hebrew_voice;
 const { stopwatch, addPhases } = __planner_timing;
@@ -11691,6 +11764,11 @@ const ECHO_MS = 2 * 60000;
 const TAG_PER_RUN = 5;
 const HEVY_RETRY_MS = 30 * 60000;
 const HEALTH_EVERY_MS = 60 * 60000;
+// Steps whose answers barely change between runs: at most this often (24 Nov 2026, web calls).
+const HOURLY_MS = 55 * 60000;
+// A widget's answer is kept this long; the map files and the course's phrases, this long.
+const GLANCE_SECONDS = 5 * 60;
+const SLOW_FILE_SECONDS = 6 * 3600;
 
 class MemoryStorage {
   constructor(initial = {}) { this.map = new Map(Object.entries(initial)); }
@@ -11702,7 +11780,9 @@ class MemoryStorage {
 function createPlanner({
   Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger = { log() {} },
   fetch = (...args) => globalThis.fetch(...args), now = () => new Date(), version = 'dev',
-  Utilities = null, pushCrypto = null, clockMs = () => Date.now(), ContentService = null,
+  Utilities = null, pushCrypto = null, clockMs = () => Date.now(), ContentService = null, CacheService = null,
+  // Web calls made so far in this execution (planner/entry.js counts them), and the loader's own.
+  fetchCount = () => 0, loadFetches = 0,
   sha256Hex = (text) => Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.newBlob(String(text)).getBytes())
     .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
   hmacHex = (text, key) => Utilities.computeHmacSha256Signature(Utilities.newBlob(String(text)).getBytes(), Utilities.newBlob(String(key)).getBytes())
@@ -11716,6 +11796,7 @@ function createPlanner({
   const drop = (k) => props().deleteProperty(k);
   const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('HEBREW_TOKEN'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
+  const cache = textCache((() => { try { return CacheService?.getScriptCache?.() ?? null; } catch { return null; } })(), (s) => sha256Hex(s));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
     return Number.isInteger(n) && n >= 0 && n <= 12 ? n : 4;
@@ -12026,6 +12107,29 @@ function createPlanner({
     } catch { /* only a measurement */ }
   }
 
+  // The day's web calls by where they came from (planner/cache.js addFetches): Google allows 20,000.
+  function countFetches(kind) {
+    try {
+      let prev = null;
+      try { prev = JSON.parse(get('FETCHES') ?? 'null'); } catch { /* only a measurement */ }
+      put('FETCHES', JSON.stringify(addFetches(prev, logicalDay(now(), dayStartHour()), kind, fetchCount() + loadFetches)));
+    } catch { /* only a measurement */ }
+  }
+  // Each execution's calls counted once, when it's done, whatever it returns.
+  const counted = (kindOf, fn) => (e) => {
+    let out;
+    try { out = fn(e); } catch (err) { countFetches(kindOf(e)); throw err; }
+    if (out && typeof out.then === 'function') return out.finally(() => countFetches(kindOf(e)));
+    countFetches(kindOf(e));
+    return out;
+  };
+  // Not more than hourly: true when it's time, and then marks it done.
+  const hourly = (name, t) => {
+    if (t.getTime() - Number(get(name) ?? 0) < HOURLY_MS) return false;
+    put(name, t.getTime());
+    return true;
+  };
+
   async function run(e) {
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(1000)) return 'busy';
@@ -12233,7 +12337,7 @@ function createPlanner({
       };
       // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
       // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
-      if (get('T212_KEY')) try {
+      if (get('T212_KEY') && hourly('STOCKS_RAN', t)) try {
         createStocks({ request: fetchFor, props: { get, put }, log, now, send }).run();
       } catch (err) {
         log(clean(`Stocks failed: ${err?.message ?? err}`));
@@ -12241,7 +12345,7 @@ function createPlanner({
       watch.lap('stocks');
       // The Sunday letter (planner/letter.js): one push when Claude's Sunday routine has written a new
       // one. Never stops the planner.
-      try {
+      if (hourly('LETTER_RAN', t)) try {
         createLetterPush({ request: fetchFor, props: { get, put }, now, send, log, today: logicalDay(now(), dayStartHour()) }).run();
       } catch (err) {
         log(clean(`Sunday letter failed: ${err?.message ?? err}`));
@@ -12343,18 +12447,26 @@ function createPlanner({
       // The phone's widgets ask with { glance: key } (planner/glance.js); everything else is the relay.
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
-      const glance = () => handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) });
+      // The map files and the course's phrases barely change: kept for hours. The answer itself is kept
+      // a few minutes for the key that asked, so a widget asking again soon costs nothing.
+      const slow = (url) => (/\/contents\/map\//.test(url) || url === HEBREW_CONTENT ? SLOW_FILE_SECONDS : 0);
+      const glance = () => handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request: cachedRequest(request, cache, slow), sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: cachedRequest(fetchSync, cache, slow) }) }) });
+      const answerKey = typeof req?.glance === 'string' ? `glance:${req.glance}` : null;
+      const keep = (reply) => {
+        try { if (answerKey && !JSON.parse(reply).error) cache.put(answerKey, reply, GLANCE_SECONDS); } catch { /* not kept */ }
+        return reply;
+      };
       if (req && typeof req === 'object' && 'glance' in req && req.act) {
         // A widget doing something (planner/glance.js, applyGlanceAct): the change, then the tiles as
         // they now are, with a line saying what happened.
         const problem = glanceKeyProblem({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
         const acted = problem ? { ok: false, text: problem } : glanceAct(req.act);
         let out = {};
-        try { out = JSON.parse(glance()); } catch { out = {}; }
+        try { out = JSON.parse(keep(glance())); } catch { out = {}; }
         text = JSON.stringify({ ...out, acted });
       } else {
         text = req && typeof req === 'object' && 'glance' in req
-          ? glance()
+          ? (answerKey && cache.get(answerKey)) || keep(glance())
           : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
       }
     } catch (err) {
@@ -12441,7 +12553,11 @@ function createPlanner({
     }
   }
 
-  return { run, install, pause, resume, removeAll, relay, tick };
+  const relayKind = (e) => (/"glance"/.test(String(e?.postData?.contents ?? '')) ? 'widget' : 'relay');
+  return {
+    run: counted((e) => (e?.calendarId ? 'calendar' : 'timer'), run), install, pause, resume, removeAll,
+    relay: counted(relayKind, relay), tick: counted(() => 'tick', tick),
+  };
 }
 return { createPlanner };
 })();
@@ -12455,11 +12571,23 @@ const { installShims } = __planner_shims;
 const { createPlanner } = __planner_gas;
 
 const Planner = (() => {
-  installShims(globalThis, { Utilities, UrlFetchApp });
+  // Every web call this execution makes, counted (planner/cache.js addFetches): Google allows 20,000 a
+  // day, and on 24 Nov 2026 the planner ran out of them with nothing to say where they went.
+  let calls = 0;
+  const counting = {
+    fetch: (...args) => { calls += 1; return UrlFetchApp.fetch(...args); },
+    fetchAll: (requests) => { calls += requests.length; return UrlFetchApp.fetchAll(requests); },
+  };
+  installShims(globalThis, { Utilities, UrlFetchApp: counting });
   return createPlanner({
-    Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger, Utilities, ContentService: typeof ContentService === 'undefined' ? null : ContentService,
+    Calendar, UrlFetchApp: counting, PropertiesService, LockService, ScriptApp, Logger, Utilities, ContentService: typeof ContentService === 'undefined' ? null : ContentService,
+    CacheService: typeof CacheService === 'undefined' ? null : CacheService,
     fetch: (...args) => globalThis.fetch(...args),
     version: typeof PLANNER_BUILD === 'string' ? PLANNER_BUILD : 'dev',
+    fetchCount: () => calls,
+    // The loader says whether it had to fetch this bundle (planner/apps-script/Code.gs); an older
+    // loader always did.
+    loadFetches: typeof PLANNER_LOAD_FETCHES === 'number' ? PLANNER_LOAD_FETCHES : 1,
   });
 })();
 return { Planner };

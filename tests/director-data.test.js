@@ -140,7 +140,11 @@ test('attention: the planner close to Google\'s 90 daily minutes, and the planne
   const status = (runMs, day = WED) => withCalendar(fixture(), [{ id: 'checkins:status', status: 'active', day, lastRun: `${WED}T18:00:00.000Z`, pings: 0, runMs, runs: 94, lastError: null }]);
   assert.deepEqual(attention(status(60 * 60000), WED), []);
   const near = attention(status(Math.round(74.5 * 60000)), WED);
-  assert.ok(near.some((l) => l.startsWith("Planner: Apps Script today: 75 of Google's 90 minutes, over 94 runs (about 48 s each). At 90 Google stops it")), near.join('\n'));
+  assert.ok(near.some((l) => l.startsWith("Planner: Apps Script today: 75 of Google's 90 minutes, over 94 runs (about 48 s each). At 90 minutes or 20,000 web calls Google stops it")), near.join('\n'));
+  // Or close to its 20,000 web calls, said by where they went.
+  const calls = withCalendar(fixture(), [{ id: 'checkins:status', status: 'active', day: WED, lastRun: `${WED}T18:00:00.000Z`, pings: 0, runMs: 60000, runs: 94, lastError: null,
+    fetches: { total: 16000, by: { widget: 12000, timer: 3000, calendar: 1000 } } }]);
+  assert.ok(attention(calls, WED).some((l) => l.includes("web calls 16000 of Google's 20,000 (widgets 12000, runs 3000, calendar edits 1000)")), attention(calls, WED).join('\n'));
   // Yesterday's count is not today's.
   assert.equal(plannerBudget(status(80 * 60000, '2026-09-15'), WED), null);
 });

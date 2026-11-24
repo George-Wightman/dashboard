@@ -36,7 +36,8 @@ import { gasCrypto } from './webpush.js';
 import { handleRelay } from './relay.js';
 import { handleGlance, glanceKeyProblem, applyGlanceAct } from './glance.js';
 import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
-import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO, tickHebrew } from './hebrew-progress.js';
+import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO, HEBREW_CONTENT, tickHebrew } from './hebrew-progress.js';
+import { textCache, cachedRequest, addFetches } from './cache.js';
 import { createHebrewNudges } from './hebrew-nudges.js';
 import { hebrewInputFrom } from '../js/hebrew-voice.js';
 import { stopwatch, addPhases } from './timing.js';
@@ -49,6 +50,11 @@ const ECHO_MS = 2 * 60000;
 const TAG_PER_RUN = 5;
 const HEVY_RETRY_MS = 30 * 60000;
 const HEALTH_EVERY_MS = 60 * 60000;
+// Steps whose answers barely change between runs: at most this often (24 Nov 2026, web calls).
+const HOURLY_MS = 55 * 60000;
+// A widget's answer is kept this long; the map files and the course's phrases, this long.
+const GLANCE_SECONDS = 5 * 60;
+const SLOW_FILE_SECONDS = 6 * 3600;
 
 class MemoryStorage {
   constructor(initial = {}) { this.map = new Map(Object.entries(initial)); }
@@ -60,7 +66,9 @@ class MemoryStorage {
 export function createPlanner({
   Calendar, UrlFetchApp, PropertiesService, LockService, ScriptApp, Logger = { log() {} },
   fetch = (...args) => globalThis.fetch(...args), now = () => new Date(), version = 'dev',
-  Utilities = null, pushCrypto = null, clockMs = () => Date.now(), ContentService = null,
+  Utilities = null, pushCrypto = null, clockMs = () => Date.now(), ContentService = null, CacheService = null,
+  // Web calls made so far in this execution (planner/entry.js counts them), and the loader's own.
+  fetchCount = () => 0, loadFetches = 0,
   sha256Hex = (text) => Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.newBlob(String(text)).getBytes())
     .map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''),
   hmacHex = (text, key) => Utilities.computeHmacSha256Signature(Utilities.newBlob(String(text)).getBytes(), Utilities.newBlob(String(key)).getBytes())
@@ -74,6 +82,7 @@ export function createPlanner({
   const drop = (k) => props().deleteProperty(k);
   const clean = (text) => scrubText(String(text), [get('TICK_SECRET'), get('HEBREW_TOKEN'), get('GITHUB_TOKEN'), get('GEMINI_KEY'), get('HEVY_KEY'), get('HEALTH_CLIENT_SECRET'), get('HEALTH_REFRESH_TOKEN'), get('MIND_ROUTINE_TOKEN'), get('VAPID_PRIVATE')].filter(Boolean));
   const log = (text) => Logger.log(clean(text));
+  const cache = textCache((() => { try { return CacheService?.getScriptCache?.() ?? null; } catch { return null; } })(), (s) => sha256Hex(s));
   const dayStartHour = () => {
     const n = Number(get('DAY_START_HOUR') ?? 4);
     return Number.isInteger(n) && n >= 0 && n <= 12 ? n : 4;
@@ -384,6 +393,29 @@ export function createPlanner({
     } catch { /* only a measurement */ }
   }
 
+  // The day's web calls by where they came from (planner/cache.js addFetches): Google allows 20,000.
+  function countFetches(kind) {
+    try {
+      let prev = null;
+      try { prev = JSON.parse(get('FETCHES') ?? 'null'); } catch { /* only a measurement */ }
+      put('FETCHES', JSON.stringify(addFetches(prev, logicalDay(now(), dayStartHour()), kind, fetchCount() + loadFetches)));
+    } catch { /* only a measurement */ }
+  }
+  // Each execution's calls counted once, when it's done, whatever it returns.
+  const counted = (kindOf, fn) => (e) => {
+    let out;
+    try { out = fn(e); } catch (err) { countFetches(kindOf(e)); throw err; }
+    if (out && typeof out.then === 'function') return out.finally(() => countFetches(kindOf(e)));
+    countFetches(kindOf(e));
+    return out;
+  };
+  // Not more than hourly: true when it's time, and then marks it done.
+  const hourly = (name, t) => {
+    if (t.getTime() - Number(get(name) ?? 0) < HOURLY_MS) return false;
+    put(name, t.getTime());
+    return true;
+  };
+
   async function run(e) {
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(1000)) return 'busy';
@@ -591,7 +623,7 @@ export function createPlanner({
       };
       // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
       // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
-      if (get('T212_KEY')) try {
+      if (get('T212_KEY') && hourly('STOCKS_RAN', t)) try {
         createStocks({ request: fetchFor, props: { get, put }, log, now, send }).run();
       } catch (err) {
         log(clean(`Stocks failed: ${err?.message ?? err}`));
@@ -599,7 +631,7 @@ export function createPlanner({
       watch.lap('stocks');
       // The Sunday letter (planner/letter.js): one push when Claude's Sunday routine has written a new
       // one. Never stops the planner.
-      try {
+      if (hourly('LETTER_RAN', t)) try {
         createLetterPush({ request: fetchFor, props: { get, put }, now, send, log, today: logicalDay(now(), dayStartHour()) }).run();
       } catch (err) {
         log(clean(`Sunday letter failed: ${err?.message ?? err}`));
@@ -701,18 +733,26 @@ export function createPlanner({
       // The phone's widgets ask with { glance: key } (planner/glance.js); everything else is the relay.
       let req = null;
       try { req = JSON.parse(String(e?.postData?.contents ?? '')); } catch { /* the relay says so */ }
-      const glance = () => handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: fetchSync }) }) });
+      // The map files and the course's phrases barely change: kept for hours. The answer itself is kept
+      // a few minutes for the key that asked, so a widget asking again soon costs nothing.
+      const slow = (url) => (/\/contents\/map\//.test(url) || url === HEBREW_CONTENT ? SLOW_FILE_SECONDS : 0);
+      const glance = () => handleGlance({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request: cachedRequest(request, cache, slow), sha256Hex, now: now(), dayStartHour: dayStartHour(), hebrew: (today) => ({ ...hebrewProgress(today), phrases: readHebrewPhrases({ request: cachedRequest(fetchSync, cache, slow) }) }) });
+      const answerKey = typeof req?.glance === 'string' ? `glance:${req.glance}` : null;
+      const keep = (reply) => {
+        try { if (answerKey && !JSON.parse(reply).error) cache.put(answerKey, reply, GLANCE_SECONDS); } catch { /* not kept */ }
+        return reply;
+      };
       if (req && typeof req === 'object' && 'glance' in req && req.act) {
         // A widget doing something (planner/glance.js, applyGlanceAct): the change, then the tiles as
         // they now are, with a line saying what happened.
         const problem = glanceKeyProblem({ req, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
         const acted = problem ? { ok: false, text: problem } : glanceAct(req.act);
         let out = {};
-        try { out = JSON.parse(glance()); } catch { out = {}; }
+        try { out = JSON.parse(keep(glance())); } catch { out = {}; }
         text = JSON.stringify({ ...out, acted });
       } else {
         text = req && typeof req === 'object' && 'glance' in req
-          ? glance()
+          ? (answerKey && cache.get(answerKey)) || keep(glance())
           : handleRelay({ raw: e?.postData?.contents, repo: get('SYNC_REPO'), token: get('GITHUB_TOKEN'), request, sha256Hex });
       }
     } catch (err) {
@@ -799,5 +839,9 @@ export function createPlanner({
     }
   }
 
-  return { run, install, pause, resume, removeAll, relay, tick };
+  const relayKind = (e) => (/"glance"/.test(String(e?.postData?.contents ?? '')) ? 'widget' : 'relay');
+  return {
+    run: counted((e) => (e?.calendarId ? 'calendar' : 'timer'), run), install, pause, resume, removeAll,
+    relay: counted(relayKind, relay), tick: counted(() => 'tick', tick),
+  };
 }

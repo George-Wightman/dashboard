@@ -15,6 +15,11 @@ const minutesSince = (iso, now) => (now.getTime() - Date.parse(iso)) / 60000;
 // the day resets: no bookings, no pings, no nudges. On 19 Nov 2026 it had used 74.5 of them by 19:07.
 export const APPS_SCRIPT_MINUTES = 90;
 export const BUDGET_WARN_MINUTES = 75;
+// And 20,000 web calls a day: on 24 Nov 2026 the planner ran out of them by morning, the phone's
+// widget asking every few minutes, and failed every run until the day reset.
+export const URLFETCH_LIMIT = 20000;
+export const FETCH_WARN = 15000;
+const FETCH_NAMES = { timer: 'runs', calendar: 'calendar edits', widget: 'widgets', relay: 'Claude', tick: '✓ links' };
 const STEP_NAMES = {
   open: 'reading the dashboard', hevy: 'Hevy', health: 'Google Health', duolingo: 'Duolingo', workflows: 'follow-ups and reviews',
   tag: 'tagging areas', calendarRead: 'reading the calendars', reconcile: 'reading calendar edits', inboundSave: 'saving calendar edits',
@@ -36,7 +41,11 @@ export function plannerBudget(doc, today) {
   const minutes = Math.round((Number(s.runMs) || 0) / 60000);
   const each = Math.round((Number(s.runMs) || 0) / s.runs / 1000);
   const most = phaseLine(s.phases);
-  return { minutes, runs: s.runs, phases: s.phases ?? null, line: `Apps Script today: ${minutes} of Google's ${APPS_SCRIPT_MINUTES} minutes, over ${s.runs} runs (about ${each} s each)${most ? `; most of it ${most}` : ''}` };
+  const calls = Number.isFinite(s.fetches?.total) ? s.fetches.total : null;
+  const by = Object.entries(s.fetches?.by ?? {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${FETCH_NAMES[k] ?? k} ${n}`).join(', ');
+  const callLine = calls == null ? '' : `; web calls ${calls} of Google's ${URLFETCH_LIMIT.toLocaleString('en-GB')}${by ? ` (${by})` : ''}`;
+  return { minutes, runs: s.runs, phases: s.phases ?? null, calls, line: `Apps Script today: ${minutes} of Google's ${APPS_SCRIPT_MINUTES} minutes, over ${s.runs} runs (about ${each} s each)${most ? `; most of it ${most}` : ''}${callLine}` };
 }
 
 export function jobLines(doc, now = new Date()) {

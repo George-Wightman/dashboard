@@ -68,7 +68,10 @@ test('the loader and its manifest', () => {
   const gs = read('planner/apps-script/Code.gs');
   assert.match(gs, /var PLANNER_URL = 'https:\/\/george-wightman\.github\.io\/dashboard\/planner\/planner\.js';/);
   for (const fn of ['run(e)', 'install()', 'pause()', 'resume()', 'removeAll()']) assert.ok(gs.includes(`function ${fn}`), fn);
-  assert.match(gs, /new Function\(res\.getContentText\(\) \+ '\\nreturn Planner;'\)/);
+  assert.match(gs, /new Function\(text \+ '\\nreturn Planner;'\)/);
+  // It keeps the planner in the script's cache, and says when it had to fetch it.
+  assert.match(gs, /CacheService\.getScriptCache\(\)/);
+  assert.match(gs, /PLANNER_LOAD_FETCHES = 1;/);
   const manifest = JSON.parse(read('planner/apps-script/appsscript.json'));
   assert.equal(manifest.timeZone, 'Europe/London');
   assert.equal(manifest.runtimeVersion, 'V8');
