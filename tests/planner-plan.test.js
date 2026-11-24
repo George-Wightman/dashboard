@@ -18,6 +18,9 @@ const instance = (calendarId, title, day, from, to, series, originalFrom = from)
   ev(calendarId, title, day, from, to, { recurringEventId: series, originalStartTime: { dateTime: at(day, originalFrom).toISOString() } });
 const span = (e) => `${clockLabel(e.start.dateTime)}–${clockLabel(e.end.dateTime)}`;
 const inserts = (r) => r.actions.filter((a) => a.op === 'insert');
+// The planner's own blocks' changes (they're on APP here): Gym and Hebrew that pass unlogged move
+// or go (the missed-session tests below), which these task tests aren't about.
+const onApp = (r) => r.actions.filter((a) => a.calendarId === APP);
 const summaries = (cal) => cal.mine().map((e) => `${e.start.dateTime.slice(0, 10)} ${span(e)} ${e.summary}`).sort();
 
 // Tuesday 15 September: Hebrew and Gym on Tuesday and Wednesday, a Work shift on Tuesday, a
@@ -168,7 +171,7 @@ test('ticked during its block: the block ends at the tick', () => {
   const first = step(cal, doc, now(TUE, '08:00'));
   const ticked = fixture({ items: Object.values(doc.items), logs: [done('chase', TUE, { at: at(TUE, '13:30').toISOString() })] });
   const r = step(cal, ticked, now(TUE, '13:40'), first.days);
-  assert.equal(r.actions.length, 1);
+  assert.equal(onApp(r).length, 1);
   const e = cal.byTitle('✓ Chase the GSS outcome');
   assert.equal(span(e), '13:15–13:30');
   assert.equal(e.extendedProperties.private.dashState, 'done');
@@ -190,14 +193,14 @@ test('over and unticked: the block stays where it was, in full colour, and nothi
   const { doc, cal } = tuesday();
   const first = step(cal, doc, now(TUE, '08:00'));
   const later = step(cal, doc, now(TUE, '14:00'), first.days);
-  assert.deepEqual(later.actions, []);
+  assert.deepEqual(onApp(later), []);
   const e = cal.byTitle('Chase the GSS outcome');
   assert.equal(span(e), '13:15–13:45');
   assert.equal(e.colorId, undefined);
   assert.equal(e.extendedProperties.private.dashState, 'exact');
   assert.equal(cal.mine().filter((x) => x.summary.includes('Chase')).length, 1);
-  assert.deepEqual(later.days[TUE].missed, []);
-  assert.deepEqual(step(cal, doc, now(TUE, '14:10'), later.days).actions, []);
+  assert.ok(!later.days[TUE].missed.some((m) => m.itemId === 'chase'));
+  assert.deepEqual(onApp(step(cal, doc, now(TUE, '14:10'), later.days)), []);
 });
 
 test('ticked that evening, after its block: it stays where it was booked', () => {
@@ -238,7 +241,7 @@ test('still unticked once the next day\'s hours begin: a miss, booked again; tic
   const later = step(cal, doc, now(TUE, '22:00'), first.days);
   const wed = step(cal, doc, now(WED, '09:30'), later.days);
   const missed = wed.days[TUE].missed;
-  assert.deepEqual(missed.map((m) => m.itemId).sort(), ['chase', 'dayout']);
+  assert.deepEqual(missed.map((m) => m.itemId).sort(), ['chase', 'dayout', 'gym', 'hebrew']);
   const chase = missed.find((m) => m.itemId === 'chase');
   assert.equal(span({ start: { dateTime: chase.start }, end: { dateTime: chase.end } }), '13:15–13:45');
   const again = cal.byTitle('Chase the GSS outcome');
@@ -249,9 +252,9 @@ test('still unticked once the next day\'s hours begin: a miss, booked again; tic
   const e = cal.byTitle('✓ Chase the GSS outcome');
   assert.equal(e.start.dateTime.slice(0, 10), TUE);
   assert.equal(span(e), '13:15–13:45');
-  assert.deepEqual(r.days[TUE].missed.map((m) => m.itemId), ['dayout']);
+  assert.deepEqual(r.days[TUE].missed.map((m) => m.itemId).sort(), ['dayout', 'gym', 'hebrew']);
   assert.ok(!cal.mine().some((x) => x.summary.includes('Chase') && x.start.dateTime.startsWith(WED)));
-  assert.deepEqual(step(cal, ticked, now(WED, '10:15'), r.days).actions, []);
+  assert.deepEqual(onApp(step(cal, ticked, now(WED, '10:15'), r.days)), []);
 });
 
 test('part done when the block ends: the title says so and the rest gets a new slot', () => {
@@ -297,6 +300,92 @@ test('Hebrew and Gym: a session George placed stays; the other one moves off it'
   assert.equal(span(cal.byTitle('Learn Hebrew')), '11:45–12:30');
   assert.ok(r.days[TUE].notes.includes('Moved Gym to 09:30 (Learn Hebrew)'));
   assert.deepEqual(step(cal, doc, now(TUE, '08:10'), r.days).actions, []);
+});
+
+// 24 Nov 2026: two-hour gym blocks that never happened sat on the calendar. A Gym or Hebrew session
+// that passes unlogged goes to the first free time left that day, or goes.
+const sessions = (extra = {}) => fixture({ items: [
+  { id: 'hebrew', type: 'habit', title: 'Hebrew - app plus Duolingo', area: 'Hebrew', repeat: { kind: 'daily' } },
+  { id: 'gym', type: 'habit', title: 'Gym', area: 'Health', repeat: { kind: 'perWeek', n: 5 } },
+], ...extra });
+
+test('a session that passes unlogged moves to the first free time later that day', () => {
+  const doc = sessions();
+  const cal = new FakeCalendar([instance(GYM, 'Gym', TUE, '09:00', '11:00', 'gym'), ev(WORK, 'Shift', TUE, '11:30', '13:00')]);
+  const r = step(cal, doc, now(TUE, '11:05'));
+  assert.equal(span(cal.byTitle('Gym')), '13:15–15:15');
+  assert.ok(r.days[TUE].notes.includes('Moved Gym to 13:15 — its time passed without it being logged'));
+  assert.deepEqual(step(cal, doc, now(TUE, '11:15'), r.days).actions, []);
+  // Passed again: later again.
+  const again = step(cal, doc, now(TUE, '15:20'), r.days);
+  assert.equal(span(cal.byTitle('Gym')), '15:30–17:30');
+  // Logged in Hevy: it goes to when he actually trained.
+  const logged = sessions({ logs: [done('gym', TUE, { from: at(TUE, '15:40').toISOString(), at: at(TUE, '17:10').toISOString() })] });
+  step(cal, logged, now(TUE, '17:20'), again.days);
+  assert.equal(span(cal.byTitle('Gym')), '15:40–17:10');
+  assert.equal(cal.byTitle('Gym').extendedProperties.private.dashState, 'done');
+});
+
+test('a session that passes with no free time left that day is removed, not moved to another day', () => {
+  const doc = sessions();
+  const cal = new FakeCalendar([
+    instance(GYM, 'Gym', TUE, '09:00', '11:00', 'gym'),
+    instance(GYM, 'Gym', WED, '09:00', '11:00', 'gym'),
+    ev(WORK, 'Shift', TUE, '12:00', '18:00'),
+  ]);
+  const r = step(cal, doc, now(TUE, '11:05'));
+  assert.deepEqual(r.actions.map((a) => a.op), ['delete']);
+  assert.equal(cal.all().filter((e) => e.summary === 'Gym').length, 1);
+  assert.ok(cal.byTitle('Gym').start.dateTime.startsWith(WED));
+  assert.deepEqual(r.days[TUE].missed.map((m) => m.itemId), ['gym']);
+  assert.ok(r.days[TUE].notes.some((n) => n.startsWith('Removed Gym')));
+  assert.deepEqual(step(cal, doc, now(TUE, '11:15'), r.days).actions, []);
+});
+
+test('free time only: a missed session never pushes the planner\'s own blocks', () => {
+  const doc = sessions({ items: [
+    { id: 'gym', type: 'habit', title: 'Gym', area: 'Health', repeat: { kind: 'perWeek', n: 5 } },
+    task('cv', 'Update CV', 'Job search', TUE, { minutes: 150 }),
+  ] });
+  doc.calendar.config = { id: 'config', status: 'active', dayHours: { [TUE]: ['09:00', '15:00'] } };
+  const cal = new FakeCalendar([instance(GYM, 'Gym', TUE, '09:00', '11:00', 'gym')]);
+  const first = step(cal, doc, now(TUE, '08:00'));
+  assert.equal(span(cal.byTitle('Update CV')), '11:15–13:45');
+  const r = step(cal, doc, now(TUE, '11:05'), first.days);
+  assert.equal(span(cal.byTitle('Update CV')), '11:15–13:45');
+  assert.ok(!cal.byTitle('Gym'));
+  assert.deepEqual(r.days[TUE].missed.map((m) => m.itemId), ['gym']);
+});
+
+test('a session George placed himself that passes unlogged moves too, and loses its pin', () => {
+  const doc = sessions();
+  const cal = new FakeCalendar([instance(MAIN, 'Learn Hebrew', TUE, '10:00', '10:45', 'heb', '09:30')]);
+  step(cal, doc, now(TUE, '10:50'));
+  const e = cal.byTitle('Learn Hebrew');
+  assert.equal(span(e), '11:00–11:45');
+  assert.equal(e.extendedProperties.private.dashPin, '');
+});
+
+test('a removed session logged later that day comes back as a record of when it happened', () => {
+  const doc = sessions();
+  const cal = new FakeCalendar([instance(GYM, 'Gym', TUE, '09:00', '11:00', 'gym'), ev(WORK, 'Shift', TUE, '12:00', '19:00')]);
+  const r = step(cal, doc, now(TUE, '11:05'));
+  assert.ok(!cal.byTitle('Gym'));
+  const logged = sessions({ logs: [done('gym', TUE, { from: at(TUE, '19:30').toISOString(), at: at(TUE, '21:00').toISOString() })] });
+  const back = step(cal, logged, now(TUE, '21:10'), r.days);
+  const rec = cal.byTitle('✓ Gym');
+  assert.equal(rec.calendarId, GYM);
+  assert.equal(span(rec), '19:30–21:00');
+  assert.deepEqual(back.days[TUE].missed, []);
+  assert.deepEqual(step(cal, logged, now(TUE, '21:20'), back.days).actions, []);
+});
+
+test('a logged session is left where it happened, and past days are left alone', () => {
+  const doc = sessions({ logs: [done('gym', TUE)] });
+  const cal = new FakeCalendar([instance(GYM, 'Gym', TUE, '09:00', '11:00', 'gym'), instance(MAIN, 'Learn Hebrew', MON, '09:30', '10:15', 'heb')]);
+  step(cal, doc, now(TUE, '11:05'));
+  assert.equal(span(cal.byTitle('Gym')), '09:00–11:00');
+  assert.equal(span(cal.byTitle('Learn Hebrew')), '09:30–10:15');
 });
 
 test('an event Claude booked for a task counts as its block', () => {

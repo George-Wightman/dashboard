@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '7c3e13f0';
+var PLANNER_BUILD = '800c2791';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -6063,6 +6063,34 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
     record(f.day, { key: f.key, eventId: null, calendarId: cal.id, title: f.title, start: f.start, end: f.end, state: 'fixed', items: [f.itemId] });
   }
 
+  // A Gym or Hebrew session over and not logged: moved to the first free time left that day, or
+  // removed when there's none — never to another day (24 Nov 2026: two-hour gym blocks that never
+  // happened sat on the calendar; docs/superpowers/specs/2026-11-24-missed-sessions-design.md). Free
+  // time only: anything busy on a watched calendar, the planner's own blocks included, stays where it
+  // is. Logged after it's gone, it comes back as a record of when it happened (the missed list, below).
+  function missedSession(ev, link, d) {
+    const length = ev.end.getTime() - ev.start.getTime();
+    const own = Object.keys(config.areaHours ?? {}).find((a) => norm(a) === norm(link.area));
+    const [from, until] = own === undefined ? (config.dayHours[d] ?? config.hours) : config.areaHours[own];
+    const win = { start: Math.max(at(d, from).getTime(), ceilQuarter(nowMs)), end: at(d, until).getTime() };
+    const taken = [...hard, ...offBusy(d, link.area),
+      ...timed.filter((e) => e.id !== ev.id && !e.free).map((e) => ({ start: e.start.getTime(), end: e.end.getTime() }))];
+    const to = dayClosed(doc, d) ? null : earliestFit(length, win, taken, gap);
+    if (to != null) {
+      // The pin comes off: it was for where he'd put it, and that time has gone.
+      patchHabit(ev, { start: to, end: to + length }, { [P.habit]: link.habitId, [P.pin]: '' });
+      busy(to, to + length, ev.title);
+      note(`Moved ${ev.title} to ${hhmm(to)} — its time passed without it being logged`);
+      return;
+    }
+    actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
+    const r = rec(d);
+    if (!r.missed.some((m) => m.itemId === link.habitId)) {
+      r.missed.push({ itemId: link.habitId, minutes: Math.round(length / MINUTE), calendarId: ev.calendarId, title: ev.title });
+    }
+    note(`Removed ${ev.title}${onDay(d)} — its time passed without it being logged, and there's no free time left`);
+  }
+
   // ---- Everything else: fixed events, links to tasks, Hebrew and Gym ------------------------------
   const movableHabits = [];
   for (const ev of timed.filter((e) => !e.mine)) {
@@ -6087,6 +6115,7 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       busy(span.start, span.end, ev.title);
       continue;
     }
+    if (end <= nowMs && d === today) { missedSession(ev, link, d); continue; }
     const placedByGeorge = habitPinned(ev);
     if (start <= nowMs || placedByGeorge) {
       if (placedByGeorge && ev.props[P.at] && ev.props[P.pin] !== '1') patchHabit(ev, { start, end }, { [P.pin]: '1' }, true);
@@ -6105,13 +6134,18 @@ function plan({ doc, now, dayStartHour = 4, calendars, events: raw, eventColors 
       const t = tickOf(m.itemId, d);
       if (!t.finished) return true;
       const booked = m.start && m.end ? { start: Date.parse(m.start), end: Date.parse(m.end) } : null;
-      if ((!booked && t.at == null) || covered.get(d)?.has(m.itemId) || !items[m.itemId]) return false;
-      const cal = calendarFor(items[m.itemId].area ?? '', config, find, problems);
+      // A Gym or Hebrew session removed unlogged (missedSession) goes back on its own calendar, at
+      // when it happened where the tick knows (Hevy), or ending at the tick.
+      const real = m.calendarId && t.span && localDay(new Date(t.span.start)) === localDay(new Date(t.span.end))
+        ? { start: t.span.start, end: Math.max(t.span.end, t.span.start + MIN_BLOCK) } : null;
+      if ((!booked && !real && t.at == null) || covered.get(d)?.has(m.itemId) || !items[m.itemId]) return false;
+      const cal = m.calendarId ? calendars.find((c) => c.id === m.calendarId) : calendarFor(items[m.itemId].area ?? '', config, find, problems);
       if (!cal) return false;
       const key = `${d}|done|${m.itemId}`;
-      const span = booked ?? recordSpan(t.at, m.minutes * MINUTE, null);
-      const title = blockTitle(items[m.itemId].title, 'done');
-      actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', cal), notes: noteLines([m.itemId]) }) });
+      const span = real ?? booked ?? recordSpan(t.at, m.minutes * MINUTE, null);
+      const name = m.title ?? items[m.itemId].title;
+      const title = blockTitle(name, 'done');
+      actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: name, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: m.calendarId ? null : colourFor(items[m.itemId].area ?? '', cal), notes: noteLines([m.itemId]) }) });
       busy(span.start, span.end, title);
       cover(d, [m.itemId]);
       useKey(d, key);
@@ -11276,7 +11310,7 @@ const __planner_hebrew_progress = (() => {
 
 const { API } = __planner_relay;
 const { addDays } = __js_dates;
-const { saidLedger } = __js_hebrewSync;
+const { saidLedger, HEBREW_IDS } = __js_hebrewSync;
 
 const HEBREW_REPO = 'George-Wightman/hebrew-reader-sync';
 
@@ -11378,7 +11412,21 @@ function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip, today 
   const saidOn = Object.keys(irl).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && irl[d] && !irl[d].off).sort().slice(-14);
   return { ok: true, days, strongGain, words, level, liveWeek, week, saidOn, push, device };
 }
-return { HEBREW_REPO, wordBand, HEBREW_CONTENT, readHebrewPhrases, readHebrewProgress };
+
+// The day's Hebrew tick, from the app's own progress, by the planner (24 Nov 2026). Until now only
+// the dashboard app wrote it, when it was opened, so the planner moved or removed Hebrew sessions he
+// had done (docs/superpowers/specs/2026-11-24-missed-sessions-design.md). The same log id the app
+// writes, so there's never two; `at` is when the planner first saw it, the nearest it can know. Made
+// once: one he has taken off stays off. Duolingo alone isn't a session here, as in the app.
+function tickHebrew(store, progress, day, now) {
+  if (!progress?.ok || !(Number(progress.days?.[day]?.sessions) > 0)) return false;
+  const id = `hebrew:done:${day}`;
+  const doc = store.doc();
+  if (doc.logs?.[id] || doc.items?.[HEBREW_IDS.habit]?.status !== 'active') return false;
+  store.putLog(id, { itemId: HEBREW_IDS.habit, kind: 'done', day, source: 'hebrew', at: now.toISOString() });
+  return true;
+}
+return { HEBREW_REPO, wordBand, HEBREW_CONTENT, readHebrewPhrases, readHebrewProgress, tickHebrew };
 })();
 
 // ---- planner/hebrew-nudges.js
@@ -11607,7 +11655,7 @@ const { gasCrypto } = __planner_webpush;
 const { handleRelay } = __planner_relay;
 const { handleGlance, glanceKeyProblem, applyGlanceAct } = __planner_glance;
 const { importDrags, webAppUrl, tickLink, handleTick } = __planner_ticks;
-const { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } = __planner_hebrew_progress;
+const { readHebrewProgress, readHebrewPhrases, HEBREW_REPO, tickHebrew } = __planner_hebrew_progress;
 const { createHebrewNudges } = __planner_hebrew_nudges;
 const { hebrewInputFrom } = __js_hebrew_voice;
 const { stopwatch, addPhases } = __planner_timing;
@@ -11668,8 +11716,7 @@ function createPlanner({
 
   // Hebrew's own pings (planner/hebrew-nudges.js). The status goes in the dashboard only when it
   // changes, so a quiet run writes nothing. Never stops the planner.
-  function hebrewPings(store, t, today, events, cals) {
-    const progress = hebrewProgress(today);
+  function hebrewPings(store, t, today, events, cals, progress = hebrewProgress(today)) {
     const busy = events.filter((e) => e.status !== 'cancelled' && e.transparency !== 'transparent' && e.start?.dateTime && e.end?.dateTime
       && e.extendedProperties?.private?.[P.mine] !== '1' && logicalDay(new Date(e.start.dateTime), 0) === today)
       .map((e) => ({ title: e.summary || 'Busy', calendar: cals.find((c) => c.id === e.calendarId)?.name ?? '', start: e.start.dateTime, end: e.end.dateTime }));
@@ -11979,6 +12026,17 @@ function createPlanner({
       watch.lap('health');
       await duolingo(store);
       watch.lap('duolingo');
+      // The Hebrew app's progress, read once a run: today's tick before planning, so a session he
+      // has done isn't moved or removed as missed, and the pings after it.
+      let hebrew = null;
+      try {
+        const day = logicalDay(t, dayStartHour());
+        hebrew = hebrewProgress(day);
+        tickHebrew(store, hebrew, day, t);
+      } catch (err) {
+        log(clean(`Hebrew tick failed: ${err?.message ?? err}`));
+      }
+      watch.lap('hebrewTick');
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
       try {
@@ -12091,7 +12149,7 @@ function createPlanner({
       watch.lap('checkins');
       // Hebrew's own pings, before the save, so their status goes in the same push.
       try {
-        hebrewPings(store, t, today, events, cals);
+        hebrewPings(store, t, today, events, cals, ...(hebrew ? [hebrew] : []));
       } catch (err) {
         log(clean(`Hebrew pings failed: ${err?.message ?? err}`));
       }

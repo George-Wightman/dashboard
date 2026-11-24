@@ -62,6 +62,10 @@ pain, dizziness, breathlessness out of proportion, numbness or pain down a leg, 
 
 ## What a workout does on its own
 
+A Gym block that passes with no workout logged moves to the first free time left that day, or is
+removed when there's none; it's never moved to another day. A Hevy workout logged afterwards still
+puts it (back) where he trained.
+
 A Hevy workout ticks the Gym habit and moves the Gym block to when he actually trained, and its
 cardio minutes count towards the linked weekly target. So do runs and rides from Google Health
 (Strava, the watch), hourly, logged as `health-cardio-…` with the note *Run (Google Health)*; a run

@@ -36,7 +36,7 @@ import { gasCrypto } from './webpush.js';
 import { handleRelay } from './relay.js';
 import { handleGlance, glanceKeyProblem, applyGlanceAct } from './glance.js';
 import { importDrags, webAppUrl, tickLink, handleTick } from './ticks.js';
-import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO } from './hebrew-progress.js';
+import { readHebrewProgress, readHebrewPhrases, HEBREW_REPO, tickHebrew } from './hebrew-progress.js';
 import { createHebrewNudges } from './hebrew-nudges.js';
 import { hebrewInputFrom } from '../js/hebrew-voice.js';
 import { stopwatch, addPhases } from './timing.js';
@@ -97,8 +97,7 @@ export function createPlanner({
 
   // Hebrew's own pings (planner/hebrew-nudges.js). The status goes in the dashboard only when it
   // changes, so a quiet run writes nothing. Never stops the planner.
-  function hebrewPings(store, t, today, events, cals) {
-    const progress = hebrewProgress(today);
+  function hebrewPings(store, t, today, events, cals, progress = hebrewProgress(today)) {
     const busy = events.filter((e) => e.status !== 'cancelled' && e.transparency !== 'transparent' && e.start?.dateTime && e.end?.dateTime
       && e.extendedProperties?.private?.[P.mine] !== '1' && logicalDay(new Date(e.start.dateTime), 0) === today)
       .map((e) => ({ title: e.summary || 'Busy', calendar: cals.find((c) => c.id === e.calendarId)?.name ?? '', start: e.start.dateTime, end: e.end.dateTime }));
@@ -408,6 +407,17 @@ export function createPlanner({
       watch.lap('health');
       await duolingo(store);
       watch.lap('duolingo');
+      // The Hebrew app's progress, read once a run: today's tick before planning, so a session he
+      // has done isn't moved or removed as missed, and the pings after it.
+      let hebrew = null;
+      try {
+        const day = logicalDay(t, dayStartHour());
+        hebrew = hebrewProgress(day);
+        tickHebrew(store, hebrew, day, t);
+      } catch (err) {
+        log(clean(`Hebrew tick failed: ${err?.message ?? err}`));
+      }
+      watch.lap('hebrewTick');
       processWorkflows(store);
       const reviewKey = get('GEMINI_KEY');
       try {
@@ -520,7 +530,7 @@ export function createPlanner({
       watch.lap('checkins');
       // Hebrew's own pings, before the save, so their status goes in the same push.
       try {
-        hebrewPings(store, t, today, events, cals);
+        hebrewPings(store, t, today, events, cals, ...(hebrew ? [hebrew] : []));
       } catch (err) {
         log(clean(`Hebrew pings failed: ${err?.message ?? err}`));
       }

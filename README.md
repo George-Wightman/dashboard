@@ -230,7 +230,8 @@ is teaching you by band (strong, progressing, weak, new), the next rung of the l
 along it is, and the words you most recently said live. Each sync keeps a small summary of this on
 the goal (`hebrewNow`: the four ladder numbers, the latest bands, the last 14 days and the last 8
 words said live), so the phone shows it too, without its own Hebrew token. The daily
-habit ticks itself on any day the Hebrew app shows a session; the targets show real minutes, reps
+habit ticks itself on any day the Hebrew app shows a session (the planner does this too, every ten
+minutes, so it never takes a session you did for a missed one); the targets show real minutes, reps
 and words against target the same way any other weekly target does. Read-only: the dashboard never
 writes back to that repo, and this can never conflict with the Hebrew app's own sync. Once created,
 the goal, habit, targets and stages are ordinary records — rename them, retarget them, or archive
@@ -487,6 +488,8 @@ writes a workout and never touches your own routines. Hevy can't delete routines
 the few in *Dashboard* are reused for each new session.
 
 - **A workout ticks Gym**, and the Gym block in your calendar moves to when you actually trained.
+  A Gym or Hebrew session that passes without being logged moves to the first free time left that
+  day, or is removed if there's none — never to another day, and never over anything already booked.
   Its cardio minutes count towards your Cardio target (Claude links it). Untick it and it stays
   unticked; edit or delete the workout in Hevy and the dashboard follows.
 - **The Gym panel** (a widget — Arrange moves or hides it): the week, the Cardio target, and a card for

@@ -267,7 +267,9 @@ earlier one (`reference planning`).
 Also `area`, `goal`, `minutes` (its length, as for a task), `notes` and `priority`, and `"time":
 "09:30"` — a set time of day, which books it at that time on every day it's due rather than letting
 the planner slot it in. A habit linked to its own calendar events (`habitEvents` in the planner's
-settings) ignores `time`: those events are already its sessions.
+settings) ignores `time`: those events are already its sessions. One that passes unlogged moves to
+the first free time left that day, or is removed when there's none — never to another day, and never
+over anything already booked (a note on the day says which).
 
 ### `target`
 A weekly target. `{"op": "target", "title": "Applications", "target": 5, "unitLabel": "applications"}`

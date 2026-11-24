@@ -6,7 +6,7 @@
 
 import { API } from './relay.js';
 import { addDays } from '../js/dates.js';
-import { saidLedger } from '../js/hebrewSync.js';
+import { saidLedger, HEBREW_IDS } from '../js/hebrewSync.js';
 
 export const HEBREW_REPO = 'George-Wightman/hebrew-reader-sync';
 
@@ -107,4 +107,18 @@ export function readHebrewProgress({ request, repo = HEBREW_REPO, token, gunzip,
   const irl = objectAt(keys, 'hvr_irl');
   const saidOn = Object.keys(irl).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && irl[d] && !irl[d].off).sort().slice(-14);
   return { ok: true, days, strongGain, words, level, liveWeek, week, saidOn, push, device };
+}
+
+// The day's Hebrew tick, from the app's own progress, by the planner (24 Nov 2026). Until now only
+// the dashboard app wrote it, when it was opened, so the planner moved or removed Hebrew sessions he
+// had done (docs/superpowers/specs/2026-11-24-missed-sessions-design.md). The same log id the app
+// writes, so there's never two; `at` is when the planner first saw it, the nearest it can know. Made
+// once: one he has taken off stays off. Duolingo alone isn't a session here, as in the app.
+export function tickHebrew(store, progress, day, now) {
+  if (!progress?.ok || !(Number(progress.days?.[day]?.sessions) > 0)) return false;
+  const id = `hebrew:done:${day}`;
+  const doc = store.doc();
+  if (doc.logs?.[id] || doc.items?.[HEBREW_IDS.habit]?.status !== 'active') return false;
+  store.putLog(id, { itemId: HEBREW_IDS.habit, kind: 'done', day, source: 'hebrew', at: now.toISOString() });
+  return true;
 }

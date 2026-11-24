@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { readHebrewProgress, readHebrewPhrases } from '../planner/hebrew-progress.js';
+import { readHebrewProgress, readHebrewPhrases, tickHebrew } from '../planner/hebrew-progress.js';
+import { makeStore, clock } from './helpers.js';
 
 const gunzip = (b64) => gunzipSync(Buffer.from(b64, 'base64')).toString('utf8');
 const envelope = (keys) => JSON.stringify({ app: 'hebrew-reader', enc: 'gzip', body: gzipSync(Buffer.from(JSON.stringify({ keys }))).toString('base64') });
@@ -70,4 +71,21 @@ test('says which device last wrote the sync file, so the pings can be checked ag
   const body = JSON.stringify({ app: 'hebrew-reader', enc: 'gzip', device: 'ts4pkg', body: gzipSync(Buffer.from(JSON.stringify({ keys: {} }))).toString('base64') });
   assert.equal(readHebrewProgress({ request: serve(200, body).request, token: 'T', gunzip }).device, 'ts4pkg');
   assert.equal(readHebrewProgress({ request: serve(200, envelope({})).request, token: 'T', gunzip }).device, null);
+});
+
+// 24 Nov 2026: the planner ticks the day itself, so a Hebrew session he has done isn't moved or
+// removed as missed while the dashboard app stays shut.
+test('the planner ticks Hebrew for a day the app shows a session, once, and never over his own', () => {
+  const now = clock(new Date(2026, 8, 15, 18, 40));
+  const store = makeStore({ now });
+  store.addItem({ id: 'hebrew-habit', type: 'habit', title: 'Hebrew practice', area: 'Hebrew', repeat: { kind: 'daily' }, created: '2026-09-01' });
+  const progress = { ok: true, days: { '2026-09-15': { sec: 1300, sessions: 2 }, '2026-09-16': { sec: 0, sessions: 0 } } };
+  assert.equal(tickHebrew(store, { ok: false, error: 'x' }, '2026-09-15', now()), false);
+  assert.equal(tickHebrew(store, progress, '2026-09-16', now()), false);
+  assert.equal(tickHebrew(store, progress, '2026-09-15', now()), true);
+  const log = store.doc().logs['hebrew:done:2026-09-15'];
+  assert.equal(log.kind, 'done');
+  assert.equal(log.itemId, 'hebrew-habit');
+  assert.equal(log.at, now().toISOString());
+  assert.equal(tickHebrew(store, progress, '2026-09-15', now()), false);
 });

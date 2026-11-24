@@ -471,6 +471,34 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
     record(f.day, { key: f.key, eventId: null, calendarId: cal.id, title: f.title, start: f.start, end: f.end, state: 'fixed', items: [f.itemId] });
   }
 
+  // A Gym or Hebrew session over and not logged: moved to the first free time left that day, or
+  // removed when there's none — never to another day (24 Nov 2026: two-hour gym blocks that never
+  // happened sat on the calendar; docs/superpowers/specs/2026-11-24-missed-sessions-design.md). Free
+  // time only: anything busy on a watched calendar, the planner's own blocks included, stays where it
+  // is. Logged after it's gone, it comes back as a record of when it happened (the missed list, below).
+  function missedSession(ev, link, d) {
+    const length = ev.end.getTime() - ev.start.getTime();
+    const own = Object.keys(config.areaHours ?? {}).find((a) => norm(a) === norm(link.area));
+    const [from, until] = own === undefined ? (config.dayHours[d] ?? config.hours) : config.areaHours[own];
+    const win = { start: Math.max(at(d, from).getTime(), ceilQuarter(nowMs)), end: at(d, until).getTime() };
+    const taken = [...hard, ...offBusy(d, link.area),
+      ...timed.filter((e) => e.id !== ev.id && !e.free).map((e) => ({ start: e.start.getTime(), end: e.end.getTime() }))];
+    const to = dayClosed(doc, d) ? null : earliestFit(length, win, taken, gap);
+    if (to != null) {
+      // The pin comes off: it was for where he'd put it, and that time has gone.
+      patchHabit(ev, { start: to, end: to + length }, { [P.habit]: link.habitId, [P.pin]: '' });
+      busy(to, to + length, ev.title);
+      note(`Moved ${ev.title} to ${hhmm(to)} — its time passed without it being logged`);
+      return;
+    }
+    actions.push({ op: 'delete', calendarId: ev.calendarId, eventId: ev.id });
+    const r = rec(d);
+    if (!r.missed.some((m) => m.itemId === link.habitId)) {
+      r.missed.push({ itemId: link.habitId, minutes: Math.round(length / MINUTE), calendarId: ev.calendarId, title: ev.title });
+    }
+    note(`Removed ${ev.title}${onDay(d)} — its time passed without it being logged, and there's no free time left`);
+  }
+
   // ---- Everything else: fixed events, links to tasks, Hebrew and Gym ------------------------------
   const movableHabits = [];
   for (const ev of timed.filter((e) => !e.mine)) {
@@ -495,6 +523,7 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       busy(span.start, span.end, ev.title);
       continue;
     }
+    if (end <= nowMs && d === today) { missedSession(ev, link, d); continue; }
     const placedByGeorge = habitPinned(ev);
     if (start <= nowMs || placedByGeorge) {
       if (placedByGeorge && ev.props[P.at] && ev.props[P.pin] !== '1') patchHabit(ev, { start, end }, { [P.pin]: '1' }, true);
@@ -513,13 +542,18 @@ export function plan({ doc, now, dayStartHour = 4, calendars, events: raw, event
       const t = tickOf(m.itemId, d);
       if (!t.finished) return true;
       const booked = m.start && m.end ? { start: Date.parse(m.start), end: Date.parse(m.end) } : null;
-      if ((!booked && t.at == null) || covered.get(d)?.has(m.itemId) || !items[m.itemId]) return false;
-      const cal = calendarFor(items[m.itemId].area ?? '', config, find, problems);
+      // A Gym or Hebrew session removed unlogged (missedSession) goes back on its own calendar, at
+      // when it happened where the tick knows (Hevy), or ending at the tick.
+      const real = m.calendarId && t.span && localDay(new Date(t.span.start)) === localDay(new Date(t.span.end))
+        ? { start: t.span.start, end: Math.max(t.span.end, t.span.start + MIN_BLOCK) } : null;
+      if ((!booked && !real && t.at == null) || covered.get(d)?.has(m.itemId) || !items[m.itemId]) return false;
+      const cal = m.calendarId ? calendars.find((c) => c.id === m.calendarId) : calendarFor(items[m.itemId].area ?? '', config, find, problems);
       if (!cal) return false;
       const key = `${d}|done|${m.itemId}`;
-      const span = booked ?? recordSpan(t.at, m.minutes * MINUTE, null);
-      const title = blockTitle(items[m.itemId].title, 'done');
-      actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: items[m.itemId].title, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: colourFor(items[m.itemId].area ?? '', cal), notes: noteLines([m.itemId]) }) });
+      const span = real ?? booked ?? recordSpan(t.at, m.minutes * MINUTE, null);
+      const name = m.title ?? items[m.itemId].title;
+      const title = blockTitle(name, 'done');
+      actions.push({ op: 'insert', calendarId: cal.id, key, body: bodyFor({ key, base: name, title, start: span.start, end: span.end, items: [m.itemId], state: 'done', colorId: m.calendarId ? null : colourFor(items[m.itemId].area ?? '', cal), notes: noteLines([m.itemId]) }) });
       busy(span.start, span.end, title);
       cover(d, [m.itemId]);
       useKey(d, key);
