@@ -45,3 +45,8 @@ test('a split that makes no sense is refused', () => {
   ];
   for (const b of bad) assert.throws(() => parseDaySplit(b, { batches }), /split didn.t make sense/);
 });
+
+test('a time without its leading zero is read, not refused', () => {
+  const [m] = parseDaySplit({ meals: [{ slot: 'breakfast', time: '8:30', text: 'eggs' }] }, { batches });
+  assert.equal(m.time, '08:30');
+});

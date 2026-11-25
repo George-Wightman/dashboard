@@ -36,6 +36,12 @@ test('close: a past day or today, never one to come, and the misses named', () =
   assert.throws(() => runOp(s, { op: 'close', day: 'tomorrow' }), /hasn't happened yet/);
 });
 
+test("morning closes yesterday too, as the card's Done does", () => {
+  const s = setup();
+  runOp(s, { op: 'morning' });
+  assert.ok(closedRecord(s.doc(), '2026-11-11'));
+});
+
 test('morning: marks Start the day done, so the card and the push stop', () => {
   const s = setup();
   runOp(s, { op: 'back', score: 'fine' });

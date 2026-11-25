@@ -51,7 +51,8 @@ export function morningLine(model) {
   parts.push(model.back ? `back ${model.back.word}` : skipped.has('back') ? 'back skipped' : 'back not answered');
   const day = shortWeekday(model.yesterday);
   const c = model.close;
-  if (c.closed) {
+  if (c.closed && !c.total) parts.push(`nothing was on ${day}`);
+  else if (c.closed) {
     parts.push(`${day} closed: ${c.done} of ${c.total} done${c.notDone.length ? ` · not done: ${c.notDone.join(', ')}` : ''}`);
   } else parts.push(`${day} not closed`);
   parts.push(`${model.meals.length} meal${model.meals.length === 1 ? '' : 's'} logged`);
@@ -76,13 +77,20 @@ export function firstMissingSlot(logged, rows) {
 }
 
 // The checked split, saved: a usual meal exactly, a share of a pot exactly, anything else as his
-// words, pending, for the background estimate (js/photos.js). An empty row is left out. Returns
-// how many were saved.
+// words, pending, for the background estimate (js/photos.js). An empty row is left out. Every row is
+// checked before any is written, so a bad one saves nothing and saving again never doubles a meal.
+// Returns how many were saved.
 export function saveSplitMeals(store, day, rows, dayStartHour = 4) {
+  const doc = store.doc();
+  const keep = rows.filter((r) => String(r.text ?? '').trim() || r.usualId);
+  for (const r of keep) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time ?? ''))) throw new Error(`Give ${String(r.text ?? '').trim() || 'each meal'} a time like 19:30`);
+    if (r.usualId && !(doc.meals?.[r.usualId]?.kind === 'usual' && doc.meals[r.usualId].status === 'active')) throw new Error(`${r.text} isn't a usual meal any more`);
+    if (r.batchId && !(doc.meals?.[r.batchId]?.kind === 'batch' && doc.meals[r.batchId].status === 'active')) throw new Error(`${r.text}: that pot isn't in the fridge any more`);
+  }
   let n = 0;
-  for (const r of rows) {
+  for (const r of keep) {
     const text = String(r.text ?? '').trim();
-    if (!text && !r.usualId) continue;
     const at = mealTimeFor(day, r.time, dayStartHour);
     const meal = r.usualId ? store.addMeal({ at, usualId: r.usualId })
       : r.batchId ? store.addServing({ at, batchId: r.batchId, share: r.share })

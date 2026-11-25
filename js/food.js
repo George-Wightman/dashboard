@@ -121,7 +121,8 @@ export function parseDaySplit(data, { batches: pots = [] } = {}) {
     if (!m || typeof m !== 'object' || !SPLIT_SLOTS.includes(m.slot)) throw new Error(SPLIT_BAD);
     const text = typeof m.text === 'string' ? m.text.trim().slice(0, 500) : '';
     if (!text) throw new Error(SPLIT_BAD);
-    const time = m.time == null || m.time === '' ? SPLIT_DEFAULT_TIMES[m.slot] : String(m.time).trim();
+    // "8:30" is 08:30: Gemini often drops the leading zero.
+    const time = m.time == null || m.time === '' ? SPLIT_DEFAULT_TIMES[m.slot] : String(m.time).trim().replace(/^(\d):/, '0$1:');
     if (!HHMM.test(time)) throw new Error(SPLIT_BAD);
     let batchId = null;
     let share = null;

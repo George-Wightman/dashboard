@@ -1153,10 +1153,12 @@ function close(store, op) {
   return closedLine(closeModel(store.doc(), day)).replace(/^Day closed at \d\d:\d\d/, `Closed ${dayName(day, today)}`);
 }
 
-// Start the day done from a chat: the card and the push stop. Run it once back, ticks and food are in.
+// Start the day done from a chat: yesterday closed (as the card's Done does) and the card and the
+// push stop. Run it once back, ticks and food are in.
 function morning(store) {
   const today = store.today();
   const m = morningModel(store.doc(), today);
+  if (!m.close.closed) store.putCalendar(closedId(m.yesterday), { day: m.yesterday, closed: true, at: store.now().toISOString() }, CLAUDE);
   const skipped = [...(m.back ? [] : ['back']), ...(m.meals.length ? [] : ['food'])];
   store.putCalendar(morningId(today), { day: today, done: true, at: store.now().toISOString(), skipped }, CLAUDE);
   return morningLine(morningModel(store.doc(), today));

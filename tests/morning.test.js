@@ -133,3 +133,31 @@ test('Today leads with the card, holds the back row until the morning is done, a
   assert.match(ui, /parseDaySplit\(data, \{ batches: pots \}\)/);
   assert.match(ui, /Your words are kept/);
 });
+
+test('a split with one bad row saves nothing, so saving again never logs a meal twice', () => {
+  const { store } = setup();
+  const before = mealsOn(store.doc(), '2026-11-11').length;
+  const rows = [
+    { slot: 'lunch', time: '13:00', text: 'soup' },
+    { slot: 'dinner', time: '', text: 'pasta' },
+  ];
+  assert.throws(() => saveSplitMeals(store, '2026-11-11', rows, 4), /time like 19:30/);
+  assert.equal(mealsOn(store.doc(), '2026-11-11').length, before);
+  assert.throws(() => saveSplitMeals(store, '2026-11-11', [{ slot: 'snack', time: '16:00', text: 'shake', usualId: 'usual:gone' }], 4), /isn't a usual meal any more/);
+  assert.throws(() => saveSplitMeals(store, '2026-11-11', [{ slot: 'lunch', time: '13:00', text: 'chilli', batchId: 'batch:gone', share: 0.25 }], 4), /isn't in the fridge any more/);
+  assert.equal(mealsOn(store.doc(), '2026-11-11').length, before);
+});
+
+test('a day with nothing on it is not reported as closed 0 of 0', () => {
+  const now = clock(new Date(2026, 10, 12, 8, 0));
+  const store = makeStore({ now });
+  finishMorning(store, { today: '2026-11-12', at: new Date(2026, 10, 12, 8, 1), flagState: {} });
+  const line = morningLine(morningModel(store.doc(), '2026-11-12'));
+  assert.doesNotMatch(line, /0 of 0/);
+  assert.match(line, /nothing was on Wed/);
+});
+
+test('Done stops when the checked meals could not be saved', () => {
+  const ui = readFileSync(new URL('../js/ui/morning.js', import.meta.url), 'utf8');
+  assert.match(ui, /if \(draft\.rows\?\.length && !saveMeals\(\)\) return;/);
+});

@@ -79,21 +79,27 @@ export function openMorning(ctx) {
     paint();
   }
 
+  // Whether they saved: a row that can't be (no time, a usual meal or pot gone) saves none of them.
   function saveMeals() {
     const m = morningModel(ctx.store.doc(), today);
+    let ok = true;
     try {
       saveSplitMeals(ctx.store, m.yesterday, draft.rows ?? [], ctx.store.settings().dayStartHour);
       draft.rows = null;
       draft.error = '';
-    } catch (e) { draft.error = e.message; }
+    } catch (e) {
+      draft.error = e.message;
+      ok = false;
+    }
     paint();
+    return ok;
   }
 
   function finish() {
     stopListening();
     try {
       // Words split but not saved yet go in with Done, so nothing he checked is lost.
-      if (draft.rows?.length) saveMeals();
+      if (draft.rows?.length && !saveMeals()) return;
       finishMorning(ctx.store, { today, note: draft.note, at: new Date(), flagState: ctx.flagState(), doing: doingNow(ctx.store.doc(), today, new Date()) });
     } catch (e) {
       draft.error = e.message;
