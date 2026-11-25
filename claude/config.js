@@ -37,7 +37,5 @@ export function readConfig(text) {
   if (Boolean(relayUrl) !== Boolean(relayKey) || (relayKey && relayKey.length < 32)) {
     throw new Error("The skill's config.json needs relayUrl and relayKey together — run node claude/relay-setup.mjs again");
   }
-  // Who the laptop says it is to the SEC for Stocks' US company accounts (claude/stocks-accounts.js).
-  const secContact = typeof c.secContact === 'string' && c.secContact.trim() ? c.secContact.trim() : null;
-  return { token, repo, dayStartHour, timeZone, relayUrl: relayUrl || null, relayKey: relayKey || null, secContact };
+  return { token, repo, dayStartHour, timeZone, relayUrl: relayUrl || null, relayKey: relayKey || null };
 }

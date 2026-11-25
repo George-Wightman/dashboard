@@ -1,5 +1,5 @@
 // THE SUNDAY LETTER. George plans through Claude and Google Calendar, and the week-in-review tile
-// was never opened. So on Sunday evening a Claude routine (his subscription, like the stocks one;
+// was never opened. So on Sunday evening a Claude routine (his subscription;
 // the desktop task "sunday-letter") writes the week: what got done and what didn't, by name, his
 // Hebrew, money against the forecast, the map, and a proposed plan for next week. It arrives as one
 // notification (the planner, planner/letter.js) and one page (js/ui/letter.js), and he answers in a

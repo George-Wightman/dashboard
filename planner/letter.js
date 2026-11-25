@@ -22,7 +22,7 @@ export function createLetterPush({ request, props, send, now, today, log = () =>
     try { file = JSON.parse(res.text); } catch { return null; }
     const letter = latestLetter(file);
     if (!letter || get('LETTER_SENT') === letter.id || !letterFresh(letter, today)) return null;
-    // Marked first, as the stocks alert is: one try, never a notification every ten minutes.
+    // Marked first: one try, never a notification every ten minutes.
     props.put('LETTER_SENT', letter.id);
     const ok = send({ title: 'Your week', body: letter.title.slice(0, 140), url: './?big=letter', tag: `letter:${letter.id}` });
     log(`Sunday letter ${letter.id}: ${ok ? 'sent' : 'no device to send to'}`);

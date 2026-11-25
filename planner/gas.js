@@ -30,7 +30,6 @@ import { processWorkflows } from '../js/workflow.js';
 import { runGoalReviews } from './reviews.js';
 import { createCheckins, makePusher, pushSubscriptions } from './checkins.js';
 import { createNudges } from './nudges.js';
-import { createStocks } from './stocks.js';
 import { createLetterPush } from './letter.js';
 import { gasCrypto } from './webpush.js';
 import { handleRelay } from './relay.js';
@@ -608,7 +607,7 @@ export function createPlanner({
         log(clean(`Nudges failed: ${err?.message ?? err}`));
       }
       watch.lap('nudges');
-      // A push to his devices, and a GitHub request, for the steps below (stocks, the Sunday letter).
+      // A push to his devices, and a GitHub request, for the step below (the Sunday letter).
       const send = (message) => {
         const tools = pushCrypto ?? (Utilities ? gasCrypto(Utilities) : null);
         const privateKey = get('VAPID_PRIVATE'); const publicKey = get('VAPID_PUBLIC');
@@ -621,14 +620,6 @@ export function createPlanner({
           ...(init.body !== undefined ? { payload: init.body, contentType: 'application/json' } : {}) });
         return { status: res.getResponseCode(), text: res.getContentText() };
       };
-      // Stocks (planner/stocks.js): positions, prices and lenses into stocks/market.json, and Claude's
-      // alert to his devices once. Off until George adds his Trading 212 key. Never stops the planner.
-      if (get('T212_KEY') && hourly('STOCKS_RAN', t)) try {
-        createStocks({ request: fetchFor, props: { get, put }, log, now, send }).run();
-      } catch (err) {
-        log(clean(`Stocks failed: ${err?.message ?? err}`));
-      }
-      watch.lap('stocks');
       // The Sunday letter (planner/letter.js): one push when Claude's Sunday routine has written a new
       // one. Never stops the planner.
       if (hourly('LETTER_RAN', t)) try {

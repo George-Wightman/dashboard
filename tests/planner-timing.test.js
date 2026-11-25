@@ -20,8 +20,8 @@ test('the day adds up run by run, and junk in the property is dropped', () => {
 });
 
 test('the biggest steps in words, a minute or more each', () => {
-  assert.equal(phaseLine({ calendarRead: 21 * 60000, save: 9 * 60000, open: 12 * 60000, tag: 10000, stocks: 2 * 60000, plan: 60000 }),
-    'reading the calendars 21 min, reading the dashboard 12 min, saving 9 min, stocks 2 min');
+  assert.equal(phaseLine({ calendarRead: 21 * 60000, save: 9 * 60000, open: 12 * 60000, tag: 10000, letter: 2 * 60000, plan: 60000 }),
+    'reading the calendars 21 min, reading the dashboard 12 min, saving 9 min, the Sunday letter 2 min');
   assert.equal(phaseLine({}), '');
   const doc = { calendar: { 'checkins:status': { status: 'active', day: '2026-11-20', runMs: 30 * 60000, runs: 40, phases: { calendarRead: 10 * 60000 } } } };
   assert.equal(plannerBudget(doc, '2026-11-20').line, "Apps Script today: 30 of Google's 90 minutes, over 40 runs (about 45 s each); most of it reading the calendars 10 min");

@@ -24,7 +24,7 @@ const STEP_NAMES = {
   open: 'reading the dashboard', hevy: 'Hevy', health: 'Google Health', duolingo: 'Duolingo', workflows: 'follow-ups and reviews',
   tag: 'tagging areas', calendarRead: 'reading the calendars', reconcile: 'reading calendar edits', inboundSave: 'saving calendar edits',
   shifts: 'shifts', plan: 'planning', calendarWrite: 'writing the calendar', record: 'recording bookings', checkins: 'check-ins',
-  hebrew: 'Hebrew pings', save: 'saving', pings: 'check-in pings', nudges: 'nudges', stocks: 'stocks', letter: 'the Sunday letter', other: 'the rest',
+  hebrew: 'Hebrew pings', save: 'saving', pings: 'check-in pings', nudges: 'nudges', letter: 'the Sunday letter', other: 'the rest',
 };
 
 // The planner's biggest steps today (planner/timing.js counts them), in words: "reading the calendars 21 min, saving 9 min, …".

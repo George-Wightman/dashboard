@@ -25,8 +25,6 @@ import { mapToday, mapSummary, readMaps } from '../js/map/summary.js';
 import { validMap } from '../js/map/files.js';
 import { dayPoints, pointsLines } from '../js/map/points.js';
 import { readMoney, moneyLines, importMoney } from './money.js';
-import { readStocks, stocksLines, briefInput, writeStocks } from './stocks.js';
-import { accountsPatch } from './stocks-accounts.js';
 
 // The map in words, then today's points row by row: what's counting and what isn't.
 const mapLines = (doc, today, got) => [...mapSummary(got), ...pointsLines(dayPoints(doc, today, got.map))];
@@ -34,13 +32,12 @@ const saveFile = (path, bytes) => { mkdirSync(dirname(path), { recursive: true }
 
 // Short, ordered procedures for the jobs that go wrong most: which read to run first, what to change,
 // what never to touch. Served from the clone like the reference, so they can't go stale.
-export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews', 'food', 'money', 'stocks'];
+export const PLAYBOOKS = ['calendar', 'planning', 'gym', 'workflows', 'reviews', 'food', 'money'];
 
 export const USAGE = [
   'Usage: bash run.sh <command> [argument]',
-  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · stocks · usage [days] · reference [topic] · handoffs · handoff <name>',
+  'Reads: catchup [days] · today · week · goals · list · find <words> · day <YYYY-MM-DD|today|yesterday> · history · checkins [days] · flags [feature|bug|claude|note] · changes [n] · planner · attention · gym · food [days] · photo <meal id> · map · hours · money · usage [days] · reference [topic] · handoffs · handoff <name>',
   'Money ledger: money-import <file.json> merges a ledger built from his statements (reference money)',
-  'Stocks: stocks · stocks brief-input [daily|weekly] · stocks-accounts (US company accounts, Saturdays) · stocks-write <file.json> merges brief, notes, theses, themes, tiers, shortlist (reference stocks)',
   "The Sunday letter: letter (the latest, to go through its plan) · letter-write <file.json> saves the week's letter and the planner sends it to his phone",
   'Hebrew, his own week: hebrew-week --progress <the Hebrew app\'s progress.json> · hebrew-week-write <file.json> saves the week\'s cards for the Hebrew app',
   "Changes: bash run.sh apply <<'EOF' … EOF, with one op or a list of ops as JSON (see reference.md)",
@@ -193,7 +190,7 @@ export async function main({
     // Before any date is made: the sandbox runs on UTC, George's devices on London time.
     env.TZ = config.timeZone;
 
-    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'stocks' && command !== 'stocks-write' && command !== 'stocks-accounts' && command !== 'hebrew-week' && command !== 'hebrew-week-write' && command !== 'letter' && command !== 'letter-write' && !Object.hasOwn(READS, command)) {
+    if (command !== 'apply' && command !== 'preview' && command !== 'photo' && command !== 'map' && command !== 'money' && command !== 'money-import' && command !== 'hebrew-week' && command !== 'hebrew-week-write' && command !== 'letter' && command !== 'letter-write' && !Object.hasOwn(READS, command)) {
       await trail(`command: ${command}`, `Unknown command "${command}"`);
       say(`Unknown command "${command}".`);
       say(USAGE);
@@ -284,23 +281,6 @@ export async function main({
       } catch (e) { say(e.message); return finish(1); }
     }
 
-    // Stocks (claude/stocks.js): the planner's market.json and Claude's desk.json, beside data.json.
-    if (command === 'stocks') {
-      try {
-        const { market, desk } = await readStocks(files);
-        const [sub, kind] = rest;
-        say((sub === 'brief-input' ? briefInput(market, desk, store.today(), kind === 'weekly' ? 'weekly' : 'daily') : stocksLines(market, desk, store.today())).join('\n'));
-        return finish(0);
-      } catch (e) { say(e.message); return finish(1); }
-    }
-    if (command === 'stocks-write') {
-      try {
-        const path = rest.join(' ').trim();
-        if (!path) throw new Error('stocks-write needs the path of a JSON file');
-        say(await writeStocks(files, readText(path)));
-        return finish(0);
-      } catch (e) { say(e.message); return finish(1); }
-    }
     // His own week in Hebrew (claude/hebrew-week.js): what to write from, and saving what was written.
     if (command === 'hebrew-week') {
       try {
@@ -339,25 +319,6 @@ export async function main({
         await files.write(LETTERS_PATH, `${JSON.stringify(addLetter(file, letter))}\n`, `letters: ${letter.id}`);
         say(`Saved the letter for ${letter.id} (${letter.parts.length} parts, ${letter.plan.length} plan lines). The planner sends it to his phone within ten minutes.`);
         return finish(0);
-      } catch (e) { say(e.message); return finish(1); }
-    }
-    // US company accounts from the SEC into Price and Health (claude/stocks-accounts.js): the laptop
-    // can say who it is, which Google's script servers can't.
-    if (command === 'stocks-accounts') {
-      try {
-        if (!config.secContact) throw new Error('No secContact in the skill config.json: add "secContact": "<name> <email>" for the SEC.');
-        const { desk } = await readStocks(files);
-        const fetchText = async (url, { contact } = {}) => {
-          const res = await globalThis.fetch(url, { headers: { 'User-Agent': contact || 'Mozilla/5.0' } });
-          return { status: res.status, text: await res.text() };
-        };
-        const r = await accountsPatch({ desk, fetchText, contact: config.secContact });
-        const at = new Date().toISOString();
-        const tag = (l) => ({ ...l, reason: `${l.reason} (SEC accounts)` });
-        const lensNotes = Object.fromEntries(Object.entries(r.lensNotes).map(([t, v]) => [t, { health: tag(v.health), price: tag(v.price) }]));
-        if (Object.keys(lensNotes).length) await writeStocks(files, JSON.stringify({ lensNotes }), new Date(at));
-        say(`Accounts: ${r.done.join(', ') || 'none'}${r.failed.length ? ` · failed: ${r.failed.join(', ')}` : ''}`);
-        return finish(r.done.length || !r.failed.length ? 0 : 1);
       } catch (e) { say(e.message); return finish(1); }
     }
 

@@ -42,7 +42,6 @@ import { createBigStore, idbBackend } from './bigstore.js';
 import { loadCached, refreshFile } from './private.js';
 import { MONEY_PATH, MONEY_KEY, validMoney } from './money.js';
 import { LONDON_PATH, LONDON_KEY, validLondon } from './london.js';
-import { MARKET_PATH, MARKET_KEY, DESK_PATH, DESK_KEY, validMarket, validDesk } from './stocks.js';
 import { LETTERS_PATH, LETTERS_KEY, validLetters } from './letter.js';
 import { openLetter } from './ui/letter.js';
 import { createUsage, deviceOf } from './usage.js';
@@ -104,7 +103,6 @@ let mapsAt = 0;
 // Money's ledger and London's areas (js/private.js): private files too, read on the same half-hour beat.
 let money = loadCached(localStorage, MONEY_KEY, validMoney);
 let london = loadCached(localStorage, LONDON_KEY, validLondon);
-let stocks = { market: loadCached(localStorage, MARKET_KEY, validMarket), desk: loadCached(localStorage, DESK_KEY, validDesk) };
 // The Sunday letters (js/letter.js), Claude's, null until there.
 let letters = loadCached(localStorage, LETTERS_KEY, validLetters);
 const MAPS_EVERY = 30 * 60 * 1000;
@@ -186,8 +184,6 @@ const ctx = {
   // Money's ledger (js/money.js) and London's areas (js/london.js): null until the sync repo has them.
   money: () => money,
   london: () => london,
-  // Stocks (js/stocks.js): the planner's market.json and Claude's desk.json, each null until there.
-  stocks: () => stocks,
   letters: () => letters,
   setTiles(next) {
     tiles = normalizeTiles(next);
@@ -427,20 +423,17 @@ async function runMapSync() {
   if (FAKE || !token || !repo || navigator.onLine === false || Date.now() - mapsAt < MAPS_EVERY) return;
   mapsAt = Date.now();
   // Each file on its own: one that can't be fetched keeps its cached copy without stopping the others
-  // (a map blip used to leave money, London and stocks unread until the next half hour).
+  // (a map blip used to leave money and London unread until the next half hour).
   const files = (path) => clientFor(token, repo, path);
-  const [nextMaps, nextMoney, nextLondon, nextMarket, nextDesk, nextLetters] = await Promise.all([
+  const [nextMaps, nextMoney, nextLondon, nextLetters] = await Promise.all([
     refreshMaps({ clientFor: files, storage: bigFiles }).catch(() => maps),
     refreshFile({ clientFor: files, storage: localStorage, key: MONEY_KEY, path: MONEY_PATH, valid: validMoney }).catch(() => money),
     refreshFile({ clientFor: files, storage: localStorage, key: LONDON_KEY, path: LONDON_PATH, valid: validLondon }).catch(() => london),
-    refreshFile({ clientFor: files, storage: localStorage, key: MARKET_KEY, path: MARKET_PATH, valid: validMarket }).catch(() => stocks.market),
-    refreshFile({ clientFor: files, storage: localStorage, key: DESK_KEY, path: DESK_PATH, valid: validDesk }).catch(() => stocks.desk),
     refreshFile({ clientFor: files, storage: localStorage, key: LETTERS_KEY, path: LETTERS_PATH, valid: validLetters }).catch(() => letters),
   ]);
   maps = nextMaps;
   money = nextMoney;
   london = nextLondon;
-  stocks = { market: nextMarket, desk: nextDesk };
   letters = nextLetters;
   if (canRun()) render();
 }
@@ -703,11 +696,8 @@ if (params.has('do')) {
 // A home-screen widget tapped (android/): its tile, big.
 if (params.has('big')) {
   const tile = params.get('big');
-  // A Stocks alert opens the card it is about.
-  if (tile === 'stocks' && params.get('ticker')) ctx.ui.stocksOpen = params.get('ticker');
   const url = new URL(location.href);
   url.searchParams.delete('big');
-  url.searchParams.delete('ticker');
   history.replaceState(null, '', url.pathname + url.search + url.hash);
   if (tile === 'letter') {
     // The Sunday letter's notification: open it at once (the copy kept here, if any), and fetch the
