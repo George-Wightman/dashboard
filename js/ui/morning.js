@@ -24,7 +24,7 @@ export function renderMorningCard(ctx) {
   const today = ctx.store.today();
   const model = morningModel(doc, today);
   if (!morningDue(doc, today)) return h('p', { class: 'close-done morning-done', role: 'status' }, morningLine(model));
-  const parts = [model.back ? `back ${model.back.word}` : 'back', model.close.closed ? `${shortWeekday(model.yesterday)} closed` : `${shortWeekday(model.yesterday)}: ${closeLine(model.close)}`];
+  const parts = [model.back ? `back ${model.back.word}` : 'back to answer', model.close.closed ? `${shortWeekday(model.yesterday)} closed` : `${shortWeekday(model.yesterday)}: ${closeLine(model.close)}`];
   return h('div', { class: 'close-card morning-card' },
     h('div', { class: 'close-words' }, h('strong', {}, 'Start the day'), h('span', { class: 'muted' }, parts.join(' · '))),
     h('button', { class: 'dl-btn primary', type: 'button', 'data-use': 'morning-open', onclick: () => openMorning(ctx) }, 'Start'));
@@ -167,7 +167,7 @@ export function openMorning(ctx) {
           paint();
         } }, u.name))) : null,
         h('div', { class: 'close-actions' },
-          h('button', { class: 'dl-btn', type: 'button', 'data-use': 'morning-split', disabled: draft.busy || !draft.said.trim(), onclick: split }, draft.busy ? 'Splitting…' : 'Split into meals'),
+          h('button', { class: 'dl-btn', type: 'button', 'data-use': 'morning-split', disabled: draft.busy, onclick: split }, draft.busy ? 'Splitting…' : 'Split into meals'),
           draft.error && draft.said.trim() ? h('button', { class: 'link', type: 'button', onclick: oneMeal }, 'Log as one meal') : null)),
 
       h('section', {}, h('h3', {}, 'A line for Claude'),

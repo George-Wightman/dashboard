@@ -733,10 +733,11 @@ dialog.sheet.morning section > h3 { margin: 0; }
 .morning-meals li { font-size: 14px; color: var(--dl-muted); }
 .morning-meals strong { color: var(--dl-ink); font-weight: 700; }
 .morning-split-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: center; }
+.morning-split-row input[type="text"] { grid-column: 1 / -1; grid-row: 2; }
+.morning-split-row .link { grid-column: 4; justify-self: end; }
 .morning-split-row select, .morning-split-row input { min-height: 40px; border: 0; border-radius: 12px; padding: 6px 8px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; min-width: 0; }
 .morning-usual { display: flex; flex-wrap: wrap; gap: 6px; }
 .morning-usual .dl-btn { font-size: 14px; }
 .morning-actions { justify-content: space-between; align-items: center; }
 .tl-close-today { margin: 4px 0 0; text-align: right; font-size: 14px; }
-@media (max-width: 420px) { .morning-split-row { grid-template-columns: 1fr 1fr auto; } .morning-split-row input[type="text"] { grid-column: 1 / -1; grid-row: 2; } }
 .morning .close-actions { gap: 10px; flex-wrap: wrap; }
