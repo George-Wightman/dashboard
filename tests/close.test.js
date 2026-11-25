@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeModel, closeDue, closeLine, closedLine, closedId, closedRecord, CLOSE_FROM_HOUR } from '../js/close.js';
+import { closeModel, closeDue, closeLinkDue, closeLine, closedLine, closedId, closedRecord, CLOSE_FROM_HOUR } from '../js/close.js';
 import { dayClosed } from '../js/plan-state.js';
 import { makeStore, clock } from './helpers.js';
 
@@ -13,7 +13,7 @@ function setup() {
   return { now, store, a, b };
 }
 
-test('closing shows what is open and what is done, and the card comes in the evening', () => {
+test('closing shows what is open and what is done; today gets a link in the evening, not a card', () => {
   const { store, b } = setup();
   const doc = store.doc();
   const m = closeModel(doc, '2026-11-11');
@@ -22,8 +22,11 @@ test('closing shows what is open and what is done, and the card comes in the eve
   assert.ok(m.notDone.includes('Raise dish rack'));
   assert.match(closeLine(m), /^1 of \d done · \d not done · 0 of 3 meals$/);
   assert.equal(CLOSE_FROM_HOUR, 19);
-  assert.equal(closeDue(doc, '2026-11-11', '2026-11-11', new Date(2026, 10, 11, 18, 59)), false);
-  assert.equal(closeDue(doc, '2026-11-11', '2026-11-11', new Date(2026, 10, 11, 19, 0)), true);
+  // Start the day (js/morning.js) closes yesterday, so today never gets the card.
+  assert.equal(closeDue(doc, '2026-11-11', '2026-11-11', new Date(2026, 10, 11, 21, 0)), false);
+  assert.equal(closeLinkDue(doc, '2026-11-11', '2026-11-11', new Date(2026, 10, 11, 18, 59)), false);
+  assert.equal(closeLinkDue(doc, '2026-11-11', '2026-11-11', new Date(2026, 10, 11, 19, 0)), true);
+  assert.equal(closeLinkDue(doc, '2026-11-11', '2026-11-12', new Date(2026, 10, 12, 20, 0)), false);
   // A past day not yet closed asks at any hour; a day with nothing on it never does.
   assert.equal(closeDue(doc, '2026-11-11', '2026-11-12', new Date(2026, 10, 12, 9, 0)), true);
 });
@@ -34,7 +37,8 @@ test('a closed day names what was not done, and the planner sees it as closed', 
   const doc = store.doc();
   assert.ok(closedRecord(doc, '2026-11-11'));
   assert.equal(dayClosed(doc, '2026-11-11'), true);
-  assert.equal(closeDue(doc, '2026-11-11', '2026-11-11', new Date(2026, 10, 11, 22, 0)), false);
+  assert.equal(closeDue(doc, '2026-11-11', '2026-11-12', new Date(2026, 10, 12, 9, 0)), false);
+  assert.equal(closeLinkDue(doc, '2026-11-11', '2026-11-11', new Date(2026, 10, 11, 22, 0)), false);
   const line = closedLine(closeModel(doc, '2026-11-11'));
   assert.match(line, /^Day closed at 21:40 · 1 of \d done · not done: .*Raise dish rack/);
 });

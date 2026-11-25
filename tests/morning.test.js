@@ -1,0 +1,65 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { morningId, morningRecord, morningModel, morningDue, morningLine } from '../js/morning.js';
+import { closedId } from '../js/close.js';
+import { makeStore, clock } from './helpers.js';
+
+// Thursday 12 Nov 2026, 08:10. Yesterday (Wednesday) had two tasks, one ticked, and two meals.
+function setup() {
+  const now = clock(new Date(2026, 10, 11, 20, 0));
+  const store = makeStore({ now });
+  const a = store.addItem({ type: 'task', title: 'Wash up', date: '2026-11-11' });
+  const b = store.addItem({ type: 'task', title: 'Raise dish rack', date: '2026-11-11' });
+  store.toggleDone(a.id, '2026-11-11');
+  store.addMeal({ at: new Date(2026, 10, 11, 8, 30), text: '5 eggs, 2 pittas' });
+  store.addMeal({ at: new Date(2026, 10, 11, 13, 0), text: 'chicken wrap' });
+  now.set(new Date(2026, 10, 12, 8, 10));
+  return { now, store, a, b };
+}
+
+test('the morning: back unanswered, yesterday open, yesterday\'s meals', () => {
+  const { store, b } = setup();
+  const m = morningModel(store.doc(), '2026-11-12');
+  assert.equal(m.day, '2026-11-12');
+  assert.equal(m.yesterday, '2026-11-11');
+  assert.equal(m.back, null);
+  assert.deepEqual(m.close.tickable.map((r) => r.item.id), [b.id]);
+  assert.equal(m.meals.length, 2);
+  assert.equal(m.done, null);
+  assert.equal(morningDue(store.doc(), '2026-11-12'), true);
+});
+
+test('the back is read from today\'s answer, whichever device gave it', () => {
+  const { store } = setup();
+  store.setBack('2026-11-12', 1);
+  assert.deepEqual(morningModel(store.doc(), '2026-11-12').back, { score: 1, word: 'stiff' });
+});
+
+test('done once the morning record is there; its line names the misses', () => {
+  const { store } = setup();
+  store.setBack('2026-11-12', 0);
+  store.putCalendar(closedId('2026-11-11'), { day: '2026-11-11', closed: true, at: new Date(2026, 10, 12, 8, 12).toISOString() }, 'me');
+  store.putCalendar(morningId('2026-11-12'), { day: '2026-11-12', done: true, at: new Date(2026, 10, 12, 8, 14).toISOString(), skipped: [] }, 'me');
+  const doc = store.doc();
+  assert.equal(morningId('2026-11-12'), 'morning:2026-11-12');
+  assert.ok(morningRecord(doc, '2026-11-12'));
+  assert.equal(morningDue(doc, '2026-11-12'), false);
+  const line = morningLine(morningModel(doc, '2026-11-12'));
+  assert.match(line, /^Morning done at 08:14 · back fine · Wed closed: 1 of \d done · not done: .*Raise dish rack.* · 2 meals logged$/);
+});
+
+test('a skipped part is said, not hidden', () => {
+  const { store } = setup();
+  store.putCalendar(morningId('2026-11-12'), { day: '2026-11-12', done: true, at: new Date(2026, 10, 12, 8, 14).toISOString(), skipped: ['back', 'food'] }, 'me');
+  const line = morningLine(morningModel(store.doc(), '2026-11-12'));
+  assert.match(line, /back skipped/);
+  assert.match(line, /food skipped/);
+  assert.match(line, /Wed not closed/);
+});
+
+test('an archived morning record does not count', () => {
+  const { store } = setup();
+  store.putCalendar(morningId('2026-11-12'), { day: '2026-11-12', done: true, at: 'x', skipped: [] }, 'me');
+  store.putCalendar(morningId('2026-11-12'), { status: 'archived' }, 'me');
+  assert.equal(morningRecord(store.doc(), '2026-11-12'), null);
+});

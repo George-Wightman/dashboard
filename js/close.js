@@ -1,4 +1,5 @@
-// Closing the day: one pass in the evening instead of a question after every task. What's still
+// Closing the day: one pass instead of a question after every task (since 25 Nov 2026 done the next
+// morning, in Start the day, or from the evening link). What's still
 // open (tick what happened; the rest are named as not done), the meals, and one line for Claude.
 // He ticks in a batch late in the evening anyway, so the app meets him there. A closed day is one
 // small record, calendar['closed:<day>'], so the phone and the laptop agree; it's the record the
@@ -8,7 +9,7 @@
 import { todayRows, dayScore } from './schedule.js';
 import { mealsOn } from './food.js';
 
-export const CLOSE_FROM_HOUR = 19; // the card shows from here on today; a past day always shows it
+export const CLOSE_FROM_HOUR = 19; // the "Close today" link shows from here on; a past day always shows the card
 export const closedId = (day) => `closed:${day}`;
 
 export function closedRecord(doc, day) {
@@ -30,11 +31,16 @@ export function closeModel(doc, day) {
   return { open, tickable, done: score.done, total: score.total, notDone, pushed: score.pushed.map((r) => r.item.title), meals: mealsOn(doc, day).length, mainMeals: slots.size, closed: closedRecord(doc, day) };
 }
 
-// Whether the card belongs on screen: any past day not yet closed, or today from the evening on.
+// Whether the card belongs on screen: any past day not yet closed. Today is closed by the next
+// morning's Start the day (js/morning.js), so it never gets the card; from the evening it gets a
+// quiet link instead (closeLinkDue), for evenings he wants the planner to stop booking.
 export function closeDue(doc, day, today, now) {
   if (closedRecord(doc, day)) return false;
-  if (day < today) return closeModel(doc, day).total > 0;
-  return day === today && now.getHours() >= CLOSE_FROM_HOUR;
+  return day < today && closeModel(doc, day).total > 0;
+}
+
+export function closeLinkDue(doc, day, today, now) {
+  return day === today && !closedRecord(doc, day) && now.getHours() >= CLOSE_FROM_HOUR;
 }
 
 // The card's one line: "3 of 7 done · 4 still open · 2 of 3 meals".
