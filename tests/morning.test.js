@@ -1,6 +1,9 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { morningId, morningRecord, morningModel, morningDue, morningLine } from '../js/morning.js';
+import { morningId, morningRecord, morningModel, morningDue, morningLine, mealTimeFor, saveSplitMeals, finishMorning, firstMissingSlot, claudeMorningUrl } from '../js/morning.js';
+import { closedRecord } from '../js/close.js';
+import { mealsOn } from '../js/food.js';
 import { closedId } from '../js/close.js';
 import { makeStore, clock } from './helpers.js';
 
@@ -62,4 +65,71 @@ test('an archived morning record does not count', () => {
   store.putCalendar(morningId('2026-11-12'), { day: '2026-11-12', done: true, at: 'x', skipped: [] }, 'me');
   store.putCalendar(morningId('2026-11-12'), { status: 'archived' }, 'me');
   assert.equal(morningRecord(store.doc(), '2026-11-12'), null);
+});
+
+test('a split time goes on the day it belongs to: after midnight is still that day', () => {
+  assert.equal(mealTimeFor('2026-11-11', '13:05', 4).getTime(), new Date(2026, 10, 11, 13, 5).getTime());
+  assert.equal(mealTimeFor('2026-11-11', '01:30', 4).getTime(), new Date(2026, 10, 12, 1, 30).getTime());
+});
+
+test('saving the split: words as pending meals, a usual meal exactly, a serving of a pot', () => {
+  const { store } = setup();
+  const usual = store.saveUsual({ name: 'Protein shake', protein: 40, kcal: 300 });
+  const pot = store.saveBatch({ name: 'Chilli', ingredients: 'beef, beans', protein: 200, kcal: 3000, cookedOn: '2026-11-10' });
+  const n = saveSplitMeals(store, '2026-11-11', [
+    { slot: 'dinner', time: '19:30', text: 'pasta with pesto', batchId: null, share: null },
+    { slot: 'snack', time: '16:00', text: 'Protein shake', usualId: usual.id },
+    { slot: 'lunch', time: '13:30', text: 'a quarter of the chilli', batchId: pot.id, share: 0.25 },
+    { slot: 'snack', time: '22:00', text: '   ' },
+  ], 4);
+  assert.equal(n, 3);
+  const all = mealsOn(store.doc(), '2026-11-11');
+  assert.equal(all.length, 5);
+  const pasta = all.find((m) => m.text === 'pasta with pesto');
+  assert.equal(pasta.state, 'pending');
+  // The slot he checked stays, even where the clock would say otherwise.
+  assert.equal(all.find((m) => m.usualId === usual.id).slot, 'snack');
+  assert.equal(all.find((m) => m.usualId === usual.id).final.protein, 40);
+  assert.equal(all.find((m) => m.batchId === pot.id).final.protein, 50);
+});
+
+test('the first breakfast, lunch or dinner not logged yet, for a usual meal tapped in', () => {
+  const { store } = setup();
+  assert.equal(firstMissingSlot(mealsOn(store.doc(), '2026-11-11'), []), 'dinner');
+  assert.equal(firstMissingSlot(mealsOn(store.doc(), '2026-11-11'), [{ slot: 'dinner' }]), 'snack');
+});
+
+test('Done closes yesterday, leaves the note for Claude and says what was skipped', () => {
+  const { store } = setup();
+  const at = new Date(2026, 10, 12, 8, 14);
+  finishMorning(store, { today: '2026-11-12', note: 'slept badly', at, flagState: {}, doing: null });
+  const doc = store.doc();
+  assert.ok(closedRecord(doc, '2026-11-11'));
+  const rec = morningRecord(doc, '2026-11-12');
+  assert.deepEqual(rec.skipped, ['back']);
+  assert.ok(Object.values(doc.flags).some((f) => /slept badly/.test(f.text) && f.kind === 'claude'));
+});
+
+test('Done never reopens a day already closed, and with nothing logged food counts as skipped', () => {
+  const now = clock(new Date(2026, 10, 12, 8, 0));
+  const store = makeStore({ now });
+  store.setBack('2026-11-12', 0);
+  store.putCalendar(closedId('2026-11-11'), { day: '2026-11-11', closed: true, at: 'earlier' }, 'me');
+  finishMorning(store, { today: '2026-11-12', note: '', at: new Date(2026, 10, 12, 8, 1), flagState: {}, doing: null });
+  assert.equal(store.doc().calendar[closedId('2026-11-11')].at, 'earlier');
+  assert.deepEqual(morningRecord(store.doc(), '2026-11-12').skipped, ['food']);
+});
+
+test('the way out to Claude is a new chat with the morning asked for', () => {
+  assert.equal(claudeMorningUrl(), `https://claude.ai/new?q=${encodeURIComponent("/dashboard Start my day with me: back, yesterday's ticks and food.")}`);
+});
+
+test('Today leads with the card, holds the back row until the morning is done, and offers Close today in the evening', () => {
+  const tl = readFileSync(new URL('../js/ui/timeline.js', import.meta.url), 'utf8');
+  assert.match(tl, /const morning = past \? null : renderMorningCard\(ctx\)/);
+  assert.match(tl, /past \|\| morningDue\(doc, today\) \? null : renderBackRow\(ctx\)/);
+  assert.match(tl, /closeLinkDue\(doc, today, today, new Date\(\)\)/);
+  const ui = readFileSync(new URL('../js/ui/morning.js', import.meta.url), 'utf8');
+  assert.match(ui, /parseDaySplit\(data, \{ batches: pots \}\)/);
+  assert.match(ui, /Your words are kept/);
 });

@@ -727,3 +727,19 @@ dialog.hebrew-log { width: min(400px, calc(100vw - 24px)); height: auto; margin:
 @media (hover: hover) { .eu-d:not(.eu-before):hover { box-shadow: 0 0 0 2px var(--dl-ink); } }
 /* One long calendar: the sheet's two columns would split the months out of order. */
 .sheet .big.eu, .big.eu { column-count: auto; columns: auto; }
+
+/* Start the day (js/ui/morning.js): the close card's look, plus the food split. */
+.morning-card { margin-bottom: 4px; }
+dialog.sheet.morning section { display: flex; flex-direction: column; gap: 8px; }
+dialog.sheet.morning section > h3 { margin: 0; }
+.morning-meals, .morning-split { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.morning-meals li { font-size: 14px; color: var(--dl-muted); }
+.morning-meals strong { color: var(--dl-ink); font-weight: 700; }
+.morning-split-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: center; }
+.morning-split-row select, .morning-split-row input { min-height: 40px; border: 0; border-radius: 12px; padding: 6px 8px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; min-width: 0; }
+.morning-usual { display: flex; flex-wrap: wrap; gap: 6px; }
+.morning-usual .dl-btn { font-size: 14px; }
+.morning-actions { justify-content: space-between; align-items: center; }
+.tl-close-today { margin: 4px 0 0; text-align: right; font-size: 14px; }
+@media (max-width: 420px) { .morning-split-row { grid-template-columns: 1fr 1fr auto; } .morning-split-row input[type="text"] { grid-column: 1 / -1; grid-row: 2; } }
+.morning .close-actions { gap: 10px; flex-wrap: wrap; }

@@ -34,6 +34,7 @@ import { paintSnap, openSnap } from './ui/snap.js';
 import { useTranscriber } from './ui/mic.js';
 import { createStt } from './stt.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
+import { openMorning } from './ui/morning.js';
 import { chooseZoneRecord } from './travel.js';
 import { TILES_KEY, loadTiles, saveTiles, normalizeTiles } from './tiles.js';
 import { MAPS_KEY, loadCachedMaps, refreshMaps, ensureDayPlace } from './map/files.js';
@@ -685,16 +686,12 @@ if (params.has('checkin')) {
   openCheckin(ctx, id);
 }
 // Opened from a home-screen shortcut (manifest.webmanifest): snap a meal, log Hebrew time, or the
-// morning back check (shown at any hour when asked for); then tidy the address.
+// Start the day (the morning push, and the old back shortcut, open it); then tidy the address.
 // A nudge tapped while the app is open comes the same way (the service worker's message, above).
 function runShortcut(shortcut) {
   if (shortcut === 'snap') openSnap(ctx);
   else if (shortcut === 'hebrew') openHebrewLog(ctx);
-  else if (shortcut === 'back') {
-    ui.backAsk = true;
-    ctx.render();
-    document.querySelector('.tl-back')?.scrollIntoView({ block: 'center' });
-  }
+  else if (shortcut === 'morning' || shortcut === 'back') openMorning(ctx);
 }
 if (params.has('do')) {
   const shortcut = params.get('do');

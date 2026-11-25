@@ -9,9 +9,9 @@ import { makeStore, fixture } from './helpers.js';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
-test('the home-screen icon has three shortcuts: snap a meal, log Hebrew time, the back check', () => {
+test('the home-screen icon has three shortcuts: snap a meal, log Hebrew time, Start the day', () => {
   const m = JSON.parse(read('manifest.webmanifest'));
-  assert.deepEqual(m.shortcuts.map((s) => [s.short_name, s.url]), [['Snap', './?do=snap'], ['Hebrew', './?do=hebrew'], ['Back', './?do=back']]);
+  assert.deepEqual(m.shortcuts.map((s) => [s.short_name, s.url]), [['Snap', './?do=snap'], ['Hebrew', './?do=hebrew'], ['Morning', './?do=morning']]);
   for (const s of m.shortcuts) assert.ok(s.name && s.icons?.length, s.url);
 });
 
@@ -22,7 +22,10 @@ test('the app opens what a shortcut asks for, then tidies the address', () => {
   assert.match(app, /\nif \(params\.has\('checkin'\)\) \{[\s\S]*\n\}\n(\/\/[^\n]*\n)*(function runShortcut[\s\S]*?\n\}\n)?if \(params\.has\('do'\)\) \{/);
   assert.match(app, /openSnap\(ctx/);
   assert.match(app, /openHebrewLog\(ctx\)/);
-  assert.match(app, /ui\.backAsk = true/);
+  // The old back shortcut, still on some home screens, opens Start the day too.
+  assert.match(app, /shortcut === 'morning' \|\| shortcut === 'back'\) openMorning\(ctx\)/);
+  assert.match(read('index.html'), /<dialog id="morning"/);
+  assert.ok(read('sw.js').includes("'js/ui/morning.js'"));
   assert.match(read('index.html'), /<dialog id="hebrew-log" class="sheet hebrew-log"/);
   assert.ok(read('sw.js').includes("'js/ui/hebrewlog.js'"));
 });

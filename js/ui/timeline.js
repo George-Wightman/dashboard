@@ -17,7 +17,10 @@ import { gymHabitId, hevyTick, dayLines } from '../gym.js';
 import { renderRow, listRows, renderMealsRow } from './today.js';
 import { enableTimeDrag } from './timedrag.js';
 import { renderCheckin, dayOf } from './checkin.js';
-import { renderCloseCard } from './close.js';
+import { renderCloseCard, openClose } from './close.js';
+import { renderMorningCard } from './morning.js';
+import { morningDue } from '../morning.js';
+import { closeLinkDue } from '../close.js';
 import { renderBackRow, sessionExtras } from './coach.js';
 import { keptFocus, restoreFocus } from './side.js';
 
@@ -134,11 +137,18 @@ export function renderTimeline(ctx) {
   const meals = renderMealsRow(ctx);
   if (meals) anytime.push(meals);
 
-  const back = past ? null : renderBackRow(ctx);
+  // Start the day (js/morning.js) asks the back question itself, so the timeline's row waits until
+  // the morning is done (then shows the answer, until 11:00, as before).
+  const morning = past ? null : renderMorningCard(ctx);
+  const back = past || morningDue(doc, today) ? null : renderBackRow(ctx);
   const checkin = renderCheckin(ctx);
   const closing = renderCloseCard(ctx);
+  // From the evening, a quiet way to close today (stops the planner booking more), not a card.
+  const closeToday = !past && closeLinkDue(doc, today, today, new Date())
+    ? h('p', { class: 'tl-close-today' }, h('button', { class: 'link', type: 'button', 'data-use': 'close-today', onclick: () => openClose(ctx) }, 'Close today')) : null;
   const tomorrow = past ? null : tomorrowLine(doc, today);
   root.replaceChildren(...[
+    morning,
     back ? h('ul', { class: 'tl-checkin tl-backq' }, back) : null,
     checkin ? h('ul', { class: 'tl-checkin' }, checkin) : null,
     closing,
@@ -149,6 +159,7 @@ export function renderTimeline(ctx) {
     anytime.length ? h('h3', { class: 'tl-any-h' }, past ? 'Any time that day' : 'Any time today') : null,
     anytime.length ? h('ul', { class: 'tl-any' }, anytime) : null,
     tomorrow ? h('p', { class: 'tl-tomorrow' }, `Tomorrow: ${tomorrow}`) : null,
+    closeToday,
   ].filter(Boolean));
   restoreFocus(root, kept);
 }

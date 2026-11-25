@@ -58,3 +58,54 @@ export function morningLine(model) {
   if (skipped.has('food')) parts.push('food skipped');
   return parts.join(' · ');
 }
+
+// ---- What the card saves (js/ui/morning.js) --------------------------------------------------------
+
+
+// A time he gave for a meal on `day`: before the day starts (01:30, say) it's the night after.
+export function mealTimeFor(day, hhmm, dayStartHour = 4) {
+  const [y, m, d] = day.split('-').map(Number);
+  const [hh, mm] = hhmm.split(':').map(Number);
+  return new Date(y, m - 1, d + (hh < dayStartHour ? 1 : 0), hh, mm);
+}
+
+// For a usual meal tapped in: the first of breakfast, lunch and dinner with nothing logged or split.
+export function firstMissingSlot(logged, rows) {
+  const have = new Set([...logged, ...rows].map((m) => m.slot));
+  return ['breakfast', 'lunch', 'dinner'].find((s) => !have.has(s)) ?? 'snack';
+}
+
+// The checked split, saved: a usual meal exactly, a share of a pot exactly, anything else as his
+// words, pending, for the background estimate (js/photos.js). An empty row is left out. Returns
+// how many were saved.
+export function saveSplitMeals(store, day, rows, dayStartHour = 4) {
+  let n = 0;
+  for (const r of rows) {
+    const text = String(r.text ?? '').trim();
+    if (!text && !r.usualId) continue;
+    const at = mealTimeFor(day, r.time, dayStartHour);
+    const meal = r.usualId ? store.addMeal({ at, usualId: r.usualId })
+      : r.batchId ? store.addServing({ at, batchId: r.batchId, share: r.share })
+      : store.addMeal({ at, text });
+    if (r.slot && meal.slot !== r.slot) store.updateMeal(meal.id, { slot: r.slot });
+    n++;
+  }
+  return n;
+}
+
+// Done: the line for Claude (a For Claude flag, first in catchup), yesterday closed unless it
+// already is, and the morning record, saying which parts were left empty.
+export function finishMorning(store, { today, note = '', at, flagState = null, doing = null }) {
+  const doc = store.doc();
+  const m = morningModel(doc, today);
+  const text = String(note ?? '').trim();
+  if (text) store.addFlag(`Start of ${today}: ${text}`, flagState, 'me', 'claude', { doing });
+  if (!m.close.closed) store.putCalendar(`closed:${m.yesterday}`, { day: m.yesterday, closed: true, at: at.toISOString() }, 'me');
+  const skipped = [];
+  if (!m.back) skipped.push('back');
+  if (!m.meals.length) skipped.push('food');
+  store.putCalendar(morningId(today), { day: today, done: true, at: at.toISOString(), skipped }, 'me');
+  return morningRecord(store.doc(), today);
+}
+
+export const claudeMorningUrl = () => `https://claude.ai/new?q=${encodeURIComponent("/dashboard Start my day with me: back, yesterday's ticks and food.")}`;

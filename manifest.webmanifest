@@ -59,9 +59,9 @@
       ]
     },
     {
-      "name": "How's your back?",
-      "short_name": "Back",
-      "url": "./?do=back",
+      "name": "Start the day",
+      "short_name": "Morning",
+      "url": "./?do=morning",
       "icons": [
         {
           "src": "icons/icon-192.png",

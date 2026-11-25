@@ -9,6 +9,7 @@ import { hebrewKeys } from '../gemini.js';
 import { duolingoStatusLine, duolingoStatus } from '../duolingo.js';
 import { LOOK_CHOICES, LOOKS } from '../look.js';
 import { hourLabel } from '../dates.js';
+import { readPlannerConfig, checkConfigField } from '../calendar.js';
 import { versionStatus, recentChanges, buildStamp, HISTORY_URL } from '../version.js';
 import { claudePanel, claudeSummary } from './claude.js';
 import { pushState, turnOn, turnOff } from '../push-client.js';
@@ -155,6 +156,9 @@ export function openSettings(ctx) {
   const token = h('input', { type: 'password', name: 'token', autocomplete: 'new-password', spellcheck: 'false' });
   token.value = s.token ?? '';
   const dayStart = h('input', { type: 'number', name: 'dayStartHour', min: 0, max: 12, step: 1, value: s.dayStartHour });
+  // When the Start the day push comes (js/nudges.js): a planner setting, so every device and the planner agree.
+  const morningWas = readPlannerConfig(store.doc()).config.morningAt;
+  const morningAt = h('input', { type: 'time', name: 'morningAt', min: '07:00', max: '09:30', step: 300, value: morningWas });
   // The Gemini key goes in as the field's live value, never as an attribute, so it can't end up in
   // the page's markup; as a password field it never shows on screen either.
   const geminiKey = h('input', { type: 'password', name: 'geminiKey', autocomplete: 'off', spellcheck: 'false' });
@@ -223,6 +227,14 @@ export function openSettings(ctx) {
       refuse(checkinHour, 'The check-in hour must be a whole hour from 12 to 23.');
       return;
     }
+    if (morningAt.value !== morningWas) {
+      try {
+        store.putCalendar('config', { morningAt: checkConfigField('morningAt', morningAt.value) }, 'me');
+      } catch {
+        refuse(morningAt, 'The Start the day push can come from 07:00 to 09:30.');
+        return;
+      }
+    }
     const repoValue = repo.value.trim();
     if (repoValue && !/^[\w.-]+\/[\w.-]+$/.test(repoValue)) {
       refuse(repo, 'The repo should look like owner/name.');
@@ -280,9 +292,11 @@ export function openSettings(ctx) {
         `${duolingo}. A day with Duolingo but no Hebrew Reader session keeps the streak but isn't ticked.`) : null,
       h('div', { class: 'buttons' },
         h('button', { class: 'btn', type: 'button', onclick: () => { ctx.hebrewSyncNow(); dialog.close(); } }, 'Sync now'))),
-    group('The day', `starts at ${hourLabel(s.dayStartHour)}`, false,
+    group('The day', `starts at ${hourLabel(s.dayStartHour)}, Start the day at ${morningWas}`, false,
       h('label', { class: 'field' }, h('span', {}, 'The day starts at (hour, 0–12)'), dayStart),
       h('p', { class: 'note' }, 'Anything done before this hour counts as the day before.'),
+      h('label', { class: 'field' }, h('span', {}, 'Start the day push at'), morningAt),
+      h('p', { class: 'note' }, 'One push in the morning for the back, yesterday and food, and one more at 10:00 if it is still untouched.'),
       h('label', { class: 'field' }, h('span', {}, 'Place (for the sky in Daylight)'), place)),
     group('Gemini', geminiWhich, false,
       h('label', { class: 'field' }, h('span', {}, 'Gemini API key (optional)'), geminiKey),

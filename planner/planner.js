@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '8e5bfed5';
+var PLANNER_BUILD = '2fcaf449';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1360,7 +1360,8 @@ const CALENDAR_DEFAULTS = {
   areaColors: {},
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
-  nudges: true, // js/nudges.js: pushes before a miss (the back question, Hebrew, a session)
+  nudges: true, // js/nudges.js: pushes before a miss (Start the day, a session)
+  morningAt: '08:00', // js/nudges.js: when the Start the day push comes, his time (07:00 to 09:30)
   checkins: false, // planner/checkins.js: a question and a ping for each block that passes unticked (off: the day is closed once, js/close.js)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
@@ -1406,6 +1407,11 @@ const CONFIG_CHECKS = {
   duolingo: (v, field) => {
     if (typeof v !== 'string' || !/^[\w.-]{0,40}$/.test(v.trim())) throw new Error(`${field} should be a Duolingo username, or "" to stop checking`);
     return v.trim();
+  },
+  morningAt: (v, field) => {
+    const m = typeof v === 'string' && /^\d\d:\d\d$/.test(v) ? clockMinutes(v) : null;
+    if (m == null || m < 7 * 60 || m > 9 * 60 + 30) throw new Error(`${field} should be a time like "08:00", from 07:00 to 09:30`);
+    return v;
   },
   nudges: (v, field) => {
     if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);
@@ -1865,7 +1871,7 @@ const __js_food = (() => {
 // estimated: no model gives a trustworthy milligram of iron from a sentence, so the food groups stand
 // in for them. A meal from before has protein and calories only, and the balance leaves it out.
 
-const { addDays } = __js_dates;
+const { addDays, longDate } = __js_dates;
 
 const PORTIONS = { lighter: 0.75, right: 1, bigger: 1.3 };
 const MAX_TRIES = 3;
@@ -1929,6 +1935,62 @@ function mealPrompt({ text, at, hasPhoto, usual = [] }) {
     `Eaten at ${pad(at.getHours())}:${pad(at.getMinutes())}.`,
     scale.length ? `For scale, his usual meals: ${scale.join('; ')}.` : null,
   ].filter(Boolean).join('\n');
+}
+
+// A DAY OF FOOD IN ONE GO (Start the day, 25 Nov 2026): what he ate yesterday, said as one ramble,
+// split into meals. Only the split comes from here: slot, time and his own words for each meal, with
+// the amounts in them. He checks the split, and each meal is then saved and estimated on its own as
+// any meal is (mealPrompt), so counts, plants and the balance work the same.
+const SPLIT_MAX_MEALS = 8;
+const SPLIT_DEFAULT_TIMES = { breakfast: '08:30', lunch: '13:00', dinner: '19:00', snack: '16:00' };
+const SPLIT_SLOTS = Object.keys(SPLIT_DEFAULT_TIMES);
+
+const DAY_SPLIT_SYSTEM = [
+  'He tells you everything he ate across one day, in one go, often spoken. Split it into the separate meals and snacks he had.',
+  'For each: slot (breakfast, lunch, dinner or snack), time as HH:MM (his own if he said one, else a usual time for that slot), and text: his own words for that meal, with every amount kept exactly as he said it (5 eggs, 2 pittas, half the tray). Never add food he did not mention, never estimate numbers, never merge two meals into one.',
+  'Voice typing hears "pittas" as "pizzas": with eggs, cheese or salad, or "wholemeal", it means pitta breads. Write pittas.',
+  'Leave out anything in the "already logged" list: those are saved.',
+  'When a meal is a share of a pot in the fridge (listed with its id), give that id as batch and his share of the whole pot as share, a number from 0 to 1 (a quarter is 0.25). Otherwise batch and share are null.',
+  'Reply only with JSON, exactly this shape:',
+  '{"meals": [{"slot": "breakfast", "time": "08:30", "text": "5 eggs and 2 wholemeal pittas", "batch": null, "share": null}]}',
+].join('\n');
+
+function daySplitPrompt({ text, day, logged = [], batches: pots = [] }) {
+  const time = (m) => {
+    const d = new Date(m.at);
+    return Number.isNaN(d.getTime()) ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())} `;
+  };
+  return [
+    `The day: ${longDate(day)}.`,
+    logged.length ? `Already logged (leave these out): ${logged.map((m) => `${time(m)}${m.slot ?? 'meal'}: ${m.text || m.estimate?.name || 'a meal'}`).join('; ')}.` : 'Nothing is logged for that day yet.',
+    pots.length ? `Pots in the fridge: ${pots.map((b) => `${b.id}: ${b.name}`).join('; ')}.` : null,
+    `What he said: ${String(text ?? '').trim()}`,
+  ].filter(Boolean).join('\n');
+}
+
+const SPLIT_BAD = 'Gemini’s split didn’t make sense';
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// The split, checked, in time order. Anything odd fails the whole split, so nothing half-right is
+// shown as if it were right; his words are kept by the card either way.
+function parseDaySplit(data, { batches: pots = [] } = {}) {
+  const list = data && typeof data === 'object' ? data.meals : null;
+  if (!Array.isArray(list) || !list.length || list.length > SPLIT_MAX_MEALS) throw new Error(SPLIT_BAD);
+  const known = new Set(pots.map((b) => b.id));
+  const out = list.map((m) => {
+    if (!m || typeof m !== 'object' || !SPLIT_SLOTS.includes(m.slot)) throw new Error(SPLIT_BAD);
+    const text = typeof m.text === 'string' ? m.text.trim().slice(0, 500) : '';
+    if (!text) throw new Error(SPLIT_BAD);
+    const time = m.time == null || m.time === '' ? SPLIT_DEFAULT_TIMES[m.slot] : String(m.time).trim();
+    if (!HHMM.test(time)) throw new Error(SPLIT_BAD);
+    let batchId = null;
+    let share = null;
+    if (m.batch != null && known.has(m.batch)) {
+      try { share = parseShare(m.share); batchId = m.batch; } catch { share = null; }
+    }
+    return { slot: m.slot, time, text, batchId, share };
+  });
+  return out.sort((a, b) => a.time.localeCompare(b.time));
 }
 
 const BAD = 'Gemini’s estimate didn’t make sense';
@@ -2215,7 +2277,7 @@ function batches(doc) {
 
 // The batches still in the fridge: cooked in the last week and not all logged.
 const liveBatches = (doc, today) => batches(doc).filter((b) => b.cookedOn > addDays(today, -BATCH_DAYS) && batchEaten(doc, b.id) < 0.98);
-return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, GRAMS, GROUPS, EXTRA, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, cleanPlants, parseEstimate, claudeEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, nutrientsOf, macroGap, mealsOn, dayProtein, weekKcal, fuelSettings, BALANCE_TARGETS, dayBalance, weekBalance, maintenanceVerdict, usualMeals, mealWork, BATCH_DAYS, parseShare, shareWords, servingValue, batchServings, batchEaten, batches, liveBatches };
+return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, GRAMS, GROUPS, EXTRA, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, SPLIT_MAX_MEALS, SPLIT_DEFAULT_TIMES, DAY_SPLIT_SYSTEM, daySplitPrompt, parseDaySplit, cleanPlants, parseEstimate, claudeEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, nutrientsOf, macroGap, mealsOn, dayProtein, weekKcal, fuelSettings, BALANCE_TARGETS, dayBalance, weekBalance, maintenanceVerdict, usualMeals, mealWork, BATCH_DAYS, parseShare, shareWords, servingValue, batchServings, batchEaten, batches, liveBatches };
 })();
 
 // ---- js/duolingo.js
@@ -8663,17 +8725,200 @@ function chooseZoneRecord(rec, { zone, touch }, now = new Date()) {
 return { CENTRAL, zoneOffset, deviceZone, zoneWarning, zoneNote, wallClock, shiftClock, chooseZoneRecord };
 })();
 
+// ---- js/close.js
+const __js_close = (() => {
+// Closing the day: one pass instead of a question after every task (since 25 Nov 2026 done the next
+// morning, in Start the day, or from the evening link). What's still
+// open (tick what happened; the rest are named as not done), the meals, and one line for Claude.
+// He ticks in a batch late in the evening anyway, so the app meets him there. A closed day is one
+// small record, calendar['closed:<day>'], so the phone and the laptop agree; it's the record the
+// planner already reads (js/plan-state.js dayClosed): nothing more is booked on a closed day, and
+// what wasn't done gets a new slot. Pure; js/ui/close.js draws it.
+
+const { todayRows, dayScore } = __js_schedule;
+const { mealsOn } = __js_food;
+
+const CLOSE_FROM_HOUR = 19; // the "Close today" link shows from here on; a past day always shows the card
+const closedId = (day) => `closed:${day}`;
+
+function closedRecord(doc, day) {
+  const rec = doc?.calendar?.[closedId(day)];
+  return rec?.status === 'active' && rec.closed ? rec : null;
+}
+
+// What closing the day has to show: the rows still open, the ones done, and the meals logged.
+function closeModel(doc, day) {
+  const rows = todayRows(doc, day).filter((r) => !r.suggested);
+  const open = rows.filter((r) => !r.done && r.kind !== 'quota' && r.item.type !== 'quota');
+  // The numbers are the day score's (js/schedule.js), so a task moved or dropped after the 11:00
+  // lock still counts here exactly as it does everywhere else.
+  const score = dayScore(doc, day);
+  const slots = new Set(mealsOn(doc, day).map((m) => m.slot).filter((s) => ['breakfast', 'lunch', 'dinner'].includes(s)));
+  // The meals row ticks itself from the meals; it's counted, never ticked by hand.
+  const tickable = open.filter((r) => r.kind !== 'meals');
+  const notDone = [...score.open, ...score.missed, ...score.dropped].map((r) => r.item.title);
+  return { open, tickable, done: score.done, total: score.total, notDone, pushed: score.pushed.map((r) => r.item.title), meals: mealsOn(doc, day).length, mainMeals: slots.size, closed: closedRecord(doc, day) };
+}
+
+// Whether the card belongs on screen: any past day not yet closed. Today is closed by the next
+// morning's Start the day (js/morning.js), so it never gets the card; from the evening it gets a
+// quiet link instead (closeLinkDue), for evenings he wants the planner to stop booking.
+function closeDue(doc, day, today, now) {
+  if (closedRecord(doc, day)) return false;
+  return day < today && closeModel(doc, day).total > 0;
+}
+
+function closeLinkDue(doc, day, today, now) {
+  return day === today && !closedRecord(doc, day) && now.getHours() >= CLOSE_FROM_HOUR;
+}
+
+// The card's one line: "3 of 7 done · 4 still open · 2 of 3 meals".
+function closeLine(model) {
+  const parts = [`${model.done} of ${model.total} done`];
+  if (model.notDone.length) parts.push(`${model.notDone.length} not done`);
+  if (model.pushed.length) parts.push(`${model.pushed.length} pushed`);
+  parts.push(`${model.mainMeals} of 3 meals`);
+  return parts.join(' · ');
+}
+
+// What a closed day says: the misses by name. Moving or dropping work never makes it a clean day.
+function closedLine(model) {
+  const at = model.closed?.at ? new Date(model.closed.at) : null;
+  const when = at ? ` at ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
+  // The meals row included: an unlogged day is a miss too.
+  return `Day closed${when} · ${model.done} of ${model.total} done${model.notDone.length ? ` · not done: ${model.notDone.join(', ')}` : ''}${model.pushed.length ? ` · pushed: ${model.pushed.join(', ')}` : ''}`;
+}
+return { CLOSE_FROM_HOUR, closedId, closedRecord, closeModel, closeDue, closeLinkDue, closeLine, closedLine };
+})();
+
+// ---- js/morning.js
+const __js_morning = (() => {
+// START THE DAY (25 Nov 2026): one card in the morning instead of the evening close, the back push
+// and the stocks brief, which he kept missing. The back, yesterday's ticks, yesterday's food and a
+// line for Claude, answered in one go on the phone or the laptop. Done is one small record,
+// calendar['morning:<day>'], written by the card or by Claude after a chat that covered the same
+// ground; the morning push and the card both read it. Pure; js/ui/morning.js draws it.
+
+const { addDays, shortWeekday } = __js_dates;
+const { closeModel } = __js_close;
+const { mealsOn } = __js_food;
+const { BACK } = __js_coach;
+
+const morningId = (day) => `morning:${day}`;
+const MORNING_PARTS = ['back', 'food'];
+
+function morningRecord(doc, day) {
+  const rec = doc?.calendar?.[morningId(day)];
+  return rec?.status === 'active' && rec.done === true ? rec : null;
+}
+
+function backOn(doc, day) {
+  const r = doc?.gym?.[`back:${day}`];
+  return r && r.status === 'active' && Number.isInteger(r.score) && BACK[r.score] ? { score: r.score, word: BACK[r.score] } : null;
+}
+
+// What the card shows: today's back answer, yesterday as the close sheet sees it, yesterday's meals.
+function morningModel(doc, today) {
+  const yesterday = addDays(today, -1);
+  return {
+    day: today,
+    yesterday,
+    back: backOn(doc, today),
+    close: closeModel(doc, yesterday),
+    meals: mealsOn(doc, yesterday),
+    done: morningRecord(doc, today),
+  };
+}
+
+// The card asks until the morning is done, at any hour of the day.
+const morningDue = (doc, today) => !morningRecord(doc, today);
+
+const hhmm = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+// The done card's one line. Misses by name, and a skipped part said as skipped.
+function morningLine(model) {
+  const skipped = new Set(model.done?.skipped ?? []);
+  const at = model.done?.at ? hhmm(model.done.at) : '';
+  const parts = [`Morning done${at ? ` at ${at}` : ''}`];
+  parts.push(model.back ? `back ${model.back.word}` : skipped.has('back') ? 'back skipped' : 'back not answered');
+  const day = shortWeekday(model.yesterday);
+  const c = model.close;
+  if (c.closed) {
+    parts.push(`${day} closed: ${c.done} of ${c.total} done${c.notDone.length ? ` · not done: ${c.notDone.join(', ')}` : ''}`);
+  } else parts.push(`${day} not closed`);
+  parts.push(`${model.meals.length} meal${model.meals.length === 1 ? '' : 's'} logged`);
+  if (skipped.has('food')) parts.push('food skipped');
+  return parts.join(' · ');
+}
+
+// ---- What the card saves (js/ui/morning.js) --------------------------------------------------------
+
+
+// A time he gave for a meal on `day`: before the day starts (01:30, say) it's the night after.
+function mealTimeFor(day, hhmm, dayStartHour = 4) {
+  const [y, m, d] = day.split('-').map(Number);
+  const [hh, mm] = hhmm.split(':').map(Number);
+  return new Date(y, m - 1, d + (hh < dayStartHour ? 1 : 0), hh, mm);
+}
+
+// For a usual meal tapped in: the first of breakfast, lunch and dinner with nothing logged or split.
+function firstMissingSlot(logged, rows) {
+  const have = new Set([...logged, ...rows].map((m) => m.slot));
+  return ['breakfast', 'lunch', 'dinner'].find((s) => !have.has(s)) ?? 'snack';
+}
+
+// The checked split, saved: a usual meal exactly, a share of a pot exactly, anything else as his
+// words, pending, for the background estimate (js/photos.js). An empty row is left out. Returns
+// how many were saved.
+function saveSplitMeals(store, day, rows, dayStartHour = 4) {
+  let n = 0;
+  for (const r of rows) {
+    const text = String(r.text ?? '').trim();
+    if (!text && !r.usualId) continue;
+    const at = mealTimeFor(day, r.time, dayStartHour);
+    const meal = r.usualId ? store.addMeal({ at, usualId: r.usualId })
+      : r.batchId ? store.addServing({ at, batchId: r.batchId, share: r.share })
+      : store.addMeal({ at, text });
+    if (r.slot && meal.slot !== r.slot) store.updateMeal(meal.id, { slot: r.slot });
+    n++;
+  }
+  return n;
+}
+
+// Done: the line for Claude (a For Claude flag, first in catchup), yesterday closed unless it
+// already is, and the morning record, saying which parts were left empty.
+function finishMorning(store, { today, note = '', at, flagState = null, doing = null }) {
+  const doc = store.doc();
+  const m = morningModel(doc, today);
+  const text = String(note ?? '').trim();
+  if (text) store.addFlag(`Start of ${today}: ${text}`, flagState, 'me', 'claude', { doing });
+  if (!m.close.closed) store.putCalendar(`closed:${m.yesterday}`, { day: m.yesterday, closed: true, at: at.toISOString() }, 'me');
+  const skipped = [];
+  if (!m.back) skipped.push('back');
+  if (!m.meals.length) skipped.push('food');
+  store.putCalendar(morningId(today), { day: today, done: true, at: at.toISOString(), skipped }, 'me');
+  return morningRecord(store.doc(), today);
+}
+
+const claudeMorningUrl = () => `https://claude.ai/new?q=${encodeURIComponent("/dashboard Start my day with me: back, yesterday's ticks and food.")}`;
+return { morningId, MORNING_PARTS, morningRecord, morningModel, morningDue, morningLine, mealTimeFor, firstMissingSlot, saveSplitMeals, finishMorning, claudeMorningUrl };
+})();
+
 // ---- js/nudges.js
 const __js_nudges = (() => {
 // Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
 // sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
-// The back question in the morning and a coach's session half an hour ahead. No meal pushes: Claude
+// Start the day in the morning (js/morning.js) and a coach's session half an hour ahead. No meal pushes: Claude
 // logs his meals from a chat (10 Nov 2026), so the app never asks him to snap one.
 // Hebrew has its own, from the Hebrew app (planner/hebrew-nudges.js). Pure: a document and a moment in.
 
 const { addDays } = __js_dates;
 const { wallClock, deviceZone } = __js_travel;
-const { readPlannerConfig, dayRecord } = __js_calendar;
+const { readPlannerConfig, dayRecord, clockMinutes } = __js_calendar;
+const { morningRecord } = __js_morning;
 const { sessionTasks, routineFor } = __js_coach;
 
 const NUDGES_PER_DAY = 4;
@@ -8689,11 +8934,21 @@ function quietAt(t, zone) {
 }
 const done = (doc, id) => Object.values(doc.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === id);
 
-function backNudge(doc, t, day, clk) {
-  if (!between(clk, 7 * 60 + 30, 11 * 60)) return null;
-  const r = doc.gym?.[`back:${day}`];
-  if (r && r.status === 'active') return null;
-  return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
+// Start the day (js/morning.js): one push from his set time until 11:00, and one more from 10:00
+// until 12:00 while the card is untouched (the back not answered either). None once it's done.
+const AGAIN = [10 * 60, 12 * 60];
+const MORNING_UNTIL = 11 * 60;
+function morningNudges(doc, day, clk, morningAt) {
+  if (morningRecord(doc, day)) return [];
+  const out = [];
+  if (between(clk, clockMinutes(morningAt), MORNING_UNTIL)) {
+    out.push({ id: `morning:${day}`, title: 'Start the day', body: 'Back, yesterday and food: a minute, one card.', url: './?do=morning' });
+  }
+  const back = doc.gym?.[`back:${day}`];
+  if (between(clk, ...AGAIN) && !(back && back.status === 'active')) {
+    out.push({ id: `morning-again:${day}`, title: 'Start the day', body: 'Still to do: back, yesterday and food.', url: './?do=morning' });
+  }
+  return out;
 }
 
 function sessionNudges(doc, t, day, zone) {
@@ -8716,11 +8971,12 @@ function sessionNudges(doc, t, day, zone) {
 
 // The nudges due at `t`, whether or not they've been sent (the sender remembers that).
 function dueNudges(doc, t, dayStartHour = 4) {
-  if (readPlannerConfig(doc).config.nudges === false) return [];
+  const { config } = readPlannerConfig(doc);
+  if (config.nudges === false) return [];
   const zone = deviceZone(doc);
   const clk = wallClock(t, zone);
   const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
-  return [backNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
+  return [...morningNudges(doc, day, clk, config.morningAt), ...sessionNudges(doc, t, day, zone)];
 }
 return { NUDGES_PER_DAY, QUIET, quietAt, dueNudges };
 })();

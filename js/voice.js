@@ -18,6 +18,7 @@ export const TRANSCRIBE_SYSTEM = [
 
 const HINTS = {
   meal: 'He is describing a meal he ate: the foods and how much of each.',
+  day: 'He is describing everything he ate across a day: each meal or snack, the foods and how much of each.',
   checkin: 'He is saying how a task on his to-do list went.',
   note: 'He is leaving a note for his planner about his plans, tasks or calendar.',
 };

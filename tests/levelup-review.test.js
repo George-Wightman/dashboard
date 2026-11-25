@@ -25,8 +25,11 @@ test('final review: the wall clock in a zone, and a time moved between zones', (
 test("final review: nudges follow George's clock where he is, not the planner's", () => {
   const store = makeStore({ now: clock(utc('06:00')) });
   store.putCalendar('device-zone', { zone: 'Europe/Vienna' }, 'me');
-  // 06:40 London is 07:40 in Salzburg: the back nudge is due there.
-  assert.deepEqual(dueNudges(store.doc(), utc('06:40'), 4).map((n) => n.id), [`back:${NOV}`]);
+  // 07:10 London is 08:10 in Salzburg: Start the day is due there, and not at 07:10 London.
+  assert.deepEqual(dueNudges(store.doc(), utc('07:10'), 4).map((n) => n.id), [`morning:${NOV}`]);
+  store.putCalendar('device-zone', { zone: 'Europe/London' }, 'me');
+  assert.deepEqual(dueNudges(store.doc(), utc('07:10'), 4).map((n) => n.id), []);
+  store.putCalendar('device-zone', { zone: 'Europe/Vienna' }, 'me');
   // 21:40 London is 22:40 in Salzburg: quiet there.
   assert.equal(quietAt(utc('21:40'), 'Europe/Vienna'), true);
   assert.equal(quietAt(utc('21:40'), 'Europe/London'), false);
