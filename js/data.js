@@ -657,9 +657,9 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
   // The coach (js/coach.js): the morning back answer (0 fine … 3 bad), one record a day so two
   // devices merge into one; and a session Claude wrote, on its task, with its lines after the
   // task's own notes so the calendar event shows them. Clearing a session takes only its lines away.
-  function setBack(day, score) {
+  function setBack(day, score, source = 'me') {
     if (!Number.isInteger(score) || score < 0 || score >= BACK.length) throw new Error('The back is fine, stiff, sore or bad');
-    return putGym(`back:${day}`, { kind: 'back', day, score, at: stamp() }, 'me').rec;
+    return putGym(`back:${day}`, { kind: 'back', day, score, at: stamp() }, source).rec;
   }
 
   // The For Claude flag two sore mornings leave, after a back answer: one record a morning (a fixed

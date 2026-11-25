@@ -17,6 +17,9 @@ import { FLAG_TEXT_MAX, FLAG_KINDS } from '../js/flags.js';
 import { resolveId, shortId } from './ids.js';
 import { batches, batchEaten, parseShare, shareWords, servingValue, EXTRA, GRAMS, BALANCE_TARGETS, cleanPlants, claudeEstimate, mealValue, macroGap } from '../js/food.js';
 import { q, dayName, toDay, TYPE_NAMES, repeatText, amountText } from './text.js';
+import { BACK } from '../js/coach.js';
+import { closeModel, closedLine, closedRecord, closedId } from '../js/close.js';
+import { morningId, morningModel, morningLine } from '../js/morning.js';
 import { checkDetails } from '../js/workflow.js';
 import { seriesOf } from '../planner/series.js';
 import { setEuDays, dayRange, euSummary, EU_LIMIT } from '../js/eu.js';
@@ -1126,12 +1129,45 @@ export function fieldWarnings(raw) {
   return out;
 }
 
+// ---- Start the day (js/morning.js) ----------------------------------------------------------------
+
+// His back this morning, told in a chat: fine, stiff, sore or bad.
+function back(store, op) {
+  const score = BACK.indexOf(String(op.score ?? '').trim().toLowerCase());
+  if (score < 0) throw new Error('back needs score: fine, stiff, sore or bad');
+  const day = toDay(op.day ?? 'today', store.today());
+  store.setBack(day, score, CLAUDE);
+  store.soreFlag(day);
+  return `Back: ${BACK[score]} ${day === store.today() ? 'this morning' : `on ${dayName(day, store.today())}`}`;
+}
+
+// A day closed, as the card's Close does: what's unticked counts as not done, and the planner books
+// nothing more on it. Past days and today only.
+function close(store, op) {
+  const today = store.today();
+  if (op.day == null) throw new Error('close needs a day, e.g. "yesterday"');
+  const day = toDay(op.day, today);
+  if (day > today) throw new Error(`${dayName(day, today)} hasn't happened yet`);
+  if (closedRecord(store.doc(), day)) return `${dayName(day, today)} was already closed`;
+  store.putCalendar(closedId(day), { day, closed: true, at: store.now().toISOString() }, CLAUDE);
+  return closedLine(closeModel(store.doc(), day)).replace(/^Day closed at \d\d:\d\d/, `Closed ${dayName(day, today)}`);
+}
+
+// Start the day done from a chat: the card and the push stop. Run it once back, ticks and food are in.
+function morning(store) {
+  const today = store.today();
+  const m = morningModel(store.doc(), today);
+  const skipped = [...(m.back ? [] : ['back']), ...(m.meals.length ? [] : ['food'])];
+  store.putCalendar(morningId(today), { day: today, done: true, at: store.now().toISOString(), skipped }, CLAUDE);
+  return morningLine(morningModel(store.doc(), today));
+}
+
 export const OPS = {
   task, habit, target, goal, milestone, plan,
   done: (store, op) => tick(store, op, true),
   undone: (store, op) => tick(store, op, false),
   log, edit, archive, accept, dismiss, flag, handoff, undo, planner, off, brief, countdown, gym,
-  details, rule, report, review, meal, session, eu, hours,
+  details, rule, report, review, meal, session, eu, hours, back, close, morning,
 };
 
 // undo marks the change it undoes rather than being logged as a change of its own; a handoff

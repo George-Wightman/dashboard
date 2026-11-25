@@ -102,10 +102,15 @@ in. `catchup` lists every open one at the top (*Notes George left you*). They're
 on each (or tell him what you'd do and why not), then mark it addressed with
 `{"op": "archive", "id": "<flag id>"}`.
 
-## Closing the day (this replaced check-ins on 11 Nov 2026)
+## Start the day (since 26 Nov 2026; it replaced the evening close and the back push)
 
-In the evening he closes the day in one sheet: ticks what happened, logs a meal, and may leave you a
-line. That line arrives as a *For Claude* note starting "Closing <day>:", at the top of `catchup`.
+Each morning one push opens one card: his back, yesterday's ticks, everything he ate yesterday said
+in one go (split into meals for him to check), and a line for you, then Done, which closes yesterday.
+The line arrives as a *For Claude* note starting "Start of <day>:" ("Closing <day>:" from an evening
+close), at the top of `catchup`. When he opens a chat before doing the card, `catchup` says what's
+missing: ask him, then log it (`back`, `done` with `"day": "yesterday"`, `meal` with his words),
+`close` yesterday and finish with `{"op": "morning"}`, so the card and the push stop. A quiet *Close
+today* link still lets him close today in the evening.
 What he left unticked is a miss, by name, exactly as before. The per-task questions below are off
 unless the planner setting `checkins` is true (`{"op": "planner", "checkins": true}`); old ones are
 still in `checkins`. When he asks how he uses the dashboard, or for a review of it, run `usage`.

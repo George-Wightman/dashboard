@@ -88,7 +88,8 @@ One day: what was on it, what was ticked, and any amounts logged.
 The last three weeks, day by day, as done/total.
 
 ### `catchup [days]`
-Everything since the last catch-up, for the start of a chat. First, every open note George left you
+Everything since the last catch-up, for the start of a chat. First, when Start the day isn't done
+yet, one line saying what's missing (back, yesterday closed, yesterday's meals). Then every open note George left you
 (the *Note for Claude* widget, or ⚑ → For Claude), oldest first, with when and what he was doing.
 Then each day's score, what he ticked and
 when (and who ticked it, when it wasn't him), what wasn't done, what was pushed or counted as missed;
@@ -369,8 +370,9 @@ Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato; not on
 take, nor two areas alike), `dayHours` (`{"2026-09-18": ["09:00", "13:00"]}`), `areaHours`
 (`{"Food": ["16:30", "20:00"]}` — an area booked only in its own hours, inside the day's hours or not:
 cooking in the evening rather than first thing), `checkins` (`true` brings back the question and ping after each unticked block; off by default, the day is closed once in the evening instead), `nudges` (`false` turns off
-the pushes before a miss: the back question at 07:30, Hebrew at 20:00, a session half an
-hour ahead; on by default, at most four a day), `duolingo` (George's Duolingo username, `""` to stop: the
+the pushes before a miss: Start the day at `morningAt` (and again at 10:00 if untouched), a session half an
+hour ahead; on by default, at most four a day), `morningAt` (when the Start the day push comes, his
+time, `"07:00"` to `"09:30"`; `"08:00"` by default), `duolingo` (George's Duolingo username, `""` to stop: the
 planner adds his Hebrew course's XP to the day as a `duolingo:<day>` log on Hebrew practice. A
 Duolingo-only day keeps the streak but isn't ticked or counted as done; rows say *Duolingo only (N XP)*). `areaCalendars`,
 `areaColors`, `dayHours` and `areaHours` change one key at a time; `null` removes a key.
@@ -460,6 +462,19 @@ refused: check with him, then correct the batch or add `"over": true`. `{"op": "
 {"protein": 150, "maintenanceKcal": 2600}}` sets the daily protein target and his maintenance calories
 (`null` clears maintenance); `fibre` (g a day), `fruitVeg` (portions a day), `plants` (a week) and
 `oilyFish` (portions a week) set the balance targets.
+
+### `back`
+His back this morning, told in a chat: `{"op": "back", "score": "stiff"}` (fine, stiff, sore or bad;
+`"day"` for another morning). The same answer as the app's four buttons, with the sore-two-mornings flag.
+
+### `close`
+Closes a day as the app's Close does: `{"op": "close", "day": "yesterday"}`. What's unticked counts as
+not done, by name, and the planner books nothing more on it. Past days and today only. Tick what he did
+(`done` with `"day"`) first.
+
+### `morning`
+`{"op": "morning"}` marks Start the day done, so the card and the morning push stop. Run it last, once
+his back, yesterday's ticks, yesterday's meals and the close are in; it records what was left empty.
 
 ## Optional advanced controls
 

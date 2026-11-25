@@ -5,6 +5,7 @@ import {
   todayRows, streak, weekTotal, doneBetween, doneIndex, milestonesOf, goalProgress, history, dayDetail,
   dayCompletion, dayScore,
 } from '../js/schedule.js';
+import { morningModel } from '../js/morning.js';
 import { longDate, weekStart, addDays, shortWeekday, shortDate, carryLabel, forLabel, logicalDay, daysBetween } from '../js/dates.js';
 import { formatProgress } from '../js/parse.js';
 import { openFlags, FLAG_KINDS, flagKind, flagSourceName } from '../js/flags.js';
@@ -316,6 +317,15 @@ function catchup(doc, today, arg, now = new Date()) {
   out.push(n > 0 ? `Catching up on the last ${Math.floor(n)} day${n === 1 ? '' : 's'}.`
     : since ? `Catching up since the last catch-up, ${when(since)}${first > from ? ` (only the last ${CATCHUP_MAX_DAYS} days shown)` : ''}.`
     : 'First catch-up: yesterday and today.');
+
+  // Start the day not done yet (js/morning.js): ask him for what's missing, write it, then `morning`.
+  const morning = morningModel(doc, today);
+  if (!morning.done) {
+    const y = shortWeekday(morning.yesterday);
+    const main = new Set(morning.meals.map((m) => m.slot).filter((s) => ['breakfast', 'lunch', 'dinner'].includes(s))).size;
+    out.push(`Start the day isn't done: back ${morning.back ? morning.back.word : 'not answered'}; ${y} ${morning.close.closed ? 'closed' : `not closed (${morning.close.tickable.length} open)`}; `
+      + `${morning.meals.length} meal${morning.meals.length === 1 ? '' : 's'} logged for ${y} (${main} of 3 main). Ask him what's missing, log it (back, done, meal), close ${y}, then {"op": "morning"}.`);
+  }
 
   // His notes for Claude first (the Note for Claude widget, or ⚑ → For Claude): every open one, old or
   // new, oldest first, with when and what he was doing. Act on them, then `archive` each.
