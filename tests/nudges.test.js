@@ -19,14 +19,37 @@ function withData() {
   return { store, heb };
 }
 
-test('the back nudge: from 07:30 until 11:00, only while the morning is unanswered', () => {
+test('the morning push: Start the day from 08:00 until 11:00, once the morning is done never', () => {
   const { store } = withData();
-  assert.deepEqual(ids(store.doc(), at(7, 20)), []);
-  assert.deepEqual(ids(store.doc(), at(7, 30)), [`back:${DAY}`]);
-  const [n] = dueNudges(store.doc(), at(8, 0), 4);
-  assert.deepEqual([n.title, n.url], ["How's your back?", './?do=back']);
+  assert.deepEqual(ids(store.doc(), at(7, 55)), []);
+  assert.deepEqual(ids(store.doc(), at(8, 5)), [`morning:${DAY}`]);
+  const [n] = dueNudges(store.doc(), at(8, 5), 4);
+  assert.deepEqual([n.title, n.url], ['Start the day', './?do=morning']);
+  // Answering the back alone doesn't finish the morning: yesterday and food are still to do.
   store.setBack(DAY, 0);
-  assert.deepEqual(ids(store.doc(), at(8, 0)), []);
+  assert.deepEqual(ids(store.doc(), at(8, 5)), [`morning:${DAY}`]);
+  store.putCalendar(`morning:${DAY}`, { day: DAY, done: true, at: at(8, 6).toISOString(), skipped: [] }, 'me');
+  assert.deepEqual(ids(store.doc(), at(8, 10)), []);
+  assert.deepEqual(ids(store.doc(), at(10, 5)), []);
+});
+
+test('the second morning push at 10:00, only while the card is untouched', () => {
+  const { store } = withData();
+  assert.deepEqual(ids(store.doc(), at(10, 5)), [`morning:${DAY}`, `morning-again:${DAY}`]);
+  assert.deepEqual(ids(store.doc(), at(11, 30)), [`morning-again:${DAY}`]);
+  assert.deepEqual(ids(store.doc(), at(12, 0)), []);
+  store.setBack(DAY, 2);
+  assert.deepEqual(ids(store.doc(), at(10, 5)), [`morning:${DAY}`]);
+});
+
+test('the morning push time is a planner setting, 08:00 by default', () => {
+  const { store } = withData();
+  assert.equal(CALENDAR_DEFAULTS.morningAt, '08:00');
+  assert.equal(checkConfigField('morningAt', '07:30'), '07:30');
+  for (const bad of ['7:30', '24:00', 'morning', 730, '10:30']) assert.throws(() => checkConfigField('morningAt', bad), /morningAt/);
+  store.putCalendar('config', { morningAt: '07:30' });
+  assert.deepEqual(ids(store.doc(), at(7, 35)), [`morning:${DAY}`]);
+  assert.deepEqual(ids(store.doc(), at(7, 25)), []);
 });
 
 test('no meal pushes: Claude logs his meals from a chat, so nothing nags him to snap one', () => {
@@ -95,7 +118,7 @@ function sender(store, startAt) {
 
 test('each nudge is sent once, at most four a day, never in the quiet hours', () => {
   const { store } = withData();
-  const s = sender(store, at(7, 40));
+  const s = sender(store, at(8, 10));
   assert.equal(s.nudges().send(store).sent, 1);
   assert.equal(s.nudges().send(store).sent, 0, 'the same nudge is never sent twice');
   s.setNow(at(23, 0));
@@ -113,8 +136,8 @@ test('a planner run sends a due nudge to the devices, after its other work', asy
   const ecdh = crypto.createECDH('prime256v1');
   ecdh.generateKeys();
   doc.calendar['push:phone'] = { id: 'push:phone', status: 'active', endpoint: 'https://fcm.googleapis.com/fcm/send/phone', p256dh: b64url(ecdh.getPublicKey()), auth: b64url(crypto.randomBytes(16)), label: 'phone' };
-  const run = appsScript({ cal: new FakeCalendar(), repo: new FakeRepo(doc), props: { GITHUB_TOKEN: 'ghp_dummy_token', SYNC_REPO: 'o/r' }, now: () => at(7, 40) });
+  const run = appsScript({ cal: new FakeCalendar(), repo: new FakeRepo(doc), props: { GITHUB_TOKEN: 'ghp_dummy_token', SYNC_REPO: 'o/r' }, now: () => at(8, 10) });
   assert.equal(await createPlanner({ ...run, version: 't' }).run(), 'ok');
   assert.equal(run.pushes.length, 1);
-  assert.deepEqual(JSON.parse(run.props.get('NUDGES')).sent, [`back:${DAY}`]);
+  assert.deepEqual(JSON.parse(run.props.get('NUDGES')).sent, [`morning:${DAY}`]);
 });

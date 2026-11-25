@@ -19,7 +19,8 @@ export const CALENDAR_DEFAULTS = {
   areaColors: {},
   dayHours: {},
   areaHours: {}, // an area booked only in its own hours, like {"Food": ["16:30", "20:00"]}
-  nudges: true, // js/nudges.js: pushes before a miss (the back question, Hebrew, a session)
+  nudges: true, // js/nudges.js: pushes before a miss (Start the day, a session)
+  morningAt: '08:00', // js/nudges.js: when the Start the day push comes, his time (07:00 to 09:30)
   checkins: false, // planner/checkins.js: a question and a ping for each block that passes unticked (off: the day is closed once, js/close.js)
   duolingo: '', // his Duolingo username (planner/duolingo.js); empty leaves Duolingo unchecked
 };
@@ -65,6 +66,11 @@ export const CONFIG_CHECKS = {
   duolingo: (v, field) => {
     if (typeof v !== 'string' || !/^[\w.-]{0,40}$/.test(v.trim())) throw new Error(`${field} should be a Duolingo username, or "" to stop checking`);
     return v.trim();
+  },
+  morningAt: (v, field) => {
+    const m = typeof v === 'string' && /^\d\d:\d\d$/.test(v) ? clockMinutes(v) : null;
+    if (m == null || m < 7 * 60 || m > 9 * 60 + 30) throw new Error(`${field} should be a time like "08:00", from 07:00 to 09:30`);
+    return v;
   },
   nudges: (v, field) => {
     if (typeof v !== 'boolean') throw new Error(`${field} should be true or false`);

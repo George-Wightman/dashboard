@@ -1,12 +1,13 @@
 // Nudges: a push to George's devices before a miss, not after it. Fixed rules, no AI; the planner
 // sends them (planner/nudges.js), each once, at most NUDGES_PER_DAY a day, never in the quiet hours.
-// The back question in the morning and a coach's session half an hour ahead. No meal pushes: Claude
+// Start the day in the morning (js/morning.js) and a coach's session half an hour ahead. No meal pushes: Claude
 // logs his meals from a chat (10 Nov 2026), so the app never asks him to snap one.
 // Hebrew has its own, from the Hebrew app (planner/hebrew-nudges.js). Pure: a document and a moment in.
 
 import { addDays } from './dates.js';
 import { wallClock, deviceZone } from './travel.js';
-import { readPlannerConfig, dayRecord } from './calendar.js';
+import { readPlannerConfig, dayRecord, clockMinutes } from './calendar.js';
+import { morningRecord } from './morning.js';
 import { sessionTasks, routineFor } from './coach.js';
 
 export const NUDGES_PER_DAY = 4;
@@ -22,11 +23,21 @@ export function quietAt(t, zone) {
 }
 const done = (doc, id) => Object.values(doc.logs ?? {}).some((l) => l.status === 'active' && l.kind === 'done' && l.itemId === id);
 
-function backNudge(doc, t, day, clk) {
-  if (!between(clk, 7 * 60 + 30, 11 * 60)) return null;
-  const r = doc.gym?.[`back:${day}`];
-  if (r && r.status === 'active') return null;
-  return { id: `back:${day}`, title: "How's your back?", body: 'One tap: fine, stiff, sore or bad.', url: './?do=back' };
+// Start the day (js/morning.js): one push from his set time until 11:00, and one more from 10:00
+// until 12:00 while the card is untouched (the back not answered either). None once it's done.
+const AGAIN = [10 * 60, 12 * 60];
+const MORNING_UNTIL = 11 * 60;
+function morningNudges(doc, day, clk, morningAt) {
+  if (morningRecord(doc, day)) return [];
+  const out = [];
+  if (between(clk, clockMinutes(morningAt), MORNING_UNTIL)) {
+    out.push({ id: `morning:${day}`, title: 'Start the day', body: 'Back, yesterday and food: a minute, one card.', url: './?do=morning' });
+  }
+  const back = doc.gym?.[`back:${day}`];
+  if (between(clk, ...AGAIN) && !(back && back.status === 'active')) {
+    out.push({ id: `morning-again:${day}`, title: 'Start the day', body: 'Still to do: back, yesterday and food.', url: './?do=morning' });
+  }
+  return out;
 }
 
 function sessionNudges(doc, t, day, zone) {
@@ -49,9 +60,10 @@ function sessionNudges(doc, t, day, zone) {
 
 // The nudges due at `t`, whether or not they've been sent (the sender remembers that).
 export function dueNudges(doc, t, dayStartHour = 4) {
-  if (readPlannerConfig(doc).config.nudges === false) return [];
+  const { config } = readPlannerConfig(doc);
+  if (config.nudges === false) return [];
   const zone = deviceZone(doc);
   const clk = wallClock(t, zone);
   const day = clk.minutes < dayStartHour * 60 ? addDays(clk.date, -1) : clk.date;
-  return [backNudge(doc, t, day, clk), ...sessionNudges(doc, t, day, zone)].filter(Boolean);
+  return [...morningNudges(doc, day, clk, config.morningAt), ...sessionNudges(doc, t, day, zone)];
 }
