@@ -11,7 +11,7 @@
 // estimated: no model gives a trustworthy milligram of iron from a sentence, so the food groups stand
 // in for them. A meal from before has protein and calories only, and the balance leaves it out.
 
-import { addDays } from './dates.js';
+import { addDays, longDate } from './dates.js';
 
 export const PORTIONS = { lighter: 0.75, right: 1, bigger: 1.3 };
 export const MAX_TRIES = 3;
@@ -75,6 +75,62 @@ export function mealPrompt({ text, at, hasPhoto, usual = [] }) {
     `Eaten at ${pad(at.getHours())}:${pad(at.getMinutes())}.`,
     scale.length ? `For scale, his usual meals: ${scale.join('; ')}.` : null,
   ].filter(Boolean).join('\n');
+}
+
+// A DAY OF FOOD IN ONE GO (Start the day, 25 Nov 2026): what he ate yesterday, said as one ramble,
+// split into meals. Only the split comes from here: slot, time and his own words for each meal, with
+// the amounts in them. He checks the split, and each meal is then saved and estimated on its own as
+// any meal is (mealPrompt), so counts, plants and the balance work the same.
+export const SPLIT_MAX_MEALS = 8;
+export const SPLIT_DEFAULT_TIMES = { breakfast: '08:30', lunch: '13:00', dinner: '19:00', snack: '16:00' };
+const SPLIT_SLOTS = Object.keys(SPLIT_DEFAULT_TIMES);
+
+export const DAY_SPLIT_SYSTEM = [
+  'He tells you everything he ate across one day, in one go, often spoken. Split it into the separate meals and snacks he had.',
+  'For each: slot (breakfast, lunch, dinner or snack), time as HH:MM (his own if he said one, else a usual time for that slot), and text: his own words for that meal, with every amount kept exactly as he said it (5 eggs, 2 pittas, half the tray). Never add food he did not mention, never estimate numbers, never merge two meals into one.',
+  'Voice typing hears "pittas" as "pizzas": with eggs, cheese or salad, or "wholemeal", it means pitta breads. Write pittas.',
+  'Leave out anything in the "already logged" list: those are saved.',
+  'When a meal is a share of a pot in the fridge (listed with its id), give that id as batch and his share of the whole pot as share, a number from 0 to 1 (a quarter is 0.25). Otherwise batch and share are null.',
+  'Reply only with JSON, exactly this shape:',
+  '{"meals": [{"slot": "breakfast", "time": "08:30", "text": "5 eggs and 2 wholemeal pittas", "batch": null, "share": null}]}',
+].join('\n');
+
+export function daySplitPrompt({ text, day, logged = [], batches: pots = [] }) {
+  const time = (m) => {
+    const d = new Date(m.at);
+    return Number.isNaN(d.getTime()) ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())} `;
+  };
+  return [
+    `The day: ${longDate(day)}.`,
+    logged.length ? `Already logged (leave these out): ${logged.map((m) => `${time(m)}${m.slot ?? 'meal'}: ${m.text || m.estimate?.name || 'a meal'}`).join('; ')}.` : 'Nothing is logged for that day yet.',
+    pots.length ? `Pots in the fridge: ${pots.map((b) => `${b.id}: ${b.name}`).join('; ')}.` : null,
+    `What he said: ${String(text ?? '').trim()}`,
+  ].filter(Boolean).join('\n');
+}
+
+const SPLIT_BAD = 'Gemini’s split didn’t make sense';
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// The split, checked, in time order. Anything odd fails the whole split, so nothing half-right is
+// shown as if it were right; his words are kept by the card either way.
+export function parseDaySplit(data, { batches: pots = [] } = {}) {
+  const list = data && typeof data === 'object' ? data.meals : null;
+  if (!Array.isArray(list) || !list.length || list.length > SPLIT_MAX_MEALS) throw new Error(SPLIT_BAD);
+  const known = new Set(pots.map((b) => b.id));
+  const out = list.map((m) => {
+    if (!m || typeof m !== 'object' || !SPLIT_SLOTS.includes(m.slot)) throw new Error(SPLIT_BAD);
+    const text = typeof m.text === 'string' ? m.text.trim().slice(0, 500) : '';
+    if (!text) throw new Error(SPLIT_BAD);
+    const time = m.time == null || m.time === '' ? SPLIT_DEFAULT_TIMES[m.slot] : String(m.time).trim();
+    if (!HHMM.test(time)) throw new Error(SPLIT_BAD);
+    let batchId = null;
+    let share = null;
+    if (m.batch != null && known.has(m.batch)) {
+      try { share = parseShare(m.share); batchId = m.batch; } catch { share = null; }
+    }
+    return { slot: m.slot, time, text, batchId, share };
+  });
+  return out.sort((a, b) => a.time.localeCompare(b.time));
 }
 
 const BAD = 'Gemini’s estimate didn’t make sense';
