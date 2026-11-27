@@ -613,11 +613,14 @@ export function createStore({ storage, now = () => new Date(), newId = () => cry
     return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null, batchId: null, share: null });
   }
 
-  function saveUsual({ name, protein, kcal, ...rest }) {
+  // `slot`: its home meal (breakfast, lunch, dinner or snack), so Start the day offers it there.
+  function saveUsual({ name, protein, kcal, slot = null, ...rest }) {
     const title = requireTitle(name, 'A usual meal');
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
+    if (slot != null && !['breakfast', 'lunch', 'dinner', 'snack'].includes(slot)) throw new Error("A usual meal's slot is breakfast, lunch, dinner or snack");
     const id = `usual:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meal'}`;
-    return putRecord('meals', id, { kind: 'usual', name: title, ...nutrientsOf({ protein, kcal, ...rest }), uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
+    const home = slot ?? doc.meals[id]?.slot ?? null;
+    return putRecord('meals', id, { kind: 'usual', name: title, ...nutrientsOf({ protein, kcal, ...rest }), uses: doc.meals[id]?.uses ?? 0, ...(home ? { slot: home } : {}) }, 'me').rec;
   }
 
   // A batch he cooked (js/food.js): the whole pot's protein and kcal, worked out by Claude from what

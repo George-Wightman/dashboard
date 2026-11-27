@@ -6,7 +6,7 @@
 
 import { addDays, shortWeekday } from './dates.js';
 import { closeModel } from './close.js';
-import { mealsOn } from './food.js';
+import { mealsOn, MEAL_TIMES } from './food.js';
 import { BACK } from './coach.js';
 
 export const morningId = (day) => `morning:${day}`;
@@ -117,3 +117,25 @@ export function finishMorning(store, { today, note = '', at, flagState = null, d
 }
 
 export const claudeMorningUrl = () => `https://claude.ai/new?q=${encodeURIComponent("/dashboard Start my day with me: back, yesterday's ticks and food.")}`;
+
+// ---- Food by taps (27 Nov 2026) ---------------------------------------------------------------------
+
+// One tap on a food row: a usual meal or a share of a pot, counted exactly, or his words for one
+// meal, left for the background estimate. Logged on `day` at the row's time, the row's meal kept.
+export function logTap(store, { day, slot, usualId = null, batchId = null, share = null, text = '' }, dayStartHour = 4) {
+  const at = mealTimeFor(day, MEAL_TIMES[slot] ?? MEAL_TIMES.snack, dayStartHour);
+  const words = String(text ?? '').trim();
+  if (!usualId && !batchId && !words) throw new Error('Say what you had');
+  const meal = usualId ? store.addMeal({ at, usualId }) : batchId ? store.addServing({ at, batchId, share }) : store.addMeal({ at, text: words });
+  if (meal.slot !== slot) store.updateMeal(meal.id, { slot });
+  return store.doc().meals[meal.id];
+}
+
+// An estimated meal kept as a usual for its row, and the meal linked to it.
+export function usualFromMeal(store, mealId) {
+  const meal = store.doc().meals[mealId];
+  if (!meal || meal.kind !== 'meal' || !meal.final) throw new Error('A meal can be kept as a usual once it has numbers');
+  const u = store.saveUsual({ name: meal.estimate?.name ?? meal.text, ...meal.final, slot: meal.slot });
+  store.updateMeal(mealId, { usualId: u.id });
+  return u;
+}

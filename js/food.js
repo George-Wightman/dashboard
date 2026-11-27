@@ -82,7 +82,8 @@ export function mealPrompt({ text, at, hasPhoto, usual = [] }) {
 // the amounts in them. He checks the split, and each meal is then saved and estimated on its own as
 // any meal is (mealPrompt), so counts, plants and the balance work the same.
 export const SPLIT_MAX_MEALS = 8;
-export const SPLIT_DEFAULT_TIMES = { breakfast: '08:30', lunch: '13:00', dinner: '19:00', snack: '16:00' };
+export const MEAL_TIMES = { breakfast: '08:30', lunch: '13:00', dinner: '19:00', snack: '16:00' };
+export const SPLIT_DEFAULT_TIMES = MEAL_TIMES;
 const SPLIT_SLOTS = Object.keys(SPLIT_DEFAULT_TIMES);
 
 export const DAY_SPLIT_SYSTEM = [
@@ -365,6 +366,30 @@ export function usualMeals(doc) {
     .map((m) => ({ id: m.id, name: m.name, protein: m.protein, kcal: m.kcal, uses: m.uses ?? 0 }))
     .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name));
 }
+
+// START THE DAY'S FOOD ROWS (27 Nov 2026): breakfast, lunch, dinner and a snack as taps. A row offers
+// the usual meals he has had most recently at that meal, so a Salzburg lunch gives way to a London
+// one by itself, and a usual Claude saved with that home meal (`slot`) before he's had it.
+export const ROW_USUALS = 2;
+export const ROW_DAYS = 14;
+export const POT_SHARES = [0.167, 0.2, 0.25, 0.333, 0.5];
+
+export function rowUsuals(doc, slot, today, n = ROW_USUALS) {
+  const from = addDays(today, -ROW_DAYS);
+  const last = new Map();
+  for (const m of meals(doc)) {
+    if (!m.usualId || m.slot !== slot || m.day < from || m.day > today) continue;
+    if (String(m.at) > (last.get(m.usualId) ?? '')) last.set(m.usualId, String(m.at));
+  }
+  return Object.values(doc?.meals ?? {})
+    .filter((u) => u && u.kind === 'usual' && u.status === 'active')
+    .filter((u) => last.has(u.id) || (u.slot === slot && String(u.updated ?? u.created ?? '').slice(0, 10) >= from))
+    .sort((a, b) => (last.get(b.id) ?? '').localeCompare(last.get(a.id) ?? '') || String(b.updated ?? '').localeCompare(String(a.updated ?? '')))
+    .slice(0, n);
+}
+
+// Pots in the fridge are offered at lunch and dinner, where leftovers get eaten.
+export const rowPots = (doc, slot, today) => (slot === 'lunch' || slot === 'dinner' ? liveBatches(doc, today) : []);
 
 // What this device should do next: estimate the meals it holds a photo for (and any meal whose photo
 // isn't waiting on another device, which goes by its words), and upload the photos it holds.
