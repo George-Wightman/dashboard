@@ -432,8 +432,12 @@ Food (`reference food` first). `{"op": "meal", "id": "meal:…", "protein": 35, 
 cheese"}` corrects a meal Gemini got badly wrong; the why is required and shown to George, and the
 "correction replaces his number in every total. A meal logged twice: `{"op": "meal", "id": "meal:…", "remove": true,
 "why": "logged twice"}`. A meal logged later than he ate it ("this was last night"): `{"op": "meal", "id":
-"meal:…", "day": "yesterday", "time": "20:30"}` moves it (his time; either can be left out). He logs
-meals by saying what he had; the app no longer offers usual meals. Meals he tells you about in a chat:
+"meal:…", "day": "yesterday", "time": "20:30"}` moves it (his time; either can be left out). On Start the day he
+logs yesterday's food by taps: each meal's row offers the usual meals he's had there most recently
+(two at most) and shares of the pots in the fridge; anything else is one meal in words, which Gemini
+estimates, and "I cooked a pot" turns an ingredient list into a pot. When his usual changes ("my lunch
+is now…"), save it with `"usual": {"name": …, "protein": …, "kcal": …, "slot": "lunch"}` so it shows on
+that row straight away. Meals he tells you about in a chat:
 `{"op": "meal", "log": "his words, amounts and all", "day": "yesterday", "time": "12:30"}` logs one as if he'd
 said it in the app (his words, not a summary; `time` required); Gemini estimates it when the app next opens.
 Add `"items": [{"name", "qty", "unit", "protein", "kcal", "carbs", "fat", "fibre", "sugar", "veg", "fruit",

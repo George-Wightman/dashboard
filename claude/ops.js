@@ -842,8 +842,8 @@ function meal(store, op) {
     return `Logged ${q(words.length > 60 ? words.slice(0, 59) + '…' : words)} for ${dayName(day, store.today())} at ${clockOf(op.time)}; Gemini estimates it when the app next opens`;
   }
   if (op.usual) {
-    const u = store.saveUsual({ name: op.usual.name, protein: amount(op.usual.protein, 'protein'), kcal: amount(op.usual.kcal, 'kcal'), ...extrasFrom(op.usual, 'a usual meal') });
-    return `Saved the usual meal ${q(u.name)}: ${u.protein} g, ${u.kcal} kcal`;
+    const u = store.saveUsual({ name: op.usual.name, protein: amount(op.usual.protein, 'protein'), kcal: amount(op.usual.kcal, 'kcal'), ...extrasFrom(op.usual, 'a usual meal'), slot: op.usual.slot ?? null });
+    return `Saved the usual meal ${q(u.name)}: ${u.protein} g, ${u.kcal} kcal${u.slot ? `, offered at ${u.slot} on Start the day` : ''}`;
   }
   if (op.fuel) {
     const changes = {};

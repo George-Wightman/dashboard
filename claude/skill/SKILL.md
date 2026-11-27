@@ -103,8 +103,10 @@ on each (or tell him what you'd do and why not), then mark it addressed with
 
 ## Start the day (since 26 Nov 2026; it replaced the evening close and the back push)
 
-Each morning one push opens one card: his back, yesterday's ticks, everything he ate yesterday said
-in one go (split into meals for him to check), and a line for you, then Done, which closes yesterday.
+Each morning one push opens one card: his back, yesterday's ticks, yesterday's food as taps (his
+usual meals for each meal, shares of the pots in the fridge, one meal in words, or a new pot from its
+ingredients), and a line for you, then Done, which closes yesterday. When his usual breakfast or
+lunch changes, save the new one as a usual meal with its `slot` (`reference meal`).
 The line arrives as a *For Claude* note starting "Start of <day>:" ("Closing <day>:" from an evening
 close), at the top of `catchup`. When he opens a chat before doing the card, `catchup` says what's
 missing: ask him, then log it (`back`, `done` with `"day": "yesterday"`, `meal` with his words),
