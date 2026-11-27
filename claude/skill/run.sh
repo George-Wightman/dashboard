@@ -20,7 +20,9 @@ if [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 18 ]; then
   exit 3
 fi
 
-if [ -d "$APP/.git" ]; then
+# A clone that stopped half-way leaves a .git folder git won't open and no app code; update only a
+# clone that is whole, and start any other one again (17 Nov 2026: one stuck every chat on a laptop).
+if [ -d "$APP/.git" ] && [ -f "$APP/claude/dash.mjs" ] && git -C "$APP" rev-parse --git-dir >/dev/null 2>&1; then
   if ! { git -C "$APP" fetch --quiet --depth 1 origin main && git -C "$APP" reset --quiet --hard origin/main; } 2>/dev/null; then
     echo "(Couldn't update the dashboard code; using the copy from earlier in this chat.)"
   fi
