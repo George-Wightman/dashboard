@@ -202,6 +202,23 @@ class WidgetsTest {
         assertEquals(NetworkType.CONNECTED, queued[0].constraints.requiredNetworkType)
     }
 
+    // WorkManager switches its RescheduleReceiver off when its queue empties, and switching any part
+    // of the app off makes Android rebuild every widget and call onUpdate, which queues a fetch: the
+    // widgets flashed their first frame every second or two (27 Nov 2026). Once a fetch has run, the
+    // receiver must still be on, with the placeholder still queued.
+    @Test fun aFinishedFetchSwitchesNothingOff() {
+        val config = androidx.work.Configuration.Builder().setExecutor(androidx.work.testing.SynchronousExecutor()).build()
+        WorkManagerTestInitHelper.initializeTestWorkManager(ctx, config)
+        Widgets.fetchLater(ctx)
+        val work = WorkManager.getInstance(ctx)
+        val fetch = work.getWorkInfosForUniqueWork(Widgets.WORK).get().single()
+        WorkManagerTestInitHelper.getTestDriver(ctx)!!.setAllConstraintsMet(fetch.id)
+        assertEquals(androidx.work.WorkInfo.State.SUCCEEDED, work.getWorkInfoById(fetch.id).get()!!.state)
+        val receiver = android.content.ComponentName(ctx, "androidx.work.impl.background.systemalarm.RescheduleReceiver")
+        assertTrue(ctx.packageManager.getComponentEnabledSetting(receiver) != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED)
+        assertEquals(androidx.work.WorkInfo.State.ENQUEUED, work.getWorkInfosForUniqueWork(Widgets.PLACEHOLDER).get().single().state)
+    }
+
     @Test fun theQueuedFetchTriesAgainWhenThePlannerCantBeReached() {
         val notConnected = TestListenableWorkerBuilder<RefreshWorker>(ctx).build().doWork()
         assertEquals(ListenableWorker.Result.success(), notConnected)

@@ -74,6 +74,11 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params
     }
 }
 
+// Never meant to run: queued ten years out so WorkManager's queue is never empty (see Widgets.fetchLater).
+class PlaceholderWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
+    override fun doWork(): Result = Result.success()
+}
+
 object Widgets {
     const val ACTION_REFRESH = "com.georgewightman.dashwidgets.REFRESH"
     const val ACTION_TICK = "com.georgewightman.dashwidgets.TICK"
@@ -133,16 +138,27 @@ object Widgets {
     }
 
     const val WORK = "glance"
+    const val PLACEHOLDER = "glance-placeholder"
 
     // A fetch through WorkManager, which runs it once Android lets the app use the network. Started
     // in the background, a plain request fails while the phone is idle: Android blocks a background
     // app's network then, and the Hebrew card sat on the day before's (5 Nov 2026). One at a time.
+    //
+    // The placeholder goes first and stays queued. WorkManager switches one of its own receivers on
+    // when work is queued and off when the queue empties; switching any part of the app on or off makes
+    // Android rebuild every widget and call onUpdate, which queued a fetch, which emptied the queue when
+    // it finished... The widgets flashed their "Open the app to connect" first frame every second or
+    // two, each flash a fetch from the planner (27 Nov 2026). With something always queued, nothing is
+    // ever switched off. Androidx's own Glance widgets do the same.
     fun fetchLater(ctx: Context) {
+        val work = WorkManager.getInstance(ctx.applicationContext)
+        work.enqueueUniqueWork(PLACEHOLDER, ExistingWorkPolicy.KEEP, OneTimeWorkRequestBuilder<PlaceholderWorker>()
+            .setInitialDelay(3650, TimeUnit.DAYS).build())
         val request = OneTimeWorkRequestBuilder<RefreshWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
-        WorkManager.getInstance(ctx.applicationContext).enqueueUniqueWork(WORK, ExistingWorkPolicy.KEEP, request)
+        work.enqueueUniqueWork(WORK, ExistingWorkPolicy.KEEP, request)
     }
 
     fun drawAll(ctx: Context) {
