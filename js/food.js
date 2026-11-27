@@ -355,9 +355,18 @@ export function rowUsuals(doc, slot, today, n = ROW_USUALS) {
   return Object.values(doc?.meals ?? {})
     .filter((u) => u && u.kind === 'usual' && u.status === 'active')
     .filter((u) => last.has(u.id) || (u.slot === slot && String(u.updated ?? u.created ?? '').slice(0, 10) >= from))
-    .sort((a, b) => (last.get(b.id) ?? '').localeCompare(last.get(a.id) ?? '') || String(b.updated ?? '').localeCompare(String(a.updated ?? '')))
+    // Newest first: when it was last had here, or for one given this home meal, when that was saved.
+    .sort((a, b) => keyOf(b).localeCompare(keyOf(a)))
     .slice(0, n);
+  function keyOf(u) {
+    const saved = u.slot === slot ? String(u.updated ?? u.created ?? '') : '';
+    const had = last.get(u.id) ?? '';
+    return had > saved ? had : saved;
+  }
 }
+
+// The shares of a pot still offered: those that fit in what's left of it.
+export const potShares = (doc, batchId) => POT_SHARES.filter((s) => batchEaten(doc, batchId) + s <= 1.02);
 
 // Pots in the fridge are offered at lunch and dinner, where leftovers get eaten.
 export const rowPots = (doc, slot, today) => (slot === 'lunch' || slot === 'dinner' ? liveBatches(doc, today) : []);

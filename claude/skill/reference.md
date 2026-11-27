@@ -439,7 +439,7 @@ estimates, and "I cooked a pot" turns an ingredient list into a pot. When his us
 is now…"), save it with `"usual": {"name": …, "protein": …, "kcal": …, "slot": "lunch"}` so it shows on
 that row straight away. Meals he tells you about in a chat:
 `{"op": "meal", "log": "his words, amounts and all", "day": "yesterday", "time": "12:30"}` logs one as if he'd
-said it in the app (his words, not a summary; `time` required); Gemini estimates it when the app next opens.
+said it in the app (his words, not a summary; `time` required); Gemini estimates it when the app next opens. Add `"slot": "dinner"` when the time alone would put it in the wrong row (a dinner after 21:30 is otherwise a snack), so Start the day doesn't offer that meal again.
 Add `"items": [{"name", "qty", "unit", "protein", "kcal", "carbs", "fat", "fibre", "sugar", "veg", "fruit",
 "oilyFish"}]` (and `"name"`, `"plants": […]`) to log it with your own estimate instead, counted at once:
 the usual way since 17 Nov 2026 (`reference food` has the rules). Corrections, usual meals and batches take

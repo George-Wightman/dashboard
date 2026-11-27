@@ -830,15 +830,19 @@ function meal(store, op) {
     const [hh, mm] = clockOf(op.time).split(':').map(Number);
     const at = new Date(y, m - 1, d, hh, mm);
     if (at > store.now()) throw new Error('A meal can’t be logged for a time that hasn’t come yet');
+    // Which meal it was, when the clock would say otherwise (a dinner at 21:45 isn't a snack).
+    const slot = op.slot == null ? null : String(op.slot);
+    if (slot != null && !['breakfast', 'lunch', 'dinner', 'snack'].includes(slot)) throw new Error('A meal’s slot is breakfast, lunch, dinner or snack');
+    const placed = (rec) => { if (slot && rec.slot !== slot) store.updateMeal(rec.id, { slot }); return store.doc().meals[rec.id]; };
     if (op.items != null) {
       const estimate = claudeEstimate({ name: op.name, items: op.items, plants: op.plants });
-      const rec = store.addMeal({ at, text: words, estimate });
+      const rec = placed(store.addMeal({ at, text: words, estimate }));
       const v = mealValue(rec);
       const short = estimate.items.filter((i) => GRAMS.some((k) => i[k] == null)).map((i) => i.name);
       return tagged(`Logged ${q(estimate.name)} for ${dayName(day, store.today())} at ${clockOf(op.time)}: ${v.protein} g protein, ${v.kcal} kcal${balanceWords(v)}${
         short.length ? `. No carbs, fat, fibre or sugar for ${short.join(', ')}, so the meal is left out of the balance until you correct it` : ''}`, rec.id);
     }
-    store.addMeal({ at, text: words });
+    placed(store.addMeal({ at, text: words }));
     return `Logged ${q(words.length > 60 ? words.slice(0, 59) + '…' : words)} for ${dayName(day, store.today())} at ${clockOf(op.time)}; Gemini estimates it when the app next opens`;
   }
   if (op.usual) {
@@ -1052,7 +1056,7 @@ function session(store, op) {
 // themselves, so they are deliberately not listed here.
 export const FIELDS = {
   details: ['id', 'set'],
-  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'usual', 'fuel', 'log', 'batch', 'share', 'of', 'over', 'items', 'name', 'plants', 'carbs', 'fat', 'fibre', 'sugar', 'veg', 'fruit', 'oilyFish'],
+  meal: ['id', 'protein', 'kcal', 'why', 'remove', 'day', 'time', 'slot', 'usual', 'fuel', 'log', 'batch', 'share', 'of', 'over', 'items', 'name', 'plants', 'carbs', 'fat', 'fibre', 'sugar', 'veg', 'fruit', 'oilyFish'],
   session: ['id', 'date', 'time', 'title', 'session'],
   rule: ['id', 'title', 'enabled', 'definition'],
   report: ['id', 'answers', 'day', 'complete', 'reported', 'reportId'],

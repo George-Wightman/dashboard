@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = '6a8c5058';
+var PLANNER_BUILD = 'e83e6024';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -2215,9 +2215,18 @@ function rowUsuals(doc, slot, today, n = ROW_USUALS) {
   return Object.values(doc?.meals ?? {})
     .filter((u) => u && u.kind === 'usual' && u.status === 'active')
     .filter((u) => last.has(u.id) || (u.slot === slot && String(u.updated ?? u.created ?? '').slice(0, 10) >= from))
-    .sort((a, b) => (last.get(b.id) ?? '').localeCompare(last.get(a.id) ?? '') || String(b.updated ?? '').localeCompare(String(a.updated ?? '')))
+    // Newest first: when it was last had here, or for one given this home meal, when that was saved.
+    .sort((a, b) => keyOf(b).localeCompare(keyOf(a)))
     .slice(0, n);
+  function keyOf(u) {
+    const saved = u.slot === slot ? String(u.updated ?? u.created ?? '') : '';
+    const had = last.get(u.id) ?? '';
+    return had > saved ? had : saved;
+  }
 }
+
+// The shares of a pot still offered: those that fit in what's left of it.
+const potShares = (doc, batchId) => POT_SHARES.filter((s) => batchEaten(doc, batchId) + s <= 1.02);
 
 // Pots in the fridge are offered at lunch and dinner, where leftovers get eaten.
 const rowPots = (doc, slot, today) => (slot === 'lunch' || slot === 'dinner' ? liveBatches(doc, today) : []);
@@ -2274,7 +2283,7 @@ function batches(doc) {
 
 // The batches still in the fridge: cooked in the last week and not all logged.
 const liveBatches = (doc, today) => batches(doc).filter((b) => b.cookedOn > addDays(today, -BATCH_DAYS) && batchEaten(doc, b.id) < 0.98);
-return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, GRAMS, GROUPS, EXTRA, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, MEAL_TIMES, cleanPlants, parseEstimate, POT_SYSTEM, potPrompt, parsePot, claudeEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, nutrientsOf, macroGap, mealsOn, dayProtein, weekKcal, fuelSettings, BALANCE_TARGETS, dayBalance, weekBalance, maintenanceVerdict, usualMeals, ROW_USUALS, ROW_DAYS, POT_SHARES, rowUsuals, rowPots, mealWork, BATCH_DAYS, parseShare, shareWords, servingValue, batchServings, batchEaten, batches, liveBatches };
+return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, GRAMS, GROUPS, EXTRA, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, MEAL_TIMES, cleanPlants, parseEstimate, POT_SYSTEM, potPrompt, parsePot, claudeEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, nutrientsOf, macroGap, mealsOn, dayProtein, weekKcal, fuelSettings, BALANCE_TARGETS, dayBalance, weekBalance, maintenanceVerdict, usualMeals, ROW_USUALS, ROW_DAYS, POT_SHARES, rowUsuals, potShares, rowPots, mealWork, BATCH_DAYS, parseShare, shareWords, servingValue, batchServings, batchEaten, batches, liveBatches };
 })();
 
 // ---- js/duolingo.js
@@ -8801,7 +8810,7 @@ const __js_morning = (() => {
 
 const { addDays, shortWeekday } = __js_dates;
 const { closeModel } = __js_close;
-const { mealsOn, MEAL_TIMES } = __js_food;
+const { mealsOn, mealValue, MEAL_TIMES } = __js_food;
 const { BACK } = __js_coach;
 
 const morningId = (day) => `morning:${day}`;
@@ -8898,8 +8907,10 @@ function logTap(store, { day, slot, usualId = null, batchId = null, share = null
 // An estimated meal kept as a usual for its row, and the meal linked to it.
 function usualFromMeal(store, mealId) {
   const meal = store.doc().meals[mealId];
-  if (!meal || meal.kind !== 'meal' || !meal.final) throw new Error('A meal can be kept as a usual once it has numbers');
-  const u = store.saveUsual({ name: meal.estimate?.name ?? meal.text, ...meal.final, slot: meal.slot });
+  const value = meal?.kind === 'meal' ? mealValue(meal) : null;
+  if (!value) throw new Error('A meal can be kept as a usual once it has numbers');
+  // Its numbers as they stand, a correction from Claude included.
+  const u = store.saveUsual({ name: meal.estimate?.name ?? meal.text, ...value, slot: meal.slot });
   store.updateMeal(mealId, { usualId: u.id });
   return u;
 }

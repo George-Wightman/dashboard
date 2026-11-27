@@ -6,7 +6,7 @@
 
 import { addDays, shortWeekday } from './dates.js';
 import { closeModel } from './close.js';
-import { mealsOn, MEAL_TIMES } from './food.js';
+import { mealsOn, mealValue, MEAL_TIMES } from './food.js';
 import { BACK } from './coach.js';
 
 export const morningId = (day) => `morning:${day}`;
@@ -103,8 +103,10 @@ export function logTap(store, { day, slot, usualId = null, batchId = null, share
 // An estimated meal kept as a usual for its row, and the meal linked to it.
 export function usualFromMeal(store, mealId) {
   const meal = store.doc().meals[mealId];
-  if (!meal || meal.kind !== 'meal' || !meal.final) throw new Error('A meal can be kept as a usual once it has numbers');
-  const u = store.saveUsual({ name: meal.estimate?.name ?? meal.text, ...meal.final, slot: meal.slot });
+  const value = meal?.kind === 'meal' ? mealValue(meal) : null;
+  if (!value) throw new Error('A meal can be kept as a usual once it has numbers');
+  // Its numbers as they stand, a correction from Claude included.
+  const u = store.saveUsual({ name: meal.estimate?.name ?? meal.text, ...value, slot: meal.slot });
   store.updateMeal(mealId, { usualId: u.id });
   return u;
 }

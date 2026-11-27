@@ -2,7 +2,7 @@ process.env.TZ = 'Europe/London';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rowUsuals, rowPots, MEAL_TIMES, POT_SHARES, mealsOn } from '../js/food.js';
+import { rowUsuals, rowPots, potShares, MEAL_TIMES, POT_SHARES, mealsOn } from '../js/food.js';
 import { logTap, usualFromMeal } from '../js/morning.js';
 import { makeStore, clock } from './helpers.js';
 
@@ -90,4 +90,34 @@ test('an estimated meal can become a usual for its row; a pending one cannot', (
   assert.equal(u.slot, 'lunch');
   assert.equal(store.doc().meals[m.id].usualId, u.id);
   assert.deepEqual(rowUsuals(store.doc(), 'lunch', TODAY).map((x) => x.name), ['Chicken wrap']);
+});
+
+test('a meal Claude corrected keeps the correction when it becomes a usual', () => {
+  const { now, store } = setup();
+  now.set(at(TODAY, 8));
+  const m = logTap(store, { day: '2026-11-26', slot: 'dinner', text: 'pasta' }, 4);
+  store.updateMeal(m.id, { state: 'estimated', estimate: { name: 'Pasta', protein: { low: 30, mid: 35, high: 40 }, kcal: { low: 650, mid: 700, high: 750 } }, final: { protein: 35, kcal: 700 }, correction: { by: 'claude', protein: 40, kcal: 1100, why: 'oil and cheese' } });
+  const u = usualFromMeal(store, m.id);
+  assert.equal(u.kcal, 1100);
+  assert.equal(u.protein, 40);
+});
+
+test('a usual Claude has just given a home meal shows even when two others were eaten there', () => {
+  const { now, store, granola, shake } = setup();
+  store.addMeal({ at: at('2026-11-20', 8), usualId: granola.id });
+  store.addMeal({ at: at('2026-11-21', 8), usualId: shake.id });
+  now.set(at(TODAY, 8));
+  store.saveUsual({ name: 'Porridge', protein: 30, kcal: 600, slot: 'breakfast' });
+  assert.equal(rowUsuals(store.doc(), 'breakfast', TODAY)[0].name, 'Porridge');
+});
+
+test('a pot only offers shares that fit in what is left of it', () => {
+  const { now, store } = setup();
+  now.set(at('2026-11-25', 20));
+  const pot = store.saveBatch({ name: 'Chilli', ingredients: 'beef', protein: 200, kcal: 3000, cookedOn: '2026-11-25' });
+  now.set(at(TODAY, 8));
+  assert.deepEqual(potShares(store.doc(), pot.id), POT_SHARES);
+  logTap(store, { day: '2026-11-26', slot: 'lunch', batchId: pot.id, share: 0.5 }, 4);
+  logTap(store, { day: '2026-11-26', slot: 'dinner', batchId: pot.id, share: 0.333 }, 4);
+  assert.deepEqual(potShares(store.doc(), pot.id), [0.167]);
 });

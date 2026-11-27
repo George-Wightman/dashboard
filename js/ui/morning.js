@@ -11,7 +11,7 @@ import { h, grow } from './dom.js';
 import { morningModel, morningDue, morningLine, finishMorning, claudeMorningUrl, logTap, usualFromMeal, savePot } from '../morning.js';
 import { BACK } from '../coach.js';
 import { closeLine, closedLine } from '../close.js';
-import { rowUsuals, rowPots, POT_SHARES, shareWords, slotName, POT_SYSTEM, potPrompt, parsePot, MEAL_MODELS, MEAL_TEMPERATURE } from '../food.js';
+import { rowUsuals, rowPots, potShares, shareWords, slotName, POT_SYSTEM, potPrompt, parsePot, MEAL_MODELS, MEAL_TEMPERATURE } from '../food.js';
 import { mealWords } from './fuel.js';
 import { doingNow } from '../calendar.js';
 import { shortWeekday } from '../dates.js';
@@ -60,6 +60,7 @@ export function openMorning(ctx) {
   });
 
   function logWords(slot) {
+    if (!draft.words.trim()) return;
     act(() => {
       logTap(ctx.store, { day: morningModel(ctx.store.doc(), today).yesterday, slot, text: draft.words }, startHour());
       draft.other = null;
@@ -106,8 +107,8 @@ export function openMorning(ctx) {
   }
 
   // A box for words. Dictation is the phone's own keyboard (Gboard, Wispr Flow): no mic of our own.
-  const box = (key, label, placeholder, get, set, rows = 2) => {
-    const el = h('textarea', { rows, maxlength: 2000, 'data-focus': key, 'aria-label': label, placeholder, oninput: (e) => { set(e.target.value); grow(e.target); } });
+  const box = (key, label, placeholder, get, set, rows = 2, max = 2000) => {
+    const el = h('textarea', { rows, maxlength: max, 'data-focus': key, 'aria-label': label, placeholder, oninput: (e) => { set(e.target.value); grow(e.target); } });
     el.value = get();
     queueMicrotask(() => grow(el));
     return el;
@@ -129,7 +130,7 @@ export function openMorning(ctx) {
         other ? null : h('button', { class: 'dl-btn ghost', type: 'button', 'data-use': 'morning-other', onclick: () => { draft.other = slot; draft.words = ''; paint(); dlg.querySelector('[data-focus="morning-words"]')?.focus(); } }, 'something else')),
       pots.map((b) => h('div', { class: 'morning-pot' }, h('span', {}, b.name),
         h('span', { class: 'morning-shares', role: 'group', 'aria-label': `How much of the ${b.name}` },
-          POT_SHARES.map((s) => h('button', { class: 'dl-btn', type: 'button', 'data-use': 'morning-share', title: `${shareWords(s)} of the pot`, 'aria-label': `${shareWords(s)} of the ${b.name}`, onclick: () => tap(slot, { batchId: b.id, share: s }) }, SHARE_LABELS[s]))))),
+          potShares(doc, b.id).map((s) => h('button', { class: 'dl-btn', type: 'button', 'data-use': 'morning-share', title: `${shareWords(s)} of the pot`, 'aria-label': `${shareWords(s)} of the ${b.name}`, onclick: () => tap(slot, { batchId: b.id, share: s }) }, SHARE_LABELS[s]))))),
       other ? h('div', { class: 'morning-other' },
         box('morning-words', `What you had for ${slotName(slot).toLowerCase()}`, 'One meal, with amounts: "4 eggs on 2 slices of toast with Philadelphia, half a cucumber"', () => draft.words, (v) => { draft.words = v; }),
         h('div', { class: 'close-actions' },
@@ -163,7 +164,7 @@ export function openMorning(ctx) {
           h('button', { class: 'dl-btn primary', type: 'button', 'data-use': 'morning-pot-save', onclick: keepPot }, 'Put it in the fridge')));
     }
     return h('div', { class: 'morning-potmake' }, h('h4', {}, 'What went in the pot'),
-      box('morning-pot', 'What went in the pot', 'Everything, with amounts: "6 raw chicken breasts, 500 g dry rice, 2 tins chopped tomatoes, 2 onions, a tablespoon of oil"', () => p.text, (v) => { p.text = v; }, 3),
+      box('morning-pot', 'What went in the pot', 'Everything, with amounts: "6 raw chicken breasts, 500 g dry rice, 2 tins chopped tomatoes, 2 onions, a tablespoon of oil"', () => p.text, (v) => { p.text = v; }, 3, 500),
       h('div', { class: 'close-actions' },
         h('button', { class: 'link', type: 'button', onclick: () => { draft.pot = fresh(today).pot; paint(); } }, 'Cancel'),
         h('button', { class: 'dl-btn primary', type: 'button', 'data-use': 'morning-pot-work', disabled: p.busy, onclick: workOutPot }, p.busy ? 'Working it out…' : 'Work it out')));
