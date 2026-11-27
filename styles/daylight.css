@@ -750,3 +750,4 @@ dialog.sheet.morning section > h3 { margin: 0; }
 .morning-other, .morning-potmake { display: flex; flex-direction: column; gap: 8px; }
 .morning-other textarea, .morning-potmake textarea, .morning-potmake input { border: 0; border-radius: 14px; padding: 10px 12px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; resize: none; }
 .morning .sheet-body > section > textarea { border: 0; border-radius: 14px; padding: 10px 12px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; resize: none; }
+.morning-row > .link, .morning-food > .link { align-self: flex-start; text-align: left; padding-left: 0; }
