@@ -7,10 +7,9 @@
 // The sheet's state is ctx.ui.snap; js/app.js's render repaints it, so the estimate appears when the
 // meal pass writes it.
 
-import { h } from './dom.js';
+import { h, grow } from './dom.js';
 import { slotFor, slotName, finalFor, dayProtein, fuelSettings, snapTime, mealValue, withQty, nextQty, itemsTotal, PORTIONS } from '../food.js';
 import { shrink, localPhotos, keepPhoto } from '../photos.js';
-import { micButton, stopListening, grow } from './mic.js';
 
 const BIG = 768;
 const SMALL = 480;
@@ -41,7 +40,7 @@ function show(ctx, state) {
   ctx.ui.snap = state;
   // Only this sheet's own closing clears it: a close still on its way from the last one mustn't
   // leave this one open but never repainted.
-  dlg.onclose = () => { stopListening(); if (ctx.ui.snap === state) ctx.ui.snap = null; };
+  dlg.onclose = () => { if (ctx.ui.snap === state) ctx.ui.snap = null; };
   paintSnap(ctx);
   if (!dlg.open) dlg.showModal();
 }
@@ -51,7 +50,6 @@ const close = () => document.getElementById('snap')?.close();
 async function takePhoto(ctx, file) {
   const s = ctx.ui.snap;
   if (!file || !s) return;
-  stopListening();
   Object.assign(s, { step: 'working', error: '' });
   paintSnap(ctx);
   let big;
@@ -75,7 +73,6 @@ async function takePhoto(ctx, file) {
 async function justWords(ctx) {
   const s = ctx.ui.snap;
   if (!s?.text.trim()) return;
-  stopListening();
   const meal = ctx.store.addMeal({ at: eatenAt(s), text: s.text, hasPhoto: false });
   Object.assign(s, { step: 'working', mealId: meal.id });
   paintSnap(ctx);
@@ -87,7 +84,6 @@ async function justWords(ctx) {
 async function estimateAgain(ctx) {
   const s = ctx.ui.snap;
   if (!s?.mealId || !s.text.trim()) return;
-  stopListening();
   try {
     ctx.store.redoMeal(s.mealId, s.text);
   } catch (e) {
@@ -107,7 +103,7 @@ function fileButton(ctx, label, capture) {
   return h('label', { class: 'dl-btn' }, input, label);
 }
 
-// The words box, with the mic: on a new meal and on one opened again.
+// The words box (dictation is the phone's own keyboard): on a new meal and on one opened again.
 function wordsBox(ctx, { placeholder, onChange }) {
   const s = ctx.ui.snap;
   const box = h('textarea', {
@@ -115,14 +111,7 @@ function wordsBox(ctx, { placeholder, onChange }) {
     oninput: (e) => { s.text = e.target.value; grow(e.target); onChange(); },
   });
   box.value = s.text;
-  return h('div', { class: 'snap-line' }, box, micButton({
-    key: 'snap-text',
-    hint: 'meal',
-    getText: () => s.text,
-    setText: (text) => { s.text = text; const live = document.querySelector('[data-focus="snap-text"]') ?? box; live.value = text; grow(live); onChange(); },
-    onBlocked: (message) => { s.error = message; },
-    render: () => paintSnap(ctx),
-  }));
+  return h('div', { class: 'snap-line' }, box);
 }
 
 // When it was eaten, at the top of the sheet: the meal's slot follows the time picked.

@@ -70,37 +70,6 @@ export function mealTimeFor(day, hhmm, dayStartHour = 4) {
   return new Date(y, m - 1, d + (hh < dayStartHour ? 1 : 0), hh, mm);
 }
 
-// For a usual meal tapped in: the first of breakfast, lunch and dinner with nothing logged or split.
-export function firstMissingSlot(logged, rows) {
-  const have = new Set([...logged, ...rows].map((m) => m.slot));
-  return ['breakfast', 'lunch', 'dinner'].find((s) => !have.has(s)) ?? 'snack';
-}
-
-// The checked split, saved: a usual meal exactly, a share of a pot exactly, anything else as his
-// words, pending, for the background estimate (js/photos.js). An empty row is left out. Every row is
-// checked before any is written, so a bad one saves nothing and saving again never doubles a meal.
-// Returns how many were saved.
-export function saveSplitMeals(store, day, rows, dayStartHour = 4) {
-  const doc = store.doc();
-  const keep = rows.filter((r) => String(r.text ?? '').trim() || r.usualId);
-  for (const r of keep) {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time ?? ''))) throw new Error(`Give ${String(r.text ?? '').trim() || 'each meal'} a time like 19:30`);
-    if (r.usualId && !(doc.meals?.[r.usualId]?.kind === 'usual' && doc.meals[r.usualId].status === 'active')) throw new Error(`${r.text} isn't a usual meal any more`);
-    if (r.batchId && !(doc.meals?.[r.batchId]?.kind === 'batch' && doc.meals[r.batchId].status === 'active')) throw new Error(`${r.text}: that pot isn't in the fridge any more`);
-  }
-  let n = 0;
-  for (const r of keep) {
-    const text = String(r.text ?? '').trim();
-    const at = mealTimeFor(day, r.time, dayStartHour);
-    const meal = r.usualId ? store.addMeal({ at, usualId: r.usualId })
-      : r.batchId ? store.addServing({ at, batchId: r.batchId, share: r.share })
-      : store.addMeal({ at, text });
-    if (r.slot && meal.slot !== r.slot) store.updateMeal(meal.id, { slot: r.slot });
-    n++;
-  }
-  return n;
-}
-
 // Done: the line for Claude (a For Claude flag, first in catchup), yesterday closed unless it
 // already is, and the morning record, saying which parts were left empty.
 export function finishMorning(store, { today, note = '', at, flagState = null, doing = null }) {

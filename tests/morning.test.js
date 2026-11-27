@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { morningId, morningRecord, morningModel, morningDue, morningLine, mealTimeFor, saveSplitMeals, finishMorning, firstMissingSlot, claudeMorningUrl } from '../js/morning.js';
+import { morningId, morningRecord, morningModel, morningDue, morningLine, mealTimeFor, finishMorning, claudeMorningUrl } from '../js/morning.js';
 import { closedRecord } from '../js/close.js';
 import { mealsOn } from '../js/food.js';
 import { closedId } from '../js/close.js';
@@ -67,36 +67,9 @@ test('an archived morning record does not count', () => {
   assert.equal(morningRecord(store.doc(), '2026-11-12'), null);
 });
 
-test('a split time goes on the day it belongs to: after midnight is still that day', () => {
+test('a row time goes on the day it belongs to: after midnight is still that day', () => {
   assert.equal(mealTimeFor('2026-11-11', '13:05', 4).getTime(), new Date(2026, 10, 11, 13, 5).getTime());
   assert.equal(mealTimeFor('2026-11-11', '01:30', 4).getTime(), new Date(2026, 10, 12, 1, 30).getTime());
-});
-
-test('saving the split: words as pending meals, a usual meal exactly, a serving of a pot', () => {
-  const { store } = setup();
-  const usual = store.saveUsual({ name: 'Protein shake', protein: 40, kcal: 300 });
-  const pot = store.saveBatch({ name: 'Chilli', ingredients: 'beef, beans', protein: 200, kcal: 3000, cookedOn: '2026-11-10' });
-  const n = saveSplitMeals(store, '2026-11-11', [
-    { slot: 'dinner', time: '19:30', text: 'pasta with pesto', batchId: null, share: null },
-    { slot: 'snack', time: '16:00', text: 'Protein shake', usualId: usual.id },
-    { slot: 'lunch', time: '13:30', text: 'a quarter of the chilli', batchId: pot.id, share: 0.25 },
-    { slot: 'snack', time: '22:00', text: '   ' },
-  ], 4);
-  assert.equal(n, 3);
-  const all = mealsOn(store.doc(), '2026-11-11');
-  assert.equal(all.length, 5);
-  const pasta = all.find((m) => m.text === 'pasta with pesto');
-  assert.equal(pasta.state, 'pending');
-  // The slot he checked stays, even where the clock would say otherwise.
-  assert.equal(all.find((m) => m.usualId === usual.id).slot, 'snack');
-  assert.equal(all.find((m) => m.usualId === usual.id).final.protein, 40);
-  assert.equal(all.find((m) => m.batchId === pot.id).final.protein, 50);
-});
-
-test('the first breakfast, lunch or dinner not logged yet, for a usual meal tapped in', () => {
-  const { store } = setup();
-  assert.equal(firstMissingSlot(mealsOn(store.doc(), '2026-11-11'), []), 'dinner');
-  assert.equal(firstMissingSlot(mealsOn(store.doc(), '2026-11-11'), [{ slot: 'dinner' }]), 'snack');
 });
 
 test('Done closes yesterday, leaves the note for Claude and says what was skipped', () => {
@@ -130,22 +103,9 @@ test('Today leads with the card, holds the back row until the morning is done, a
   assert.match(tl, /past \|\| morningDue\(doc, today\) \? null : renderBackRow\(ctx\)/);
   assert.match(tl, /closeLinkDue\(doc, today, today, new Date\(\)\)/);
   const ui = readFileSync(new URL('../js/ui/morning.js', import.meta.url), 'utf8');
-  assert.match(ui, /parseDaySplit\(data, \{ batches: pots \}\)/);
-  assert.match(ui, /Your words are kept/);
-});
-
-test('a split with one bad row saves nothing, so saving again never logs a meal twice', () => {
-  const { store } = setup();
-  const before = mealsOn(store.doc(), '2026-11-11').length;
-  const rows = [
-    { slot: 'lunch', time: '13:00', text: 'soup' },
-    { slot: 'dinner', time: '', text: 'pasta' },
-  ];
-  assert.throws(() => saveSplitMeals(store, '2026-11-11', rows, 4), /time like 19:30/);
-  assert.equal(mealsOn(store.doc(), '2026-11-11').length, before);
-  assert.throws(() => saveSplitMeals(store, '2026-11-11', [{ slot: 'snack', time: '16:00', text: 'shake', usualId: 'usual:gone' }], 4), /isn't a usual meal any more/);
-  assert.throws(() => saveSplitMeals(store, '2026-11-11', [{ slot: 'lunch', time: '13:00', text: 'chilli', batchId: 'batch:gone', share: 0.25 }], 4), /isn't in the fridge any more/);
-  assert.equal(mealsOn(store.doc(), '2026-11-11').length, before);
+  assert.match(ui, /rowUsuals\(doc, slot, today\)/);
+  assert.match(ui, /Your list is kept/);
+  assert.doesNotMatch(ui, /micButton|DAY_SPLIT/);
 });
 
 test('a day with nothing on it is not reported as closed 0 of 0', () => {
@@ -157,7 +117,3 @@ test('a day with nothing on it is not reported as closed 0 of 0', () => {
   assert.match(line, /nothing was on Wed/);
 });
 
-test('Done stops when the checked meals could not be saved', () => {
-  const ui = readFileSync(new URL('../js/ui/morning.js', import.meta.url), 'utf8');
-  assert.match(ui, /if \(draft\.rows\?\.length && !saveMeals\(\)\) return;/);
-});

@@ -1,11 +1,10 @@
 // Check-ins on screen (js/checkins.js): the waiting question at the top of Today's list, one at a
-// time — a box, a mic, Save and Skip. Save keeps his words at once; Gemini then tidies them into a
+// time — a box, Save and Skip. Save keeps his words at once; Gemini then tidies them into a
 // short note in the background, and a failure there costs nothing (Claude reads his words either
 // way). What he's typed or said lives in ctx.ui.checkin, so a re-render never loses it.
 
-import { h } from './dom.js';
+import { h, grow } from './dom.js';
 import { waitingCheckins, questionFor, SUMMARY_SYSTEM, summaryPrompt, parseSummary } from '../checkins.js';
-import { micButton, stopListening, grow } from './mic.js';
 import { shownDay } from '../timeline.js';
 import { readPlannerConfig } from '../calendar.js';
 
@@ -49,7 +48,6 @@ async function tidy(ctx, rec, said) {
 
 function save(ctx, rec) {
   const c = ctx.ui.checkin;
-  stopListening();
   const said = String(c.drafts[rec.id] ?? '').trim();
   try {
     ctx.store.answerCheckin(rec.id, said);
@@ -67,7 +65,6 @@ function save(ctx, rec) {
 
 function skip(ctx, rec) {
   const c = ctx.ui.checkin;
-  stopListening();
   delete c.drafts[rec.id];
   Object.assign(c, { error: '', first: null });
   ctx.store.skipCheckin(rec.id);
@@ -89,19 +86,7 @@ export function renderCheckin(ctx) {
   queueMicrotask(() => grow(box));
   return h('li', { class: `checkin${rec.why === 'missed' ? ' missed' : ''}`, 'data-checkin': rec.id },
     h('p', { class: 'checkin-q' }, questionFor(rec.why, rec.title), count > 1 ? h('span', { class: 'muted' }, ` · 1 of ${count}`) : null),
-    h('div', { class: 'checkin-box' }, box, micButton({
-      key: `checkin-${rec.id}`,
-      hint: 'checkin',
-      getText: () => c.drafts[rec.id] ?? '',
-      setText: (text) => {
-        c.drafts[rec.id] = text;
-        const live = document.querySelector(`[data-focus="checkin-${rec.id}"]`) ?? box;
-        live.value = text;
-        grow(live);
-      },
-      onBlocked: (message) => { c.error = message; },
-      render: ctx.render,
-    })),
+    h('div', { class: 'checkin-box' }, box),
     c.error ? h('p', { class: 'error', role: 'alert' }, c.error) : null,
     h('div', { class: 'buttons' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => save(ctx, rec) }, 'Save'),

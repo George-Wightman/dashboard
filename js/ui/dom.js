@@ -15,3 +15,9 @@ export function h(tag, attrs = {}, ...children) {
   }
   return el;
 }
+
+// A textarea that fits what's in it.
+export function grow(box) {
+  box.style.height = 'auto';
+  box.style.height = `${box.scrollHeight + 2}px`;
+}

@@ -2,11 +2,10 @@
 // not closed yet), opening one sheet: tick what happened, log a meal, leave Claude a line, close.
 // The line is a For Claude note like any other (js/ui/note.js), so the catch-up shows it first.
 
-import { h } from './dom.js';
+import { h, grow } from './dom.js';
 import { closeModel, closeDue, closeLine, closedLine, closedId, closedRecord } from '../close.js';
 import { doingNow } from '../calendar.js';
 import { longDate } from '../dates.js';
-import { micButton, stopListening, grow } from './mic.js';
 import { openSnap } from './snap.js';
 import { shownDay } from '../timeline.js';
 
@@ -29,10 +28,9 @@ export function openClose(ctx) {
   if (!dlg) return;
   const day = dayOf(ctx);
   const state = { note: '', error: '' };
-  const done = () => { stopListening(); dlg.close(); };
+  const done = () => { dlg.close(); };
 
   const finish = () => {
-    stopListening();
     const now = new Date();
     try {
       const text = state.note.trim();
@@ -74,19 +72,7 @@ export function openClose(ctx) {
         h('span', {}, `${model.meals} logged${model.mainMeals < 3 ? `, ${3 - model.mainMeals} of breakfast, lunch and dinner missing` : ''}`),
         h('button', { class: 'dl-btn', type: 'button', 'data-use': 'close-meal', onclick: () => { done(); openSnap(ctx); } }, 'Log a meal')),
       h('section', {}, h('h3', {}, 'A line for Claude'),
-        h('div', { class: 'checkin-box' }, box, micButton({
-          key: 'close-note',
-          hint: 'note',
-          getText: () => state.note,
-          setText: (text) => {
-            state.note = text;
-            const live = dlg.querySelector('[data-focus="close-note"]') ?? box;
-            live.value = text;
-            grow(live);
-          },
-          onBlocked: (message) => { state.error = message; },
-          render: paint,
-        }))),
+        h('div', { class: 'checkin-box' }, box)),
       state.error ? h('p', { class: 'error', role: 'alert' }, state.error) : null,
       h('div', { class: 'close-actions' },
         h('button', { class: 'dl-btn primary', type: 'button', 'data-use': 'close-finish', onclick: finish }, 'Close the day'))));

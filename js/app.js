@@ -31,8 +31,6 @@ import { renderSky } from './ui/sky.js';
 import { renderTimeline } from './ui/timeline.js';
 import { renderTiles, openTile } from './ui/tiles.js';
 import { paintSnap, openSnap } from './ui/snap.js';
-import { useTranscriber } from './ui/mic.js';
-import { createStt } from './stt.js';
 import { openHebrewLog } from './ui/hebrewlog.js';
 import { openMorning } from './ui/morning.js';
 import { chooseZoneRecord } from './travel.js';
@@ -208,12 +206,14 @@ const ctx = {
   },
 };
 
-// The mic writes down what's said with Gemini whenever there's a key (js/ui/mic.js).
-// On this device first when its speech model is downloaded (⚙ → Dictation), loaded once the page is idle.
-const stt = createStt();
-ctx.stt = stt;
-useTranscriber({ ask: (req) => ctx.gemini.ask(req), ready: () => ctx.gemini.keys().length > 0 && navigator.onLine !== false }, stt);
-(globalThis.requestIdleCallback ?? ((fn) => setTimeout(fn, 3000)))(() => stt.warm());
+// The app's own mic and its on-device speech model went on 27 Nov 2026 (the phone's keyboard dictates
+// far better). A device that downloaded the model lets it go, once.
+try {
+  if (localStorage.getItem('dash_stt')) {
+    localStorage.removeItem('dash_stt');
+    globalThis.caches?.delete('transformers-cache').catch(() => {});
+  }
+} catch { /* nothing to let go */ }
 
 let shownDay = store.today();
 

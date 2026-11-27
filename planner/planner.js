@@ -1,5 +1,5 @@
 // Dashboard calendar planner — built by `npm run build-planner` from planner/ and js/. Don't edit by hand.
-var PLANNER_BUILD = 'dea6ece7';
+var PLANNER_BUILD = '6a8c5058';
 
 // ---- planner/shims.js
 const __planner_shims = (() => {
@@ -1871,7 +1871,7 @@ const __js_food = (() => {
 // estimated: no model gives a trustworthy milligram of iron from a sentence, so the food groups stand
 // in for them. A meal from before has protein and calories only, and the balance leaves it out.
 
-const { addDays, longDate } = __js_dates;
+const { addDays } = __js_dates;
 
 const PORTIONS = { lighter: 0.75, right: 1, bigger: 1.3 };
 const MAX_TRIES = 3;
@@ -1937,62 +1937,8 @@ function mealPrompt({ text, at, hasPhoto, usual = [] }) {
   ].filter(Boolean).join('\n');
 }
 
-// A DAY OF FOOD IN ONE GO (Start the day, 25 Nov 2026): what he ate yesterday, said as one ramble,
-// split into meals. Only the split comes from here: slot, time and his own words for each meal, with
-// the amounts in them. He checks the split, and each meal is then saved and estimated on its own as
-// any meal is (mealPrompt), so counts, plants and the balance work the same.
-const SPLIT_MAX_MEALS = 8;
-const SPLIT_DEFAULT_TIMES = { breakfast: '08:30', lunch: '13:00', dinner: '19:00', snack: '16:00' };
-const SPLIT_SLOTS = Object.keys(SPLIT_DEFAULT_TIMES);
-
-const DAY_SPLIT_SYSTEM = [
-  'He tells you everything he ate across one day, in one go, often spoken. Split it into the separate meals and snacks he had.',
-  'For each: slot (breakfast, lunch, dinner or snack), time as HH:MM (his own if he said one, else a usual time for that slot), and text: his own words for that meal, with every amount kept exactly as he said it (5 eggs, 2 pittas, half the tray). Never add food he did not mention, never estimate numbers, never merge two meals into one.',
-  'Voice typing hears "pittas" as "pizzas": with eggs, cheese or salad, or "wholemeal", it means pitta breads. Write pittas.',
-  'Leave out anything in the "already logged" list: those are saved.',
-  'When a meal is a share of a pot in the fridge (listed with its id), give that id as batch and his share of the whole pot as share, a number from 0 to 1 (a quarter is 0.25). Otherwise batch and share are null.',
-  'Reply only with JSON, exactly this shape:',
-  '{"meals": [{"slot": "breakfast", "time": "08:30", "text": "5 eggs and 2 wholemeal pittas", "batch": null, "share": null}]}',
-].join('\n');
-
-function daySplitPrompt({ text, day, logged = [], batches: pots = [] }) {
-  const time = (m) => {
-    const d = new Date(m.at);
-    return Number.isNaN(d.getTime()) ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())} `;
-  };
-  return [
-    `The day: ${longDate(day)}.`,
-    logged.length ? `Already logged (leave these out): ${logged.map((m) => `${time(m)}${m.slot ?? 'meal'}: ${m.text || m.estimate?.name || 'a meal'}`).join('; ')}.` : 'Nothing is logged for that day yet.',
-    pots.length ? `Pots in the fridge: ${pots.map((b) => `${b.id}: ${b.name}`).join('; ')}.` : null,
-    `What he said: ${String(text ?? '').trim()}`,
-  ].filter(Boolean).join('\n');
-}
-
-const SPLIT_BAD = 'Gemini’s split didn’t make sense';
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-// The split, checked, in time order. Anything odd fails the whole split, so nothing half-right is
-// shown as if it were right; his words are kept by the card either way.
-function parseDaySplit(data, { batches: pots = [] } = {}) {
-  const list = data && typeof data === 'object' ? data.meals : null;
-  if (!Array.isArray(list) || !list.length || list.length > SPLIT_MAX_MEALS) throw new Error(SPLIT_BAD);
-  const known = new Set(pots.map((b) => b.id));
-  const out = list.map((m) => {
-    if (!m || typeof m !== 'object' || !SPLIT_SLOTS.includes(m.slot)) throw new Error(SPLIT_BAD);
-    const text = typeof m.text === 'string' ? m.text.trim().slice(0, 500) : '';
-    if (!text) throw new Error(SPLIT_BAD);
-    // "8:30" is 08:30: Gemini often drops the leading zero.
-    const time = m.time == null || m.time === '' ? SPLIT_DEFAULT_TIMES[m.slot] : String(m.time).trim().replace(/^(\d):/, '0$1:');
-    if (!HHMM.test(time)) throw new Error(SPLIT_BAD);
-    let batchId = null;
-    let share = null;
-    if (m.batch != null && known.has(m.batch)) {
-      try { share = parseShare(m.share); batchId = m.batch; } catch { share = null; }
-    }
-    return { slot: m.slot, time, text, batchId, share };
-  });
-  return out.sort((a, b) => a.time.localeCompare(b.time));
-}
+// The time a row on Start the day's food logs a meal at (js/morning.js), on the day before.
+const MEAL_TIMES = { breakfast: '08:30', lunch: '13:00', dinner: '19:00', snack: '16:00' };
 
 const BAD = 'Gemini’s estimate didn’t make sense';
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
@@ -2059,6 +2005,32 @@ function parseEstimate(data) {
   if (!data || typeof data !== 'object' || typeof data.name !== 'string' || !data.name.trim()) throw new Error(BAD);
   const items = validItems(data.items);
   const out = { name: data.name.trim(), items, protein: range(data.protein, roundProtein), kcal: range(data.kcal, roundKcal), ...extrasOf(items, data) };
+  const plants = cleanPlants(data.plants);
+  return plants.length ? { ...out, plants } : out;
+}
+
+// A POT FROM ITS INGREDIENTS (27 Nov 2026): he lists what went into a batch he cooked, amounts and
+// all, and Gemini works out the whole pot item by item. One dish with its amounts said is the easy
+// case; nothing is split. He sees the items and totals before it goes in the fridge.
+const POT_SYSTEM = [
+  'He has cooked a large batch (a pot) and lists what went into it, with amounts. Work out the whole pot, ingredient by ingredient.',
+  'Use exactly the amounts he says. Weights are as he gives them: "dry rice" and "raw chicken" are weighed before cooking, so count them that way. When he gives no amount, assume a normal amount for a big family-size pot.',
+  'Voice typing hears "pittas" as "pizzas"; read it sensibly.',
+  'Per ingredient: qty (a number), unit (g, ml, tins, breasts, cloves, tbsp…), and for that whole quantity: protein, carbs, fat, fibre and sugar in grams, kcal, and portions of veg and fruit (80 g is one) and oilyFish (140 g is one). Use 0 where there is none. Oil and butter count.',
+  'plants is every different plant food in it, each named once, lower case and singular. White rice, white pasta and sugar are not plants for this.',
+  'name is a short name for the dish.',
+  'Reply only with JSON, exactly this shape:',
+  '{"name": "Chicken and rice", "items": [{"name": "raw chicken breast", "qty": 6, "unit": "breasts", "protein": g, "kcal": n, "carbs": g, "fat": g, "fibre": g, "sugar": g, "veg": 0, "fruit": 0, "oilyFish": 0}], "plants": ["tomato"]}',
+].join('\n');
+
+const potPrompt = ({ text }) => `What went in: ${String(text ?? '').trim()}`;
+
+const POT_BAD = 'Gemini’s pot didn’t make sense';
+function parsePot(data) {
+  const name = data && typeof data === 'object' && typeof data.name === 'string' ? data.name.trim().slice(0, 60) : '';
+  const items = validItems(data?.items);
+  if (!name || !items.length) throw new Error(POT_BAD);
+  const out = { name, items, ...itemsTotal(items), ...extrasOf(items, data) };
   const plants = cleanPlants(data.plants);
   return plants.length ? { ...out, plants } : out;
 }
@@ -2226,6 +2198,30 @@ function usualMeals(doc) {
     .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name));
 }
 
+// START THE DAY'S FOOD ROWS (27 Nov 2026): breakfast, lunch, dinner and a snack as taps. A row offers
+// the usual meals he has had most recently at that meal, so a Salzburg lunch gives way to a London
+// one by itself, and a usual Claude saved with that home meal (`slot`) before he's had it.
+const ROW_USUALS = 2;
+const ROW_DAYS = 14;
+const POT_SHARES = [0.167, 0.2, 0.25, 0.333, 0.5];
+
+function rowUsuals(doc, slot, today, n = ROW_USUALS) {
+  const from = addDays(today, -ROW_DAYS);
+  const last = new Map();
+  for (const m of meals(doc)) {
+    if (!m.usualId || m.slot !== slot || m.day < from || m.day > today) continue;
+    if (String(m.at) > (last.get(m.usualId) ?? '')) last.set(m.usualId, String(m.at));
+  }
+  return Object.values(doc?.meals ?? {})
+    .filter((u) => u && u.kind === 'usual' && u.status === 'active')
+    .filter((u) => last.has(u.id) || (u.slot === slot && String(u.updated ?? u.created ?? '').slice(0, 10) >= from))
+    .sort((a, b) => (last.get(b.id) ?? '').localeCompare(last.get(a.id) ?? '') || String(b.updated ?? '').localeCompare(String(a.updated ?? '')))
+    .slice(0, n);
+}
+
+// Pots in the fridge are offered at lunch and dinner, where leftovers get eaten.
+const rowPots = (doc, slot, today) => (slot === 'lunch' || slot === 'dinner' ? liveBatches(doc, today) : []);
+
 // What this device should do next: estimate the meals it holds a photo for (and any meal whose photo
 // isn't waiting on another device, which goes by its words), and upload the photos it holds.
 function mealWork(doc, localIds) {
@@ -2278,7 +2274,7 @@ function batches(doc) {
 
 // The batches still in the fridge: cooked in the last week and not all logged.
 const liveBatches = (doc, today) => batches(doc).filter((b) => b.cookedOn > addDays(today, -BATCH_DAYS) && batchEaten(doc, b.id) < 0.98);
-return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, GRAMS, GROUPS, EXTRA, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, SPLIT_MAX_MEALS, SPLIT_DEFAULT_TIMES, DAY_SPLIT_SYSTEM, daySplitPrompt, parseDaySplit, cleanPlants, parseEstimate, claudeEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, nutrientsOf, macroGap, mealsOn, dayProtein, weekKcal, fuelSettings, BALANCE_TARGETS, dayBalance, weekBalance, maintenanceVerdict, usualMeals, mealWork, BATCH_DAYS, parseShare, shareWords, servingValue, batchServings, batchEaten, batches, liveBatches };
+return { PORTIONS, MAX_TRIES, FUEL_ID, MEAL_MODELS, MEAL_TEMPERATURE, GRAMS, GROUPS, EXTRA, slotName, slotFor, snapTime, MEAL_SYSTEM, mealPrompt, MEAL_TIMES, cleanPlants, parseEstimate, POT_SYSTEM, potPrompt, parsePot, claudeEstimate, withQty, nextQty, itemsTotal, finalFor, mealValue, nutrientsOf, macroGap, mealsOn, dayProtein, weekKcal, fuelSettings, BALANCE_TARGETS, dayBalance, weekBalance, maintenanceVerdict, usualMeals, ROW_USUALS, ROW_DAYS, POT_SHARES, rowUsuals, rowPots, mealWork, BATCH_DAYS, parseShare, shareWords, servingValue, batchServings, batchEaten, batches, liveBatches };
 })();
 
 // ---- js/duolingo.js
@@ -4160,11 +4156,14 @@ function createStore({ storage, now = () => new Date(), newId = () => crypto.ran
     return patch('meals', id, { text: words, state: 'pending', tries: 0, error: null, correction: null, usualId: null, batchId: null, share: null });
   }
 
-  function saveUsual({ name, protein, kcal, ...rest }) {
+  // `slot`: its home meal (breakfast, lunch, dinner or snack), so Start the day offers it there.
+  function saveUsual({ name, protein, kcal, slot = null, ...rest }) {
     const title = requireTitle(name, 'A usual meal');
     if (!(protein >= 0) || !(kcal >= 0)) throw new Error('A usual meal needs protein and kcal of 0 or more');
+    if (slot != null && !['breakfast', 'lunch', 'dinner', 'snack'].includes(slot)) throw new Error("A usual meal's slot is breakfast, lunch, dinner or snack");
     const id = `usual:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meal'}`;
-    return putRecord('meals', id, { kind: 'usual', name: title, ...nutrientsOf({ protein, kcal, ...rest }), uses: doc.meals[id]?.uses ?? 0 }, 'me').rec;
+    const home = slot ?? doc.meals[id]?.slot ?? null;
+    return putRecord('meals', id, { kind: 'usual', name: title, ...nutrientsOf({ protein, kcal, ...rest }), uses: doc.meals[id]?.uses ?? 0, ...(home ? { slot: home } : {}) }, 'me').rec;
   }
 
   // A batch he cooked (js/food.js): the whole pot's protein and kcal, worked out by Claude from what
@@ -8802,7 +8801,7 @@ const __js_morning = (() => {
 
 const { addDays, shortWeekday } = __js_dates;
 const { closeModel } = __js_close;
-const { mealsOn } = __js_food;
+const { mealsOn, MEAL_TIMES } = __js_food;
 const { BACK } = __js_coach;
 
 const morningId = (day) => `morning:${day}`;
@@ -8866,37 +8865,6 @@ function mealTimeFor(day, hhmm, dayStartHour = 4) {
   return new Date(y, m - 1, d + (hh < dayStartHour ? 1 : 0), hh, mm);
 }
 
-// For a usual meal tapped in: the first of breakfast, lunch and dinner with nothing logged or split.
-function firstMissingSlot(logged, rows) {
-  const have = new Set([...logged, ...rows].map((m) => m.slot));
-  return ['breakfast', 'lunch', 'dinner'].find((s) => !have.has(s)) ?? 'snack';
-}
-
-// The checked split, saved: a usual meal exactly, a share of a pot exactly, anything else as his
-// words, pending, for the background estimate (js/photos.js). An empty row is left out. Every row is
-// checked before any is written, so a bad one saves nothing and saving again never doubles a meal.
-// Returns how many were saved.
-function saveSplitMeals(store, day, rows, dayStartHour = 4) {
-  const doc = store.doc();
-  const keep = rows.filter((r) => String(r.text ?? '').trim() || r.usualId);
-  for (const r of keep) {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time ?? ''))) throw new Error(`Give ${String(r.text ?? '').trim() || 'each meal'} a time like 19:30`);
-    if (r.usualId && !(doc.meals?.[r.usualId]?.kind === 'usual' && doc.meals[r.usualId].status === 'active')) throw new Error(`${r.text} isn't a usual meal any more`);
-    if (r.batchId && !(doc.meals?.[r.batchId]?.kind === 'batch' && doc.meals[r.batchId].status === 'active')) throw new Error(`${r.text}: that pot isn't in the fridge any more`);
-  }
-  let n = 0;
-  for (const r of keep) {
-    const text = String(r.text ?? '').trim();
-    const at = mealTimeFor(day, r.time, dayStartHour);
-    const meal = r.usualId ? store.addMeal({ at, usualId: r.usualId })
-      : r.batchId ? store.addServing({ at, batchId: r.batchId, share: r.share })
-      : store.addMeal({ at, text });
-    if (r.slot && meal.slot !== r.slot) store.updateMeal(meal.id, { slot: r.slot });
-    n++;
-  }
-  return n;
-}
-
 // Done: the line for Claude (a For Claude flag, first in catchup), yesterday closed unless it
 // already is, and the morning record, saying which parts were left empty.
 function finishMorning(store, { today, note = '', at, flagState = null, doing = null }) {
@@ -8913,7 +8881,35 @@ function finishMorning(store, { today, note = '', at, flagState = null, doing = 
 }
 
 const claudeMorningUrl = () => `https://claude.ai/new?q=${encodeURIComponent("/dashboard Start my day with me: back, yesterday's ticks and food.")}`;
-return { morningId, MORNING_PARTS, morningRecord, morningModel, morningDue, morningLine, mealTimeFor, firstMissingSlot, saveSplitMeals, finishMorning, claudeMorningUrl };
+
+// ---- Food by taps (27 Nov 2026) ---------------------------------------------------------------------
+
+// One tap on a food row: a usual meal or a share of a pot, counted exactly, or his words for one
+// meal, left for the background estimate. Logged on `day` at the row's time, the row's meal kept.
+function logTap(store, { day, slot, usualId = null, batchId = null, share = null, text = '' }, dayStartHour = 4) {
+  const at = mealTimeFor(day, MEAL_TIMES[slot] ?? MEAL_TIMES.snack, dayStartHour);
+  const words = String(text ?? '').trim();
+  if (!usualId && !batchId && !words) throw new Error('Say what you had');
+  const meal = usualId ? store.addMeal({ at, usualId }) : batchId ? store.addServing({ at, batchId, share }) : store.addMeal({ at, text: words });
+  if (meal.slot !== slot) store.updateMeal(meal.id, { slot });
+  return store.doc().meals[meal.id];
+}
+
+// An estimated meal kept as a usual for its row, and the meal linked to it.
+function usualFromMeal(store, mealId) {
+  const meal = store.doc().meals[mealId];
+  if (!meal || meal.kind !== 'meal' || !meal.final) throw new Error('A meal can be kept as a usual once it has numbers');
+  const u = store.saveUsual({ name: meal.estimate?.name ?? meal.text, ...meal.final, slot: meal.slot });
+  store.updateMeal(mealId, { usualId: u.id });
+  return u;
+}
+
+// A pot worked out from its ingredients (js/food.js parsePot), into the fridge.
+function savePot(store, { text, pot, cookedOn }) {
+  const { name, items, ...numbers } = pot;
+  return store.saveBatch({ ...numbers, name, ingredients: text, cookedOn });
+}
+return { morningId, MORNING_PARTS, morningRecord, morningModel, morningDue, morningLine, mealTimeFor, finishMorning, claudeMorningUrl, logTap, usualFromMeal, savePot };
 })();
 
 // ---- js/nudges.js

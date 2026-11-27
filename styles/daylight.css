@@ -732,12 +732,21 @@ dialog.sheet.morning section > h3 { margin: 0; }
 .morning-meals, .morning-split { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .morning-meals li { font-size: 14px; color: var(--dl-muted); }
 .morning-meals strong { color: var(--dl-ink); font-weight: 700; }
-.morning-split-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: center; }
-.morning-split-row input[type="text"] { grid-column: 1 / -1; grid-row: 2; }
-.morning-split-row .link { grid-column: 4; justify-self: end; }
-.morning-split-row select, .morning-split-row input { min-height: 40px; border: 0; border-radius: 12px; padding: 6px 8px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; min-width: 0; }
-.morning-usual { display: flex; flex-wrap: wrap; gap: 6px; }
-.morning-usual .dl-btn { font-size: 14px; }
 .morning-actions { justify-content: space-between; align-items: center; }
 .tl-close-today { margin: 4px 0 0; text-align: right; font-size: 14px; }
 .morning .close-actions { gap: 10px; flex-wrap: wrap; }
+/* Food by taps (27 Nov 2026): a row per meal, its usuals and the fridge's pots as taps. */
+.morning-food { gap: 12px; }
+.morning-row { display: flex; flex-direction: column; gap: 6px; }
+.morning-row h4, .morning-potmake h4 { margin: 0; font-size: 15px; font-weight: 700; }
+.morning-chips, .morning-shares { display: flex; flex-wrap: wrap; gap: 6px; }
+.morning-chips .dl-btn, .morning-shares .dl-btn { font-size: 14px; }
+.morning-chips .dl-btn.ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--dl-line); }
+.morning-shares .dl-btn { min-width: 44px; justify-content: center; font-size: 16px; }
+.morning-pot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.morning-pot > span:first-child { font-weight: 600; min-width: 8ch; }
+.morning-logged { display: flex; align-items: center; gap: 10px; }
+.morning-logged-words { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 14px; }
+.morning-other, .morning-potmake { display: flex; flex-direction: column; gap: 8px; }
+.morning-other textarea, .morning-potmake textarea, .morning-potmake input { border: 0; border-radius: 14px; padding: 10px 12px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; resize: none; }
+.morning .sheet-body > section > textarea { border: 0; border-radius: 14px; padding: 10px 12px; background: var(--dl-soft); color: var(--dl-ink); font: inherit; resize: none; }
