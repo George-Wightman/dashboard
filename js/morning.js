@@ -139,3 +139,9 @@ export function usualFromMeal(store, mealId) {
   store.updateMeal(mealId, { usualId: u.id });
   return u;
 }
+
+// A pot worked out from its ingredients (js/food.js parsePot), into the fridge.
+export function savePot(store, { text, pot, cookedOn }) {
+  const { name, items, ...numbers } = pot;
+  return store.saveBatch({ ...numbers, name, ingredients: text, cookedOn });
+}

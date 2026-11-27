@@ -12,12 +12,12 @@
 //   ?fakegemini=nonsense a 200 whose text isn't JSON
 //   ?fakegemini=meal     a canned meal estimate (js/food.js's MEAL_SYSTEM); meal-slow after 5 s;
 //                        meal-nonsense a 200 that isn't an estimate
-// A day of food to split (js/food.js's DAY_SPLIT_SYSTEM) gets three canned meals in any mode that answers.
+// A pot's ingredients (js/food.js's POT_SYSTEM) get a canned chicken and rice in any mode that answers.
 // A recording to write down (js/voice.js's TRANSCRIBE_SYSTEM) gets a canned breakfast in any mode that answers.
 // Any other mode behaves like ok.
 
 import { SUMMARY_SYSTEM } from '../js/checkins.js';
-import { MEAL_SYSTEM, DAY_SPLIT_SYSTEM } from '../js/food.js';
+import { MEAL_SYSTEM, POT_SYSTEM } from '../js/food.js';
 import { TRANSCRIBE_SYSTEM } from '../js/voice.js';
 
 export const FAKE_MODES = ['ok', 'slow', 'nokey', 'quota', 'down', 'offline', 'badkey', 'nonsense', 'meal', 'meal-slow', 'meal-nonsense'];
@@ -26,11 +26,11 @@ export const FAKE_MODES = ['ok', 'slow', 'nokey', 'quota', 'down', 'offline', 'b
 const MEAL = { name: 'Chicken wrap and crisps', items: [{ name: 'Large chicken wrap', qty: 2, unit: 'wraps', protein: 40, kcal: 560 }, { name: 'Bag of crisps', qty: 1, unit: 'bag', protein: 2, kcal: 180 }, { name: 'Sauce', qty: 30, unit: 'g', protein: 0, kcal: 40 }],
   protein: { low: 38, mid: 46, high: 54 }, kcal: { low: 650, mid: 780, high: 900 } };
 
-// The canned split of a day: three meals in his words.
-const SPLIT = { meals: [
-  { slot: 'breakfast', time: '08:15', text: 'five eggs and two wholemeal pittas', batch: null, share: null },
-  { slot: 'lunch', time: '13:00', text: 'a chicken wrap and a bag of crisps', batch: null, share: null },
-  { slot: 'dinner', time: '19:30', text: 'a big bowl of pasta with pesto and chicken', batch: null, share: null },
+// The canned pot: chicken and rice, item by item.
+const POT = { name: 'Chicken and rice', plants: ['rice', 'tomato'], items: [
+  { name: 'raw chicken breast', qty: 6, unit: 'breasts', protein: 186, kcal: 990, carbs: 0, fat: 21, fibre: 0, sugar: 0, veg: 0, fruit: 0, oilyFish: 0 },
+  { name: 'dry basmati rice', qty: 500, unit: 'g', protein: 40, kcal: 1750, carbs: 390, fat: 3, fibre: 5, sugar: 0, veg: 0, fruit: 0, oilyFish: 0 },
+  { name: 'chopped tomatoes', qty: 2, unit: 'tins', protein: 8, kcal: 160, carbs: 28, fat: 1, fibre: 7, sugar: 20, veg: 5, fruit: 0, oilyFish: 0 },
 ] };
 
 function response(status, body) {
@@ -53,7 +53,7 @@ function promptOf(init) {
 
 // The canned summary (js/checkins.js's SUMMARY_SYSTEM): his words, cut down.
 function answer(prompt) {
-  if (prompt.includes(DAY_SPLIT_SYSTEM)) return SPLIT;
+  if (prompt.includes(POT_SYSTEM)) return POT;
   if (prompt.includes(MEAL_SYSTEM)) return MEAL;
   if (prompt.includes(TRANSCRIBE_SYSTEM)) return { text: 'six fried eggs, three wholemeal pittas and a quarter of a cucumber' };
   if (!prompt.includes(SUMMARY_SYSTEM)) return {};

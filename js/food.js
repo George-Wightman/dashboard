@@ -204,6 +204,32 @@ export function parseEstimate(data) {
   return plants.length ? { ...out, plants } : out;
 }
 
+// A POT FROM ITS INGREDIENTS (27 Nov 2026): he lists what went into a batch he cooked, amounts and
+// all, and Gemini works out the whole pot item by item. One dish with its amounts said is the easy
+// case; nothing is split. He sees the items and totals before it goes in the fridge.
+export const POT_SYSTEM = [
+  'He has cooked a large batch (a pot) and lists what went into it, with amounts. Work out the whole pot, ingredient by ingredient.',
+  'Use exactly the amounts he says. Weights are as he gives them: "dry rice" and "raw chicken" are weighed before cooking, so count them that way. When he gives no amount, assume a normal amount for a big family-size pot.',
+  'Voice typing hears "pittas" as "pizzas"; read it sensibly.',
+  'Per ingredient: qty (a number), unit (g, ml, tins, breasts, cloves, tbsp…), and for that whole quantity: protein, carbs, fat, fibre and sugar in grams, kcal, and portions of veg and fruit (80 g is one) and oilyFish (140 g is one). Use 0 where there is none. Oil and butter count.',
+  'plants is every different plant food in it, each named once, lower case and singular. White rice, white pasta and sugar are not plants for this.',
+  'name is a short name for the dish.',
+  'Reply only with JSON, exactly this shape:',
+  '{"name": "Chicken and rice", "items": [{"name": "raw chicken breast", "qty": 6, "unit": "breasts", "protein": g, "kcal": n, "carbs": g, "fat": g, "fibre": g, "sugar": g, "veg": 0, "fruit": 0, "oilyFish": 0}], "plants": ["tomato"]}',
+].join('\n');
+
+export const potPrompt = ({ text }) => `What went in: ${String(text ?? '').trim()}`;
+
+const POT_BAD = 'Gemini’s pot didn’t make sense';
+export function parsePot(data) {
+  const name = data && typeof data === 'object' && typeof data.name === 'string' ? data.name.trim().slice(0, 60) : '';
+  const items = validItems(data?.items);
+  if (!name || !items.length) throw new Error(POT_BAD);
+  const out = { name, items, ...itemsTotal(items), ...extrasOf(items, data) };
+  const plants = cleanPlants(data.plants);
+  return plants.length ? { ...out, plants } : out;
+}
+
 // A meal Claude worked out in a chat, item by item: the same shape as Gemini's, its range the total.
 export function claudeEstimate({ name, items, plants }) {
   const list = validItems(items);
